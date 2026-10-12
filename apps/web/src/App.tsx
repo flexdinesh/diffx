@@ -2,6 +2,7 @@ import { useReviewState } from "./app-state.tsx";
 import { DiffWorkspace } from "./DiffWorkspace.tsx";
 import { FileExplorerNav, SidebarResizer } from "./FileExplorerNav.tsx";
 import { Header } from "./Header.tsx";
+import { NewerSnapshotNotice } from "./ProjectsNav.tsx";
 import { CopyDialog } from "./review.tsx";
 import { capabilityEnabled, useSession } from "./session-context.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
@@ -12,6 +13,7 @@ export function App() {
     <>
       <WebMCPTools />
       <Header />
+      <NewerSnapshotNotice />
       <SidebarBackdrop />
       <div className="workspace">
         <FileExplorerNav />

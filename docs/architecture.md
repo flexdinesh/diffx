@@ -138,8 +138,18 @@ Versioned producer directories ignore old manual/hook pending payloads.
 Stop old binaries before upgrading.
 
 Remote configuration is owned by `config` and composed by `cmd/diffx-server`:
-defaults, an explicitly selected read-only server JSON file, environment, then
-explicit flags. Server startup does not discover, create or lock personal CLI
-config. The binary defaults to loopback and a separate `./data/state.db`; the
-container supplies overridable env defaults for its listener and `/data` volume.
-One process owns the volume's SQLite database, credentials and durable queue.
+defaults, an explicitly selected read-only server JSON file, `DIFFX_SERVER_*`
+environment, then explicit flags. Server startup does not discover, create or lock
+personal CLI config. The binary defaults to loopback port 7980 and a separate
+`./data/state.db`; the container supplies overridable env defaults for its
+listener and `/data` volume. One process owns the volume's SQLite database,
+credentials and durable queue.
+
+Personal CLI configuration keeps modes in separate namespaces so one machine runs
+both compositions at once: `local.*` and `DIFFX_LOCAL_*` configure only
+`diffx [PATH]` (ports 7981–7990), `remote.*` and `DIFFX_REMOTE_*` only sync and
+hooks. Mode is chosen by the command, never by a config field: local commands
+reject remote flags, and sync, hooks and `remote status` fail without a complete
+remote destination. Hooks check that destination before discovery, so an
+unconfigured machine never enrolls identities or collects checkouts. Flat
+pre-namespace config files are rejected with each key's replacement.

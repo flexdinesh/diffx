@@ -47,7 +47,9 @@ saves immutable pending payloads, and submits them over authenticated HTTP.
 The remote server binary owns durable queue admission, the ingestion worker, shared
 application services and persistent storage. Sync waits for committed results.
 Plugins schedule finite remote-only collection of the triggering checkout with
-harness metadata.
+harness metadata. `diffx remote status` verifies the destination and credential
+and reports hook deliveries still waiting, since hooks never write to the agent
+conversation.
 
 `diffx-server` runs directly or as the same binary inside a container. It resolves
 deployment config without reading or writing personal CLI settings. Container
@@ -82,8 +84,18 @@ freshness follows collection time and acceptance sequence.
 
 ### Browse and review
 
-The dashboard queries `/api/v2/contexts`, selects a repository, then selects an
-observation identified by worktree, branch, source, run and time. Distinct
+Navigation is project-driven. The Projects drawer queries
+`/api/v2/contexts?latest=true`, which omits stale snapshots, and groups stream
+heads by repository. A stream is one owner, source, repository, checkout, branch
+and comparison policy; every context carries its opaque `streamId` and the
+stream's current `latestContextId`. The drawer hides clean, unavailable and
+unknown-status heads, orders repositories and streams by latest arrival, and
+marks streams whose head this browser has not opened. Ingestion events reload
+the heads; when the viewed context's stream has a newer head, a notice offers it
+without replacing the open review. The root URL opens the newest changed head.
+
+The review picker loads the full catalog only while open. It selects a
+repository, then an observation identified by worktree, branch, source, run and time. Distinct
 content from the same worktree remains independently selectable; unchanged
 reviews reuse one context. Search supports repository, branch, worktree,
 hostname, source and run metadata, plus harness/session ID/session name through

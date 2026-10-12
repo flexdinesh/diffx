@@ -208,6 +208,23 @@ such detail into a token. New layout spacing must use the scale.
   context. Keep the secondary scope heading and muted monospace path inline;
   hide the path at 768–1011px and both below 768px. Group ghost Refresh/theme
   actions at the trailing edge; share `--hover` feedback with the trigger.
+- Projects drawer: the outermost full-height column, `--projects-width` (16rem)
+  on `--panel` with a separator edge. Its header matches `--topbar-height` and
+  holds the brand and a ghost “Hide projects” action (panel-left icon). Below it:
+  a search row styled like the file filter that opens the review picker, a quiet
+  semibold “Projects” caption, then repositories ordered by latest arrival.
+  Repository rows match tree-row height with a chevron, repository icon, medium
+  name and muted monospace age. Stream rows indent under them: branch icon, name,
+  trailing monospace changed-file count, and a muted metadata line (worktree,
+  harness, host only when a repository has several, age). Show only current
+  heads with changes. The current stream uses `--accent-bg`, accent text and
+  `aria-current="page"`. Unopened arrivals show a small accent dot labeled “New
+  changes”; a collapsed repository carries its streams' dot. While hidden, the
+  topbar starts with a “Show projects” action, the brand and divider. The file
+  sidebar toggle uses a list-tree icon so the two panel controls stay distinct.
+  Collapse state persists per browser.
+- A newer head for the viewed stream shows a one-line `--accent-bg` notice below
+  the header with an outline-muted “View latest” action. Never swap the open review.
 - Status bar: `--statusbar-height` (28), with shortcuts shed before server metrics.
 - The diff display toolbar uses `--panel`, matching the header and status bar.
 - Desktop sidebar: `--sidebar-width` defaults to 330px. `use-sidebar.ts` owns
@@ -421,6 +438,8 @@ Do not add motion for decoration. New animation must honor
   Keep the linked-worktree icon visible when its text label is hidden.
 - Collapse navigation to the toggle-controlled modal drawer; its width is
   `min(320px, 88vw)`. Keep file selection, comments, and export reachable there.
+  The projects drawer follows the same modal pattern from its own toggle; opening
+  it closes the file drawer, and choosing a stream closes it.
   Its tab strip matches `--topbar-height`, including the tablet header height.
   File/folder rows, filter, summary toggle, and review progress retain desktop
   control heights and spacing; do not apply the general mobile enlargement here.
@@ -488,7 +507,8 @@ from the canonical tokens. Zero, automatic spacing
 and 1px optical insets remain valid; dimensions, breakpoints and dynamic measured
 geometry require review rather than a blanket literal-value ban.
 
-The guard has exact exceptions for status circles, SVG monogram units, icon line
+The guard has exact exceptions for status circles (including the projects
+drawer's new-changes dot), SVG monogram units, icon line
 boxes, compact comment counts, the overlapping sidebar resizer, and Pierre's
 line-surface mixes/inset strokes. Existing generated tabs' 3px inset and active
 shadow, and the dialog title's unit line-height, are bounded legacy exceptions;

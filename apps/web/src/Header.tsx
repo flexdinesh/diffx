@@ -1,8 +1,7 @@
 import {
   MonitorIcon,
   MoonIcon,
-  PanelLeftCloseIcon,
-  PanelLeftOpenIcon,
+  ListTreeIcon,
   RefreshCwIcon,
   SunIcon,
 } from "lucide-react";
@@ -14,8 +13,8 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
 import { DeleteContextButton } from "./DeleteContextButton.tsx";
+import { ProjectsToggle } from "./ProjectsNav.tsx";
 import { useDiffSource } from "./app-state.tsx";
 import { useAppearance } from "./appearance-context.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
@@ -42,6 +41,7 @@ export function Header() {
   const refreshEnabled = capabilityEnabled(capabilities.diff.refresh);
   return (
     <header className="topbar">
+      <ProjectsToggle />
       <Button
         type="button"
         id="sidebar-toggle"
@@ -53,16 +53,8 @@ export function Header() {
         title={`${sidebar.expanded ? "Hide" : "Show"} file sidebar`}
         onClick={sidebar.toggle}
       >
-        {sidebar.expanded ? (
-          <PanelLeftCloseIcon className="size-(--icon-base)" />
-        ) : (
-          <PanelLeftOpenIcon className="size-(--icon-base)" />
-        )}
+        <ListTreeIcon className="size-(--icon-base)" />
       </Button>
-      <a className="brand" href="/" aria-label="diffx home">
-        diffx
-      </a>
-      <Separator className="header-divider" orientation="vertical" />
       <ContextSwitcher />
       <div className="header-heading">
         <h1

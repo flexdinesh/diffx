@@ -1,7 +1,9 @@
 # Agent plugins
 
-Plugins target the remote server only. Configure `diffx config set server URL`
-and `diffx config set token -` before enabling hooks.
+Plugins target the remote server only. Configure `diffx config set remote.url URL`
+and `diffx config set remote.token -` before enabling hooks, then confirm with
+`diffx remote status`. Without remote config, hooks log one line and exit before
+discovering, enrolling or collecting the checkout.
 
 Install a plugin to synchronize the latest checkout after an agent finishes.
 Collection and ingestion run in a detached Go worker; the agent only schedules
@@ -118,14 +120,19 @@ configuration variables and installation scopes apply.
 
 ## Configuration
 
-Server and collector settings resolve in this order:
+Local server and collector settings resolve in this order:
 
 1. Code defaults.
-2. JSON config at `~/.config/diffx/config.json`.
-3. Environment: `DIFFX_HOST`, `DIFFX_PORT`, `DIFFX_STATE`,
-   `DIFFX_WEB_DIR`, `DIFFX_SERVER_URL`, `DIFFX_TOKEN`,
-   `DIFFX_RETENTION_DAYS`.
+2. JSON config at `~/.config/diffx/config.json`, with `local` and `remote`
+   sections.
+3. Environment: `DIFFX_LOCAL_HOST`, `DIFFX_LOCAL_PORT`, `DIFFX_LOCAL_STATE`,
+   `DIFFX_LOCAL_WEB_DIR`, `DIFFX_LOCAL_RETENTION_DAYS`, `DIFFX_REMOTE_URL`,
+   `DIFFX_REMOTE_TOKEN`.
 4. Explicit command flags or start/restart inline JSON overrides.
+
+`local.*` configures only `diffx [PATH]`; `remote.*` configures only sync and
+hooks. `diffx-server` deployment variables use `DIFFX_SERVER_*` and never
+configure the CLI.
 
 `DIFFX_CONFIG_PATH` or `--config-file FILE` selects another JSON file.
 Missing files receive defaults; invalid JSON or environment values fail clearly.
@@ -135,16 +142,17 @@ settings; workers read effective settings each invocation but reuse the running
 server until restarted.
 
 ```sh
-diffx config set port 7981 --config-file /path/to/config.json
-diffx config set server https://reviews.example.com
-diffx config set retentionDays 14
+diffx config set local.port 7985 --config-file /path/to/config.json
+diffx config set remote.url http://127.0.0.1:7980
+diffx config set local.retentionDays 14
 # Remote config is read by each finite invocation.
 ```
 
-JSON `server` and `token` select remote ingestion through Go; environment and
-explicit `--server`/`--token` override them. Plugins require a nonempty remote `server` and bearer `token`; no local fallback.
-Config files are private because `token` may contain a credential.
-`retentionDays` is a positive whole-day server setting, default seven;
+JSON `remote.url` and `remote.token` select remote ingestion through Go;
+environment and explicit `--server`/`--token` override them. Plugins require a
+nonempty remote URL and bearer token; no local fallback.
+Config files are private because `remote.token` may contain a credential.
+`local.retentionDays` is a positive whole-day local server setting, default seven;
 `--retention-days` overrides it for server startup. Remote collectors do not
 change the remote server's retention. Existing expiries change only after a fresh
 submission; retries do not extend them.
@@ -199,6 +207,9 @@ Each worker has a one-minute deadline, at most two attempts per payload, and a
 shared one-minute cooldown after failed startup. Pending immutable payloads
 retain retry IDs and survive checkout removal. Retries run on later completion
 triggers or explicit retry commands, without a perpetual background loop.
+Completion triggers skip jobs whose worker ran within the last two minutes, so an
+unreachable server does not recollect every waiting checkout on every agent
+turn; `diffx collector retry` ignores that backoff.
 Server/database identity prevents ambiguous requests from being replayed into a
 replacement database.
 

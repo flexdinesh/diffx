@@ -32,6 +32,7 @@ const colorProperty =
 // the reasons; token rules still apply to every other declaration in these files.
 const exceptions = new Set([
   "style.css|.live-dot|border-radius|50%",
+  "style.css|.new-mark > span|border-radius|50%",
   "review.css|.file-reviewed-check|border-radius|50%",
   "review.css|.staging-dot|border-radius|50%",
   "review.css|.file-row .file-icon|line-height|1",

@@ -21,6 +21,8 @@ async function localWorkspace(page: Page) {
   };
   const session: ApiContext = {
     id: "local-review",
+    streamId: null,
+    latestContextId: null,
     locationId: "location",
     repositoryId: "repo",
     kind: "observation",
@@ -1450,4 +1452,100 @@ test("picker combines filters before grouping and preserves them across navigati
   await search.fill("");
   await search.press("ArrowDown");
   await expect(unavailable).toHaveAttribute("aria-selected", "false");
+});
+
+test("projects drawer lists current changed streams and announces newer snapshots", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    class IngestionEvents extends EventTarget {
+      notify = () =>
+        this.dispatchEvent(new MessageEvent("ingestion", { data: "{}" }));
+      constructor() {
+        super();
+        window.addEventListener("test-ingestion", this.notify);
+      }
+      close() {
+        window.removeEventListener("test-ingestion", this.notify);
+      }
+    }
+    Object.defineProperty(window, "EventSource", { value: IngestionEvents });
+  });
+  const state = await localWorkspace(page);
+  const stream = (
+    id: string,
+    name: string,
+    branch: string,
+    lastSubmittedAt: number,
+    changedFileCount = 1,
+  ): ApiContext => ({
+    ...state.context,
+    id,
+    name,
+    branch,
+    repositoryId: name,
+    streamId: `stream-${branch}`,
+    latestContextId: id,
+    lastSubmittedAt,
+    changedFileCount,
+  });
+  const viewed = stream("rate-1", "acme-api", "feat/rate-limit", 10);
+  const contexts = new Map(
+    [
+      viewed,
+      stream("web-1", "web-app", "main", 20),
+      stream("infra-1", "infra", "cleanup", 30, 0),
+    ].map((context) => [context.id, context]),
+  );
+  let heads = [...contexts.values()];
+  const latestRequests: string[] = [];
+  await page.route("**/api/v2/contexts?*", (route) => {
+    latestRequests.push(
+      new URL(route.request().url()).searchParams.get("latest") ?? "",
+    );
+    return route.fulfill({ json: { contexts: heads, nextCursor: null } });
+  });
+  await page.route("**/api/v2/contexts/*", (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-1) ?? "";
+    return route.fulfill({ json: contexts.get(id) });
+  });
+  await page.goto("/contexts/rate-1");
+  await ready(page);
+  expect(latestRequests).toContain("true");
+  const nav = page.getByRole("navigation", { name: "Projects" });
+  await expect(
+    nav.getByRole("button", { name: /^(web-app|acme-api)/ }),
+  ).toHaveText([/web-app/, /acme-api/]);
+  await expect(nav).not.toContainText("infra");
+  await expect(
+    nav.getByRole("link", { name: /feat\/rate-limit/ }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.locator(".snapshot-notice")).toBeHidden();
+
+  const newer = {
+    ...stream("rate-2", "acme-api", "feat/rate-limit", 40),
+    changedFileCount: 3,
+  };
+  contexts.set(newer.id, newer);
+  heads = [newer, ...heads.filter((context) => context.id !== viewed.id)];
+  await page.evaluate(() => window.dispatchEvent(new Event("test-ingestion")));
+  const notice = page.locator(".snapshot-notice");
+  await expect(notice).toContainText("Newer snapshot of feat/rate-limit");
+  await expect(notice).toContainText("3 changed files");
+  await expect(page).toHaveURL(/\/contexts\/rate-1$/);
+  await notice.getByRole("button", { name: "View latest" }).click();
+  await expect(page).toHaveURL(/\/contexts\/rate-2$/);
+  await expect(notice).toBeHidden();
+
+  await nav.getByRole("link", { name: /^main/ }).click();
+  await expect(page).toHaveURL(/\/contexts\/web-1$/);
+  await nav.getByRole("button", { name: "Hide projects" }).click();
+  await expect(nav).toBeHidden();
+  await page.reload();
+  await ready(page);
+  await expect(page.getByRole("navigation", { name: "Projects" })).toBeHidden();
+  await page.getByRole("button", { name: "Show projects" }).click();
+  await expect(
+    page.getByRole("navigation", { name: "Projects" }),
+  ).toBeVisible();
 });

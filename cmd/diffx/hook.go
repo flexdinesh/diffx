@@ -20,6 +20,21 @@ import (
 	"github.com/flexdinesh/diffx/internal/submission"
 )
 
+var errRemoteUnconfigured = errors.New("plugins require remote mode; run diffx config set remote.url URL and diffx config set remote.token -")
+
+// requireRemoteMode runs before scheduling so an unconfigured machine never
+// enrolls Git identities or collects checkouts it cannot deliver.
+func requireRemoteMode(configFile string) error {
+	values, err := resolvedCollectorSettings(options{configFile: configFile})
+	if err != nil {
+		return err
+	}
+	if values.server == "" || values.token == "" {
+		return errRemoteUnconfigured
+	}
+	return nil
+}
+
 // Hooks are notifications, never a reason to block or continue an agent turn.
 func runHook(arguments []string, stdin io.Reader, stdout io.Writer) error {
 	directory, err := hooks.StateDirectory()
@@ -30,6 +45,9 @@ func runHook(arguments []string, stdin io.Reader, stdout io.Writer) error {
 	event, err := parseHookEvent(arguments, stdin, stdout)
 	if errors.Is(err, flag.ErrHelp) {
 		return nil
+	}
+	if err == nil {
+		err = requireRemoteMode(event.ConfigFile)
 	}
 	if err == nil {
 		var executable string
@@ -157,7 +175,7 @@ func parseHookEvent(arguments []string, stdin io.Reader, stdout io.Writer) (hook
 	// routes must never coalesce into a worker carrying another host's settings.
 	routing := sha256.New()
 	encoder := json.NewEncoder(routing)
-	for _, name := range []string{"DIFFX_SERVER_URL", "DIFFX_TOKEN", "DIFFX_HOST", "DIFFX_PORT", "DIFFX_STATE", "DIFFX_WEB_DIR", "DIFFX_RETENTION_DAYS", "DIFFX_SOURCE_ID", "DIFFX_RUNTIME_DIR", "XDG_RUNTIME_DIR", "XDG_STATE_HOME", "XDG_CONFIG_HOME", "HOME", "USERPROFILE", "LOCALAPPDATA"} {
+	for _, name := range []string{"DIFFX_REMOTE_URL", "DIFFX_REMOTE_TOKEN", "DIFFX_SOURCE_ID", "DIFFX_RUNTIME_DIR", "XDG_RUNTIME_DIR", "XDG_STATE_HOME", "XDG_CONFIG_HOME", "HOME", "USERPROFILE", "LOCALAPPDATA"} {
 		value, exists := os.LookupEnv(name)
 		if err := encoder.Encode([]interface{}{name, exists, value}); err != nil {
 			return event, err
@@ -282,7 +300,7 @@ func newHookEngine(directory string) hooks.Engine {
 			return hooks.Target{}, err
 		}
 		if values.server == "" || values.token == "" {
-			return hooks.Target{}, errors.New("plugins require a remote server and bearer token; configure diffx config")
+			return hooks.Target{}, errRemoteUnconfigured
 		}
 		destination, err = submission.Resolve(ctx, values.server, values.token)
 		if err != nil {

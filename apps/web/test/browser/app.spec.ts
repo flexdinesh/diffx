@@ -654,7 +654,8 @@ test("mobile keeps review progress visible beside the diff", async ({
 test("inline comments use a distinct structured surface while sidebar comments remain cards", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1280, height: 4_000 });
+  // 1280px of diff chrome beside the expanded projects drawer.
+  await page.setViewportSize({ width: 1536, height: 4_000 });
   await page.goto("/");
   await page.evaluate(async () => {
     const catalog: unknown = await (await fetch("/api/v2/contexts")).json();
@@ -1223,7 +1224,10 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
   page,
 }) => {
   await page.goto("/");
-  await expect(page.locator(".brand")).toHaveText("diffx");
+  await expect(page.locator("#projects-nav .brand")).toHaveText("diffx");
+  // The topbar carries the brand and divider while the projects drawer is hidden.
+  await page.getByRole("button", { name: "Hide projects" }).click();
+  await expect(page.locator(".topbar .brand")).toHaveText("diffx");
   await expect(page.locator('img[src="/logo.png"]')).toHaveCount(0);
 
   const styles = await page.evaluate(() => {

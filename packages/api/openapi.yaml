@@ -144,6 +144,11 @@ paths:
           in: query
           schema:
             type: string
+        - name: latest
+          in: query
+          description: When true, omit stale snapshots, returning each stream's current head plus observations without a stream, such as piped diffs.
+          schema:
+            type: boolean
         - name: limit
           in: query
           schema:
@@ -832,6 +837,8 @@ components:
           availability,
           branch,
           worktreeName,
+          streamId,
+          latestContextId,
         ]
       properties:
         id:
@@ -839,6 +846,12 @@ components:
         kind:
           type: string
           enum: [observation]
+        streamId:
+          type: [string, "null"]
+          description: Opaque stable identity of the source, repository, checkout, branch, and comparison-policy stream. Null for piped observations.
+        latestContextId:
+          type: [string, "null"]
+          description: The stream's current head; equals id unless stale. Null when the head context expired or for piped observations.
         source:
           type: string
           enum: [local, stdin]

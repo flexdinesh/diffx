@@ -25,6 +25,8 @@ func run(ctx context.Context, arguments []string, stdin *os.File, stdout, stderr
 			return runConfigInput(arguments[1:], stdin, stdout)
 		case "sync":
 			return runSync(ctx, arguments[1:], stdin, stdout, stderr)
+		case "remote":
+			return runRemote(ctx, arguments[1:], stdout)
 		case "hook":
 			return runHook(arguments[1:], stdin, stdout)
 		case "collector":
@@ -85,26 +87,26 @@ func resolvedServerSettings(values options) (daemon.Settings, error) {
 		return daemon.Settings{}, err
 	}
 	if values.hostSet {
-		saved.Host = values.host
+		saved.Local.Host = values.host
 	}
 	if values.portSet {
-		saved.Port = &values.port
+		saved.Local.Port = &values.port
 	}
 	if values.stateSet {
-		saved.State = values.state
-		if saved.State == "" {
+		saved.Local.State = values.state
+		if saved.Local.State == "" {
 			defaults, err := config.Default()
 			if err != nil {
 				return daemon.Settings{}, err
 			}
-			saved.State = defaults.State
+			saved.Local.State = defaults.Local.State
 		}
 	}
 	if values.webDirSet {
-		saved.WebDir = values.webDir
+		saved.Local.WebDir = values.webDir
 	}
 	if values.retentionDaysSet {
-		saved.RetentionDays = values.retentionDays
+		saved.Local.RetentionDays = values.retentionDays
 	}
 	settings, err := saved.Settings()
 	return settings, err

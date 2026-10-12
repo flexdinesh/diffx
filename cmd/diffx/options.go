@@ -57,8 +57,8 @@ func parseOptionsMode(arguments []string, stderr io.Writer, allowHost bool) (opt
 	flags.SetOutput(stderr)
 	values := options{host: "127.0.0.1", directory: ".", trigger: "manual"}
 	flags.StringVar(&values.directory, "path", ".", "checkout path to collect")
-	flags.StringVar(&values.server, "server", values.server, "ingestion server URL; required for sync")
-	flags.StringVar(&values.token, "token", values.token, "ingestion token; prefer DIFFX_TOKEN")
+	flags.StringVar(&values.server, "server", values.server, "remote server URL for sync; overrides remote.url")
+	flags.StringVar(&values.token, "token", values.token, "remote bearer token for sync; prefer DIFFX_REMOTE_TOKEN")
 	flags.StringVar(&values.trigger, "trigger", values.trigger, "collection trigger: manual or agent-hook")
 	flags.StringVar(&values.agent, "harness", "", "harness name recorded with the observation")
 	flags.StringVar(&values.runID, "run-id", "", "agent or container run identity")
@@ -86,6 +86,7 @@ func parseOptionsMode(arguments []string, stderr io.Writer, allowHost bool) (opt
 		fmt.Fprintln(stderr, "  Usage: diffx [PATH] [--host IP] [--replace]")
 		fmt.Fprintln(stderr, "         git diff | diffx [options]")
 		fmt.Fprintln(stderr, "         diffx sync [--path DIRECTORY] [--print] [--debug] [--retry]")
+		fmt.Fprintln(stderr, "         diffx remote status [--config-file FILE]")
 		fmt.Fprintln(stderr, "         diffx config {set|get|remove} KEY [VALUE]")
 		flags.PrintDefaults()
 	}
@@ -119,10 +120,10 @@ func parseOptionsMode(arguments []string, stderr io.Writer, allowHost bool) (opt
 		}
 	})
 	if !values.serverSet {
-		values.server = os.Getenv("DIFFX_SERVER_URL")
+		values.server = os.Getenv("DIFFX_REMOTE_URL")
 	}
 	if !values.tokenSet {
-		values.token = os.Getenv("DIFFX_TOKEN")
+		values.token = os.Getenv("DIFFX_REMOTE_TOKEN")
 	}
 	if flags.NArg() == 1 {
 		if values.pathSet {

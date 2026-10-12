@@ -112,6 +112,16 @@ func TestPipedCatalogSeparatesNewAndLegacyImportsFromRepositories(t *testing.T) 
 			t.Fatalf("piped import grouped or superseded: %#v", item)
 		}
 	}
+	latest, err := service.ListFiltered(t.Context(), 100, "", ingestion.Filter{Latest: true})
+	piped := 0
+	for _, item := range latest.Contexts {
+		if item.Source == "stdin" {
+			piped++
+		}
+	}
+	if err != nil || piped != 2 {
+		t.Fatalf("latest omitted stream-less imports: %#v, %v", latest, err)
+	}
 }
 
 func TestCatalogSearchKeepsSameBranchSourcesSeparate(t *testing.T) {
@@ -268,5 +278,40 @@ func TestCatalogStaleStatusSurvivesRestartAndFilteredPages(t *testing.T) {
 	filtered, err = restarted.ListFiltered(t.Context(), 1, "", ingestion.Filter{Query: "before-run"})
 	if err != nil || len(filtered.Contexts) != 1 || filtered.Contexts[0].ID != before.Context.ID || filtered.Contexts[0].Stale {
 		t.Fatalf("deduplicated freshness outside search: %#v, %v", filtered, err)
+	}
+}
+
+func TestCatalogLatestFilterFollowsStreamHeads(t *testing.T) {
+	service := testService(t)
+	root := testRepo(t)
+	ingest := func(source, submission string, collectedAt int64) Context {
+		t.Helper()
+		input, err := collector.Collect(t.Context(), root, collector.Options{SourceID: source, SubmissionID: submission})
+		if err != nil {
+			t.Fatal(err)
+		}
+		input.Metadata.CollectedAt = collectedAt
+		result, err := service.Ingest(t.Context(), input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result.Context
+	}
+	old := ingest("source-a", "old", 1000)
+	if err := os.WriteFile(filepath.Join(root, "file"), []byte("changed again\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	latest := ingest("source-a", "latest", 2000)
+	other := ingest("source-b", "other", 1500)
+	if old.StreamID == nil || latest.StreamID == nil || other.StreamID == nil || *old.StreamID != *latest.StreamID || *other.StreamID == *latest.StreamID {
+		t.Fatalf("stream identity: %v %v %v", old.StreamID, latest.StreamID, other.StreamID)
+	}
+	stored, err := service.Get(t.Context(), old.ID)
+	if err != nil || !stored.Stale || stored.LatestContextID == nil || *stored.LatestContextID != latest.ID {
+		t.Fatalf("stale context does not name its stream head: %#v %v", stored, err)
+	}
+	heads, err := service.ListFiltered(t.Context(), 100, "", ingestion.Filter{Latest: true})
+	if err != nil || len(heads.Contexts) != 2 || heads.Contexts[0].ID != other.ID || heads.Contexts[1].ID != latest.ID {
+		t.Fatalf("latest filter: %#v %v", heads, err)
 	}
 }

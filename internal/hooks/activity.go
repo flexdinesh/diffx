@@ -166,7 +166,7 @@ func boundedActivity(activity Activity) Activity {
 }
 
 func redactActivity(value string) string {
-	if token := os.Getenv("DIFFX_TOKEN"); token != "" {
+	if token := os.Getenv("DIFFX_REMOTE_TOKEN"); token != "" {
 		value = strings.ReplaceAll(value, token, "[redacted]")
 	}
 	return activityURL.ReplaceAllStringFunc(value, func(value string) string {

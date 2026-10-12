@@ -74,6 +74,9 @@ type Filter struct {
 	Harness     string
 	SessionID   string
 	SessionName string
+	// Latest omits stale snapshots: each stream's head plus stream-less
+	// observations such as piped diffs.
+	Latest bool
 }
 
 type Job struct {

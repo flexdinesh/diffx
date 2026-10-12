@@ -21,6 +21,8 @@ import {
 const main: ApiContext = {
   id: "main",
   kind: "observation",
+  streamId: null,
+  latestContextId: null,
   source: "local",
   name: "diffx",
   branch: "main",

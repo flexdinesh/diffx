@@ -203,7 +203,7 @@ func bootstrap(store *reviewstore.Store, settings Settings) error {
 		}
 	}
 	if settings.State == "" || settings.State == ":memory:" || settings.State == "memory" {
-		return errors.New("in-memory remote server requires DIFFX_TOKEN")
+		return errors.New("in-memory remote server requires DIFFX_SERVER_TOKEN")
 	}
 	path := settings.State + ".admin-token"
 	raw, err := os.ReadFile(path)

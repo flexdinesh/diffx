@@ -238,7 +238,7 @@ test("Go distribution implements the API contract", async (t) => {
   const remoteServer = spawn(
     remoteBinary,
     ["--listen", `127.0.0.1:${remotePort}`, "--state", "memory"],
-    { stdio: "ignore", env: { ...process.env, DIFFX_TOKEN: token } },
+    { stdio: "ignore", env: { ...process.env, DIFFX_SERVER_TOKEN: token } },
   );
   t.after(() => remoteServer.kill("SIGTERM"));
   const remoteUrl = `http://127.0.0.1:${remotePort}`;

@@ -5,8 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -17,14 +19,14 @@ import (
 )
 
 func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings, bool, error) {
-	settings := remoteserver.Settings{Token: os.Getenv("DIFFX_TOKEN")}
+	settings := remoteserver.Settings{Token: os.Getenv("DIFFX_SERVER_TOKEN")}
 	flags := flag.NewFlagSet("diffx-server", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	flags.StringVar(&settings.Listen, "listen", "127.0.0.1:7981", "HTTP listen address; terminate TLS at the deployment boundary")
+	flags.StringVar(&settings.Listen, "listen", net.JoinHostPort("127.0.0.1", strconv.Itoa(config.DefaultServerPort)), "HTTP listen address; terminate TLS at the deployment boundary")
 	flags.StringVar(&settings.State, "state", "", "SQLite database path")
 	flags.StringVar(&settings.Account, "account", "admin", "bootstrap account name; persisted credentials are never replaced")
 	flags.IntVar(&settings.RetentionDays, "retention-days", 7, "snapshot retention in days")
-	path := flags.String("config-file", "", "optional read-only server JSON config path")
+	path := flags.String("config-file", "", "optional read-only server JSON config path; defaults to DIFFX_SERVER_CONFIG")
 	showVersion := flags.Bool("version", false, "print version and exit")
 	if err := flags.Parse(arguments); err != nil {
 		return settings, false, err
@@ -35,7 +37,7 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 	if flags.NArg() != 0 {
 		return settings, false, fmt.Errorf("diffx-server takes no positional arguments")
 	}
-	values, err := config.LoadRemoteFile(*path)
+	values, err := config.LoadServerFile(*path)
 	if err != nil {
 		return settings, false, err
 	}

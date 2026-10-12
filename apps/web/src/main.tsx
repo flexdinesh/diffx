@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import { AppearanceProvider } from "./appearance-context.tsx";
+import { ProjectsNavProvider } from "./projects-nav-context.tsx";
 import { SidebarProvider } from "./sidebar-context.tsx";
 import { AppProvider } from "./app-state.tsx";
 import { highlighterOptions, poolOptions } from "./diff-workers.ts";
@@ -18,18 +19,20 @@ if (!root) throw new Error("Missing React root");
 createRoot(root).render(
   <StrictMode>
     <SidebarProvider>
-      <AppearanceProvider>
-        <SessionProvider>
-          <WorkerPoolContextProvider
-            poolOptions={poolOptions}
-            highlighterOptions={highlighterOptions}
-          >
-            <AppProvider>
-              <App />
-            </AppProvider>
-          </WorkerPoolContextProvider>
-        </SessionProvider>
-      </AppearanceProvider>
+      <ProjectsNavProvider>
+        <AppearanceProvider>
+          <SessionProvider>
+            <WorkerPoolContextProvider
+              poolOptions={poolOptions}
+              highlighterOptions={highlighterOptions}
+            >
+              <AppProvider>
+                <App />
+              </AppProvider>
+            </WorkerPoolContextProvider>
+          </SessionProvider>
+        </AppearanceProvider>
+      </ProjectsNavProvider>
     </SidebarProvider>
   </StrictMode>,
 );

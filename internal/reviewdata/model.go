@@ -42,6 +42,10 @@ type ContextInfo struct {
 	LastSubmittedAt  int64
 	ExpiresAt        *int64
 	ChangedFileCount *int
+	// StreamID names the source/repository/checkout/branch/comparison stream;
+	// LatestContextID is that stream's current head.
+	StreamID        *string
+	LatestContextID *string
 }
 
 type SessionAssociation struct {

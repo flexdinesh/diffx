@@ -35,6 +35,8 @@ type Context struct {
 	Availability     string                          `json:"availability"`
 	Branch           *string                         `json:"branch"`
 	WorktreeName     *string                         `json:"worktreeName"`
+	StreamID         *string                         `json:"streamId"`
+	LatestContextID  *string                         `json:"latestContextId"`
 }
 
 type Page struct {
@@ -205,10 +207,11 @@ func (service *Service) present(item reviewdata.ContextInfo) (Context, error) {
 		if name == "" {
 			name = "Piped"
 		}
-		value := Context{Source: snapshot.Source, Stale: item.Stale, ID: item.ID, Kind: "observation", Name: name, Root: &m.Root, RepositoryID: item.RepositoryID, CreatedAt: item.CreatedAt, LastSubmittedAt: item.LastSubmittedAt, LastChangedAt: m.CollectedAt, ExpiresAt: item.ExpiresAt, ChangedFileCount: item.ChangedFileCount, SubmittedFrom: item.SubmittedFrom, Observation: m, Sessions: item.Sessions, Branch: &m.Branch, WorktreeName: &m.WorktreeName, Availability: "available", Capabilities: storedCapabilities(scopes, snapshot.Source == "local")}
+		value := Context{Source: snapshot.Source, Stale: item.Stale, ID: item.ID, Kind: "observation", Name: name, Root: &m.Root, RepositoryID: item.RepositoryID, CreatedAt: item.CreatedAt, LastSubmittedAt: item.LastSubmittedAt, LastChangedAt: m.CollectedAt, ExpiresAt: item.ExpiresAt, ChangedFileCount: item.ChangedFileCount, SubmittedFrom: item.SubmittedFrom, Observation: m, Sessions: item.Sessions, Branch: &m.Branch, WorktreeName: &m.WorktreeName, StreamID: item.StreamID, LatestContextID: item.LatestContextID, Availability: "available", Capabilities: storedCapabilities(scopes, snapshot.Source == "local")}
 		if snapshot.Source == "stdin" {
 			value.Name, value.Stale = "Piped", false
 			value.Root, value.RepositoryID, value.Branch, value.WorktreeName = nil, nil, nil, nil
+			value.StreamID, value.LatestContextID = nil, nil
 		}
 		return value, nil
 	}

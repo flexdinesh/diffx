@@ -31,7 +31,7 @@ func TestSyncPrintDebugCommitsSelectedCheckoutAndRecoversRemovedCheckout(t *test
 	t.Setenv("DIFFX_CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
 	t.Setenv("DIFFX_RUNTIME_DIR", t.TempDir())
 	token := strings.Repeat("a", 40)
-	t.Setenv("DIFFX_TOKEN", token)
+	t.Setenv("DIFFX_REMOTE_TOKEN", token)
 	store, err := reviewstore.Open("")
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestSyncPrintDebugCommitsSelectedCheckoutAndRecoversRemovedCheckout(t *test
 		handler.ServeHTTP(w, r)
 	}))
 	defer server.Close()
-	t.Setenv("DIFFX_SERVER_URL", server.URL)
+	t.Setenv("DIFFX_REMOTE_URL", server.URL)
 	var out, debug bytes.Buffer
 	if err := run(t.Context(), []string{"sync", root, "--print", "--debug"}, nil, &out, &debug); err == nil {
 		t.Fatal("offline sync succeeded")
@@ -93,17 +93,17 @@ func TestSyncPrintDebugCommitsSelectedCheckoutAndRecoversRemovedCheckout(t *test
 
 func TestSyncRequiresRemoteAndConfigMasksToken(t *testing.T) {
 	t.Setenv("DIFFX_CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
-	t.Setenv("DIFFX_SERVER_URL", "")
-	t.Setenv("DIFFX_TOKEN", "")
+	t.Setenv("DIFFX_REMOTE_URL", "")
+	t.Setenv("DIFFX_REMOTE_TOKEN", "")
 	if err := run(t.Context(), []string{"sync"}, nil, io.Discard, io.Discard); err == nil {
 		t.Fatal("sync silently selected local mode")
 	}
 	var output bytes.Buffer
-	if err := runConfigInput([]string{"set", "token", "-"}, strings.NewReader("private-token\n"), &output); err != nil {
+	if err := runConfigInput([]string{"set", "remote.token", "-"}, strings.NewReader("private-token\n"), &output); err != nil {
 		t.Fatal(err)
 	}
 	output.Reset()
-	if err := run(t.Context(), []string{"config", "get", "token"}, nil, &output, io.Discard); err != nil {
+	if err := run(t.Context(), []string{"config", "get", "remote.token"}, nil, &output, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(output.String(), "private-token") || !strings.Contains(output.String(), "redacted") {
@@ -127,7 +127,7 @@ func newSyncFixture(t *testing.T) *syncFixture {
 	t.Setenv("DIFFX_RUNTIME_DIR", t.TempDir())
 	t.Setenv("DIFFX_SOURCE_ID", "machine")
 	token := strings.Repeat("b", 40)
-	t.Setenv("DIFFX_TOKEN", token)
+	t.Setenv("DIFFX_REMOTE_TOKEN", token)
 	store, err := reviewstore.Open("")
 	if err != nil {
 		t.Fatal(err)
@@ -155,7 +155,7 @@ func newSyncFixture(t *testing.T) *syncFixture {
 		handler.ServeHTTP(w, r)
 	}))
 	t.Cleanup(fixture.server.Close)
-	t.Setenv("DIFFX_SERVER_URL", fixture.server.URL)
+	t.Setenv("DIFFX_REMOTE_URL", fixture.server.URL)
 	return fixture
 }
 
@@ -282,7 +282,7 @@ func TestSyncReusesPendingPayloadAndRefreshesStaleReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest := sha256.Sum256([]byte(os.Getenv("DIFFX_TOKEN")))
+	digest := sha256.Sum256([]byte(os.Getenv("DIFFX_REMOTE_TOKEN")))
 	route := fixture.server.URL + ":" + hex.EncodeToString(digest[:])
 	pending := func() []submission.Pending {
 		t.Helper()
@@ -377,7 +377,7 @@ func TestSyncKeepsForeignPendingPayloadAndPublishesFreshCollection(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest := sha256.Sum256([]byte(os.Getenv("DIFFX_TOKEN")))
+	digest := sha256.Sum256([]byte(os.Getenv("DIFFX_REMOTE_TOKEN")))
 	route := fixture.server.URL + ":" + hex.EncodeToString(digest[:])
 	box, err := submission.Open(t.Context(), filepath.Dir(path), route)
 	if err != nil {

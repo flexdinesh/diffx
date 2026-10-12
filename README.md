@@ -57,8 +57,9 @@ using an unverified PID.
 Publish once to a remote server, including every registered worktree:
 
 ```sh
-diffx config set server https://reviews.example.com
-diffx config set token - < /path/to/private-token
+diffx config set remote.url https://reviews.example.com
+diffx config set remote.token - < /path/to/private-token
+diffx remote status
 diffx sync
 diffx sync --print
 diffx sync --debug
@@ -74,7 +75,8 @@ Cancelling a wait does not cancel an accepted server job.
 
 `diffx .` and piped diffs always run locally, even with remote config. Sync
 and plugins require a remote URL and bearer token; they never bootstrap a local
-server.
+server. `diffx remote status` checks the destination, credential and protocol,
+and reports agent-hook deliveries still waiting.
 
 The all scope includes branch changes from the local default branch's merge base
 plus working changes. Staged/unstaged retain HEAD/index semantics.
@@ -83,11 +85,27 @@ Matching captures reuse review state. Retention defaults to seven days after the
 last fresh submission; retries do not extend it.
 
 Defaults live in `~/.config/diffx/config.json`; `--config-file` or
-`DIFFX_CONFIG_PATH` overrides the location. Precedence: defaults, JSON,
-environment, explicit flags. `diffx config {set|get|remove}` edits persisted
-settings. Token reads are masked; `set token -` reads stdin.
+`DIFFX_CONFIG_PATH` overrides the location. One file configures both modes in
+separate sections, so a local review and a remote server can run side by side:
 
-The default listener binds to `127.0.0.1` on an available port from 7981–7990.
+```json
+{
+  "local": { "host": "127.0.0.1", "port": null, "retentionDays": 7 },
+  "remote": { "url": "http://127.0.0.1:7980", "token": "…" }
+}
+```
+
+`local.*` configures only `diffx [PATH]` and piped diffs; `remote.*` configures
+only `sync` and agent hooks. Environment overrides use the same namespaces:
+`DIFFX_LOCAL_HOST`, `DIFFX_LOCAL_PORT`, `DIFFX_LOCAL_STATE`, `DIFFX_LOCAL_WEB_DIR`,
+`DIFFX_LOCAL_RETENTION_DAYS`, `DIFFX_REMOTE_URL` and `DIFFX_REMOTE_TOKEN`.
+Precedence: defaults, JSON, environment, explicit flags. `diffx config
+{set|get|remove} KEY` edits persisted settings by dotted key, such as
+`local.port` or `remote.url`. Token reads are masked; `set remote.token -` reads
+stdin. Older flat config files are rejected with the key's new name; move each
+key into its section.
+
+The default local listener binds to `127.0.0.1` on an available port from 7981–7990.
 `--port 0` chooses an OS-assigned port. A non-loopback listener exposes local
 reviews to reachable clients. The browser opens a loopback URL for wildcard binds.
 
@@ -154,8 +172,9 @@ mise run docker:up
 mise run docker:down
 ```
 
-Compose publishes HTTP on `127.0.0.1:7981` and preserves the named SQLite volume
-when stopped or recreated. Set `DIFFX_PORT=7982` to use another port. Retrieve
+Compose publishes HTTP on `127.0.0.1:7980`, outside the local 7981–7990 range,
+and preserves the named SQLite volume when stopped or recreated. Set
+`DIFFX_SERVER_PORT=7979` to publish another host port. Retrieve
 the initial credential with `docker compose cp server:/data/state.db.admin-token ./admin-token`.
 See [server development](docs/development.md#server-development) for configuration
 and persistence details. Deploy behind HTTPS when exposing the server remotely.
@@ -164,7 +183,7 @@ Or build and run the image directly:
 
 ```sh
 mise run docker:build
-docker run --name diffx-server --read-only -p 127.0.0.1:7981:7981 \
+docker run --name diffx-server --read-only -p 127.0.0.1:7980:7980 \
   --mount source=diffx-data,target=/data diffx-server:local
 ```
 
@@ -179,7 +198,7 @@ Build/install the remote server with Go:
 
 ```sh
 go install github.com/flexdinesh/diffx/cmd/diffx-server@main
-DIFFX_HOST=127.0.0.1 DIFFX_PORT=7981 DIFFX_STATE=./test-data/state.db diffx-server
+DIFFX_SERVER_HOST=127.0.0.1 DIFFX_SERVER_PORT=7980 DIFFX_SERVER_STATE=./test-data/state.db diffx-server
 ```
 
 First startup creates `admin` with a generated token saved privately at
@@ -193,15 +212,17 @@ The database stores credential hashes. To add a user, stop the server, run:
 diffx-server user create --name alice --state /data/state.db
 ```
 
-Save the printed token, then restart the server. `--account` / `DIFFX_ACCOUNT` and `DIFFX_TOKEN`
+Save the printed token, then restart the server. `--account` / `DIFFX_SERVER_ACCOUNT` and `DIFFX_SERVER_TOKEN`
 can supply initial bootstrap credentials; existing credentials are never replaced.
 Use `--retention-days 14` or config/environment to change server retention.
-The server defaults to `127.0.0.1:7981` and `./data/state.db`, independent of
-personal CLI settings. Its image defaults to `0.0.0.0:7981` and `/data/state.db`;
-env vars override image defaults, and explicit flags override env vars.
+The server defaults to `127.0.0.1:7980` and `./data/state.db`, independent of
+personal CLI settings. Its image defaults to `0.0.0.0:7980` and `/data/state.db`;
+`DIFFX_SERVER_*` env vars override image defaults, and explicit flags override
+env vars. The CLI never reads `DIFFX_SERVER_*`.
 
-Collectors select that destination with config `server`, `DIFFX_SERVER_URL`
-or `--server`, and authenticate with config `token`, `DIFFX_TOKEN` or `--token`:
+Collectors select that destination with config `remote.url`, `DIFFX_REMOTE_URL`
+or `--server`, and authenticate with config `remote.token`, `DIFFX_REMOTE_TOKEN`
+or `--token`:
 
 ```sh
 diffx sync --server https://reviews.example.com
@@ -214,7 +235,16 @@ the bundled plugins invoke the Go collector.
 
 ## Reviewing changes
 
-Select a repository, then an observation. Search/filter stored metadata to find
+The Projects drawer lists repositories by recent activity, each with its current
+streams: one per source, checkout, branch and comparison. Each stream shows its
+newest snapshot only; clean or merged streams and superseded snapshots are hidden.
+A dot marks streams with changes you have not opened in this browser. Collapse the
+drawer from its header; it stays collapsed across visits. When a newer snapshot
+arrives for the stream you are reviewing, a notice offers **View latest** without
+replacing the open review.
+
+Search reviews (Ctrl/Cmd+K) to reach older or empty snapshots. Select a
+repository, then an observation. Search/filter stored metadata to find
 a branch, worktree, host, source or agent run. Switch between its collected all,
 staged and unstaged scopes. Use the file tree to navigate, mark files as reviewed
 and comment on lines. **Copy unresolved** and **Copy all** export comments as
@@ -260,7 +290,8 @@ Public v1 routes and synchronous ingestion are removed.
 
 `/api/v2/contexts` lists stored observations with `q`, `repository`, `branch`,
 `worktree`, `hostname`, `sourceId`, `runId`, `harness`, `sessionId` and `sessionName`
-filters. Session filters search submission associations. Scoped review operations
+filters; `latest=true` omits stale snapshots. Each context names its `streamId` and
+the stream's current `latestContextId`. Session filters search submission associations. Scoped review operations
 use `/api/v2/contexts/{id}/...`; `/api/v2/events` sends ingestion notifications.
 Latest means the most recently collected submission for each source, repository,
 checkout, branch and comparison policy; arrival order breaks ties. It does not guarantee current

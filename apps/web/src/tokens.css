@@ -70,6 +70,7 @@
   --page-gutter: var(--space-6);
   --diff-gutter: var(--space-3);
   --sidebar-width: 330px;
+  --projects-width: 16rem;
   --reading-width: 42.5rem;
   --layer-sidebar: 10;
   --layer-backdrop: 9;
