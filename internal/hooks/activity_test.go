@@ -63,7 +63,7 @@ func TestActivityConcurrentEventsArePreserved(t *testing.T) {
 }
 
 func TestActivityEscapesPathsAndRedactsCredentials(t *testing.T) {
-	t.Setenv("DIFFX_TOKEN", "super-secret-token")
+	t.Setenv("DIFFX_REMOTE_TOKEN", "super-secret-token")
 	engine := Engine{Directory: t.TempDir()}
 	path := "/tmp/new\ncheckout"
 	engine.Record(Activity{

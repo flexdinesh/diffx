@@ -121,7 +121,7 @@ is a foreground development-process lifecycle hook.
 Stop running processes before upgrading. Current schema 9 databases survive
 restart; incompatible schemas are refused without resetting data. To start
 fresh, back up the state directory while stopped and explicitly choose a new
-database path. In-memory state does not survive restart. Server `retentionDays` defaults to seven; fresh
+database path. In-memory state does not survive restart. Local `local.retentionDays` defaults to seven; fresh
 submissions apply the current setting, while exact retries preserve expiry.
 
 For isolated production-user tests, start `diffx-server` with a temporary
@@ -135,7 +135,7 @@ scope REST, MCP and events. Do not provision against the running personal servic
 Build both binaries with `mise run build`, then run server mode directly:
 
 ```sh
-DIFFX_HOST=127.0.0.1 DIFFX_PORT=7981 DIFFX_STATE=./test-data/state.db ./dist/diffx-server
+DIFFX_SERVER_HOST=127.0.0.1 DIFFX_SERVER_PORT=7980 DIFFX_SERVER_STATE=./test-data/state.db ./dist/diffx-server
 ```
 
 Or use the checked-in Compose setup:
@@ -151,21 +151,26 @@ The same server binary handles authentication, durable admission, workers and
 queries in both setups. The image uses committed embedded assets; run
 `mise run web:stage` before rebuilding it after UI changes.
 
-| Setting                | Binary default                 | Container default              | Flag                    |
-| ---------------------- | ------------------------------ | ------------------------------ | ----------------------- |
-| `DIFFX_HOST`           | `127.0.0.1`                    | `0.0.0.0`                      | `--listen HOST:PORT`    |
-| `DIFFX_PORT`           | `7981`                         | `7981`                         | `--listen HOST:PORT`    |
-| `DIFFX_STATE`          | `data/state.db`                | `/data/state.db`               | `--state PATH`          |
-| `DIFFX_ACCOUNT`        | `admin`                        | `admin`                        | `--account NAME`        |
-| `DIFFX_RETENTION_DAYS` | `7`                            | `7`                            | `--retention-days DAYS` |
-| `DIFFX_TOKEN`          | Generated for persistent state | Generated for persistent state | None                    |
+| Setting                       | Binary default                 | Container default              | Flag                    |
+| ----------------------------- | ------------------------------ | ------------------------------ | ----------------------- |
+| `DIFFX_SERVER_HOST`           | `127.0.0.1`                    | `0.0.0.0`                      | `--listen HOST:PORT`    |
+| `DIFFX_SERVER_PORT`           | `7980`                         | `7980`                         | `--listen HOST:PORT`    |
+| `DIFFX_SERVER_STATE`          | `data/state.db`                | `/data/state.db`               | `--state PATH`          |
+| `DIFFX_SERVER_ACCOUNT`        | `admin`                        | `admin`                        | `--account NAME`        |
+| `DIFFX_SERVER_RETENTION_DAYS` | `7`                            | `7`                            | `--retention-days DAYS` |
+| `DIFFX_SERVER_TOKEN`          | Generated for persistent state | Generated for persistent state | None                    |
 
-`DIFFX_TOKEN` supplies initial bootstrap credentials only; existing credentials
+The server listens on 7980 so a local `diffx [PATH]` (7981–7990) and the server
+run side by side. The `DIFFX_SERVER_` prefix keeps deployment variables from
+configuring the CLI, and the CLI's `DIFFX_LOCAL_*`/`DIFFX_REMOTE_*` from
+configuring the server.
+
+`DIFFX_SERVER_TOKEN` supplies initial bootstrap credentials only; existing credentials
 are never replaced. Omit it to generate a private `<database>.admin-token` file.
 `memory` and `:memory:` disable persistence and require an explicit token.
 
 Precedence is defaults → explicit JSON file → env vars → explicit flags. Use
-`--config-file FILE` or `DIFFX_CONFIG_PATH` to select a server config. The file
+`--config-file FILE` or `DIFFX_SERVER_CONFIG` to select a server config. The file
 supports `host`, `port`, `state`, `account` and `retentionDays`. It must exist and
 can be mounted read-only; startup never creates it or a config lock. Personal
 CLI config, `DIFFX_RUNTIME_DIR`, producer URL settings and external web assets
@@ -179,8 +184,9 @@ the directory writable by that identity. Keep database files inside `/data`.
 explicitly deletes it. Stop the server and back up the whole directory before
 starting with a fresh database; a volume is not a backup.
 
-Set `DIFFX_PORT=7982 mise run docker:up` for a different published and internal
-port. Compose also accepts `DIFFX_ACCOUNT` and `DIFFX_RETENTION_DAYS` overrides.
+Set `DIFFX_SERVER_PORT=7979 mise run docker:up` for a different published host
+port; the container always listens on 7980. Compose also accepts
+`DIFFX_SERVER_ACCOUNT` and `DIFFX_SERVER_RETENTION_DAYS` overrides.
 For other settings, use image env overrides or a Compose override file.
 Only one server may own a SQLite database; competing starts fail rather than
 share ownership. SIGTERM stops HTTP and workers before releasing storage;

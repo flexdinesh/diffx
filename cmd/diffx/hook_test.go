@@ -63,20 +63,38 @@ func TestHookInvalidEventsFailOpenWithoutConversationOutput(t *testing.T) {
 	}
 }
 
+func TestHookWithoutRemoteModeSchedulesNothing(t *testing.T) {
+	runtime := t.TempDir()
+	t.Setenv("DIFFX_RUNTIME_DIR", runtime)
+	t.Setenv("DIFFX_REMOTE_URL", "")
+	t.Setenv("DIFFX_REMOTE_TOKEN", "")
+	checkout := t.TempDir()
+	if err := runHook([]string{"--harness", "claude", "--path", checkout}, nil, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(runtime, "hooks-v4", "jobs")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unconfigured hook scheduled work: %v", err)
+	}
+	log, err := os.ReadFile(filepath.Join(runtime, "hooks-v4", "hooks.log"))
+	if err != nil || !strings.Contains(string(log), "remote.url") {
+		t.Fatalf("unconfigured hook did not explain itself: %v %s", err, log)
+	}
+}
+
 func TestHookSeparatesEffectiveRoutesWithoutPersistingCredentials(t *testing.T) {
 	args := []string{"--harness", "pi", "--path", t.TempDir()}
-	t.Setenv("DIFFX_SERVER_URL", "https://first.example.com")
-	t.Setenv("DIFFX_TOKEN", "private-first-token")
+	t.Setenv("DIFFX_REMOTE_URL", "https://first.example.com")
+	t.Setenv("DIFFX_REMOTE_TOKEN", "private-first-token")
 	first, err := parseHookEvent(args, nil, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("DIFFX_SERVER_URL", "https://second.example.com")
+	t.Setenv("DIFFX_REMOTE_URL", "https://second.example.com")
 	second, err := parseHookEvent(args, nil, io.Discard)
 	if err != nil || first.Routing == second.Routing {
 		t.Fatal("different destinations share worker routing")
 	}
-	t.Setenv("DIFFX_TOKEN", "private-second-token")
+	t.Setenv("DIFFX_REMOTE_TOKEN", "private-second-token")
 	third, err := parseHookEvent(args, nil, io.Discard)
 	if err != nil || second.Routing == third.Routing {
 		t.Fatal("different credentials share worker routing")

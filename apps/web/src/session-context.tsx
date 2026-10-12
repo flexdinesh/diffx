@@ -13,7 +13,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ProjectPicker, ProjectPickerTrigger } from "./ProjectPicker.tsx";
+import { ProjectsNav, ProjectsToggle } from "./ProjectsNav.tsx";
 import { contextHasChanges } from "./project-picker.ts";
+import {
+  useContextCatalog,
+  type ContextCatalog,
+} from "./use-context-catalog.ts";
 
 type LoadState =
   | { status: "loading" }
@@ -21,9 +26,12 @@ type LoadState =
   | { status: "ready"; session: ApiContext };
 
 interface Catalog {
-  contexts: ApiContext[];
+  /** Non-stale snapshots: each stream's head plus piped diffs. */
+  heads: ContextCatalog;
+  /** The selected review once loaded, otherwise its catalog entry if known. */
+  current: ApiContext | undefined;
   selectedId: string;
-  select: (id: string) => void;
+  select: (id: string, options?: { restoreFocus?: boolean }) => void;
   deleteContext: (id: string) => Promise<void>;
   pickerOpen: boolean;
   openPicker: () => void;
@@ -46,14 +54,17 @@ function contextFromUrl() {
   }
 }
 
+export function contextPath(id: string) {
+  return `/contexts/${encodeURIComponent(id)}`;
+}
+
 export function ContextSwitcher() {
   const catalog = useContext(CatalogContext);
-  if (!catalog || !catalog.contexts.length) return null;
+  if (!catalog || (!catalog.heads.contexts.length && !catalog.current))
+    return null;
   return (
     <ProjectPickerTrigger
-      current={catalog.contexts.find(
-        (context) => context.id === catalog.selectedId,
-      )}
+      current={catalog.current}
       open={catalog.pickerOpen}
       onOpen={catalog.openPicker}
       triggerRef={catalog.triggerRef}
@@ -62,32 +73,32 @@ export function ContextSwitcher() {
 }
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [contexts, setContexts] = useState<ApiContext[]>([]);
   const [selectedId, setSelectedId] = useState(contextFromUrl);
-  const [catalogLoaded, setCatalogLoaded] = useState(false);
-  const [catalogError, setCatalogError] = useState("");
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Navigation needs only current work; the picker's history loads on demand.
+  const heads = useContextCatalog(true, true);
+  const history = useContextCatalog(false, pickerOpen);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const statusRef = useRef<HTMLElement>(null);
-  const catalogGeneration = useRef(0);
   const restorePickerFocus = useRef(false);
   const openPicker = useCallback(() => setPickerOpen(true), []);
-  const select = useCallback((id: string) => {
-    if (id === contextFromUrl()) {
-      window.history.replaceState(
-        null,
-        "",
-        `/contexts/${encodeURIComponent(id)}`,
-      );
-      return;
-    }
-    restorePickerFocus.current = true;
-    window.history.pushState(null, "", `/contexts/${encodeURIComponent(id)}`);
-    setSelectedId(id);
-    setState({ status: "loading" });
-  }, []);
+  const select = useCallback(
+    (id: string, options?: { restoreFocus?: boolean }) => {
+      if (id === contextFromUrl()) {
+        window.history.replaceState(null, "", contextPath(id));
+        return;
+      }
+      restorePickerFocus.current = options?.restoreFocus ?? true;
+      window.history.pushState(null, "", contextPath(id));
+      setSelectedId(id);
+      setState({ status: "loading" });
+    },
+    [],
+  );
+  const { remove: removeHead, retry: reloadHeads } = heads;
+  const { remove: removeHistory } = history;
   const deleteContext = useCallback(
     async (id: string) => {
       const { error, response } = await api.DELETE(
@@ -100,23 +111,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         throw new Error(
           errorDetail(error, "Unable to delete review context. Try again."),
         );
-      catalogGeneration.current++;
-      const remaining = contexts.filter((context) => context.id !== id);
-      setContexts((current) => current.filter((context) => context.id !== id));
+      removeHead(id);
+      removeHistory(id);
       if (contextFromUrl() === id) {
-        const next = remaining.find(contextHasChanges);
+        const next = heads.contexts.find(
+          (context) => context.id !== id && contextHasChanges(context),
+        );
         restorePickerFocus.current = true;
         window.history.replaceState(
           null,
           "",
-          next ? `/contexts/${encodeURIComponent(next.id)}` : "/",
+          next ? contextPath(next.id) : "/",
         );
         setSelectedId(next?.id ?? "");
         setState({ status: "loading" });
       }
-      setAttempt((current) => current + 1);
+      reloadHeads();
     },
-    [contexts],
+    [heads.contexts, removeHead, removeHistory, reloadHeads],
   );
   useEffect(() => {
     const handleNavigation = () => {
@@ -126,77 +138,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     window.addEventListener("popstate", handleNavigation);
     return () => window.removeEventListener("popstate", handleNavigation);
   }, []);
+  // The root URL opens the most recently submitted current work.
   useEffect(() => {
-    const controller = new AbortController();
-    let busy = false;
-    let pending = false;
-    async function loadCatalog() {
-      if (document.hidden) return;
-      if (busy) {
-        pending = true;
-        return;
-      }
-      busy = true;
-      const generation = catalogGeneration.current;
-      try {
-        const entries: ApiContext[] = [];
-        let cursor: string | undefined;
-        do {
-          const { data, error } = await api.GET("/api/v2/contexts", {
-            params: { query: { limit: 100, ...(cursor ? { cursor } : {}) } },
-            signal: controller.signal,
-          });
-          if (!data)
-            throw new Error(
-              errorDetail(error, "Unable to list review contexts"),
-            );
-          entries.push(...data.contexts);
-          cursor = data.nextCursor ?? undefined;
-        } while (cursor && !controller.signal.aborted);
-        if (controller.signal.aborted) return;
-        if (generation !== catalogGeneration.current) {
-          pending = true;
-          return;
-        }
-        setContexts(entries);
-        setCatalogLoaded(true);
-        setCatalogError("");
-        const first = entries.find(contextHasChanges);
-        if (first && !contextFromUrl() && first.id !== contextFromUrl()) {
-          window.history.replaceState(
-            null,
-            "",
-            `/contexts/${encodeURIComponent(first.id)}`,
-          );
-          setSelectedId(first.id);
-        }
-      } catch (error: unknown) {
-        if (!controller.signal.aborted)
-          setCatalogError(errorDetail(error, "Unable to list review contexts"));
-      } finally {
-        busy = false;
-        if (pending && !controller.signal.aborted) {
-          pending = false;
-          void loadCatalog();
-        }
-      }
-    }
-    void loadCatalog();
-    const events = new EventSource("/api/v2/events");
-    const updateCatalog = () => void loadCatalog();
-    events.addEventListener("message", updateCatalog);
-    events.addEventListener("ingestion", updateCatalog);
-    events.addEventListener("open", updateCatalog);
-    const visible = () => {
-      if (!document.hidden) void loadCatalog();
-    };
-    document.addEventListener("visibilitychange", visible);
-    return () => {
-      controller.abort();
-      events.close();
-      document.removeEventListener("visibilitychange", visible);
-    };
-  }, [attempt]);
+    if (contextFromUrl()) return;
+    const first = heads.contexts.find(contextHasChanges);
+    if (!first) return;
+    window.history.replaceState(null, "", contextPath(first.id));
+    setSelectedId(first.id);
+  }, [heads.contexts]);
   useEffect(() => {
     if (!selectedId) return;
     const controller = new AbortController();
@@ -224,9 +173,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       });
     return () => controller.abort();
   }, [selectedId, attempt]);
+  const ready = state.status === "ready" && state.session.id === selectedId;
+  const current = ready
+    ? state.session
+    : heads.contexts.find((context) => context.id === selectedId);
   const catalog = useMemo(
     () => ({
-      contexts,
+      heads,
+      current,
       selectedId,
       select,
       deleteContext,
@@ -234,10 +188,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       openPicker,
       triggerRef,
     }),
-    [contexts, selectedId, select, deleteContext, pickerOpen, openPicker],
+    [heads, current, selectedId, select, deleteContext, pickerOpen, openPicker],
   );
-  const ready = state.status === "ready" && state.session.id === selectedId;
-  const empty = catalogLoaded && !selectedId;
+  const empty = heads.loaded && !selectedId;
   useEffect(() => {
     if (!restorePickerFocus.current || (!empty && state.status === "loading"))
       return;
@@ -247,57 +200,63 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [state, empty]);
   return (
     <CatalogContext value={catalog}>
-      {ready ? (
-        <SessionContext value={state.session}>{children}</SessionContext>
-      ) : (
-        <>
-          <header className="topbar">
-            <a className="brand" href="/" aria-label="diffx home">
-              diffx
-            </a>
-            <Separator className="header-divider" orientation="vertical" />
-            <ContextSwitcher />
-          </header>
-          <main
-            className="session-status"
-            role="status"
-            ref={statusRef}
-            tabIndex={-1}
-          >
-            <h1>
-              {empty
-                ? contexts.length
-                  ? "No changes to review"
-                  : "No review contexts yet"
-                : state.status === "error" || catalogError
-                  ? "Cannot load diffx"
-                  : "Loading diffx"}
-            </h1>
-            <p>
-              {empty
-                ? "Run diffx to review a checkout, or diffx sync to publish remotely."
-                : state.status === "error"
-                  ? state.detail
-                  : catalogError || "Reading review context…"}
-            </p>
-            {(state.status === "error" || catalogError) && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setState({ status: "loading" });
-                  setCatalogError("");
-                  setAttempt((current) => current + 1);
-                }}
+      <div className="app-shell">
+        <ProjectsNav />
+        <div className="app-main">
+          {ready ? (
+            <SessionContext value={state.session}>{children}</SessionContext>
+          ) : (
+            <>
+              <header className="topbar">
+                <ProjectsToggle />
+                <a className="brand" href="/" aria-label="diffx home">
+                  diffx
+                </a>
+                <Separator className="header-divider" orientation="vertical" />
+                <ContextSwitcher />
+              </header>
+              <main
+                className="session-status"
+                role="status"
+                ref={statusRef}
+                tabIndex={-1}
               >
-                Retry
-              </Button>
-            )}
-          </main>
-        </>
-      )}
+                <h1>
+                  {empty
+                    ? heads.contexts.length
+                      ? "No changes to review"
+                      : "No review contexts yet"
+                    : state.status === "error" || heads.error
+                      ? "Cannot load diffx"
+                      : "Loading diffx"}
+                </h1>
+                <p>
+                  {empty
+                    ? "Run diffx to review a checkout, or diffx sync to publish remotely."
+                    : state.status === "error"
+                      ? state.detail
+                      : heads.error || "Reading review context…"}
+                </p>
+                {(state.status === "error" || heads.error) && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setState({ status: "loading" });
+                      reloadHeads();
+                      setAttempt((current) => current + 1);
+                    }}
+                  >
+                    Retry
+                  </Button>
+                )}
+              </main>
+            </>
+          )}
+        </div>
+      </div>
       <ProjectPicker
-        contexts={contexts}
+        contexts={history.loaded ? history.contexts : heads.contexts}
         selectedId={selectedId}
         select={select}
         open={pickerOpen}
@@ -306,6 +265,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       />
     </CatalogContext>
   );
+}
+
+export function useCatalog() {
+  const catalog = useContext(CatalogContext);
+  if (!catalog) throw new Error("Catalog consumers require SessionProvider");
+  return catalog;
 }
 
 export function useSession() {

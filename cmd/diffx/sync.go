@@ -52,14 +52,14 @@ func runSync(ctx context.Context, arguments []string, stdin *os.File, stdout, st
 		return err
 	}
 	if values.hostSet || values.portSet || values.stateSet || values.webDirSet || values.retentionDaysSet || values.replace || values.fixture != "" {
-		return errors.New("sync does not accept local server options")
+		return errors.New("sync is remote-only and does not accept local server options")
 	}
 	values, err = resolvedCollectorSettings(values)
 	if err != nil {
 		return err
 	}
 	if values.server == "" || values.token == "" {
-		return errors.New("sync requires server and bearer token; use diffx config set server URL and config set token TOKEN")
+		return errors.New("sync requires remote mode; run diffx config set remote.url URL and diffx config set remote.token -")
 	}
 	defer func() {
 		if failure != nil {

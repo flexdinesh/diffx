@@ -11,7 +11,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/flexdinesh/diffx/internal/processlock"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
@@ -25,19 +27,77 @@ type ServerSettings struct {
 	RetentionDays int    `json:"retentionDays"`
 }
 
-type Values struct {
+// LocalValues configure the foreground `diffx [PATH]` server only.
+type LocalValues struct {
 	Host          string `json:"host"`
 	Port          *int   `json:"port"`
 	State         string `json:"state"`
 	WebDir        string `json:"webDir"`
-	Server        string `json:"server"`
-	Token         string `json:"token"`
 	RetentionDays int    `json:"retentionDays"`
+}
+
+// RemoteValues select the destination for sync and agent hooks only.
+type RemoteValues struct {
+	URL   string `json:"url"`
+	Token string `json:"token"`
+}
+
+// Values keep local serving and remote delivery in separate namespaces so one
+// file configures both modes without either reading the other's settings.
+type Values struct {
+	Local  LocalValues  `json:"local"`
+	Remote RemoteValues `json:"remote"`
+}
+
+// Keys lists persisted settings by dotted path.
+var Keys = []string{"local.host", "local.port", "local.state", "local.webDir", "local.retentionDays", "remote.url", "remote.token"}
+
+// legacyKeys maps retired flat keys to their namespaced replacement.
+var legacyKeys = map[string]string{"host": "local.host", "port": "local.port", "state": "local.state", "webDir": "local.webDir", "retentionDays": "local.retentionDays", "server": "remote.url", "token": "remote.token"}
+
+func (values *Values) field(key string) (interface{}, error) {
+	switch key {
+	case "local.host":
+		return &values.Local.Host, nil
+	case "local.port":
+		return &values.Local.Port, nil
+	case "local.state":
+		return &values.Local.State, nil
+	case "local.webDir":
+		return &values.Local.WebDir, nil
+	case "local.retentionDays":
+		return &values.Local.RetentionDays, nil
+	case "remote.url":
+		return &values.Remote.URL, nil
+	case "remote.token":
+		return &values.Remote.Token, nil
+	}
+	if replacement, ok := legacyKeys[key]; ok {
+		return nil, fmt.Errorf("config key %q moved to %q", key, replacement)
+	}
+	return nil, fmt.Errorf("unknown config key %q", key)
+}
+
+// Get returns one persisted setting by dotted path.
+func (values Values) Get(key string) (interface{}, error) {
+	field, err := values.field(key)
+	if err != nil {
+		return nil, err
+	}
+	switch target := field.(type) {
+	case *string:
+		return *target, nil
+	case *int:
+		return *target, nil
+	case **int:
+		return *target, nil
+	}
+	return nil, fmt.Errorf("unsupported config key %q", key)
 }
 
 func Default() (Values, error) {
 	state, err := reviewstore.DefaultPath()
-	return Values{Host: "127.0.0.1", State: state, RetentionDays: 7}, err
+	return Values{Local: LocalValues{Host: "127.0.0.1", State: state, RetentionDays: 7}}, err
 }
 
 func Path() (string, error) {
@@ -79,6 +139,8 @@ func resolvePath(path string) (string, error) {
 
 // LoadFile resolves defaults, a JSON file, then environment overrides. It never
 // persists environment values. An empty path selects the machine config.
+// Environment names are namespaced like the file so a diffx-server deployment's
+// DIFFX_SERVER_* variables never configure the local CLI.
 func LoadFile(path string) (Values, error) {
 	values, err := ReadFile(path)
 	if err != nil {
@@ -88,29 +150,29 @@ func LoadFile(path string) (Values, error) {
 		name   string
 		target *string
 	}{
-		{"DIFFX_HOST", &values.Host},
-		{"DIFFX_STATE", &values.State},
-		{"DIFFX_WEB_DIR", &values.WebDir},
-		{"DIFFX_SERVER_URL", &values.Server},
-		{"DIFFX_TOKEN", &values.Token},
+		{"DIFFX_LOCAL_HOST", &values.Local.Host},
+		{"DIFFX_LOCAL_STATE", &values.Local.State},
+		{"DIFFX_LOCAL_WEB_DIR", &values.Local.WebDir},
+		{"DIFFX_REMOTE_URL", &values.Remote.URL},
+		{"DIFFX_REMOTE_TOKEN", &values.Remote.Token},
 	} {
 		if value, exists := os.LookupEnv(field.name); exists {
 			*field.target = value
 		}
 	}
-	if raw, exists := os.LookupEnv("DIFFX_PORT"); exists {
+	if raw, exists := os.LookupEnv("DIFFX_LOCAL_PORT"); exists {
 		port, err := strconv.Atoi(raw)
 		if err != nil {
-			return values, fmt.Errorf("invalid DIFFX_PORT: %w", err)
+			return values, fmt.Errorf("invalid DIFFX_LOCAL_PORT: %w", err)
 		}
-		values.Port = &port
+		values.Local.Port = &port
 	}
-	if raw, exists := os.LookupEnv("DIFFX_RETENTION_DAYS"); exists {
+	if raw, exists := os.LookupEnv("DIFFX_LOCAL_RETENTION_DAYS"); exists {
 		days, err := strconv.Atoi(raw)
 		if err != nil {
-			return values, fmt.Errorf("invalid DIFFX_RETENTION_DAYS: %w", err)
+			return values, fmt.Errorf("invalid DIFFX_LOCAL_RETENTION_DAYS: %w", err)
 		}
-		values.RetentionDays = days
+		values.Local.RetentionDays = days
 	}
 	if err := values.Validate(); err != nil {
 		return values, fmt.Errorf("invalid environment config: %w", err)
@@ -130,46 +192,63 @@ func load(path string) (Values, error) {
 	if err != nil {
 		return values, err
 	}
-	return Merge(values, string(raw))
+	values, err = Merge(values, string(raw))
+	if err != nil {
+		return values, fmt.Errorf("config file %s: %w; edit it or delete it to recreate defaults", path, err)
+	}
+	return values, nil
+}
+
+func decodeObject(raw []byte, name string) (map[string]json.RawMessage, error) {
+	var fields map[string]json.RawMessage
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	if err := decoder.Decode(&fields); err != nil {
+		return nil, fmt.Errorf("invalid %s JSON: %w", name, err)
+	}
+	if fields == nil {
+		return nil, fmt.Errorf("%s must be a JSON object", name)
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF {
+		return nil, fmt.Errorf("%s must contain one JSON object", name)
+	}
+	return fields, nil
 }
 
 func Merge(values Values, raw string) (Values, error) {
-	var fields map[string]json.RawMessage
-	decoder := json.NewDecoder(bytes.NewBufferString(raw))
-	if err := decoder.Decode(&fields); err != nil {
-		return values, fmt.Errorf("invalid config JSON: %w", err)
+	sections, err := decodeObject([]byte(raw), "config")
+	if err != nil {
+		return values, err
 	}
-	if fields == nil {
-		return values, errors.New("config must be a JSON object")
-	}
-	if decoder.Decode(&struct{}{}) != io.EOF {
-		return values, errors.New("config must contain one JSON object")
-	}
-	for key, field := range fields {
-		var target interface{}
-		switch key {
-		case "host":
-			target = &values.Host
-		case "port":
-			target = &values.Port
-		case "state":
-			target = &values.State
-		case "webDir":
-			target = &values.WebDir
-		case "server":
-			target = &values.Server
-		case "token":
-			target = &values.Token
-		case "retentionDays":
-			target = &values.RetentionDays
-		default:
-			return values, fmt.Errorf("unknown config key %q", key)
+	var moves []string
+	for key := range sections {
+		if replacement, ok := legacyKeys[key]; ok {
+			moves = append(moves, key+" → "+replacement)
 		}
-		if string(field) == "null" && key != "port" {
-			return values, fmt.Errorf("%s cannot be null", key)
+	}
+	if len(moves) > 0 {
+		sort.Strings(moves)
+		return values, fmt.Errorf(`uses the retired flat format; move each key into its "local" or "remote" section (%s)`, strings.Join(moves, ", "))
+	}
+	for section, body := range sections {
+		if section != "local" && section != "remote" {
+			return values, fmt.Errorf(`unknown config section %q; expected "local" and "remote"`, section)
 		}
-		if err := json.Unmarshal(field, target); err != nil {
-			return values, fmt.Errorf("invalid %s: %w", key, err)
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
+			return values, fmt.Errorf("%s must be a JSON object, like {%q: {...}}", section, section)
+		}
+		for name, field := range fields {
+			key := section + "." + name
+			target, err := values.field(key)
+			if err != nil {
+				return values, fmt.Errorf("unknown config key %q; valid keys: %s", key, strings.Join(Keys, ", "))
+			}
+			if string(field) == "null" && key != "local.port" {
+				return values, fmt.Errorf("%s cannot be null", key)
+			}
+			if err := json.Unmarshal(field, target); err != nil {
+				return values, fmt.Errorf("%s must be %s", key, expectedType(target))
+			}
 		}
 	}
 	if err := values.Validate(); err != nil {
@@ -178,35 +257,53 @@ func Merge(values Values, raw string) (Values, error) {
 	return values, nil
 }
 
+func expectedType(target interface{}) string {
+	switch target.(type) {
+	case *string:
+		return "a string"
+	case **int:
+		return "a whole number or null"
+	default:
+		return "a whole number"
+	}
+}
+
 func (values Values) Validate() error {
-	if net.ParseIP(values.Host) == nil {
-		return errors.New("host must be an IP address")
+	local := values.Local
+	if net.ParseIP(local.Host) == nil {
+		return errors.New("local.host must be an IP address")
 	}
-	if values.Port != nil && (*values.Port < 0 || *values.Port > 65535) {
-		return errors.New("port must be null (automatic) or between 0 and 65535")
+	if local.Port != nil && (*local.Port < 0 || *local.Port > 65535) {
+		return errors.New("local.port must be null (automatic) or between 0 and 65535")
 	}
-	if values.State == "" {
-		return errors.New("state must be a database path or memory")
+	if local.State == "" {
+		return errors.New("local.state must be a database path or memory")
 	}
-	if values.Server != "" {
-		endpoint, err := url.Parse(values.Server)
+	if local.RetentionDays <= 0 || local.RetentionDays > 106751 {
+		return errors.New("local.retentionDays must be between 1 and 106751")
+	}
+	if values.Remote.URL != "" {
+		endpoint, err := url.Parse(values.Remote.URL)
 		if err != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" || (endpoint.Path != "" && endpoint.Path != "/") {
-			return errors.New("server must be an HTTP(S) origin without credentials, path, query, or fragment")
+			return errors.New("remote.url must be an HTTP(S) origin without credentials, path, query, or fragment")
 		}
 	}
-	if values.RetentionDays <= 0 || values.RetentionDays > 106751 {
-		return errors.New("retentionDays must be between 1 and 106751")
-	}
 	return nil
+}
+
+// RemoteConfigured reports whether sync and hooks have a complete destination.
+func (values Values) RemoteConfigured() bool {
+	return values.Remote.URL != "" && values.Remote.Token != ""
 }
 
 func (values Values) Settings() (ServerSettings, error) {
 	if err := values.Validate(); err != nil {
 		return ServerSettings{}, err
 	}
-	settings := ServerSettings{Host: net.ParseIP(values.Host).String(), Port: -1, State: values.State, WebDir: values.WebDir, RetentionDays: values.RetentionDays}
-	if values.Port != nil {
-		settings.Port = *values.Port
+	local := values.Local
+	settings := ServerSettings{Host: net.ParseIP(local.Host).String(), Port: -1, State: local.State, WebDir: local.WebDir, RetentionDays: local.RetentionDays}
+	if local.Port != nil {
+		settings.Port = *local.Port
 	}
 	var err error
 	if settings.State != "memory" {
@@ -226,6 +323,7 @@ func Edit(key string, value *string) error {
 }
 
 // EditFile edits only persisted values, independent of environment overrides.
+// A nil value restores the default.
 func EditFile(path, key string, value *string) error {
 	path, err := resolvePath(path)
 	if err != nil {
@@ -244,34 +342,30 @@ func EditFile(path, key string, value *string) error {
 	if err != nil {
 		return err
 	}
-	fields := map[string]interface{}{"host": defaults.Host, "port": defaults.Port, "state": defaults.State, "webDir": defaults.WebDir, "server": defaults.Server, "token": defaults.Token, "retentionDays": defaults.RetentionDays}
-	field, ok := fields[key]
-	if !ok {
-		return fmt.Errorf("unknown config key %q", key)
-	}
-	if value != nil {
-		if key == "retentionDays" {
-			days, err := strconv.Atoi(*value)
-			if err != nil {
-				return fmt.Errorf("invalid retentionDays: %w", err)
-			}
-			field = days
-		} else if key == "port" {
-			var port *int
-			if err := json.Unmarshal([]byte(*value), &port); err != nil {
-				return fmt.Errorf("invalid port: %w", err)
-			}
-			field = port
-		} else {
-			field = *value
-		}
-	}
-	raw, err := json.Marshal(map[string]interface{}{key: field})
+	target, err := values.field(key)
 	if err != nil {
 		return err
 	}
-	values, err = Merge(values, string(raw))
-	if err != nil {
+	var raw []byte
+	if value == nil {
+		fallback, err := defaults.Get(key)
+		if err != nil {
+			return err
+		}
+		if raw, err = json.Marshal(fallback); err != nil {
+			return err
+		}
+	} else if _, text := target.(*string); text {
+		if raw, err = json.Marshal(*value); err != nil {
+			return err
+		}
+	} else {
+		raw = []byte(*value)
+	}
+	if err := json.Unmarshal(raw, target); err != nil {
+		return fmt.Errorf("invalid %s: %w", key, err)
+	}
+	if err := values.Validate(); err != nil {
 		return err
 	}
 	return save(path, values)

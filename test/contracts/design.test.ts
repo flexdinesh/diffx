@@ -106,6 +106,11 @@ test("optical exceptions remain exact in selector, value and source", () => {
     1,
   );
   assert.deepEqual(check(".new { padding: 1px var(--space-2) }"), []);
+  // The projects drawer's new-changes dot is a status circle.
+  assert.deepEqual(
+    check(".new-mark > span { border-radius: 50% }", "style.css"),
+    [],
+  );
 });
 
 test("inline styles and named style objects cannot bypass rules", () => {

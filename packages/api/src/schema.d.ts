@@ -458,6 +458,10 @@ export interface components {
       id: string;
       /** @enum {string} */
       kind: "observation";
+      /** @description Opaque stable identity of the source, repository, checkout, branch, and comparison-policy stream. Null for piped observations. */
+      streamId: string | null;
+      /** @description The stream's current head; equals id unless stale. Null when the head context expired or for piped observations. */
+      latestContextId: string | null;
       /**
        * @description Diff origin, independent of context kind and submission directory.
        * @enum {string}
@@ -821,6 +825,8 @@ export interface operations {
         harness?: string;
         sessionId?: string;
         sessionName?: string;
+        /** @description When true, omit stale snapshots, returning each stream's current head plus observations without a stream, such as piped diffs. */
+        latest?: boolean;
         limit?: number;
         cursor?: string;
       };

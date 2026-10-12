@@ -26,7 +26,7 @@ func runConfigInput(arguments []string, input io.Reader, writer io.Writer) error
 	}
 	arguments = flags.Args()
 	if len(arguments) < 2 {
-		return errors.New("usage: diffx config {set KEY VALUE|get KEY|remove KEY}")
+		return errors.New("usage: diffx config {set KEY VALUE|get KEY|remove KEY}; keys: " + strings.Join(config.Keys, ", "))
 	}
 	action, key := arguments[0], arguments[1]
 	switch action {
@@ -35,7 +35,7 @@ func runConfigInput(arguments []string, input io.Reader, writer io.Writer) error
 			return errors.New("config set requires a key and value")
 		}
 		value := arguments[2]
-		if key == "token" && value == "-" {
+		if key == "remote.token" && value == "-" {
 			if input == nil {
 				return errors.New("token input unavailable")
 			}
@@ -69,12 +69,11 @@ func runConfigInput(arguments []string, input io.Reader, writer io.Writer) error
 		if err != nil {
 			return err
 		}
-		fields := map[string]interface{}{"host": values.Host, "port": values.Port, "state": values.State, "webDir": values.WebDir, "server": values.Server, "token": values.Token, "retentionDays": values.RetentionDays}
-		value, ok := fields[key]
-		if !ok {
-			return fmt.Errorf("unknown config key %q", key)
+		value, err := values.Get(key)
+		if err != nil {
+			return err
 		}
-		if key == "token" && values.Token != "" {
+		if key == "remote.token" && values.Remote.Token != "" {
 			value = "[redacted]"
 		}
 		return json.NewEncoder(writer).Encode(value)

@@ -28,11 +28,11 @@ func producerGit(t *testing.T, root string, args ...string) {
 
 func TestCollectorDestinationConfigAndExplicitLocalOverride(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
-	if err := os.WriteFile(path, []byte(`{"server":"https://file.example.com","token":"file-token"}`), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"remote":{"url":"https://file.example.com","token":"file-token"}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("DIFFX_SERVER_URL", "https://env.example.com")
-	t.Setenv("DIFFX_TOKEN", "env-token")
+	t.Setenv("DIFFX_REMOTE_URL", "https://env.example.com")
+	t.Setenv("DIFFX_REMOTE_TOKEN", "env-token")
 	for _, scenario := range []struct {
 		args          []string
 		server, token string
@@ -87,7 +87,7 @@ func TestHookInitialCleanSessionsAndMissingAcknowledgement(t *testing.T) {
 	t.Setenv("DIFFX_SOURCE_ID", "machine")
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("DIFFX_CONFIG_PATH", configPath)
-	t.Setenv("DIFFX_TOKEN", "test-token")
+	t.Setenv("DIFFX_REMOTE_TOKEN", "test-token")
 	store, err := reviewstore.Open("")
 	if err != nil {
 		t.Fatal(err)
@@ -101,7 +101,7 @@ func TestHookInitialCleanSessionsAndMissingAcknowledgement(t *testing.T) {
 	defer service.Close()
 	server := testsupport.Server(t, service, store)
 	defer server.Close()
-	t.Setenv("DIFFX_SERVER_URL", server.URL)
+	t.Setenv("DIFFX_REMOTE_URL", server.URL)
 	directory := t.TempDir()
 	sync := func(session string) {
 		t.Helper()

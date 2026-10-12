@@ -309,6 +309,11 @@ func destinationLabel(destination string) string {
 	return destination
 }
 
+// automaticRetryBackoff spaces out hook-triggered retries of a job whose worker
+// recently ran, so an unreachable server does not trigger repeated collection
+// in every repository on every agent turn. Explicit retries ignore it.
+const automaticRetryBackoff = 2 * time.Minute
+
 // Retry is bounded, event-driven, and restricted to the invoking environment's
 // route and config. Credentials are inherited, never read from persisted jobs.
 func (engine Engine) Retry(event Event) error {
@@ -335,6 +340,9 @@ func (engine Engine) Retry(event Event) error {
 		}
 		var status Activity
 		if readJSON(filepath.Join(directory, "status.json"), &status) == nil && (status.Status == "complete" || status.Status == "unchanged" || status.Status == "skipped") {
+			continue
+		}
+		if info, err := os.Stat(filepath.Join(directory, "status.json")); !event.Retry && err == nil && time.Since(info.ModTime()) < automaticRetryBackoff {
 			continue
 		}
 		if info, err := os.Stat(filepath.Join(directory, "request.json")); err != nil || time.Since(info.ModTime()) >= pendingTTL {

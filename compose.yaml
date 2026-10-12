@@ -3,13 +3,14 @@ services:
     build: .
     image: diffx-server:local
     environment:
-      DIFFX_HOST: 0.0.0.0
-      DIFFX_PORT: "${DIFFX_PORT:-7981}"
-      DIFFX_STATE: /data/state.db
-      DIFFX_ACCOUNT: "${DIFFX_ACCOUNT:-admin}"
-      DIFFX_RETENTION_DAYS: "${DIFFX_RETENTION_DAYS:-7}"
+      DIFFX_SERVER_HOST: 0.0.0.0
+      DIFFX_SERVER_PORT: "7980"
+      DIFFX_SERVER_STATE: /data/state.db
+      DIFFX_SERVER_ACCOUNT: "${DIFFX_SERVER_ACCOUNT:-admin}"
+      DIFFX_SERVER_RETENTION_DAYS: "${DIFFX_SERVER_RETENTION_DAYS:-7}"
     ports:
-      - "127.0.0.1:${DIFFX_PORT:-7981}:${DIFFX_PORT:-7981}"
+      # Only the published host port varies; local `diffx [PATH]` uses 7981-7990.
+      - "127.0.0.1:${DIFFX_SERVER_PORT:-7980}:7980"
     volumes:
       - diffx-data:/data
     read_only: true

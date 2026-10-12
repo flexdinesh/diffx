@@ -1,9 +1,12 @@
 package reviewstore
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/ingestion"
@@ -45,7 +48,10 @@ var contextSelect = `SELECT c.id,c.kind,json_extract(o.metadata,'$.root'),NULL,o
 	(SELECT json_array_length(v.manifest, '$.files') FROM diff_versions v WHERE v.diff_id=c.anchor_diff_id LIMIT 1),o.metadata,
 	COALESCE(head.context_id<>c.id,0),
 	(SELECT json_group_array(json_object('sourceId',s.source_id,'harness',s.harness,'id',s.session_id,'name',s.name,'firstObservedAt',a.first_observed_at,'lastObservedAt',a.last_observed_at))
-	 FROM observation_sessions a JOIN agent_sessions s ON s.owner_id=a.owner_id AND s.source_id=a.source_id AND s.harness=a.harness AND s.session_id=a.session_id WHERE a.context_id=c.id)
+	 FROM observation_sessions a JOIN agent_sessions s ON s.owner_id=a.owner_id AND s.source_id=a.source_id AND s.harness=a.harness AND s.session_id=a.session_id WHERE a.context_id=c.id),
+	head.source_id,head.repository_key,head.checkout_key,head.branch,head.comparison_policy,
+	(SELECT hc.id FROM contexts hc JOIN diffs hd ON hd.id=hc.anchor_diff_id WHERE hc.owner_id=c.owner_id AND hc.id=head.context_id
+	 AND (hd.expires_at IS NULL OR hd.expires_at>CAST(strftime('%s','now') AS INTEGER)*1000))
 	FROM contexts c
 	LEFT JOIN diffs d ON d.id=c.anchor_diff_id LEFT JOIN observations o ON o.context_id=c.id
 	LEFT JOIN observation_stream_heads head ON head.owner_id=o.owner_id AND head.source_id=o.source_id
@@ -55,14 +61,26 @@ var contextSelect = `SELECT c.id,c.kind,json_extract(o.metadata,'$.root'),NULL,o
 
 type scanner interface{ Scan(...any) error }
 
+// streamID names one stream head without exposing its keys or depending on row identity.
+func streamID(sourceID, repositoryKey, checkoutKey, branch, comparisonPolicy string) string {
+	digest := sha256.Sum256([]byte(strings.Join([]string{sourceID, repositoryKey, checkoutKey, branch, comparisonPolicy}, "\x00")))
+	return hex.EncodeToString(digest[:12])
+}
+
 func scanContext(row scanner) (ContextInfo, error) {
 	var item ContextInfo
 	var metadata *string
 	var sessions string
+	var head [5]sql.NullString
 	err := row.Scan(&item.ID, &item.Kind, &item.Root, &item.LocationID, &item.RepositoryID, &item.CommonDir, &item.WorktreeKey,
-		&item.SubmittedFrom, &item.CreatedAt, &item.LastSubmittedAt, &item.ExpiresAt, &item.ChangedFileCount, &metadata, &item.Stale, &sessions)
+		&item.SubmittedFrom, &item.CreatedAt, &item.LastSubmittedAt, &item.ExpiresAt, &item.ChangedFileCount, &metadata, &item.Stale, &sessions,
+		&head[0], &head[1], &head[2], &head[3], &head[4], &item.LatestContextID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ContextInfo{}, ErrNotFound
+	}
+	if err == nil && head[0].Valid {
+		id := streamID(head[0].String, head[1].String, head[2].String, head[3].String, head[4].String)
+		item.StreamID = &id
 	}
 	if err == nil {
 		if err := json.Unmarshal([]byte(sessions), &item.Sessions); err != nil {

@@ -350,6 +350,9 @@ func (store *Store) ObservationContexts(ownerID string, limit int, beforeTime in
 		query += ` AND (` + strings.Join(terms, " OR ") + `)`
 	}
 	query += `)`
+	if filter.Latest {
+		query += ` AND (head.context_id IS NULL OR head.context_id=c.id)`
+	}
 	if beforeID != "" {
 		query += ` AND (c.last_submitted_at<? OR (c.last_submitted_at=? AND c.id<?))`
 		arguments = append(arguments, beforeTime, beforeTime, beforeID)

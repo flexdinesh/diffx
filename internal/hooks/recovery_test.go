@@ -130,7 +130,10 @@ func TestRetryIsRouteScopedAndSkipsCompletedJobs(t *testing.T) {
 		}
 	}
 	launches = nil
-	if err := engine.Retry(Event{Routing: "first"}); err != nil || len(launches) != 1 {
+	if err := engine.Retry(Event{Routing: "first"}); err != nil || len(launches) != 0 {
+		t.Fatalf("just-scheduled job relaunched automatically: %v %v", launches, err)
+	}
+	if err := engine.Retry(Event{Routing: "first", Retry: true}); err != nil || len(launches) != 1 {
 		t.Fatalf("retry routes: %v %v", launches, err)
 	}
 	var request queued
@@ -138,9 +141,17 @@ func TestRetryIsRouteScopedAndSkipsCompletedJobs(t *testing.T) {
 	if err := readJSON(filepath.Join(directory, "request.json"), &request); err != nil || request.Event.Routing != "first" {
 		t.Fatalf("wrong route replayed: %#v %v", request, err)
 	}
-	engine.RecordJob(launches[0], request.Event, Activity{Status: "complete"})
+	engine.RecordJob(launches[0], request.Event, Activity{Status: "waiting"})
 	launches = nil
 	if err := engine.Retry(Event{Routing: "first"}); err != nil || len(launches) != 0 {
+		t.Fatalf("recently attempted job relaunched automatically: %v %v", launches, err)
+	}
+	if err := engine.Retry(Event{Routing: "first", Retry: true}); err != nil || len(launches) != 1 {
+		t.Fatalf("explicit retry ignored backoff: %v %v", launches, err)
+	}
+	engine.RecordJob(launches[0], request.Event, Activity{Status: "complete"})
+	launches = nil
+	if err := engine.Retry(Event{Routing: "first", Retry: true}); err != nil || len(launches) != 0 {
 		t.Fatalf("completed job relaunched: %v %v", launches, err)
 	}
 }

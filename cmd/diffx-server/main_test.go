@@ -15,19 +15,19 @@ func TestRemoteConfigMappingAndPrecedence(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"host":"::1","port":4123,"state":"file.db"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("DIFFX_CONFIG_PATH", "")
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
 	t.Setenv("DIFFX_RUNTIME_DIR", t.TempDir())
 	settings, _, err := parseSettings(nil, io.Discard)
-	if err != nil || settings.Listen != "127.0.0.1:7981" || settings.State != "data/state.db" {
+	if err != nil || settings.Listen != "127.0.0.1:7980" || settings.State != "data/state.db" {
 		t.Fatalf("remote default changed: %#v %v", settings, err)
 	}
 	settings, _, err = parseSettings([]string{"--config-file", path}, io.Discard)
 	if err != nil || settings.Listen != "[::1]:4123" || filepath.Base(settings.State) != "file.db" {
 		t.Fatalf("config mapping: %#v %v", settings, err)
 	}
-	t.Setenv("DIFFX_HOST", "127.0.0.2")
-	t.Setenv("DIFFX_PORT", "5123")
-	t.Setenv("DIFFX_STATE", "environment.db")
+	t.Setenv("DIFFX_SERVER_HOST", "127.0.0.2")
+	t.Setenv("DIFFX_SERVER_PORT", "5123")
+	t.Setenv("DIFFX_SERVER_STATE", "environment.db")
 	settings, _, err = parseSettings([]string{"--config-file", path}, io.Discard)
 	if err != nil || settings.Listen != "127.0.0.2:5123" || filepath.Base(settings.State) != "environment.db" {
 		t.Fatalf("environment mapping: %#v %v", settings, err)
@@ -36,8 +36,8 @@ func TestRemoteConfigMappingAndPrecedence(t *testing.T) {
 	if err != nil || settings.Listen != "0.0.0.0:6123" || settings.State != "flags.db" {
 		t.Fatalf("flags mapping: %#v %v", settings, err)
 	}
-	t.Setenv("DIFFX_HOST", "invalid")
-	t.Setenv("DIFFX_PORT", "65536")
+	t.Setenv("DIFFX_SERVER_HOST", "invalid")
+	t.Setenv("DIFFX_SERVER_PORT", "65536")
 	settings, _, err = parseSettings([]string{"--listen", "127.0.0.1:0"}, io.Discard)
 	if err != nil || settings.Listen != "127.0.0.1:0" {
 		t.Fatalf("overridden listener was validated: %+v %v", settings, err)
@@ -91,9 +91,9 @@ func TestCreateUserValidation(t *testing.T) {
 }
 
 func TestRemoteConfigDefaultsAndVersion(t *testing.T) {
-	t.Setenv("DIFFX_CONFIG_PATH", "")
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
 	settings, _, err := parseSettings(nil, io.Discard)
-	if err != nil || settings.Listen != "127.0.0.1:7981" {
+	if err != nil || settings.Listen != "127.0.0.1:7980" {
 		t.Fatalf("default server port: %#v %v", settings, err)
 	}
 	if _, showVersion, err := parseSettings([]string{"--version", "--config-file", "/missing/config.json"}, io.Discard); err != nil || !showVersion {
@@ -110,7 +110,7 @@ func TestRemoteAccountConfigPrecedence(t *testing.T) {
 	if err != nil || settings.Account != "file-admin" {
 		t.Fatalf("file account: %+v %v", settings, err)
 	}
-	t.Setenv("DIFFX_ACCOUNT", "env-admin")
+	t.Setenv("DIFFX_SERVER_ACCOUNT", "env-admin")
 	settings, _, err = parseSettings([]string{"--config-file", path}, io.Discard)
 	if err != nil || settings.Account != "env-admin" {
 		t.Fatalf("environment account: %+v %v", settings, err)
@@ -123,17 +123,17 @@ func TestRemoteAccountConfigPrecedence(t *testing.T) {
 
 func TestRemoteRejectsInvalidDeploymentSettings(t *testing.T) {
 	for _, tc := range []struct{ key, value string }{
-		{"DIFFX_HOST", "localhost"},
-		{"DIFFX_PORT", "not-a-port"},
-		{"DIFFX_PORT", "65536"},
-		{"DIFFX_STATE", ""},
-		{"DIFFX_RETENTION_DAYS", "0"},
-		{"DIFFX_RETENTION_DAYS", "-1"},
-		{"DIFFX_ACCOUNT", ""},
-		{"DIFFX_ACCOUNT", "invalid:name"},
+		{"DIFFX_SERVER_HOST", "localhost"},
+		{"DIFFX_SERVER_PORT", "not-a-port"},
+		{"DIFFX_SERVER_PORT", "65536"},
+		{"DIFFX_SERVER_STATE", ""},
+		{"DIFFX_SERVER_RETENTION_DAYS", "0"},
+		{"DIFFX_SERVER_RETENTION_DAYS", "-1"},
+		{"DIFFX_SERVER_ACCOUNT", ""},
+		{"DIFFX_SERVER_ACCOUNT", "invalid:name"},
 	} {
 		t.Run(tc.key+"="+tc.value, func(t *testing.T) {
-			t.Setenv("DIFFX_CONFIG_PATH", "")
+			t.Setenv("DIFFX_SERVER_CONFIG", "")
 			t.Setenv(tc.key, tc.value)
 			if _, _, err := parseSettings(nil, io.Discard); err == nil {
 				t.Fatal("accepted invalid deployment settings")
@@ -151,7 +151,7 @@ func TestRemoteRetentionConfigPrecedence(t *testing.T) {
 	if err != nil || settings.RetentionDays != 14 {
 		t.Fatalf("retention config: %+v %v", settings, err)
 	}
-	t.Setenv("DIFFX_RETENTION_DAYS", "21")
+	t.Setenv("DIFFX_SERVER_RETENTION_DAYS", "21")
 	settings, _, err = parseSettings([]string{"--config-file", path}, io.Discard)
 	if err != nil || settings.RetentionDays != 21 {
 		t.Fatalf("retention environment: %+v %v", settings, err)

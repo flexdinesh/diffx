@@ -96,8 +96,8 @@ func TestCollectorOptionsRejectAmbiguousInputsBeforeStartup(t *testing.T) {
 }
 
 func TestHelpDoesNotExposeEnvironmentCredentials(t *testing.T) {
-	t.Setenv("DIFFX_TOKEN", "secret-token")
-	t.Setenv("DIFFX_SERVER_URL", "https://secret-user:secret-password@example.test")
+	t.Setenv("DIFFX_REMOTE_TOKEN", "secret-token")
+	t.Setenv("DIFFX_REMOTE_URL", "https://secret-user:secret-password@example.test")
 	var output bytes.Buffer
 	if err := run(t.Context(), []string{"--help"}, nil, io.Discard, &output); err != nil {
 		t.Fatal(err)

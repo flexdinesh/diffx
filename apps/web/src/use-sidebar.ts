@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { save, saved } from "./preferences.ts";
+import { useModalDrawer } from "./use-modal-drawer.ts";
 
 // React owns both the desktop preferences and the temporary mobile overlay.
 export function useSidebar() {
@@ -30,42 +31,7 @@ export function useSidebar() {
       document.removeEventListener("keydown", onEscape);
     };
   }, []);
-  useEffect(() => {
-    if (!mobile || !open) return;
-    const main = document.querySelector<HTMLElement>("main");
-    const header = document.querySelector<HTMLElement>(".topbar");
-    const sidebar = document.querySelector<HTMLElement>("#sidebar");
-    main?.setAttribute("inert", "");
-    header?.setAttribute("inert", "");
-    const focusable = () =>
-      Array.from(
-        sidebar?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      );
-    requestAnimationFrame(() => focusable()[0]?.focus());
-    const trapFocus = (event: KeyboardEvent) => {
-      if (event.key !== "Tab") return;
-      const elements = focusable();
-      const first = elements[0];
-      const last = elements.at(-1);
-      if (!first || !last) return;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", trapFocus);
-    return () => {
-      document.removeEventListener("keydown", trapFocus);
-      main?.removeAttribute("inert");
-      header?.removeAttribute("inert");
-      document.querySelector<HTMLElement>("#sidebar-toggle")?.focus();
-    };
-  }, [mobile, open]);
+  useModalDrawer(mobile && open, "#sidebar", "#sidebar-toggle");
   useEffect(() => {
     save("sidebar-collapsed", String(collapsed));
   }, [collapsed]);

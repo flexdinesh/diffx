@@ -26,7 +26,7 @@ func TestForegroundPipedPatchAndPersistentHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	port := 0
-	configuration, err := json.Marshal(config.Values{Host: "127.0.0.1", State: harness.state, Port: &port, RetentionDays: 7, Server: "http://127.0.0.1:1", Token: "remote-token"})
+	configuration, err := json.Marshal(config.Values{Local: config.LocalValues{Host: "127.0.0.1", State: harness.state, Port: &port, RetentionDays: 7}, Remote: config.RemoteValues{URL: "http://127.0.0.1:1", Token: "remote-token"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestForegroundPipedPatchAndPersistentHistory(t *testing.T) {
 	if err := os.WriteFile(configPath, configuration, 0600); err != nil {
 		t.Fatal(err)
 	}
-	harness.environment = append(harness.environment, "DIFFX_CONFIG_PATH="+configPath, "DIFFX_SERVER_URL=http://127.0.0.1:1", "SSH_CONNECTION=test")
+	harness.environment = append(harness.environment, "DIFFX_CONFIG_PATH="+configPath, "DIFFX_REMOTE_URL=http://127.0.0.1:1", "SSH_CONNECTION=test")
 	client := &daemon.Client{RuntimeDirectory: harness.runtimeDir}
 	var original review.RepositoryDiff
 	for _, source := range []string{"pipe", "file"} {
@@ -171,7 +171,7 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 		args = append(args, extra...)
 		command := exec.Command(serviceBinary, args...)
 		command.Dir = first
-		command.Env = append(harness.environment, "DIFFX_SERVER_URL=http://127.0.0.1:1")
+		command.Env = append(harness.environment, "DIFFX_REMOTE_URL=http://127.0.0.1:1")
 		command.Stdout, command.Stderr = io.Discard, io.Discard
 		if err := command.Start(); err != nil {
 			t.Fatal(err)

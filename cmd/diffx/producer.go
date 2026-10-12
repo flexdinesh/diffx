@@ -8,10 +8,10 @@ func resolvedCollectorSettings(values options) (options, error) {
 		return values, err
 	}
 	if !values.serverSet {
-		values.server = saved.Server
+		values.server = saved.Remote.URL
 	}
 	if !values.tokenSet {
-		values.token = saved.Token
+		values.token = saved.Remote.Token
 	}
 	return values, nil
 }

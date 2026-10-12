@@ -81,7 +81,7 @@ func (multi *Multi) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		var page contextservice.Page
 		var err error
 		query := request.URL.Query()
-		filter := ingestion.Filter{Query: query.Get("q"), Repository: query.Get("repository"), Branch: query.Get("branch"), Worktree: query.Get("worktree"), Hostname: query.Get("hostname"), SourceID: query.Get("sourceId"), RunID: query.Get("runId"), Harness: query.Get("harness"), SessionID: query.Get("sessionId"), SessionName: query.Get("sessionName")}
+		filter := ingestion.Filter{Query: query.Get("q"), Repository: query.Get("repository"), Branch: query.Get("branch"), Worktree: query.Get("worktree"), Hostname: query.Get("hostname"), SourceID: query.Get("sourceId"), RunID: query.Get("runId"), Harness: query.Get("harness"), SessionID: query.Get("sessionId"), SessionName: query.Get("sessionName"), Latest: query.Get("latest") == "true"}
 		page, err = multi.provider.ListFiltered(request.Context(), limit, query.Get("cursor"), filter)
 		if err != nil {
 			base.problem(response, err)
