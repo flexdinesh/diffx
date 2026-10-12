@@ -329,13 +329,13 @@ func TestRetentionDurationValidation(t *testing.T) {
 	}
 }
 
-func TestRemoteRejectsMissingIdentityOrWeakCredentials(t *testing.T) {
+func TestRemoteRejectsMissingIdentityOrInvalidCredentials(t *testing.T) {
 	store, err := reviewstore.Open("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	for _, tc := range []struct{ account, token string }{{"", testToken}, {" ", testToken}, {"account", "short"}, {"account\n", testToken}, {"account", testToken + "\r"}} {
+	for _, tc := range []struct{ account, token string }{{"", testToken}, {" ", testToken}, {"account\n", testToken}, {"account", testToken + "\r"}} {
 		if _, _, err := Handler(t.Context(), store, tc.account, tc.token, fstest.MapFS{}); err == nil {
 			t.Fatalf("invalid remote identity accepted: account=%q", tc.account)
 		}

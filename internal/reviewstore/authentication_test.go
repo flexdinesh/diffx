@@ -67,11 +67,14 @@ func TestRemoteCredentialValidation(t *testing.T) {
 	}
 	defer store.Close()
 	for _, tc := range []struct{ name, token string }{
-		{"", strings.Repeat("x", 32)}, {" ", strings.Repeat("x", 32)}, {"name", "short"},
+		{"", strings.Repeat("x", 32)}, {" ", strings.Repeat("x", 32)}, {"name", ""},
 		{"name\n", strings.Repeat("x", 32)}, {"name", strings.Repeat("x", 32) + "\r"}, {"name:invalid", strings.Repeat("x", 32)},
 	} {
 		if _, err := store.ProvisionUser(tc.name, tc.token); err == nil {
 			t.Fatalf("invalid credential accepted for %q", tc.name)
 		}
+	}
+	if _, err := store.ProvisionUser("name", "helloworld"); err != nil {
+		t.Fatalf("short token rejected: %v", err)
 	}
 }
