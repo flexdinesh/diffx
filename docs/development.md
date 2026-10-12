@@ -186,7 +186,10 @@ starting with a fresh database; a volume is not a backup.
 
 Set `DIFFX_SERVER_PORT=7979 mise run docker:up` for a different published host
 port; the container always listens on 7980. Compose also accepts
-`DIFFX_SERVER_ACCOUNT` and `DIFFX_SERVER_RETENTION_DAYS` overrides.
+`DIFFX_SERVER_ACCOUNT`, `DIFFX_SERVER_RETENTION_DAYS` and `DIFFX_SERVER_TOKEN`
+overrides, from the shell or a git-ignored `.env` beside `compose.yaml`. An empty
+token keeps the generated credential. The fixed `diffx` project name keeps one
+volume regardless of the checkout directory.
 For other settings, use image env overrides or a Compose override file.
 Only one server may own a SQLite database; competing starts fail rather than
 share ownership. SIGTERM stops HTTP and workers before releasing storage;
