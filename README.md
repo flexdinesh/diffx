@@ -174,8 +174,13 @@ mise run docker:down
 
 Compose publishes HTTP on `127.0.0.1:7980`, outside the local 7981–7990 range,
 and preserves the named SQLite volume when stopped or recreated. Set
-`DIFFX_SERVER_PORT=7979` to publish another host port. Retrieve
+`DIFFX_SERVER_PORT=7979` to publish another host port. The project is named
+`diffx`, so its volume is shared by every checkout. Retrieve
 the initial credential with `docker compose cp server:/data/state.db.admin-token ./admin-token`.
+To choose the credential instead, put `DIFFX_SERVER_TOKEN=…` (at least 32
+characters) in a git-ignored `.env` beside `compose.yaml` before the first start.
+It only applies to a new database; a different token for an existing account
+fails startup.
 See [server development](docs/development.md#server-development) for configuration
 and persistence details. Deploy behind HTTPS when exposing the server remotely.
 
