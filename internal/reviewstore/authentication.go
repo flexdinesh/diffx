@@ -21,7 +21,7 @@ func initializeAuthentication(transaction *sql.Tx) error {
 }
 
 func validCredentials(account, token string) bool {
-	return strings.TrimSpace(account) != "" && len(account) <= 256 && !strings.ContainsAny(account, "\r\n:") && len(token) >= 32 && !strings.ContainsAny(token, "\r\n")
+	return strings.TrimSpace(account) != "" && len(account) <= 256 && !strings.ContainsAny(account, "\r\n:") && token != "" && !strings.ContainsAny(token, "\r\n")
 }
 
 func tokenHash(token string) string {
@@ -41,7 +41,7 @@ func (store *Store) ProvisionUser(account, token string) (User, error) {
 
 func (store *Store) provisionRemoteUser(account, token string, reuse bool) (User, error) {
 	if !validCredentials(account, token) {
-		return User{}, errors.New("remote account requires a name and a token of at least 32 bytes")
+		return User{}, errors.New("remote account requires a name and a non-empty token")
 	}
 	transaction, err := store.db.Begin()
 	if err != nil {
