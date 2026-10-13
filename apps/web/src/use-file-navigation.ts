@@ -72,18 +72,28 @@ export function useFileNavigation({
   const activePath = files.some((file) => file.path === selected)
     ? selected
     : (files[0]?.path ?? "");
+  const selectVisibleFile = useCallback((path: string) => {
+    setSelected(path);
+    const expandParents = (previous: Set<string>) => {
+      const parents = ancestorPaths(path);
+      if (!parents.some((parent) => previous.has(parent))) return previous;
+      const next = new Set(previous);
+      for (const parent of parents) next.delete(parent);
+      return next;
+    };
+    setClosed(expandParents);
+    setFilteredClosed(expandParents);
+    requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLElement>(
+          `#file-tree .file-row[data-path="${CSS.escape(path)}"]`,
+        )
+        ?.scrollIntoView({ block: "nearest" });
+    });
+  }, []);
   const revealFile = useCallback(
     (path: string) => {
-      setSelected(path);
-      const expandParents = (previous: Set<string>) => {
-        const parents = ancestorPaths(path);
-        if (!parents.some((parent) => previous.has(parent))) return previous;
-        const next = new Set(previous);
-        for (const parent of parents) next.delete(parent);
-        return next;
-      };
-      setClosed(expandParents);
-      setFilteredClosed(expandParents);
+      selectVisibleFile(path);
       setCollapsed((previous) => {
         if (!previous.has(path)) return previous;
         const next = new Set(previous);
@@ -91,15 +101,8 @@ export function useFileNavigation({
         return next;
       });
       closeMobile();
-      requestAnimationFrame(() => {
-        document
-          .querySelector<HTMLElement>(
-            `#file-tree .file-row[data-path="${CSS.escape(path)}"]`,
-          )
-          ?.scrollIntoView({ block: "nearest" });
-      });
     },
-    [closeMobile, setCollapsed],
+    [selectVisibleFile, closeMobile, setCollapsed],
   );
   const selectFile = useCallback(
     (path: string) => {
@@ -256,6 +259,7 @@ export function useFileNavigation({
       filteredClosed,
       setFilteredClosed,
       selectFile,
+      selectVisibleFile,
       search,
       viewer,
       navigateComment,
@@ -270,6 +274,7 @@ export function useFileNavigation({
       closed,
       filteredClosed,
       selectFile,
+      selectVisibleFile,
       navigateComment,
     ],
   );
