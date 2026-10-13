@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/ingestion"
+	"github.com/flexdinesh/diffx/internal/processlock"
 )
 
 // Collection is durable before health checks or local startup. A saved payload
@@ -335,8 +337,25 @@ func (engine Engine) Retry(event Event) error {
 			continue
 		}
 		var saved queued
-		if readJSON(filepath.Join(directory, "request.json"), &saved) != nil || saved.Event.Routing != event.Routing || saved.Event.ConfigFile != event.ConfigFile {
+		if readJSON(filepath.Join(directory, "request.json"), &saved) != nil || saved.Event.ConfigFile != event.ConfigFile {
 			continue
+		}
+		crossRouting := saved.Event.Routing != event.Routing
+		var captured pending
+		if crossRouting {
+			if saved.RecoveryJob != "" || event.RecoveryRouting == "" || saved.Event.RecoveryRouting != event.RecoveryRouting {
+				continue
+			}
+			paths, _ := filepath.Glob(filepath.Join(directory, "*.pending.json"))
+			for _, path := range paths {
+				var candidate pending
+				if readJSON(path, &candidate) == nil && candidate.Request.SubmissionID != "" && candidate.Target.Identity != "" && candidate.Target.Destination != "" && candidate.Target.SourceID != "" && time.Since(candidate.At) < pendingTTL && candidate.At.After(captured.At) {
+					captured = candidate
+				}
+			}
+			if captured.Request.SubmissionID == "" {
+				continue
+			}
 		}
 		var status Activity
 		if readJSON(filepath.Join(directory, "status.json"), &status) == nil && (status.Status == "complete" || status.Status == "unchanged" || status.Status == "skipped") {
@@ -356,12 +375,112 @@ func (engine Engine) Retry(event Event) error {
 		if engine.Launch == nil {
 			return errors.New("hook worker launcher unavailable")
 		}
-		engine.Record(Activity{Stage: "retry", Status: "queued", Job: entry.Name(), Path: saved.Event.Path})
-		if err := engine.Launch(entry.Name()); err != nil {
+		job := entry.Name()
+		if crossRouting {
+			// Recovery runs separately under the current credential's routing. The
+			// worker fences the authenticated target before touching the checkout.
+			job = key("recovery", entry.Name(), event.Routing, captured.Request.SubmissionID)
+			recoveryDirectory, _ := engine.jobPath(job)
+			lock, err := processlock.Acquire(filepath.Join(recoveryDirectory, "queue.lock"))
+			if err != nil {
+				return err
+			}
+			recoveryEvent := saved.Event
+			recoveryEvent.Routing, recoveryEvent.RecoveryRouting = event.Routing, event.RecoveryRouting
+			recovery := queued{Event: recoveryEvent, ID: fmt.Sprintf("%d-%d", time.Now().UnixNano(), os.Getpid()), RecoveryJob: entry.Name(), ExpectedTarget: captured.Target, ExpectedSubmissionID: captured.Request.SubmissionID, ExpectedQueueID: saved.ID}
+			err = writeJSON(filepath.Join(recoveryDirectory, "request.json"), recovery)
+			_ = lock.Close()
+			if err != nil {
+				return err
+			}
+		}
+		engine.Record(Activity{Stage: "retry", Status: "queued", Job: job, Path: saved.Event.Path})
+		if err := engine.Launch(job); err != nil {
 			failures = append(failures, err)
 		}
 	}
 	return errors.Join(failures...)
+}
+
+// recover replays only a previously authenticated immutable capture. It never
+// discovers, normalizes or recollects a checkout under replacement credentials.
+func (engine Engine) recover(ctx context.Context, job string, request queued) error {
+	directory, err := engine.jobPath(request.RecoveryJob)
+	if err != nil {
+		return err
+	}
+	worker, err := processlock.TryAcquire(filepath.Join(directory, "worker.lock"))
+	if err != nil {
+		return err
+	}
+	defer worker.Close()
+	if engine.Resolve == nil || engine.Deliver == nil {
+		return errors.New("hook recovery callbacks unavailable")
+	}
+	target, err := engine.Resolve(ctx, request.Event)
+	if err != nil {
+		return err
+	}
+	if target.Identity == "" || target != request.ExpectedTarget {
+		return errors.New("saved payload belongs to another destination, account, database or source; retained for recovery")
+	}
+	complete := func(contextID string) error {
+		// A scheduler can queue a newer original event while recovery owns its worker
+		// lock. Preserve that event's queued status, and release worker ownership
+		// under the queue lock so a subsequent trigger cannot lose its launch.
+		queue, err := processlock.Acquire(filepath.Join(directory, "queue.lock"))
+		if err != nil {
+			return err
+		}
+		var latest queued
+		if readJSON(filepath.Join(directory, "request.json"), &latest) == nil && latest.ID == request.ExpectedQueueID {
+			engine.RecordJob(request.RecoveryJob, request.Event, Activity{Stage: "recovery", Status: "complete", SubmissionID: request.ExpectedSubmissionID, ContextID: contextID, Destination: destinationLabel(target.Destination)})
+		}
+		_ = worker.Close()
+		_ = queue.Close()
+		engine.RecordJob(job, request.Event, Activity{Stage: "recovery", Status: "complete", SubmissionID: request.ExpectedSubmissionID, ContextID: contextID, Destination: destinationLabel(target.Destination)})
+		return nil
+	}
+	// Multiple replacement credentials can queue recovery concurrently. A
+	// per-submission receipt proves prior completion after its payload is removed.
+	receiptPath := filepath.Join(directory, key("recovery", request.ExpectedSubmissionID)+".ack.json")
+	var receipt state
+	if readJSON(receiptPath, &receipt) == nil && receipt.Target == target && receipt.ContextID != "" {
+		return complete(receipt.ContextID)
+	}
+	paths, err := filepath.Glob(filepath.Join(directory, "*.pending.json"))
+	if err != nil {
+		return err
+	}
+	var captured pending
+	var matching []string
+	for _, path := range paths {
+		var saved pending
+		if readJSON(path, &saved) == nil && saved.Request.SubmissionID == request.ExpectedSubmissionID && saved.Target == target && time.Since(saved.At) < pendingTTL {
+			if len(matching) > 0 && (!reflect.DeepEqual(captured.Request, saved.Request) || captured.Fingerprint != saved.Fingerprint) {
+				return errors.New("conflicting immutable recovery payloads; retained for recovery")
+			}
+			captured = saved
+			matching = append(matching, path)
+		}
+	}
+	if len(matching) == 0 {
+		return errors.New("saved recovery payload unavailable")
+	}
+	ackPath := filepath.Join(directory, key(target.Destination, target.SourceID)+".ack.json")
+	contextID, err := engine.deliverSaved(ctx, job, request.Event, target, captured, ackPath)
+	if err != nil {
+		return err
+	}
+	if err := writeJSON(receiptPath, state{Target: target, Fingerprint: captured.Fingerprint, ContextID: contextID, At: time.Now()}); err != nil {
+		return err
+	}
+	for _, path := range matching {
+		if err := removeIfPresent(path); err != nil {
+			return err
+		}
+	}
+	return complete(contextID)
 }
 
 func (engine Engine) Statuses() ([]Activity, error) {

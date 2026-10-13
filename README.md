@@ -72,6 +72,9 @@ prints only the configured server URL on success; progress/errors use stderr. `-
 terminal line, or plain lines when redirected. Failed uploads remain private,
 immutable pending submissions; `sync --retry` recovers them without the checkout.
 Cancelling a wait does not cancel an accepted server job.
+After the destination account has been verified, rotating its API token preserves
+pending-upload recovery. Captures made before any successful authentication stay
+bound to their original credential until the account is verified.
 
 `diffx .` and piped diffs always run locally, even with remote config. Sync
 and plugins require a remote URL and bearer token; they never bootstrap a local
@@ -175,13 +178,13 @@ mise run docker:down
 Compose publishes HTTP on `127.0.0.1:7980`, outside the local 7981–7990 range,
 and preserves the named SQLite volume when stopped or recreated. Set
 `DIFFX_SERVER_PORT=7979` to publish another host port. The project is named
-`diffx`, so its volume is shared by every checkout. Retrieve
-the initial credential with `docker compose cp server:/data/state.db.admin-token ./admin-token`.
-To choose the credential instead, put `DIFFX_SERVER_TOKEN=…` in a git-ignored
-`.env` beside `compose.yaml` before the first start. Any non-empty token works;
-prefer a long random one (`openssl rand -hex 32`) when exposing the server.
-It only applies to a new database; a different token for an existing account
-fails startup.
+`diffx`, so its volume is shared by every checkout. Before first start, put
+`DIFFX_SERVER_USERNAME=alice` and `DIFFX_SERVER_PASSWORD=…` in a git-ignored
+`.env` beside `compose.yaml`. No default account/password is generated. These
+bootstrap credentials create the first account once; restarts preserve password
+changes. Signup is disabled by default. Compose explicitly enables insecure
+cookies for loopback HTTP development; set `DIFFX_SERVER_INSECURE_COOKIES=false`
+and deploy behind HTTPS for remote access.
 See [server development](docs/development.md#server-development) for configuration
 and persistence details. Deploy behind HTTPS when exposing the server remotely.
 
@@ -190,12 +193,13 @@ Or build and run the image directly:
 ```sh
 mise run docker:build
 docker run --name diffx-server --read-only -p 127.0.0.1:7980:7980 \
+  --env-file /path/to/private-server.env \
   --mount source=diffx-data,target=/data diffx-server:local
 ```
 
-The volume contains observations, jobs and credentials. First
-startup writes the admin token to `/data/state.db.admin-token`; copy it with
-`docker cp diffx-server:/data/state.db.admin-token ./admin-token`.
+The env file supplies bootstrap username/password; plain HTTP development also
+requires `DIFFX_SERVER_INSECURE_COOKIES=true`. The volume contains observations,
+jobs, accounts and credential hashes.
 The image runs without Git or a repository mount, as an unprivileged user.
 SIGTERM drains HTTP and stops the worker; durable unfinished jobs recover after
 their leases expire. Back up the database while stopped.
@@ -204,22 +208,30 @@ Build/install the remote server with Go:
 
 ```sh
 go install github.com/flexdinesh/diffx/cmd/diffx-server@main
-DIFFX_SERVER_HOST=127.0.0.1 DIFFX_SERVER_PORT=7980 DIFFX_SERVER_STATE=./test-data/state.db diffx-server
+DIFFX_SERVER_USERNAME=alice DIFFX_SERVER_PASSWORD=… \
+  DIFFX_SERVER_INSECURE_COOKIES=true DIFFX_SERVER_STATE=./test-data/state.db diffx-server
 ```
 
-First startup creates `admin` with a generated token saved privately at
-`<database>.admin-token`; startup prints its path. The token persists across
-restarts. API/MCP requests use bearer authentication; the browser uses HTTP Basic
-with the username and token as password. Deploy behind TLS. Multiple individual
-users share one SQLite database; credentials select and isolate each user's data.
-The database stores credential hashes. To add a user, stop the server, run:
+Sign in with username/password, then open the top-right account settings to create
+a named API token. `collector` tokens support sync and plugins; `api` tokens also
+support the user's review REST/MCP APIs. Both expire after 90 days by default
+(selectable 1–365 days), can be revoked, and show their secret only once. Browser
+sessions use secure cookies; API/MCP and collectors use bearer tokens. Multiple
+users share one SQLite database with private data per account. Local `diffx`
+automatically supplies its owner and has no login or account settings.
+
+Set `DIFFX_SERVER_SIGNUP_ENABLED=true` to allow signup; invitations are not yet
+supported. For operator provisioning or password recovery, stop the server, run:
 
 ```sh
-diffx-server user create --name alice --state /data/state.db
+diffx-server user create --username bob --state /data/state.db --password-stdin < /path/to/private-password
+diffx-server user reset-password --username alice --state /data/state.db --password-stdin < /path/to/private-password
 ```
 
-Save the printed token, then restart the server. `--account` / `DIFFX_SERVER_ACCOUNT` and `DIFFX_SERVER_TOKEN`
-can supply initial bootstrap credentials; existing credentials are never replaced.
+Then restart the server. Password reset revokes browser sessions; API token
+ownership is independent of passwords. Bootstrap requires both
+`DIFFX_SERVER_USERNAME` and `DIFFX_SERVER_PASSWORD`; it never overwrites an existing
+account's password. Deploy behind TLS with secure cookies.
 Use `--retention-days 14` or config/environment to change server retention.
 The server defaults to `127.0.0.1:7980` and `./data/state.db`, independent of
 personal CLI settings. Its image defaults to `0.0.0.0:7980` and `/data/state.db`;
@@ -310,7 +322,7 @@ WebMCP while the page is open; see [docs/webmcp.md](docs/webmcp.md).
 
 Local data lives in `$XDG_STATE_HOME/diffx/state.db`, or
 `~/.local/state/diffx/state.db`. `--state memory` disables persistence.
-Current schema 9 state persists across restarts. Older, newer or unrecognized
+Current schema 10 state persists across restarts. Older, newer or unrecognized
 databases are refused without an automatic reset. To start fresh, stop the
 server, back up its state directory, and explicitly choose a new database path.
 Legacy commands and pending producer payloads are retired.

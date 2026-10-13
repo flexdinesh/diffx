@@ -27,18 +27,19 @@ const pendingTTL = 7 * 24 * time.Hour
 const maxPendingBytes = 256 << 20
 
 type Event struct {
-	Path        string `json:"path"`
-	InputPath   string `json:"inputPath,omitempty"`
-	Identity    string `json:"identity,omitempty"`
-	Branch      string `json:"branch,omitempty"`
-	Base        string `json:"base,omitempty"`
-	Resolved    bool   `json:"resolved,omitempty"`
-	Retry       bool   `json:"-"`
-	Agent       string `json:"agent"`
-	RunID       string `json:"runId,omitempty"`
-	SessionName string `json:"sessionName,omitempty"`
-	ConfigFile  string `json:"configFile,omitempty"`
-	Routing     string `json:"routing,omitempty"`
+	Path            string `json:"path"`
+	InputPath       string `json:"inputPath,omitempty"`
+	Identity        string `json:"identity,omitempty"`
+	Branch          string `json:"branch,omitempty"`
+	Base            string `json:"base,omitempty"`
+	Resolved        bool   `json:"resolved,omitempty"`
+	Retry           bool   `json:"-"`
+	Agent           string `json:"agent"`
+	RunID           string `json:"runId,omitempty"`
+	SessionName     string `json:"sessionName,omitempty"`
+	ConfigFile      string `json:"configFile,omitempty"`
+	Routing         string `json:"routing,omitempty"`
+	RecoveryRouting string `json:"recoveryRouting,omitempty"`
 }
 
 // Identity identifies the server's persistent database (or memory instance).
@@ -64,8 +65,12 @@ type Engine struct {
 }
 
 type queued struct {
-	Event Event  `json:"event"`
-	ID    string `json:"id"`
+	Event                Event  `json:"event"`
+	ID                   string `json:"id"`
+	RecoveryJob          string `json:"recoveryJob,omitempty"`
+	ExpectedTarget       Target `json:"expectedTarget,omitempty"`
+	ExpectedSubmissionID string `json:"expectedSubmissionId,omitempty"`
+	ExpectedQueueID      string `json:"expectedQueueId,omitempty"`
 }
 
 type state struct {
@@ -205,7 +210,12 @@ func (engine Engine) Run(ctx context.Context, job string) error {
 		if err := readJSON(filepath.Join(directory, "request.json"), &request); err != nil {
 			return err
 		}
-		syncErr := engine.sync(ctx, directory, request.Event)
+		var syncErr error
+		if request.RecoveryJob != "" {
+			syncErr = engine.recover(ctx, job, request)
+		} else {
+			syncErr = engine.sync(ctx, directory, request.Event)
+		}
 		if syncErr != nil {
 			var activity Activity
 			_ = readJSON(filepath.Join(directory, "status.json"), &activity)

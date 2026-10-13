@@ -15,6 +15,7 @@ canonical record of package boundaries and architectural decisions.
 | Storage    | One owner of persistent SQLite                  | One owner of persistent SQLite           |
 | Queries    | Stored observations via REST/MCP                | Same application services via REST/MCP   |
 | Access     | Public listener; private lifecycle credential   | Account credentials wrap the application |
+| Identity   | Automatic stable local owner; no account UI     | Account sessions and scoped API tokens   |
 
 Source support and review policy resolve snapshot capabilities. A mode never
 invents contents, scopes or refresh support. Queue presence at the composition
@@ -35,7 +36,9 @@ personal lifecycle discovery.
 - `contextservice`: owner-scoped publication, resolution and catalog.
 - `reviewservice`: shared snapshot reads, comments, marks and capability checks.
 - `reviewdata`: storage-independent identities, results and errors.
-- `reviewstore`: SQLite transactions, stored reads, retention and queue adapter.
+- `identityservice`: account, password, session and API-token policies.
+- `reviewstore`: SQLite transactions, identity persistence, stored reads,
+  retention and queue adapter.
 - `ingestionqueue`: admission/lease contract and worker failure policy.
 - `submission`: immutable recovery, destination identity and delivery, shared by
   manual sync and hooks. No dependency on hook scheduling.
@@ -50,6 +53,19 @@ personal lifecycle discovery.
 Interfaces live beside consumers and require the needed operation. Optional
 interface assertions must not change application behavior. Storage contracts
 describe atomic application operations, not independently committed CRUD steps.
+
+Local composition resolves its stable owner automatically and exposes no account
+management routes. Remote composition resolves sessions or API tokens to opaque
+account IDs before application access. Review operations receive an owner without
+mode branches. `remoteserver` activates owner-scoped services on demand, including
+for accounts created after startup; requests, events and workers share that owner
+registry and its shutdown lifetime. Identity service owns credential rules;
+transports own cookies, CSRF and route permissions.
+
+The frontend identity owner loads the explicit server mode before mounting review
+state. Distributed login and settings work without any observations. Account
+changes dispose requests, event streams and workspace state. Local composition
+opens reviews directly without exposing identity controls.
 
 ## Principles and limits
 
@@ -129,7 +145,7 @@ uses `X-Diffx-State` to pin submission and polling to the destination identity;
 older protocols are rejected. Release artifacts use the explicit `diffx` project
 name, independent of the checkout directory.
 
-Schema 9 preserves current state across starts. Older, future and unrecognized
+Schema 10 preserves current state across starts. Older, future and unrecognized
 schemas are refused; opening a database never resets it. Durable server volumes
 require an explicit reset decision: stop the owner, back up its state directory,
 then select a fresh database path. No automatic schema migration is implemented.

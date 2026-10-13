@@ -91,13 +91,18 @@ func TestHookSeparatesEffectiveRoutesWithoutPersistingCredentials(t *testing.T) 
 	}
 	t.Setenv("DIFFX_REMOTE_URL", "https://second.example.com")
 	second, err := parseHookEvent(args, nil, io.Discard)
-	if err != nil || first.Routing == second.Routing {
-		t.Fatal("different destinations share worker routing")
+	if err != nil || first.Routing == second.Routing || first.RecoveryRouting == second.RecoveryRouting {
+		t.Fatal("different destinations share worker or recovery routing")
 	}
 	t.Setenv("DIFFX_REMOTE_TOKEN", "private-second-token")
 	third, err := parseHookEvent(args, nil, io.Discard)
-	if err != nil || second.Routing == third.Routing {
-		t.Fatal("different credentials share worker routing")
+	if err != nil || second.Routing == third.Routing || second.RecoveryRouting != third.RecoveryRouting {
+		t.Fatal("credential routing must differ while recovery candidates remain comparable")
+	}
+	t.Setenv("DIFFX_SOURCE_ID", "different-source")
+	fourth, err := parseHookEvent(args, nil, io.Discard)
+	if err != nil || third.RecoveryRouting == fourth.RecoveryRouting {
+		t.Fatal("different sources share recovery routing")
 	}
 	encoded, err := json.Marshal(third)
 	if err != nil || strings.Contains(string(encoded), "private-second-token") {

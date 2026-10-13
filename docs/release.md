@@ -38,7 +38,7 @@ arm64. Windows archives are also published. Archives include the native binary,
 README, and license. The embedded web application needs no installed Node.js
 runtime.
 
-Stop running binaries before upgrading. Current schema 9 state survives
+Stop running binaries before upgrading. Current schema 10 state survives
 subsequent starts; older, future or unrecognized schemas are refused without
 resetting data. Back up the state directory and explicitly choose a fresh
 database path if discarding incompatible state. Upgrade server and collectors

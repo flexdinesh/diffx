@@ -118,32 +118,34 @@ runtime directories (`DIFFX_RUNTIME_DIR`) and in-memory state for lifecycle test
 must not register inputs in the personal service. `DIFFX_EXIT_ON_STDIN_CLOSE`
 is a foreground development-process lifecycle hook.
 
-Stop running processes before upgrading. Current schema 9 databases survive
+Stop running processes before upgrading. Current schema 10 databases survive
 restart; incompatible schemas are refused without resetting data. To start
 fresh, back up the state directory while stopped and explicitly choose a new
 database path. In-memory state does not survive restart. Local `local.retentionDays` defaults to seven; fresh
 submissions apply the current setting, while exact retries preserve expiry.
 
 For isolated production-user tests, start `diffx-server` with a temporary
-persistent database. Initial admin credentials live in `<database>.admin-token`;
-startup reports its path. Stop the server before `user create --name NAME --state
-DB`, save its printed token and restart. Users share one database, while credentials
-scope REST, MCP and events. Do not provision against the running personal service.
+persistent database and bootstrap username/password. Login and create API tokens
+through Settings, which works before any upload. Signup activates accounts without
+a restart when enabled. Operator commands require stopping the database owner.
+Credentials scope REST, MCP, jobs and events. Local mode automatically supplies
+its stable owner and exposes no account UI or management routes. Do not provision
+against the running personal service.
 
 ## Server development
 
 Build both binaries with `mise run build`, then run server mode directly:
 
 ```sh
-DIFFX_SERVER_HOST=127.0.0.1 DIFFX_SERVER_PORT=7980 DIFFX_SERVER_STATE=./test-data/state.db ./dist/diffx-server
+DIFFX_SERVER_USERNAME=alice DIFFX_SERVER_PASSWORD=… \
+  DIFFX_SERVER_INSECURE_COOKIES=true DIFFX_SERVER_STATE=./test-data/state.db ./dist/diffx-server
 ```
 
 Or use the checked-in Compose setup:
 
 ```sh
-mise run docker:up
+DIFFX_SERVER_USERNAME=alice DIFFX_SERVER_PASSWORD=… mise run docker:up
 docker compose logs server
-docker compose cp server:/data/state.db.admin-token ./admin-token
 mise run docker:down
 ```
 
@@ -151,33 +153,54 @@ The same server binary handles authentication, durable admission, workers and
 queries in both setups. The image uses committed embedded assets; run
 `mise run web:stage` before rebuilding it after UI changes.
 
-| Setting                       | Binary default                 | Container default              | Flag                    |
-| ----------------------------- | ------------------------------ | ------------------------------ | ----------------------- |
-| `DIFFX_SERVER_HOST`           | `127.0.0.1`                    | `0.0.0.0`                      | `--listen HOST:PORT`    |
-| `DIFFX_SERVER_PORT`           | `7980`                         | `7980`                         | `--listen HOST:PORT`    |
-| `DIFFX_SERVER_STATE`          | `data/state.db`                | `/data/state.db`               | `--state PATH`          |
-| `DIFFX_SERVER_ACCOUNT`        | `admin`                        | `admin`                        | `--account NAME`        |
-| `DIFFX_SERVER_RETENTION_DAYS` | `7`                            | `7`                            | `--retention-days DAYS` |
-| `DIFFX_SERVER_TOKEN`          | Generated for persistent state | Generated for persistent state | None                    |
+| Setting                         | Binary default  | Container default | Flag                    |
+| ------------------------------- | --------------- | ----------------- | ----------------------- |
+| `DIFFX_SERVER_HOST`             | `127.0.0.1`     | `0.0.0.0`         | `--listen HOST:PORT`    |
+| `DIFFX_SERVER_PORT`             | `7980`          | `7980`            | `--listen HOST:PORT`    |
+| `DIFFX_SERVER_STATE`            | `data/state.db` | `/data/state.db`  | `--state PATH`          |
+| `DIFFX_SERVER_RETENTION_DAYS`   | `7`             | `7`               | `--retention-days DAYS` |
+| `DIFFX_SERVER_USERNAME`         | Unset           | Unset             | `--username NAME`       |
+| `DIFFX_SERVER_PASSWORD`         | Unset           | Unset             | None                    |
+| `DIFFX_SERVER_SIGNUP_ENABLED`   | `false`         | `false`           | `--signup-enabled`      |
+| `DIFFX_SERVER_INSECURE_COOKIES` | `false`         | Compose: `true`   | `--insecure-cookies`    |
 
 The server listens on 7980 so a local `diffx [PATH]` (7981–7990) and the server
 run side by side. The `DIFFX_SERVER_` prefix keeps deployment variables from
 configuring the CLI, and the CLI's `DIFFX_LOCAL_*`/`DIFFX_REMOTE_*` from
 configuring the server.
 
-`DIFFX_SERVER_TOKEN` supplies initial bootstrap credentials only; existing credentials
-are never replaced. Omit it to generate a private `<database>.admin-token` file.
-`memory` and `:memory:` disable persistence and require an explicit token.
+Bootstrap requires both username and password. It creates the first account once
+and never replaces passwords on restart. No default credentials or admin-token
+file is generated. Signup remains disabled unless explicitly enabled. `memory`
+and `:memory:` disable persistence.
+
+Sign in with username/password and create a named token in Settings. Use the
+`collector` preset for producers, or `api` for review APIs/MCP. Token secrets are
+shown once; expiry defaults to 90 days (selectable 1–365). Tokens cannot manage
+accounts. Browser sessions are seven-day opaque cookies with CSRF protection on
+unsafe requests. Secure cookies are the binary/image default; explicitly enable
+insecure cookies only for HTTP development. Production requires HTTPS.
+
+With the server stopped, operator commands read passwords from stdin:
+
+```sh
+diffx-server user create --username bob --state ./test-data/state.db --password-stdin < /path/to/private-password
+diffx-server user reset-password --username alice --state ./test-data/state.db --password-stdin < /path/to/private-password
+```
+
+Password reset revokes browser sessions. Restart the server after provisioning.
 
 Precedence is defaults → explicit JSON file → env vars → explicit flags. Use
 `--config-file FILE` or `DIFFX_SERVER_CONFIG` to select a server config. The file
-supports `host`, `port`, `state`, `account` and `retentionDays`. It must exist and
+supports `host`, `port`, `state`, `username`, `retentionDays`, `signupEnabled` and
+`insecureCookies`. Bootstrap passwords are supplied through env vars. The file
+must exist and
 can be mounted read-only; startup never creates it or a config lock. Personal
 CLI config, `DIFFX_RUNTIME_DIR`, producer URL settings and external web assets
 do not configure server mode. Restart to apply changes.
 
-Compose keeps the SQLite database, sidecar files, ownership lock and generated
-credential in the `diffx-data` volume. The root filesystem is read-only; the
+Compose keeps the SQLite database, sidecar files, ownership lock and credential
+hashes in the `diffx-data` volume. The root filesystem is read-only; the
 image prepares `/data` for UID/GID 10001. If using a bind mount instead, make
 the directory writable by that identity. Keep database files inside `/data`.
 `mise run docker:down` preserves the volume; `docker compose down --volumes`
@@ -186,9 +209,11 @@ starting with a fresh database; a volume is not a backup.
 
 Set `DIFFX_SERVER_PORT=7979 mise run docker:up` for a different published host
 port; the container always listens on 7980. Compose also accepts
-`DIFFX_SERVER_ACCOUNT`, `DIFFX_SERVER_RETENTION_DAYS` and `DIFFX_SERVER_TOKEN`
-overrides, from the shell or a git-ignored `.env` beside `compose.yaml`. An empty
-token keeps the generated credential. The fixed `diffx` project name keeps one
+bootstrap username/password, retention, signup and insecure-cookie overrides,
+from the shell or a git-ignored `.env` beside `compose.yaml`. Compose defaults to
+insecure cookies because its HTTP listener is published on loopback; explicitly
+set `DIFFX_SERVER_INSECURE_COOKIES=false` behind production HTTPS. The fixed
+`diffx` project name keeps one
 volume regardless of the checkout directory.
 For other settings, use image env overrides or a Compose override file.
 Only one server may own a SQLite database; competing starts fail rather than
@@ -221,7 +246,10 @@ map into Tailwind and shadcn theme roles. Reuse primitives from
 geometry, and Pierre's measured rendering boundary.
 
 `App.tsx` composes page sections. `AppProvider` composes appearance, sidebar,
-and workspace owners. Consumers subscribe through domain hooks for diff source,
+and workspace owners. The identity owner loads server mode and the current
+account before mounting review state; distributed login and `/settings` work with
+zero observations. Account changes dispose workspace requests and event streams.
+Local mode bypasses account flows. Consumers subscribe through domain hooks for diff source,
 navigation, draft, review, reviewed files, and collapse state. One draft persists
 across scopes. Context selection uses the top-bar popup picker (also Cmd/Ctrl+K)
 and scopes every request. The “Switch review” picker first selects a repository
@@ -276,9 +304,11 @@ See [architecture.md](architecture.md) for repository boundaries and dependency
 rules.
 
 Shared producer orchestration in `cmd/diffx` resolves config → environment →
-flags once, pins retries to destination/database identity and serves manual/hook
+flags once, pins verified retries to account/database identity and serves manual/hook
 delivery. Hooks use session-scoped acknowledgements plus server reconciliation;
-their private pending data retains a separate seven-day expiry. REST and MCP
+their private pending data retains a separate seven-day expiry. Token rotation
+preserves a verified destination's pending data; offline captures with unknown
+owners remain bound to their original credential until authenticated. REST and MCP
 compose `reviewservice`; global `/mcp` provides catalog discovery and stored
 diff/patch retrieval with explicit context IDs.
 

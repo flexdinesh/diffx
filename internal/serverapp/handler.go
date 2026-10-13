@@ -52,6 +52,7 @@ func Handler(ctx context.Context, service *contextservice.Service, store httpapi
 	mux.Handle("/mcp", mcp)
 	mux.Handle("/mcp/", mcp)
 	mux.Handle("/control/", http.NotFoundHandler())
+	mux.HandleFunc("/api/v2/bootstrap", localBootstrap)
 	mux.HandleFunc("/api/v2/health", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			problem(w, 405, "Method not allowed")

@@ -4,6 +4,126 @@
  */
 
 export interface paths {
+  "/api/v2/bootstrap": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Public deployment mode and current browser identity. Local mode supplies identity internally and exposes no account management. */
+    get: operations["getBootstrap"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/auth/login": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Distributed only. Same-origin JSON request; creates a browser session. Signup requires explicit server configuration. */
+    post: operations["login"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/auth/signup": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Distributed only. Same-origin JSON request; creates a browser session. Signup requires explicit server configuration. */
+    post: operations["signup"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/auth/logout": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Revoke the current browser session. Requires its CSRF token. */
+    post: operations["logout"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/account/password": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** @description Verify the current password, change it, and revoke all browser sessions. Distributed browser sessions only. */
+    put: operations["changePassword"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/account/tokens": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List current account credential metadata; never returns secrets. Distributed browser sessions only. */
+    get: operations["listAccountTokens"];
+    put?: never;
+    /** @description Create a fixed collector or review API credential. The secret is returned once. Distributed browser sessions only. */
+    post: operations["createAccountToken"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/account/tokens/{tokenId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** @description Revoke an account token immediately. Distributed browser sessions only. */
+    delete: operations["revokeAccountToken"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v2/health": {
     parameters: {
       query?: never;
@@ -361,6 +481,42 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    AccountUser: {
+      id: string;
+      username: string;
+    };
+    Bootstrap:
+      | {
+          /** @enum {string} */
+          mode: "local";
+          /** @enum {boolean} */
+          signupEnabled: false;
+          user: null;
+          csrfToken: null;
+        }
+      | {
+          /** @enum {string} */
+          mode: "remote";
+          signupEnabled: boolean;
+          user: components["schemas"]["AccountUser"] | null;
+          csrfToken: string | null;
+        };
+    PasswordCredentials: {
+      username: string;
+      password: string;
+    };
+    AccountToken: {
+      id: string;
+      name: string;
+      /** @enum {string} */
+      purpose: "collector" | "api";
+      /** @description Unix milliseconds. */
+      createdAt: number;
+      /** @description Unix milliseconds, null before first use. */
+      lastUsedAt: number | null;
+      /** @description Unix milliseconds. */
+      expiresAt: number;
+    };
     /** @description Immutable Git comparison facts captured by the producer and stored with the observation. Applies to the all scope; staged always compares HEAD to index and unstaged compares index to working tree. Missing comparison metadata retains legacy HEAD semantics. */
     Comparison: {
       /**
@@ -695,6 +851,8 @@ export interface components {
     };
   };
   parameters: {
+    /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+    CsrfToken: string;
     ContextId: string;
     Scope: components["schemas"]["DiffMode"];
     DiffId: string;
@@ -710,6 +868,242 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  getBootstrap: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deployment and browser session. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Bootstrap"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  login: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PasswordCredentials"];
+      };
+    };
+    responses: {
+      /** @description Authenticated browser identity. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Bootstrap"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+      429: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  signup: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PasswordCredentials"];
+      };
+    };
+    responses: {
+      /** @description Authenticated browser identity. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Bootstrap"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+      429: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  logout: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Session revoked. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  changePassword: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          currentPassword: string;
+          newPassword: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Password changed; sign in again. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  listAccountTokens: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Tokens owned by the authenticated account. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            tokens: components["schemas"]["AccountToken"][];
+          };
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  createAccountToken: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          /** @description Non-empty label, at most 64 UTF-8 bytes. */
+          name: string;
+          /** @enum {string} */
+          purpose: "collector" | "api";
+          expiresInDays: number;
+        };
+      };
+    };
+    responses: {
+      /** @description Newly created credential and its one-time secret. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            token: components["schemas"]["AccountToken"];
+            secret: string;
+          };
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  revokeAccountToken: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path: {
+        tokenId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Credential revoked. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
   getIngestionHealth: {
     parameters: {
       query?: never;

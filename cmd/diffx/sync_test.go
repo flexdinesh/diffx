@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -13,8 +14,10 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/flexdinesh/diffx/internal/hooks"
+	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/remoteserver"
 	"github.com/flexdinesh/diffx/internal/review"
@@ -30,14 +33,14 @@ func TestSyncPrintDebugCommitsSelectedCheckoutAndRecoversRemovedCheckout(t *test
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("DIFFX_CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
 	t.Setenv("DIFFX_RUNTIME_DIR", t.TempDir())
-	token := strings.Repeat("a", 40)
-	t.Setenv("DIFFX_REMOTE_TOKEN", token)
 	store, err := reviewstore.Open("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler, closeServices, err := remoteserver.Handler(t.Context(), store, "admin", token, webui.Assets())
+	owner, token := provisionCollector(t, store)
+	t.Setenv("DIFFX_REMOTE_TOKEN", token)
+	handler, closeServices, err := remoteserver.Handler(t.Context(), store, remoteserver.Settings{}, webui.Assets())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,10 +81,6 @@ func TestSyncPrintDebugCommitsSelectedCheckoutAndRecoversRemovedCheckout(t *test
 	if strings.Contains(debug.String(), token) {
 		t.Fatal("debug leaked credentials")
 	}
-	owner, err := store.AuthenticateToken(token)
-	if err != nil {
-		t.Fatal(err)
-	}
 	contexts, err := store.ObservationContexts(owner.ID, 10, 0, "", ingestion.Filter{})
 	if err != nil || len(contexts) != 1 {
 		t.Fatalf("selected checkout publication: %d %v", len(contexts), err)
@@ -113,11 +112,12 @@ func TestSyncRequiresRemoteAndConfigMasksToken(t *testing.T) {
 
 // Exercise the real queue, worker and stored catalog while counting uploads.
 type syncFixture struct {
-	store   *reviewstore.Store
-	ownerID string
-	server  *httptest.Server
-	uploads atomic.Int64
-	online  atomic.Bool
+	store       *reviewstore.Store
+	ownerID     string
+	server      *httptest.Server
+	uploads     atomic.Int64
+	online      atomic.Bool
+	failUploads atomic.Bool
 }
 
 func newSyncFixture(t *testing.T) *syncFixture {
@@ -126,22 +126,18 @@ func newSyncFixture(t *testing.T) *syncFixture {
 	t.Setenv("DIFFX_CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
 	t.Setenv("DIFFX_RUNTIME_DIR", t.TempDir())
 	t.Setenv("DIFFX_SOURCE_ID", "machine")
-	token := strings.Repeat("b", 40)
-	t.Setenv("DIFFX_REMOTE_TOKEN", token)
 	store, err := reviewstore.Open("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	handler, closeServices, err := remoteserver.Handler(t.Context(), store, "admin", token, webui.Assets())
+	owner, token := provisionCollector(t, store)
+	t.Setenv("DIFFX_REMOTE_TOKEN", token)
+	handler, closeServices, err := remoteserver.Handler(t.Context(), store, remoteserver.Settings{}, webui.Assets())
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = closeServices() })
-	owner, err := store.AuthenticateToken(token)
-	if err != nil {
-		t.Fatal(err)
-	}
 	fixture := &syncFixture{store: store, ownerID: owner.ID}
 	fixture.online.Store(true)
 	fixture.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -151,6 +147,10 @@ func newSyncFixture(t *testing.T) *syncFixture {
 		}
 		if r.Method == http.MethodPost && r.URL.Path == "/api/v2/ingestion-jobs" {
 			fixture.uploads.Add(1)
+			if fixture.failUploads.Load() {
+				http.Error(w, "upload unavailable", http.StatusServiceUnavailable)
+				return
+			}
 		}
 		handler.ServeHTTP(w, r)
 	}))
@@ -399,5 +399,253 @@ func TestSyncKeepsForeignPendingPayloadAndPublishesFreshCollection(t *testing.T)
 	pending, err := box.Pending()
 	if err != nil || len(pending) != 1 || !reflect.DeepEqual(pending[0].Request, request) || pending[0].StateID != "old-database" {
 		t.Fatalf("foreign retry mutated or lost: %+v %v", pending, err)
+	}
+}
+
+func TestSyncRotatedTokenRecoversOnlyItsOwnersAttemptedPayload(t *testing.T) {
+	root := cliRepository(t)
+	fixture := newSyncFixture(t)
+	fixture.failUploads.Store(true)
+	if err := run(t.Context(), []string{"sync", root}, nil, io.Discard, io.Discard); err == nil {
+		t.Fatal("unavailable upload succeeded")
+	}
+	target, err := submission.Resolve(t.Context(), fixture.server.URL, os.Getenv("DIFFX_REMOTE_TOKEN"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := reviewstore.DefaultPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, err := submission.Open(t.Context(), filepath.Dir(state), target.Target.Destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := box.Pending()
+	if closeErr := box.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	if err != nil || len(pending) != 1 || pending[0].StateID != target.Target.Identity {
+		t.Fatalf("attempted payload not durably owner-bound: %+v %v", pending, err)
+	}
+	identity := identityservice.New(fixture.store)
+	tokens, err := identity.Tokens(t.Context(), fixture.ownerID)
+	if err != nil || len(tokens) != 1 {
+		t.Fatalf("initial collector token: %+v %v", tokens, err)
+	}
+	if err := identity.RevokeToken(t.Context(), fixture.ownerID, tokens[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(t.Context(), []string{"remote", "status"}, nil, io.Discard, io.Discard); err == nil {
+		t.Fatal("revoked collector token accepted")
+	}
+	replacement, err := identity.CreateToken(t.Context(), fixture.ownerID, "replacement", identityservice.PurposeCollector, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign, err := identity.Provision(t.Context(), "other", "other-password-at-least-twelve-characters")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignToken, err := identity.CreateToken(t.Context(), foreign.ID, "foreign", identityservice.PurposeCollector, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.failUploads.Store(false)
+	attempts := fixture.uploads.Load()
+	t.Setenv("DIFFX_REMOTE_TOKEN", foreignToken.Secret)
+	if err := run(t.Context(), []string{"sync", "--retry"}, nil, io.Discard, io.Discard); err == nil || !strings.Contains(err.Error(), "no pending") {
+		t.Fatalf("foreign account discovered retained payload: %v", err)
+	}
+	if fixture.uploads.Load() != attempts {
+		t.Fatal("foreign account delivered owner-bound payload")
+	}
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DIFFX_REMOTE_TOKEN", replacement.Secret)
+	if err := run(t.Context(), []string{"sync", "--retry"}, nil, io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	contexts, err := fixture.store.ObservationContexts(fixture.ownerID, 10, 0, "", ingestion.Filter{})
+	if err != nil || len(contexts) != 1 {
+		t.Fatalf("rotated token failed to publish owner's saved collection: %+v %v", contexts, err)
+	}
+	foreignContexts, err := fixture.store.ObservationContexts(foreign.ID, 10, 0, "", ingestion.Filter{})
+	if err != nil || len(foreignContexts) != 0 {
+		t.Fatalf("foreign owner received saved collection: %+v %v", foreignContexts, err)
+	}
+	receipt, err := fixture.store.Ingest(fixture.ownerID, pending[0].Request)
+	if err != nil || receipt.ContextID != contexts[0].ID {
+		t.Fatalf("rotated retry changed submission identity: %+v %v", receipt, err)
+	}
+}
+
+func TestSyncRetainsConflictingProvisionalAndOwnerPayloads(t *testing.T) {
+	root := cliRepository(t)
+	fixture := newSyncFixture(t)
+	request, err := collectSubmission(t.Context(), options{directory: root, sourceID: "machine"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := submission.Resolve(t.Context(), fixture.server.URL, os.Getenv("DIFFX_REMOTE_TOKEN"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := reviewstore.DefaultPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := submission.Pending{Request: request}
+	conflicting := original
+	conflicting.Request.Metadata.Hostname = "different"
+	conflicting.StateID = target.Target.Identity
+	digest := sha256.Sum256([]byte(os.Getenv("DIFFX_REMOTE_TOKEN")))
+	provisionalRoute := fixture.server.URL + ":" + hex.EncodeToString(digest[:])
+	for _, entry := range []struct {
+		route string
+		item  submission.Pending
+	}{{provisionalRoute, original}, {target.Target.Destination, conflicting}} {
+		box, err := submission.Open(t.Context(), filepath.Dir(state), entry.route)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := box.Save(entry.item); err != nil {
+			t.Fatal(err)
+		}
+		if err := box.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := run(t.Context(), []string{"sync", "--retry"}, nil, io.Discard, io.Discard); err == nil || !strings.Contains(err.Error(), "conflicts") {
+		t.Fatalf("conflicting retry accepted: %v", err)
+	}
+	if fixture.uploads.Load() != 0 {
+		t.Fatal("conflicting payload uploaded")
+	}
+	for _, entry := range []struct {
+		route string
+		item  submission.Pending
+	}{{provisionalRoute, original}, {target.Target.Destination, conflicting}} {
+		box, err := submission.Open(t.Context(), filepath.Dir(state), entry.route)
+		if err != nil {
+			t.Fatal(err)
+		}
+		items, err := box.Pending()
+		if closeErr := box.Close(); closeErr != nil {
+			t.Fatal(closeErr)
+		}
+		if err != nil || len(items) != 1 || !reflect.DeepEqual(items[0], entry.item) {
+			t.Fatalf("conflicting payload changed or lost: %+v %v", items, err)
+		}
+	}
+}
+
+func TestHookRotatedEnvironmentTokenRecoversOwnersRemovedCheckout(t *testing.T) {
+	root := cliRepository(t)
+	fixture := newSyncFixture(t)
+	fixture.failUploads.Store(true)
+	directory := t.TempDir()
+	args := []string{"--harness", "codex", "--path", root, "--run-id", "session"}
+	event, err := parseHookEvent(args, nil, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := newHookEngine(directory)
+	sources, err := engine.Expand(t.Context(), event)
+	if err != nil || len(sources) != 1 {
+		t.Fatalf("hook discovery: %+v %v", sources, err)
+	}
+	job := ""
+	engine.Launch = func(value string) error { job = value; return nil }
+	var captured ingestion.Request
+	collect := engine.Collect
+	engine.Collect = func(ctx context.Context, event hooks.Event, previous string) (ingestion.Request, string, error) {
+		request, fingerprint, err := collect(ctx, event, previous)
+		captured = request
+		return request, fingerprint, err
+	}
+	if err := engine.Schedule(sources[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.Run(t.Context(), job); err == nil {
+		t.Fatal("unavailable hook upload succeeded")
+	}
+	originalJob := job
+	identity := identityservice.New(fixture.store)
+	tokens, err := identity.Tokens(t.Context(), fixture.ownerID)
+	if err != nil || len(tokens) != 1 {
+		t.Fatalf("initial collector token: %+v %v", tokens, err)
+	}
+	if err := identity.RevokeToken(t.Context(), fixture.ownerID, tokens[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	replacement, err := identity.CreateToken(t.Context(), fixture.ownerID, "replacement", identityservice.PurposeCollector, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign, err := identity.Provision(t.Context(), "other", "other-password-at-least-twelve-characters")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignToken, err := identity.CreateToken(t.Context(), foreign.ID, "foreign", identityservice.PurposeCollector, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.failUploads.Store(false)
+	retry := func(token string) error {
+		t.Helper()
+		t.Setenv("DIFFX_REMOTE_TOKEN", token)
+		current, err := parseHookEvent([]string{"--harness", "codex", "--retry"}, nil, io.Discard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		recovery := newHookEngine(directory)
+		var jobs []string
+		recovery.Launch = func(value string) error { jobs = append(jobs, value); return nil }
+		recovery.Expand = func(context.Context, hooks.Event) ([]hooks.Event, error) {
+			t.Fatal("recovery rediscovered checkout")
+			return nil, nil
+		}
+		recovery.Normalize = func(context.Context, hooks.Event) (hooks.Event, error) {
+			t.Fatal("recovery inspected checkout")
+			return hooks.Event{}, nil
+		}
+		recovery.Collect = func(context.Context, hooks.Event, string) (ingestion.Request, string, error) {
+			t.Fatal("recovery recollected checkout")
+			return ingestion.Request{}, "", nil
+		}
+		if err := recovery.Retry(current); err != nil {
+			t.Fatal(err)
+		}
+		if len(jobs) != 1 || jobs[0] == originalJob {
+			t.Fatalf("credential-specific recovery worker: %v", jobs)
+		}
+		return recovery.Run(t.Context(), jobs[0])
+	}
+	attempts := fixture.uploads.Load()
+	if err := retry(foreignToken.Secret); err == nil || !strings.Contains(err.Error(), "another destination") {
+		t.Fatalf("foreign credential recovered owner's hook payload: %v", err)
+	}
+	if fixture.uploads.Load() != attempts {
+		t.Fatal("foreign credential delivered hook payload")
+	}
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	if err := retry(replacement.Secret); err != nil {
+		t.Fatal(err)
+	}
+	contexts, err := fixture.store.ObservationContexts(fixture.ownerID, 10, 0, "", ingestion.Filter{})
+	if err != nil || len(contexts) != 1 {
+		t.Fatalf("rotated hook delivery: %+v %v", contexts, err)
+	}
+	replay, err := fixture.store.Ingest(fixture.ownerID, captured)
+	if err != nil || replay.ContextID != contexts[0].ID {
+		t.Fatalf("hook recovery replaced immutable submission: %+v %v", replay, err)
+	}
+	foreignContexts, err := fixture.store.ObservationContexts(foreign.ID, 10, 0, "", ingestion.Filter{})
+	if err != nil || len(foreignContexts) != 0 {
+		t.Fatalf("foreign hook observations: %+v %v", foreignContexts, err)
 	}
 }

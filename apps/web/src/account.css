@@ -1,0 +1,136 @@
+.identity-status {
+  height: 100dvh;
+}
+.account-shell {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+.account-topbar {
+  flex-shrink: 0;
+}
+.account-page {
+  width: 100%;
+  max-width: 48rem;
+  margin-inline: auto;
+  padding: var(--space-8) var(--space-6);
+  overflow: auto;
+  min-height: 0;
+}
+.auth-page {
+  max-width: 28rem;
+  height: 100dvh;
+  padding-top: var(--space-16);
+}
+.account-page h1 {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  margin: 0 0 var(--space-2);
+}
+.auth-page .brand {
+  display: inline-block;
+  margin-bottom: var(--space-8);
+}
+.account-page h2,
+.account-page h3 {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  margin: 0 0 var(--space-2);
+}
+.account-page p {
+  margin: 0 0 var(--space-4);
+  color: var(--text-secondary);
+  line-height: var(--leading-copy);
+}
+.account-section {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border-muted);
+}
+.account-form {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 28rem;
+}
+.account-form label:not(:first-child) {
+  margin-top: var(--space-2);
+}
+.account-form button {
+  justify-self: start;
+  margin-top: var(--space-2);
+}
+.account-form select {
+  min-height: var(--control-height);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg);
+  color: var(--fg);
+}
+.account-page .account-hint {
+  font-size: var(--text-sm);
+  margin: 0;
+}
+.account-page .account-error {
+  color: var(--error);
+}
+.account-token-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--space-6);
+}
+.account-token-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-block: var(--space-3);
+  border-bottom: 1px solid var(--border-muted);
+}
+.account-token-list li div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.account-token-list strong {
+  display: block;
+  font-weight: var(--weight-medium);
+}
+.account-token-list span {
+  display: block;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  margin-top: var(--space-1);
+}
+.token-secret {
+  margin-top: var(--space-6);
+  padding: var(--space-4);
+  background: var(--panel);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-control);
+}
+.token-secret pre {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+  margin: var(--space-4) 0;
+}
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+@media (max-width: 640px), (pointer: coarse) {
+  .account-page {
+    padding: var(--space-6) var(--space-4);
+  }
+  .account-form input,
+  .account-form select {
+    min-height: var(--touch-target);
+    font-size: var(--text-input-touch);
+  }
+  .account-page button {
+    min-height: var(--touch-target);
+  }
+}

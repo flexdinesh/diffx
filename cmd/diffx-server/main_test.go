@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/flexdinesh/diffx/internal/identityservice"
+	"github.com/flexdinesh/diffx/internal/reviewstore"
 )
 
 func TestRemoteConfigMappingAndPrecedence(t *testing.T) {
@@ -44,48 +46,59 @@ func TestRemoteConfigMappingAndPrecedence(t *testing.T) {
 	}
 }
 
-func TestCreateUserPersistsCredentialAndRejectsDuplicates(t *testing.T) {
+func TestUserCommandsPasswordLifecycleAndLock(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	var stdout, stderr bytes.Buffer
-	args := []string{"create", "--name", "alice", "--state", path}
-	if err := createUser(args, &stdout, &stderr); err != nil {
+	t.Setenv("TEST_ACCOUNT_PASSWORD", "initial-password-123")
+	args := []string{"create", "--username", "alice", "--state", path, "--password-env", "TEST_ACCOUNT_PASSWORD"}
+	if err := manageUser(args, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatal(err)
 	}
-	parts := strings.Split(stdout.String(), "Bearer token: ")
-	if len(parts) != 2 || stderr.Len() != 0 {
-		t.Fatalf("provisioning output: %q %q", stdout.String(), stderr.String())
+	if strings.Contains(stdout.String(), "password-123") {
+		t.Fatal("password printed")
 	}
-	credential := strings.TrimSpace(parts[1])
 	store, err := reviewstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	user, err := store.AuthenticateToken(credential)
-	if err != nil || user.Name != "alice" {
-		t.Fatalf("provisioned account: %+v %v", user, err)
+	identity := identityservice.New(store)
+	session, err := identity.Login(t.Context(), "alice", "initial-password-123")
+	if err != nil {
+		t.Fatal(err)
 	}
 	stdout.Reset()
-	if err := createUser([]string{"create", "--name", "bob", "--state", path}, &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "already in use") {
-		t.Fatalf("provisioning bypassed server lock: %v", err)
-	}
-	if stdout.Len() != 0 {
-		t.Fatal("credential printed after failure")
+	if err := manageUser(args, strings.NewReader(""), &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "already in use") {
+		t.Fatalf("operator bypassed lock: %v", err)
 	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := createUser(args, &stdout, &stderr); err == nil {
-		t.Fatal("duplicate account accepted")
+	if err := manageUser(args, strings.NewReader(""), &stdout, &stderr); err == nil {
+		t.Fatal("duplicate account")
 	}
-	if stdout.Len() != 0 {
-		t.Fatal("credential printed for existing user")
+	if err := manageUser([]string{"reset-password", "--username", "alice", "--state", path, "--password-stdin"}, strings.NewReader("changed-password-123\n"), &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	store, err = reviewstore.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	identity = identityservice.New(store)
+	if _, err := identity.Login(t.Context(), "alice", "initial-password-123"); err == nil {
+		t.Fatal("old password accepted")
+	}
+	if _, err := identity.AuthenticateSession(t.Context(), session.Secret); err == nil {
+		t.Fatal("reset did not revoke session")
+	}
+	if _, err := identity.Login(t.Context(), "alice", "changed-password-123"); err != nil {
+		t.Fatal(err)
 	}
 }
-
-func TestCreateUserValidation(t *testing.T) {
-	for _, arguments := range [][]string{nil, {"delete"}, {"create"}, {"create", "--name", "alice", "extra"}, {"create", "--name", "alice", "--state", ":memory:"}} {
-		if err := createUser(arguments, io.Discard, io.Discard); err == nil {
-			t.Fatalf("invalid user command: %v", arguments)
+func TestUserCommandValidation(t *testing.T) {
+	for _, args := range [][]string{nil, {"delete"}, {"create"}, {"create", "--username", "alice"}, {"create", "--username", "alice", "--password-env", "P", "--password-stdin"}, {"create", "--username", "alice", "--state", ":memory:", "--password-stdin"}} {
+		if err := manageUser(args, strings.NewReader("password-123456"), io.Discard, io.Discard); err == nil {
+			t.Fatalf("accepted invalid args: %v", args)
 		}
 	}
 }
@@ -101,22 +114,25 @@ func TestRemoteConfigDefaultsAndVersion(t *testing.T) {
 	}
 }
 
-func TestRemoteAccountConfigPrecedence(t *testing.T) {
+func TestRemoteIdentityConfigPrecedence(t *testing.T) {
+	t.Setenv("DIFFX_SERVER_PASSWORD", "password-123456")
 	path := filepath.Join(t.TempDir(), "server.json")
-	if err := os.WriteFile(path, []byte(`{"account":"file-admin"}`), 0o400); err != nil {
+	if err := os.WriteFile(path, []byte(`{"username":"file-admin","signupEnabled":true,"insecureCookies":true}`), 0o400); err != nil {
 		t.Fatal(err)
 	}
 	settings, _, err := parseSettings([]string{"--config-file", path}, io.Discard)
-	if err != nil || settings.Account != "file-admin" {
+	if err != nil || settings.Username != "file-admin" || !settings.SignupEnabled || !settings.InsecureCookies {
 		t.Fatalf("file account: %+v %v", settings, err)
 	}
-	t.Setenv("DIFFX_SERVER_ACCOUNT", "env-admin")
+	t.Setenv("DIFFX_SERVER_USERNAME", "env-admin")
+	t.Setenv("DIFFX_SERVER_SIGNUP_ENABLED", "false")
+	t.Setenv("DIFFX_SERVER_INSECURE_COOKIES", "false")
 	settings, _, err = parseSettings([]string{"--config-file", path}, io.Discard)
-	if err != nil || settings.Account != "env-admin" {
+	if err != nil || settings.Username != "env-admin" || settings.SignupEnabled || settings.InsecureCookies {
 		t.Fatalf("environment account: %+v %v", settings, err)
 	}
-	settings, _, err = parseSettings([]string{"--config-file", path, "--account", "flag-admin"}, io.Discard)
-	if err != nil || settings.Account != "flag-admin" {
+	settings, _, err = parseSettings([]string{"--config-file", path, "--username", "flag-admin", "--signup-enabled", "--insecure-cookies"}, io.Discard)
+	if err != nil || settings.Username != "flag-admin" || !settings.SignupEnabled || !settings.InsecureCookies {
 		t.Fatalf("flag account: %+v %v", settings, err)
 	}
 }
@@ -129,8 +145,8 @@ func TestRemoteRejectsInvalidDeploymentSettings(t *testing.T) {
 		{"DIFFX_SERVER_STATE", ""},
 		{"DIFFX_SERVER_RETENTION_DAYS", "0"},
 		{"DIFFX_SERVER_RETENTION_DAYS", "-1"},
-		{"DIFFX_SERVER_ACCOUNT", ""},
-		{"DIFFX_SERVER_ACCOUNT", "invalid:name"},
+		{"DIFFX_SERVER_SIGNUP_ENABLED", "bad"},
+		{"DIFFX_SERVER_PASSWORD", "partial-password"},
 	} {
 		t.Run(tc.key+"="+tc.value, func(t *testing.T) {
 			t.Setenv("DIFFX_SERVER_CONFIG", "")
@@ -163,6 +179,14 @@ func TestRemoteRetentionConfigPrecedence(t *testing.T) {
 	for _, value := range []string{"0", "-1", "1000000000"} {
 		if _, _, err := parseSettings([]string{"--config-file", path, "--retention-days", value}, io.Discard); err == nil {
 			t.Fatalf("invalid retention accepted: %s", value)
+		}
+	}
+}
+
+func TestBootstrapSecretsCannotBeFlags(t *testing.T) {
+	for _, name := range []string{"--password", "--token"} {
+		if _, _, err := parseSettings([]string{name, "secret"}, io.Discard); err == nil {
+			t.Fatalf("secret flag accepted: %s", name)
 		}
 	}
 }

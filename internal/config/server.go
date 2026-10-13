@@ -17,18 +17,20 @@ const DefaultServerPort = 7980
 
 // ServerValues is deployment configuration, independent of personal CLI settings.
 type ServerValues struct {
-	Host          string `json:"host"`
-	Port          int    `json:"port"`
-	State         string `json:"state"`
-	Account       string `json:"account"`
-	RetentionDays int    `json:"retentionDays"`
+	Host            string `json:"host"`
+	Port            int    `json:"port"`
+	State           string `json:"state"`
+	Username        string `json:"username"`
+	SignupEnabled   bool   `json:"signupEnabled"`
+	InsecureCookies bool   `json:"insecureCookies"`
+	RetentionDays   int    `json:"retentionDays"`
 }
 
 // LoadServerFile resolves defaults, an explicitly selected file, then environment.
 // It never discovers personal config, creates files, or acquires a config lock.
 // Variables use the DIFFX_SERVER_ prefix so they never configure the local CLI.
 func LoadServerFile(path string) (ServerValues, error) {
-	values := ServerValues{Host: "127.0.0.1", Port: DefaultServerPort, State: "data/state.db", Account: "admin", RetentionDays: 7}
+	values := ServerValues{Host: "127.0.0.1", Port: DefaultServerPort, State: "data/state.db", RetentionDays: 7}
 	if path == "" {
 		path = os.Getenv("DIFFX_SERVER_CONFIG")
 	}
@@ -56,7 +58,7 @@ func LoadServerFile(path string) (ServerValues, error) {
 	}{
 		{"DIFFX_SERVER_HOST", &values.Host},
 		{"DIFFX_SERVER_STATE", &values.State},
-		{"DIFFX_SERVER_ACCOUNT", &values.Account},
+		{"DIFFX_SERVER_USERNAME", &values.Username},
 	} {
 		if value, exists := os.LookupEnv(field.name); exists {
 			*field.target = value
@@ -71,6 +73,21 @@ func LoadServerFile(path string) (ServerValues, error) {
 	} {
 		if raw, exists := os.LookupEnv(field.name); exists {
 			value, err := strconv.Atoi(raw)
+			if err != nil {
+				return values, fmt.Errorf("invalid %s: %w", field.name, err)
+			}
+			*field.target = value
+		}
+	}
+	for _, field := range []struct {
+		name   string
+		target *bool
+	}{
+		{"DIFFX_SERVER_SIGNUP_ENABLED", &values.SignupEnabled},
+		{"DIFFX_SERVER_INSECURE_COOKIES", &values.InsecureCookies},
+	} {
+		if raw, exists := os.LookupEnv(field.name); exists {
+			value, err := strconv.ParseBool(raw)
 			if err != nil {
 				return values, fmt.Errorf("invalid %s: %w", field.name, err)
 			}

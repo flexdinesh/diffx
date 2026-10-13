@@ -13,6 +13,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { AccountButton } from "./account.tsx";
 import { DeleteContextButton } from "./DeleteContextButton.tsx";
 import { ProjectsToggle } from "./ProjectsNav.tsx";
 import { useDiffSource } from "./app-state.tsx";
@@ -143,6 +144,7 @@ export function Header() {
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
+        <AccountButton />
       </div>
     </header>
   );

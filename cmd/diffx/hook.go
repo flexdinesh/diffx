@@ -173,15 +173,22 @@ func parseHookEvent(arguments []string, stdin io.Reader, stdout io.Writer) (hook
 	}
 	// Workers inherit the scheduling process's environment. Different effective
 	// routes must never coalesce into a worker carrying another host's settings.
-	routing := sha256.New()
-	encoder := json.NewEncoder(routing)
+	routing, recovery := sha256.New(), sha256.New()
+	encoder, recoveryEncoder := json.NewEncoder(routing), json.NewEncoder(recovery)
 	for _, name := range []string{"DIFFX_REMOTE_URL", "DIFFX_REMOTE_TOKEN", "DIFFX_SOURCE_ID", "DIFFX_RUNTIME_DIR", "XDG_RUNTIME_DIR", "XDG_STATE_HOME", "XDG_CONFIG_HOME", "HOME", "USERPROFILE", "LOCALAPPDATA"} {
 		value, exists := os.LookupEnv(name)
-		if err := encoder.Encode([]interface{}{name, exists, value}); err != nil {
+		entry := []interface{}{name, exists, value}
+		if err := encoder.Encode(entry); err != nil {
 			return event, err
+		}
+		if name != "DIFFX_REMOTE_TOKEN" {
+			if err := recoveryEncoder.Encode(entry); err != nil {
+				return event, err
+			}
 		}
 	}
 	event.Routing = hex.EncodeToString(routing.Sum(nil))
+	event.RecoveryRouting = hex.EncodeToString(recovery.Sum(nil))
 	return event, nil
 }
 

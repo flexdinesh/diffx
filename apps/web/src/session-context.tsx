@@ -10,6 +10,8 @@ import {
   useState,
   type RefObject,
 } from "react";
+import { AccountButton } from "./account.tsx";
+import { useIdentity, navigate } from "./identity-context.tsx";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ProjectPicker, ProjectPickerTrigger } from "./ProjectPicker.tsx";
@@ -73,6 +75,9 @@ export function ContextSwitcher() {
 }
 
 export function SessionProvider({ children }: { children: ReactNode }) {
+  const { state: identity } = useIdentity();
+  const remote =
+    identity.status === "ready" && identity.bootstrap.mode === "remote";
   const [selectedId, setSelectedId] = useState(contextFromUrl);
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -214,6 +219,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 </a>
                 <Separator className="header-divider" orientation="vertical" />
                 <ContextSwitcher />
+                <div className="header-actions">
+                  <AccountButton />
+                </div>
               </header>
               <main
                 className="session-status"
@@ -232,11 +240,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 </h1>
                 <p>
                   {empty
-                    ? "Run diffx to review a checkout, or diffx sync to publish remotely."
+                    ? remote
+                      ? "Create a collector token in settings, then run diffx sync to publish your changes."
+                      : "Run diffx to review a checkout, or diffx sync to publish remotely."
                     : state.status === "error"
                       ? state.detail
                       : heads.error || "Reading review context…"}
                 </p>
+                {empty && remote && (
+                  <Button
+                    variant="outline"
+                    onClick={() => navigate("/settings")}
+                  >
+                    Create a collector token
+                  </Button>
+                )}
                 {(state.status === "error" || heads.error) && (
                   <Button
                     type="button"

@@ -74,7 +74,7 @@ func TestServerConfigReadsOnlyExplicitFiles(t *testing.T) {
 }
 
 func TestServerConfigRejectsMalformedFiles(t *testing.T) {
-	for _, raw := range []string{`null`, `[]`, `{"port":"7981"}`, `{"unknown":true}`, `{"server":"https://example.com"}`, `{} {}`, `{} trailing`} {
+	for _, raw := range []string{`null`, `[]`, `{"port":"7981"}`, `{"unknown":true}`, `{"password":"secret"}`, `{"token":"secret"}`, `{"account":"admin"}`, `{"server":"https://example.com"}`, `{} {}`, `{} trailing`} {
 		t.Run(raw, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "server.json")
 			if err := os.WriteFile(path, []byte(raw), 0o400); err != nil {

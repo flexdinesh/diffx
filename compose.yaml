@@ -9,10 +9,13 @@ services:
       DIFFX_SERVER_HOST: 0.0.0.0
       DIFFX_SERVER_PORT: "7980"
       DIFFX_SERVER_STATE: /data/state.db
-      DIFFX_SERVER_ACCOUNT: "${DIFFX_SERVER_ACCOUNT:-admin}"
       DIFFX_SERVER_RETENTION_DAYS: "${DIFFX_SERVER_RETENTION_DAYS:-7}"
-      # Bootstrap credential for a new database; empty generates one.
-      DIFFX_SERVER_TOKEN: "${DIFFX_SERVER_TOKEN:-}"
+      # Supply both for the first account; no default credentials are generated.
+      DIFFX_SERVER_USERNAME: "${DIFFX_SERVER_USERNAME:-}"
+      DIFFX_SERVER_PASSWORD: "${DIFFX_SERVER_PASSWORD:-}"
+      DIFFX_SERVER_SIGNUP_ENABLED: "${DIFFX_SERVER_SIGNUP_ENABLED:-false}"
+      # Loopback HTTP development only. Use false behind production HTTPS.
+      DIFFX_SERVER_INSECURE_COOKIES: "${DIFFX_SERVER_INSECURE_COOKIES:-true}"
     ports:
       # Only the published host port varies; local `diffx [PATH]` uses 7981-7990.
       - "127.0.0.1:${DIFFX_SERVER_PORT:-7980}:7980"
