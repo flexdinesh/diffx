@@ -293,6 +293,95 @@ test("file navigation scrolls to and retriggers a destination cue", async ({
   await expect(cue).toHaveCount(0);
 });
 
+test("scrolling selects the top file only when the previous diff leaves", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await page.goto("/");
+  const first = page.locator('#file-tree [data-path="config/diffx.json"]');
+  const second = page.locator('#file-tree [data-path="docs/legacy.md"]');
+  const firstDiff = page
+    .locator("#viewer diffs-container")
+    .filter({ hasText: "config/diffx.json" });
+  await expect(firstDiff.locator("[data-diffs-header]")).toBeVisible();
+  await first.click();
+  const boundary = await firstDiff.evaluate((element) => {
+    const scroller = document.querySelector(".diff-code-view");
+    if (!scroller) throw new Error("Missing diff scroller");
+    return (
+      element.getBoundingClientRect().bottom -
+      scroller.getBoundingClientRect().top +
+      scroller.scrollTop
+    );
+  });
+  const scroller = page.locator(".diff-code-view");
+  await scroller.evaluate((element, top) => {
+    element.scrollTop = top;
+  }, boundary - 1);
+  await expect(first).toHaveAttribute("aria-current", "true");
+  await expect(second).toHaveAttribute("aria-current", "false");
+  // The next header is already visible, but the final pixel still belongs to the first file.
+  await expect(
+    page
+      .locator("#viewer diffs-container")
+      .filter({ hasText: "docs/legacy.md" })
+      .locator("[data-diffs-header]"),
+  ).toBeVisible();
+  await scroller.evaluate((element, top) => {
+    element.scrollTop = top;
+  }, boundary + 1);
+  await expect(second).toHaveAttribute("aria-current", "true");
+  expect(await scroller.evaluate((element) => element.scrollTop)).toBeCloseTo(
+    boundary + 1,
+    0,
+  );
+  await scroller.evaluate((element, top) => {
+    element.scrollTop = top;
+  }, boundary - 1);
+  await expect(first).toHaveAttribute("aria-current", "true");
+  await scroller.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(first).toHaveAttribute("aria-current", "false");
+  await scroller.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await expect(first).toHaveAttribute("aria-current", "true");
+});
+
+test("scroll selection preserves collapsed diffs and works with filtered files", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await page.goto("/");
+  await page.getByRole("searchbox", { name: "Filter files" }).fill("src/");
+  const badge = page.locator(
+    '#file-tree [data-path="src/components/Badge.tsx"]',
+  );
+  const button = page.locator(
+    '#file-tree [data-path="src/components/Button.tsx"]',
+  );
+  await badge.click();
+  await page
+    .getByRole("button", {
+      name: "Collapse src/components/Badge.tsx",
+      exact: true,
+    })
+    .click();
+  await button.click();
+  await expect(button).toHaveAttribute("aria-current", "true");
+  await page.locator(".diff-code-view").evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await expect(badge).toHaveAttribute("aria-current", "true");
+  await expect(
+    page.getByRole("button", {
+      name: "Expand src/components/Badge.tsx",
+      exact: true,
+    }),
+  ).toBeVisible();
+});
+
 test("file frames preserve measured gutters, gaps, and virtual geometry", async ({
   page,
 }) => {

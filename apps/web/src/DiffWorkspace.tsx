@@ -162,6 +162,8 @@ export function DiffWorkspace() {
   const { collapsed, setCollapsed } = useDiffCollapse();
   const {
     files,
+    activePath,
+    selectVisibleFile,
     filter,
     setFilter,
     navigationTarget,
@@ -655,6 +657,27 @@ export function DiffWorkspace() {
             containerRef={viewport}
             ref={viewer}
             items={items}
+            onScroll={(scrollTop, instance) => {
+              const height = viewport.current?.clientHeight ?? 0;
+              // Use Pierre's full item offsets, including unmounted files.
+              // Keep the top file until its body (not just its header) leaves.
+              const visible = items.find((item, index) => {
+                const top = instance.getTopForItem(item.id);
+                const next = items[index + 1];
+                const nextTop = next
+                  ? instance.getTopForItem(next.id)
+                  : undefined;
+                const bottom =
+                  nextTop === undefined ? Infinity : nextTop - fileSpacing;
+                return (
+                  top !== undefined &&
+                  top < scrollTop + height &&
+                  bottom > scrollTop
+                );
+              });
+              if (visible && visible.id !== activePath)
+                selectVisibleFile(visible.id);
+            }}
             options={options}
             style={{ height: "100%", width: "100%", overflow: "auto" }}
             renderHeaderPrefix={(item) => (
