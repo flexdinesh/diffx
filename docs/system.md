@@ -53,7 +53,7 @@ conversation.
 
 `diffx-server` runs directly or as the same binary inside a container. It resolves
 deployment config without reading or writing personal CLI settings. Container
-defaults come from env vars, with SQLite and generated credentials under `/data`.
+defaults come from env vars, with SQLite and credential hashes under `/data`.
 Compose mounts a named volume and publishes HTTP on host loopback; stopping or
 recreating the container preserves data. Only one process may own that database.
 
@@ -151,6 +151,30 @@ records; producer paths do not identify server files.
 | Provenance           | Repository name, remote URL, path, worktree name, branch, HEAD, resolved comparison, hostname, harness/session, triggering directory, trigger, collection time and collector version.           |
 | Stored time          | Server timestamp used for catalog ordering; separate from the producer's collection timestamp.                                                                                                  |
 
+Accounts have stable opaque IDs independent of username, passwords, browser
+sessions and API tokens. Username matching is case-insensitive and usernames are
+fixed in this version. Local mode automatically resolves one stable OS-backed
+owner; users never manage local identity. Remote mode uses username/password
+login. Signup is disabled unless explicitly enabled; operator provisioning
+remains available. Bootstrap username/password creates the first account once,
+never replaces changed passwords, and never generates default credentials.
+
+Passwords use salted Argon2id hashes. Browser login creates a revocable opaque
+seven-day server-side session in an HttpOnly, Secure, SameSite=Lax cookie. Unsafe
+browser requests require a session CSRF token, including account management.
+Password changes revoke existing sessions. Login/signup admission is bounded and
+login failures do not disclose whether a username exists. Plain HTTP development
+must explicitly opt into insecure cookies; production uses HTTPS.
+
+Users create multiple named API tokens in Settings. Secrets appear only on
+creation; SQLite stores their hashes and expiry/revocation metadata. Expiry
+defaults to 90 days and is selectable from 1–365 days. Two fixed presets apply:
+`collector` permits ingestion, job polling, health and reconciliation catalog/
+context metadata reads; `api` permits the owner's review REST/MCP, events and
+ingestion. Neither preset permits account, password or token management. Those
+operations require a browser session. Revocation and expiry take effect at
+authentication; rotating credentials does not change account or replay identity.
+
 Each authenticated user can receive observations
 from many containers, including identical branch and path names. Source, session
 and checkout metadata preserve their differences. Provenance describes what a
@@ -210,6 +234,14 @@ payloads reuse their original submission ID; stale saved collections require a
 fresh submission to advance the stream head. Expired or deleted contexts are
 recollected rather than suppressed.
 
+Authenticated health establishes a destination identity bound to both account
+and database. Verified pending payloads and acknowledgements use that identity,
+so another token for the same account can recover uploads without changing replay
+identity. Other accounts and databases remain separate. Offline captures whose
+owner has not yet been verified stay bound to their original credential until
+successful authentication transfers them to the verified destination; a rotated
+credential cannot claim unknown-owner payloads.
+
 Hook workers persist bounded immutable pending payloads and acknowledgements.
 They retry after subsequent triggers or `collector retry`; no perpetual upload
 process or guarantee that an agent hook will run exists. Local acknowledgements
@@ -226,10 +258,12 @@ Local and remote deployment share application/storage contracts and the HTTP
 runtime. Local-only lifecycle discovery is authenticated, private and limited to
 status/shutdown for foreground snapshots. Collection in those sessions never uses HTTP.
 
-Remote credentials establish owner identity. REST, MCP, ingestion jobs, job status
-and browser assets require authentication. Plugins never fall back to local
-routing. Production terminates TLS at the deployment boundary and mounts a
-persistent database volume.
+Remote credentials establish owner identity before review REST, MCP, ingestion
+jobs, job status or events can access data. Browser assets and mode/login bootstrap
+remain accessible so unauthenticated users can sign in. Settings remain accessible
+without reviews; creating a collector token supplies `remote.url`/`remote.token`
+configuration. Plugins never fall back to local routing. Production terminates
+TLS at the deployment boundary and mounts a persistent database volume.
 
 ## Extension direction
 

@@ -22,6 +22,7 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/collector"
 	"github.com/flexdinesh/diffx/internal/contextservice"
+	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/ingestionqueue"
 	"github.com/flexdinesh/diffx/internal/mcpapi"
@@ -32,8 +33,6 @@ import (
 	"github.com/flexdinesh/diffx/internal/testsupport"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-const token = "test-token-at-least-thirty-two-bytes-long"
 
 type deployment struct {
 	server *httptest.Server
@@ -52,20 +51,46 @@ func start(t *testing.T, state string, remote bool) deployment {
 	assets := fstest.MapFS{"index.html": {Data: []byte("stored review UI")}}
 	var handler http.Handler
 	var closeService func() error
-	identity, credential := "local-test", ""
+	var user reviewstore.User
+	credential := ""
 	if remote {
-		identity, credential = "account:team", token
-	}
-	user, err := store.User(identity, "team")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if remote {
-		handler, closeService, err = remoteserver.Handler(t.Context(), store, "team", token, assets)
+		identity := identityservice.New(store)
+		accounts, err := identity.Accounts(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var account identityservice.Account
+		if len(accounts) == 0 {
+			account, err = identity.Provision(t.Context(), "team", "test-password-at-least-twelve-characters")
+			if err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			for _, existing := range accounts {
+				if existing.Username == "team" {
+					account = existing
+					break
+				}
+			}
+			if account.ID == "" {
+				t.Fatal("persisted deployment lost team account")
+			}
+		}
+		created, err := identity.CreateToken(t.Context(), account.ID, "boundary tests", identityservice.PurposeAPI, time.Time{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		user = reviewstore.User{ID: account.ID, Name: account.Username}
+		credential = created.Secret
+		handler, closeService, err = remoteserver.Handler(t.Context(), store, remoteserver.Settings{}, assets)
 		if err != nil {
 			t.Fatal(err)
 		}
 	} else {
+		user, err = store.User("local-test", "team")
+		if err != nil {
+			t.Fatal(err)
+		}
 		service := contextservice.NewWithContext(t.Context(), store, user)
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)

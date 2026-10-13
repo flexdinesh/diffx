@@ -80,6 +80,8 @@ export function useContextCatalog(
     events.addEventListener("message", update);
     events.addEventListener("ingestion", update);
     events.addEventListener("open", update);
+    // EventSource hides HTTP status; a normal API read resolves expired identity.
+    events.addEventListener("error", update);
     const visible = () => {
       if (!document.hidden) void load();
     };

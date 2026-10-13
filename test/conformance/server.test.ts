@@ -56,7 +56,7 @@ async function waitForServer(
   let lastError: unknown;
   for (let attempt = 0; attempt < 80; attempt++) {
     try {
-      const response = await fetch(`${url}/openapi.yaml`, { headers });
+      const response = await fetch(`${url}/api/v2/bootstrap`, { headers });
       if (response.ok) return;
     } catch (error) {
       lastError = error;
@@ -86,6 +86,14 @@ test("Go distribution implements the API contract", async (t) => {
   const url = `http://127.0.0.1:${port}`;
   await waitForServer(url);
   const client = createApiClient({ baseUrl: url });
+  const localBootstrap = await client.GET("/api/v2/bootstrap");
+  conforms("Bootstrap", localBootstrap.data);
+  assert.deepEqual(localBootstrap.data, {
+    mode: "local",
+    signupEnabled: false,
+    user: null,
+    csrfToken: null,
+  });
   const health = await client.GET("/api/v2/health");
   assert.equal(health.data?.ingestionEnabled, false);
   assert.equal(health.data?.queuedIngestion, false);
@@ -234,16 +242,83 @@ test("Go distribution implements the API contract", async (t) => {
   assert.equal(localJob.response.status, 404);
 
   const remotePort = await freePort();
-  const token = "diffx-contract-test-token-000001";
   const remoteServer = spawn(
     remoteBinary,
     ["--listen", `127.0.0.1:${remotePort}`, "--state", "memory"],
-    { stdio: "ignore", env: { ...process.env, DIFFX_SERVER_TOKEN: token } },
+    {
+      stdio: "ignore",
+      env: {
+        ...process.env,
+        DIFFX_SERVER_USERNAME: "contract-user",
+        DIFFX_SERVER_PASSWORD: "contract-password-000001",
+        DIFFX_SERVER_SIGNUP_ENABLED: "false",
+        DIFFX_SERVER_INSECURE_COOKIES: "true",
+      },
+    },
   );
   t.after(() => remoteServer.kill("SIGTERM"));
   const remoteUrl = `http://127.0.0.1:${remotePort}`;
-  await waitForServer(remoteUrl, { Authorization: `Bearer ${token}` });
+  await waitForServer(remoteUrl);
   const remote = createApiClient({ baseUrl: remoteUrl });
+  const remoteBootstrap = await remote.GET("/api/v2/bootstrap");
+  conforms("Bootstrap", remoteBootstrap.data);
+  assert.deepEqual(remoteBootstrap.data, {
+    mode: "remote",
+    signupEnabled: false,
+    user: null,
+    csrfToken: null,
+  });
+  const disabledSignup = await remote.POST("/api/v2/auth/signup", {
+    body: { username: "second-user", password: "contract-password-000002" },
+  });
+  assert.equal(disabledSignup.response.status, 403);
+  const login = await remote.POST("/api/v2/auth/login", {
+    body: {
+      username: "contract-user",
+      password: "contract-password-000001",
+    },
+  });
+  assert.equal(login.response.status, 200);
+  conforms("Bootstrap", login.data);
+  assert.ok(login.data?.mode === "remote");
+  assert.equal(login.data?.user?.username, "contract-user");
+  const csrf = login.data?.csrfToken;
+  assert.ok(csrf);
+  const cookie = login.response.headers.get("set-cookie")?.split(";")[0];
+  assert.ok(cookie);
+  const accountHeaders = { Cookie: cookie, "X-CSRF-Token": csrf };
+  const missingCSRF = await remote.POST("/api/v2/account/tokens", {
+    headers: { Cookie: cookie },
+    body: { name: "Denied", purpose: "api", expiresInDays: 90 },
+  });
+  assert.equal(missingCSRF.response.status, 403);
+  const createdToken = await remote.POST("/api/v2/account/tokens", {
+    headers: accountHeaders,
+    body: { name: "Contract API", purpose: "api", expiresInDays: 90 },
+  });
+  assert.equal(createdToken.response.status, 201);
+  conforms("AccountToken", createdToken.data?.token);
+  assert.ok(createdToken.data?.secret);
+  const token = createdToken.data.secret;
+  const collectorToken = await remote.POST("/api/v2/account/tokens", {
+    headers: accountHeaders,
+    body: {
+      name: "Contract collector",
+      purpose: "collector",
+      expiresInDays: 90,
+    },
+  });
+  assert.equal(collectorToken.response.status, 201);
+  conforms("AccountToken", collectorToken.data?.token);
+  assert.ok(collectorToken.data?.secret);
+  const collectorSecret = collectorToken.data.secret;
+  const collector = createApiClient({ baseUrl: remoteUrl });
+  collector.use({
+    onRequest({ request }) {
+      request.headers.set("Authorization", `Bearer ${collectorSecret}`);
+      return request;
+    },
+  });
   const unauthenticated = await remote.GET("/api/v2/health");
   assert.equal(unauthenticated.response.status, 401);
   remote.use({
@@ -255,7 +330,9 @@ test("Go distribution implements the API contract", async (t) => {
   const remoteHealth = await remote.GET("/api/v2/health");
   assert.equal(remoteHealth.data?.ingestionEnabled, true);
   assert.equal(remoteHealth.data?.queuedIngestion, true);
-  const ingested = await remote.POST("/api/v2/ingestion-jobs", { body });
+  const bearerAccount = await remote.GET("/api/v2/account/tokens");
+  assert.equal(bearerAccount.response.status, 403);
+  const ingested = await collector.POST("/api/v2/ingestion-jobs", { body });
   assert.equal(ingested.response.status, 202);
   assert.ok(ingested.data);
   conforms("IngestionJob", ingested.data);
@@ -272,6 +349,17 @@ test("Go distribution implements the API contract", async (t) => {
   assert.equal(job.state, "succeeded");
   assert.ok(job.contextId);
   assert.notEqual(job.contextId, contextId);
+  const reconciliation = await collector.GET("/api/v2/contexts/{contextId}", {
+    params: { path: { contextId: job.contextId } },
+  });
+  assert.equal(reconciliation.response.status, 200);
+  const collectorReview = await collector.GET(
+    "/api/v2/contexts/{contextId}/comments",
+    {
+      params: { path: { contextId: job.contextId } },
+    },
+  );
+  assert.equal(collectorReview.response.status, 403);
   const replay = await remote.POST("/api/v2/ingestion-jobs", { body });
   assert.deepEqual(replay.data, job);
 
@@ -298,4 +386,14 @@ test("Go distribution implements the API contract", async (t) => {
     },
   });
   assert.equal(conflict.response.status, 409);
+  const revoked = await createApiClient({ baseUrl: remoteUrl }).DELETE(
+    "/api/v2/account/tokens/{tokenId}",
+    {
+      headers: accountHeaders,
+      params: { path: { tokenId: collectorToken.data.token.id } },
+    },
+  );
+  assert.equal(revoked.response.status, 204);
+  const revokedHealth = await collector.GET("/api/v2/health");
+  assert.equal(revokedHealth.response.status, 401);
 });

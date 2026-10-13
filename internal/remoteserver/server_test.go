@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,12 +15,27 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/collector"
+	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/testsupport"
 )
 
-const testToken = "remote-test-credential-at-least-thirty-two-bytes"
+const testPassword = "test-password-at-least-twelve-bytes"
+
+func provisionToken(t *testing.T, store *reviewstore.Store, name string, purpose identityservice.Purpose) string {
+	t.Helper()
+	identity := identityservice.New(store)
+	account, err := identity.Provision(t.Context(), name, testPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := identity.CreateToken(t.Context(), account.ID, "test", purpose, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return token.Secret
+}
 
 func TestRemoteAuthenticationCoversUIAPIAndMCP(t *testing.T) {
 	store, err := reviewstore.Open("")
@@ -29,51 +43,46 @@ func TestRemoteAuthenticationCoversUIAPIAndMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler, closeService, err := Handler(t.Context(), store, "account", testToken, fstest.MapFS{"index.html": {Data: []byte("review dashboard")}})
+	token := provisionToken(t, store, "account", identityservice.PurposeAPI)
+	handler, closeService, err := Handler(t.Context(), store, Settings{}, fstest.MapFS{"index.html": {Data: []byte("review dashboard")}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer closeService()
-	for _, path := range []string{"/", "/api/v2/contexts", "/mcp", "/api/v2/events", "/api/v2/ingestions", "/api/v2/ingestion-jobs", "/api/v2/ingestion-jobs/unknown"} {
-		for _, auth := range []string{"", "Bearer wrong", "bearer " + testToken} {
-			r := httptest.NewRequest("GET", path, nil)
+	for _, p := range []string{"/", "/settings", "/api/v2/bootstrap"} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("GET", p, nil))
+		if w.Code != 200 {
+			t.Fatalf("public %s: %d", p, w.Code)
+		}
+	}
+	for _, p := range []string{"/api/v2/contexts", "/mcp", "/api/v2/events", "/api/v2/ingestion-jobs/unknown"} {
+		for _, auth := range []string{"", "Bearer wrong", "bearer " + token} {
+			r := httptest.NewRequest("GET", p, nil)
 			r.Header.Set("Authorization", auth)
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, r)
-			if w.Code != 401 || w.Header().Get("WWW-Authenticate") == "" {
-				t.Fatalf("unauthenticated %s: %d", path, w.Code)
+			if w.Code != 401 {
+				t.Fatalf("unauthenticated %s: %d", p, w.Code)
 			}
 		}
 	}
-	for _, basic := range []bool{false, true} {
-		r := httptest.NewRequest("GET", "/api/v2/contexts", nil)
-		if basic {
-			r.SetBasicAuth("account", testToken)
-		} else {
-			r.Header.Set("Authorization", "Bearer "+testToken)
-		}
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, r)
-		if w.Code != 200 || !strings.Contains(w.Body.String(), `"contexts":[]`) {
-			t.Fatalf("authorized query basic=%v: %d %s", basic, w.Code, w.Body.String())
-		}
-		if w.Header().Get("Referrer-Policy") != "no-referrer" || w.Header().Get("Cache-Control") != "no-store" {
-			t.Fatalf("credentialed cache/referrer headers: %v", w.Header())
-		}
-	}
-	r := httptest.NewRequest("GET", "/", nil)
-	r.SetBasicAuth("account", testToken)
+	r := httptest.NewRequest("GET", "/api/v2/contexts", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "review dashboard") {
-		t.Fatalf("browser basic auth: %d %s", w.Code, w.Body.String())
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"contexts":[]`) {
+		t.Fatalf("authorized catalog: %d %s", w.Code, w.Body.String())
 	}
-	r = httptest.NewRequest("GET", "/", nil)
-	r.SetBasicAuth("other", testToken)
+	if w.Header().Get("Referrer-Policy") != "no-referrer" || w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("credentialed cache/referrer headers missing")
+	}
+	r = httptest.NewRequest("GET", "/api/v2/contexts", nil)
+	r.SetBasicAuth("account", token)
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
 	if w.Code != 401 {
-		t.Fatalf("foreign account authentication: %d", w.Code)
+		t.Fatal("retired Basic auth accepted")
 	}
 }
 
@@ -83,12 +92,8 @@ func TestMultiUserRESTMCPAndEventIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	otherToken := strings.Repeat("other-token-", 4)
-	for name, token := range map[string]string{"admin": testToken, "other": otherToken} {
-		if _, err := store.ProvisionUser(name, token); err != nil {
-			t.Fatal(err)
-		}
-	}
+	testToken := provisionToken(t, store, "admin", identityservice.PurposeAPI)
+	otherToken := provisionToken(t, store, "other", identityservice.PurposeAPI)
 	handler, closeServices, err := MultiHandler(t.Context(), store, fstest.MapFS{"index.html": {Data: []byte("reviews")}})
 	if err != nil {
 		t.Fatal(err)
@@ -225,18 +230,13 @@ func TestMultiUserRESTMCPAndEventIsolation(t *testing.T) {
 			t.Fatalf("own MCP: %d", response.StatusCode)
 		}
 	}
-	// Basic auth must match both account and credential, including empty names.
 	for _, name := range []string{"admin", "", "other"} {
 		r := httptest.NewRequest("GET", "/api/v2/contexts", nil)
 		r.SetBasicAuth(name, testToken)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, r)
-		expected := 401
-		if name == "admin" {
-			expected = 200
-		}
-		if w.Code != expected {
-			t.Fatalf("Basic account %q: %d", name, w.Code)
+		if w.Code != 401 {
+			t.Fatal("Basic accepted")
 		}
 	}
 	for _, value := range []string{"", "Bearer wrong", "bearer " + testToken} {
@@ -250,29 +250,23 @@ func TestMultiUserRESTMCPAndEventIsolation(t *testing.T) {
 	}
 }
 
-func TestGeneratedAdminBootstrapSurvivesRestart(t *testing.T) {
+func TestPasswordBootstrapSurvivesRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	store, err := reviewstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var reported string
-	settings := Settings{State: path, BootstrapReady: func(path string) { reported = path }}
-	if err := bootstrap(store, settings); err != nil {
+	settings := Settings{Username: "admin", Password: testPassword}
+	identity := identityservice.New(store)
+	if err := bootstrap(t.Context(), identity, settings); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(reported)
+	session, err := identity.Login(t.Context(), "admin", testPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
-	credential := strings.TrimSpace(string(raw))
-	user, err := store.AuthenticateToken(credential)
-	if err != nil || user.Name != "admin" {
-		t.Fatalf("bootstrap: %+v %v", user, err)
-	}
-	info, err := os.Stat(reported)
-	if err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("credential permissions: %v", err)
+	if err := identity.ChangePassword(t.Context(), session.Account.ID, testPassword, "changed-password-123"); err != nil {
+		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
@@ -282,36 +276,32 @@ func TestGeneratedAdminBootstrapSurvivesRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	if err := bootstrap(store, settings); err != nil {
+	identity = identityservice.New(store)
+	if err := bootstrap(t.Context(), identity, settings); err != nil {
 		t.Fatal(err)
 	}
-	again, err := store.AuthenticateToken(credential)
-	if err != nil || again != user {
-		t.Fatalf("restart: %+v %v", again, err)
+	if _, err := identity.Login(t.Context(), "admin", testPassword); err == nil {
+		t.Fatal("restart replaced changed password")
 	}
-	if err := bootstrap(store, Settings{State: path, Account: "admin", Token: strings.Repeat("wrong", 10)}); err == nil {
-		t.Fatal("overwrote bootstrap credential")
-	}
-	var users []reviewstore.User
-	if users, err = store.RemoteUsers(); err != nil || len(users) != 1 {
-		t.Fatalf("restart created extra user: %+v %v", users, err)
+	again, err := identity.Login(t.Context(), "admin", "changed-password-123")
+	if err != nil || again.Account.ID != session.Account.ID {
+		t.Fatalf("restart identity: %+v %v", again, err)
 	}
 }
-
-func TestMemoryBootstrapRequiresExplicitCredential(t *testing.T) {
+func TestEmptyServerRequiresExplicitIdentityPolicy(t *testing.T) {
 	store, err := reviewstore.Open("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	if err := bootstrap(store, Settings{State: ":memory:"}); err == nil {
-		t.Fatal("generated undiscoverable memory credential")
+	identity := identityservice.New(store)
+	for _, settings := range []Settings{{}, {Username: "admin"}, {Password: testPassword}} {
+		if err := bootstrap(t.Context(), identity, settings); err == nil {
+			t.Fatal("missing policy accepted")
+		}
 	}
-	if err := bootstrap(store, Settings{State: ":memory:", Token: testToken}); err != nil {
+	if err := bootstrap(t.Context(), identity, Settings{SignupEnabled: true}); err != nil {
 		t.Fatal(err)
-	}
-	if user, err := store.AuthenticateToken(testToken); err != nil || user.Name != "admin" {
-		t.Fatalf("explicit memory token: %+v %v", user, err)
 	}
 }
 
@@ -329,19 +319,6 @@ func TestRetentionDurationValidation(t *testing.T) {
 	}
 }
 
-func TestRemoteRejectsMissingIdentityOrInvalidCredentials(t *testing.T) {
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	for _, tc := range []struct{ account, token string }{{"", testToken}, {" ", testToken}, {"account\n", testToken}, {"account", testToken + "\r"}} {
-		if _, _, err := Handler(t.Context(), store, tc.account, tc.token, fstest.MapFS{}); err == nil {
-			t.Fatalf("invalid remote identity accepted: account=%q", tc.account)
-		}
-	}
-}
-
 func TestRemoteRunShutdownClosesActiveEventStream(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	ctx, cancel := context.WithCancel(t.Context())
@@ -349,7 +326,7 @@ func TestRemoteRunShutdownClosesActiveEventStream(t *testing.T) {
 	ready := make(chan string, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, Settings{Listen: "127.0.0.1:0", State: filepath.Join(t.TempDir(), "reviews.sqlite"), Account: "account", Token: testToken}, func(address string) { ready <- address })
+		done <- Run(ctx, Settings{Listen: "127.0.0.1:0", State: filepath.Join(t.TempDir(), "reviews.sqlite"), Username: "account", Password: testPassword, InsecureCookies: true}, func(address string) { ready <- address })
 	}()
 	var address string
 	select {
@@ -363,8 +340,15 @@ func TestRemoteRunShutdownClosesActiveEventStream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r.Header.Set("Authorization", "Bearer "+testToken)
 	client := &http.Client{Timeout: 3 * time.Second}
+	login, err := client.Post("http://"+address+"/api/v2/auth/login", "application/json", strings.NewReader(`{"username":"account","password":"`+testPassword+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	login.Body.Close()
+	for _, cookie := range login.Cookies() {
+		r.AddCookie(cookie)
+	}
 	response, err := client.Do(r)
 	if err != nil {
 		t.Fatal(err)

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,87 +12,59 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/collector"
-	"github.com/flexdinesh/diffx/internal/ingestion"
+	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/mcpapi"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/testsupport"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func TestRunDefaultAdminPersistsAcrossRestart(t *testing.T) {
+func TestRunPasswordAccountPersistsAcrossRestart(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state.db")
-	var token, originalStateID string
+	var accountID string
 	for attempt := 0; attempt < 2; attempt++ {
 		ctx, cancel := context.WithCancel(t.Context())
 		ready, done := make(chan string, 1), make(chan error, 1)
-		bootstrapPath := make(chan string, 1)
 		go func() {
-			done <- Run(ctx, Settings{State: state, Listen: "127.0.0.1:0", BootstrapReady: func(path string) { bootstrapPath <- path }}, func(address string) { ready <- address })
+			done <- Run(ctx, Settings{State: state, Listen: "127.0.0.1:0", Username: "admin", Password: testPassword, InsecureCookies: true}, func(address string) { ready <- address })
 		}()
-		stop := func() {
-			cancel()
-			select {
-			case err := <-done:
-				if err != nil {
-					t.Fatal(err)
-				}
-			case <-time.After(3 * time.Second):
-				t.Fatal("server shutdown timed out")
-			}
-		}
 		var address string
 		select {
 		case address = <-ready:
 		case err := <-done:
 			cancel()
-			t.Fatalf("server startup failed: %v", err)
+			t.Fatalf("start: %v", err)
 		case <-time.After(3 * time.Second):
 			cancel()
-			t.Fatal("server startup timed out")
+			t.Fatal("startup timeout")
 		}
-		if attempt == 0 {
-			select {
-			case path := <-bootstrapPath:
-				if path != state+".admin-token" {
-					stop()
-					t.Fatal("unexpected credential path")
-				}
-				raw, err := os.ReadFile(path)
-				if err != nil {
-					stop()
-					t.Fatal(err)
-				}
-				token = strings.TrimSpace(string(raw))
-			default:
-				stop()
-				t.Fatal("bootstrap credential path was not reported")
-			}
-		}
-		request, err := http.NewRequestWithContext(t.Context(), "GET", "http://"+address+"/api/v2/health", nil)
+		response, err := (&http.Client{Timeout: 3 * time.Second}).Post("http://"+address+"/api/v2/auth/login", "application/json", strings.NewReader(`{"username":"admin","password":"`+testPassword+`"}`))
 		if err != nil {
-			stop()
+			cancel()
 			t.Fatal(err)
 		}
-		request.Header.Set("Authorization", "Bearer "+token)
-		response, err := (&http.Client{Timeout: 3 * time.Second}).Do(request)
-		if err != nil {
-			stop()
-			t.Fatal(err)
-		}
-		var health ingestion.Health
-		err = json.NewDecoder(response.Body).Decode(&health)
+		var result bootstrapJSON
+		err = json.NewDecoder(response.Body).Decode(&result)
 		response.Body.Close()
-		if err != nil || response.StatusCode != 200 || health.StateID == "" {
-			stop()
-			t.Fatalf("persisted admin authentication failed: status %d error %v", response.StatusCode, err)
+		if err != nil || response.StatusCode != 200 || result.User == nil {
+			cancel()
+			t.Fatalf("login: %v status%d", err, response.StatusCode)
 		}
 		if attempt == 0 {
-			originalStateID = health.StateID
-		} else if originalStateID != health.StateID {
-			stop()
-			t.Fatal("restart changed authenticated user identity")
+			accountID = result.User.ID
+		} else if accountID != result.User.ID {
+			cancel()
+			t.Fatal("restart changed identity")
 		}
-		stop()
+		cancel()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("shutdown timeout")
+		}
 	}
 }
 
@@ -114,12 +85,7 @@ func TestGlobalMCPOwnershipAcrossUsers(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	tokens := []string{strings.Repeat("a", 40), strings.Repeat("b", 40)}
-	for index, name := range []string{"admin", "other"} {
-		if _, err := store.ProvisionUser(name, tokens[index]); err != nil {
-			t.Fatal(err)
-		}
-	}
+	tokens := []string{provisionToken(t, store, "admin", identityservice.PurposeAPI), provisionToken(t, store, "other", identityservice.PurposeAPI)}
 	handler, closeServices, err := MultiHandler(t.Context(), store, fstest.MapFS{})
 	if err != nil {
 		t.Fatal(err)

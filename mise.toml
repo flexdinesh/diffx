@@ -145,7 +145,7 @@ run = [
     "check:boundaries",
     "check:design",
   ] },
-  "go test ./tools/check-boundaries ./internal/review ./internal/session ./internal/contextservice ./internal/reviewservice ./internal/reviewstore ./internal/controlapi ./internal/ingestion ./internal/ingestionqueue ./internal/submission ./internal/serverapp ./internal/remoteserver ./test/conformance",
+  "go test ./tools/check-boundaries ./internal/review ./internal/session ./internal/contextservice ./internal/reviewservice ./internal/identityservice ./internal/reviewstore ./internal/controlapi ./internal/ingestion ./internal/ingestionqueue ./internal/submission ./internal/serverapp ./internal/remoteserver ./test/conformance",
   "node --test test/contracts/*.test.ts",
 ]
 

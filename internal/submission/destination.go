@@ -33,7 +33,8 @@ func Resolve(ctx context.Context, endpoint, token string) (*Destination, error) 
 	if !health.QueuedIngestion {
 		return nil, errors.New("server requires queued ingestion")
 	}
-	digest := sha256.Sum256([]byte(token))
+	// Credentials can rotate while immutable uploads remain pinned to their owner.
+	digest := sha256.Sum256([]byte(health.StateID))
 	return &Destination{Endpoint: endpoint, Token: token, client: client, Target: Target{Destination: "remote:" + strings.TrimRight(endpoint, "/") + ":" + hex.EncodeToString(digest[:]), Identity: health.StateID}}, nil
 }
 func (target *Destination) Current(ctx context.Context, id string) (bool, error) {

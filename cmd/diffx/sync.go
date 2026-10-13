@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/flexdinesh/diffx/internal/collector"
@@ -113,16 +114,75 @@ func runSync(ctx context.Context, arguments []string, stdin *os.File, stdout, st
 			}
 		}
 	}
+	progress.show("Upload · connecting")
+	target, err := submission.Resolve(ctx, values.server, values.token)
+	if err != nil {
+		return err
+	}
+	// Unknown-owner captures stay bound to the collecting credential. Once health
+	// establishes the owner, persist under that identity before any upload so a
+	// replacement credential can recover the exact attempted payload.
+	provisional := box
+	box, err = submission.Open(ctx, filepath.Dir(state), target.Target.Destination)
+	if err != nil {
+		return err
+	}
+	defer box.Close()
+	verified, err := box.Pending()
+	if err != nil {
+		return err
+	}
+	for index := 0; index < len(pending); index++ {
+		item := pending[index]
+		if item.StateID != "" && item.StateID != target.Target.Identity {
+			failures = append(failures, fmt.Errorf("submission %s belongs to another server database; retained for recovery", item.Request.SubmissionID))
+			if item.Request.SubmissionID == reusedSubmission {
+				freshItem := submission.Pending{Request: fresh}
+				if err := provisional.Save(freshItem); err != nil {
+					return err
+				}
+				pending = append(pending, freshItem)
+			}
+			continue
+		}
+		found := false
+		for _, existing := range verified {
+			if existing.Request.SubmissionID == item.Request.SubmissionID {
+				if !reflect.DeepEqual(existing.Request, item.Request) || existing.StateID != target.Target.Identity {
+					return fmt.Errorf("submission %s conflicts with retained payload", item.Request.SubmissionID)
+				}
+				found = true
+				break
+			}
+		}
+		if !found && !values.retry && item.Request.SubmissionID == fresh.SubmissionID {
+			// A new collection can recover an immutable attempted submission.
+			fingerprint := syncFingerprint(item.Request)
+			for _, existing := range verified {
+				if fingerprint != "" && syncFingerprint(existing.Request) == fingerprint {
+					reusedSubmission = existing.Request.SubmissionID
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			item.StateID = target.Target.Identity
+			if err := box.Save(item); err != nil {
+				return err
+			}
+			verified = append(verified, item)
+		}
+		if err := provisional.Remove(item.Request.SubmissionID); err != nil {
+			return err
+		}
+	}
+	pending = verified
 	if len(pending) == 0 {
 		if len(failures) > 0 {
 			return errors.Join(failures...)
 		}
 		return errors.New("no pending submissions")
-	}
-	progress.show("Upload · connecting")
-	target, err := submission.Resolve(ctx, values.server, values.token)
-	if err != nil {
-		return err
 	}
 	target.Progress = func(job ingestion.Job) {
 		progress.show(fmt.Sprintf("Ingest · %s · attempt %d", job.State, job.Attempt))

@@ -6,6 +6,238 @@ info:
 servers:
   - url: /
 paths:
+  /api/v2/bootstrap:
+    get:
+      operationId: getBootstrap
+      description: Public deployment mode and current browser identity. Local mode supplies identity internally and exposes no account management.
+      responses:
+        "200":
+          description: Deployment and browser session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bootstrap"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/auth/login:
+    post:
+      operationId: login
+      description: Distributed only. Same-origin JSON request; creates a browser session. Signup requires explicit server configuration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordCredentials"
+      responses:
+        "200":
+          description: Authenticated browser identity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bootstrap"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/auth/signup:
+    post:
+      operationId: signup
+      description: Distributed only. Same-origin JSON request; creates a browser session. Signup requires explicit server configuration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordCredentials"
+      responses:
+        "200":
+          description: Authenticated browser identity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bootstrap"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/auth/logout:
+    post:
+      security:
+        - browserSession: []
+      operationId: logout
+      description: Revoke the current browser session. Requires its CSRF token.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Session revoked.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/account/password:
+    put:
+      security:
+        - browserSession: []
+      operationId: changePassword
+      description: Verify the current password, change it, and revoke all browser sessions. Distributed browser sessions only.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                newPassword:
+                  type: string
+      responses:
+        "204":
+          description: Password changed; sign in again.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/account/tokens:
+    get:
+      security:
+        - browserSession: []
+      operationId: listAccountTokens
+      description: List current account credential metadata; never returns secrets. Distributed browser sessions only.
+      responses:
+        "200":
+          description: Tokens owned by the authenticated account.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [tokens]
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AccountToken"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      security:
+        - browserSession: []
+      operationId: createAccountToken
+      description: Create a fixed collector or review API credential. The secret is returned once. Distributed browser sessions only.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, purpose, expiresInDays]
+              properties:
+                name:
+                  type: string
+                  description: Non-empty label, at most 64 UTF-8 bytes.
+                purpose:
+                  type: string
+                  enum: [collector, api]
+                expiresInDays:
+                  type: integer
+                  minimum: 1
+                  maximum: 365
+      responses:
+        "201":
+          description: Newly created credential and its one-time secret.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [token, secret]
+                properties:
+                  token:
+                    $ref: "#/components/schemas/AccountToken"
+                  secret:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/account/tokens/{tokenId}:
+    delete:
+      security:
+        - browserSession: []
+      operationId: revokeAccountToken
+      description: Revoke an account token immediately. Distributed browser sessions only.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - in: path
+          name: tokenId
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Credential revoked.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v2/health:
     get:
       operationId: getIngestionHealth
@@ -575,7 +807,18 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
+    browserSession:
+      type: apiKey
+      in: cookie
+      name: diffx_session
   parameters:
+    CsrfToken:
+      in: header
+      name: X-CSRF-Token
+      required: false
+      description: Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials.
+      schema:
+        type: string
     ContextId:
       name: contextId
       in: path
@@ -632,6 +875,76 @@ components:
           schema:
             $ref: "#/components/schemas/Problem"
   schemas:
+    AccountUser:
+      type: object
+      additionalProperties: false
+      required: [id, username]
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+    Bootstrap:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [mode, signupEnabled, user, csrfToken]
+          properties:
+            mode:
+              type: string
+              enum: [local]
+            signupEnabled:
+              type: boolean
+              enum: [false]
+            user:
+              type: "null"
+            csrfToken:
+              type: "null"
+        - type: object
+          additionalProperties: false
+          required: [mode, signupEnabled, user, csrfToken]
+          properties:
+            mode:
+              type: string
+              enum: [remote]
+            signupEnabled:
+              type: boolean
+            user:
+              oneOf:
+                - $ref: "#/components/schemas/AccountUser"
+                - type: "null"
+            csrfToken:
+              type: [string, "null"]
+    PasswordCredentials:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+    AccountToken:
+      type: object
+      additionalProperties: false
+      required: [id, name, purpose, createdAt, lastUsedAt, expiresAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        purpose:
+          type: string
+          enum: [collector, api]
+        createdAt:
+          type: integer
+          description: Unix milliseconds.
+        lastUsedAt:
+          type: [integer, "null"]
+          description: Unix milliseconds, null before first use.
+        expiresAt:
+          type: integer
+          description: Unix milliseconds.
     Comparison:
       type: object
       description: Immutable Git comparison facts captured by the producer and stored with the observation. Applies to the all scope; staged always compares HEAD to index and unstaged compares index to working tree. Missing comparison metadata retains legacy HEAD semantics.
