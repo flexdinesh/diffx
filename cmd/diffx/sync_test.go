@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -537,5 +538,114 @@ func TestSyncRetainsConflictingProvisionalAndOwnerPayloads(t *testing.T) {
 		if err != nil || len(items) != 1 || !reflect.DeepEqual(items[0], entry.item) {
 			t.Fatalf("conflicting payload changed or lost: %+v %v", items, err)
 		}
+	}
+}
+
+func TestHookRotatedEnvironmentTokenRecoversOwnersRemovedCheckout(t *testing.T) {
+	root := cliRepository(t)
+	fixture := newSyncFixture(t)
+	fixture.failUploads.Store(true)
+	directory := t.TempDir()
+	args := []string{"--harness", "codex", "--path", root, "--run-id", "session"}
+	event, err := parseHookEvent(args, nil, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := newHookEngine(directory)
+	sources, err := engine.Expand(t.Context(), event)
+	if err != nil || len(sources) != 1 {
+		t.Fatalf("hook discovery: %+v %v", sources, err)
+	}
+	job := ""
+	engine.Launch = func(value string) error { job = value; return nil }
+	var captured ingestion.Request
+	collect := engine.Collect
+	engine.Collect = func(ctx context.Context, event hooks.Event, previous string) (ingestion.Request, string, error) {
+		request, fingerprint, err := collect(ctx, event, previous)
+		captured = request
+		return request, fingerprint, err
+	}
+	if err := engine.Schedule(sources[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.Run(t.Context(), job); err == nil {
+		t.Fatal("unavailable hook upload succeeded")
+	}
+	originalJob := job
+	identity := identityservice.New(fixture.store)
+	tokens, err := identity.Tokens(t.Context(), fixture.ownerID)
+	if err != nil || len(tokens) != 1 {
+		t.Fatalf("initial collector token: %+v %v", tokens, err)
+	}
+	if err := identity.RevokeToken(t.Context(), fixture.ownerID, tokens[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	replacement, err := identity.CreateToken(t.Context(), fixture.ownerID, "replacement", identityservice.PurposeCollector, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign, err := identity.Provision(t.Context(), "other", "other-password-at-least-twelve-characters")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignToken, err := identity.CreateToken(t.Context(), foreign.ID, "foreign", identityservice.PurposeCollector, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.failUploads.Store(false)
+	retry := func(token string) error {
+		t.Helper()
+		t.Setenv("DIFFX_REMOTE_TOKEN", token)
+		current, err := parseHookEvent([]string{"--harness", "codex", "--retry"}, nil, io.Discard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		recovery := newHookEngine(directory)
+		var jobs []string
+		recovery.Launch = func(value string) error { jobs = append(jobs, value); return nil }
+		recovery.Expand = func(context.Context, hooks.Event) ([]hooks.Event, error) {
+			t.Fatal("recovery rediscovered checkout")
+			return nil, nil
+		}
+		recovery.Normalize = func(context.Context, hooks.Event) (hooks.Event, error) {
+			t.Fatal("recovery inspected checkout")
+			return hooks.Event{}, nil
+		}
+		recovery.Collect = func(context.Context, hooks.Event, string) (ingestion.Request, string, error) {
+			t.Fatal("recovery recollected checkout")
+			return ingestion.Request{}, "", nil
+		}
+		if err := recovery.Retry(current); err != nil {
+			t.Fatal(err)
+		}
+		if len(jobs) != 1 || jobs[0] == originalJob {
+			t.Fatalf("credential-specific recovery worker: %v", jobs)
+		}
+		return recovery.Run(t.Context(), jobs[0])
+	}
+	attempts := fixture.uploads.Load()
+	if err := retry(foreignToken.Secret); err == nil || !strings.Contains(err.Error(), "another destination") {
+		t.Fatalf("foreign credential recovered owner's hook payload: %v", err)
+	}
+	if fixture.uploads.Load() != attempts {
+		t.Fatal("foreign credential delivered hook payload")
+	}
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	if err := retry(replacement.Secret); err != nil {
+		t.Fatal(err)
+	}
+	contexts, err := fixture.store.ObservationContexts(fixture.ownerID, 10, 0, "", ingestion.Filter{})
+	if err != nil || len(contexts) != 1 {
+		t.Fatalf("rotated hook delivery: %+v %v", contexts, err)
+	}
+	replay, err := fixture.store.Ingest(fixture.ownerID, captured)
+	if err != nil || replay.ContextID != contexts[0].ID {
+		t.Fatalf("hook recovery replaced immutable submission: %+v %v", replay, err)
+	}
+	foreignContexts, err := fixture.store.ObservationContexts(foreign.ID, 10, 0, "", ingestion.Filter{})
+	if err != nil || len(foreignContexts) != 0 {
+		t.Fatalf("foreign hook observations: %+v %v", foreignContexts, err)
 	}
 }

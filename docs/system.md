@@ -244,7 +244,16 @@ credential cannot claim unknown-owner payloads.
 
 Hook workers persist bounded immutable pending payloads and acknowledgements.
 They retry after subsequent triggers or `collector retry`; no perpetual upload
-process or guarantee that an agent hook will run exists. Local acknowledgements
+process or guarantee that an agent hook will run exists. Scheduling remains
+credential-specific. After an environment token changes, a separate recovery
+worker can replay an already-bound capture only when all other routing settings
+match and authenticated account, database and source exactly match its saved
+target. Recovery never inspects or recollects the checkout. Unknown-owner
+captures stay on their original route. Authentication failures retain queued
+recovery for later retry; a durable receipt prevents duplicate recovery workers
+from redelivering completed payloads. A newer original trigger stays queued for
+retry under its original routing rather than inheriting recovery credentials.
+Local acknowledgements
 are scoped by session and reconciled with server state before suppressing
 uploads. Pending data expires after seven days independently of server retention.
 Manual producers report failures. Direct plugins implementing the
