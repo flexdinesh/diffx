@@ -49,6 +49,19 @@ run = "pnpm dev:web"
 description = "Build self-contained agent plugin adapters"
 run = "pnpm --recursive --filter '@diffx/plugin-*' --if-present build"
 
+[tasks."docs:dev"]
+description = "Serve the docs website with live reload at localhost:1313"
+dir = "{{config_root}}/docs-website"
+tools = { "hugo-extended" = "0.166.0" }
+run = "hugo server --bind 127.0.0.1 --buildDrafts --disableFastRender --renderToMemory"
+
+[tasks."docs:build"]
+description = "Build and validate the static docs website at docs-website/dist"
+alias = "docs:check"
+dir = "{{config_root}}/docs-website"
+tools = { "hugo-extended" = "0.166.0" }
+run = "hugo --minify --panicOnWarning --cleanDestinationDir"
+
 [tasks."dev:server"]
 description = "Start a standalone Go fixture server"
 depends = ["web:build"]
