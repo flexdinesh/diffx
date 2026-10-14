@@ -53,16 +53,44 @@ type Service struct {
 	events     events
 	store      Store
 	user       reviewdata.User
+	scope      Scope
 	background context.Context
 	cancel     context.CancelFunc
+}
+
+// Scope limits a composition to one selected checkout or capture. The zero
+// value is unscoped. Contexts outside the scope behave as not found.
+type Scope struct {
+	SourceID      string
+	RepositoryKey string
+	CheckoutKey   string
+	SubmissionID  string
+}
+
+// ScopeFor selects the request's checkout, so later collections and branches
+// of that checkout stay visible. Captures without checkout identity select
+// their own submission.
+func ScopeFor(input ingestion.Request) Scope {
+	metadata := input.Metadata
+	if metadata.RepositoryKey != "" && metadata.CheckoutKey != "" {
+		return Scope{SourceID: metadata.SourceID, RepositoryKey: metadata.RepositoryKey, CheckoutKey: metadata.CheckoutKey}
+	}
+	return Scope{SourceID: metadata.SourceID, SubmissionID: input.SubmissionID}
+}
+
+func (scope Scope) selection(contextID string) ingestion.Selection {
+	return ingestion.Selection{SourceID: scope.SourceID, RepositoryKey: scope.RepositoryKey, CheckoutKey: scope.CheckoutKey, SubmissionID: scope.SubmissionID, ContextID: contextID}
 }
 
 func New(store Store, user reviewdata.User) *Service {
 	return NewWithContext(context.Background(), store, user)
 }
 func NewWithContext(ctx context.Context, store Store, user reviewdata.User) *Service {
+	return NewScoped(ctx, store, user, Scope{})
+}
+func NewScoped(ctx context.Context, store Store, user reviewdata.User, scope Scope) *Service {
 	background, cancel := context.WithCancel(ctx)
-	return &Service{store: store, user: user, background: background, cancel: cancel}
+	return &Service{store: store, user: user, scope: scope, background: background, cancel: cancel}
 }
 func (service *Service) Close() error   { service.cancel(); return nil }
 func (service *Service) UserID() string { return service.user.ID }
@@ -70,6 +98,9 @@ func (service *Service) UserID() string { return service.user.ID }
 func (service *Service) Delete(ctx context.Context, id string) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if err := service.inScope(id); err != nil {
+		return requestError(err)
 	}
 	if err := service.store.DeleteContext(service.user.ID, id); err != nil {
 		return requestError(err)
@@ -87,6 +118,9 @@ func (service *Service) Resolve(ctx context.Context, id string) (session.Session
 	}
 	now := time.Now()
 	item, err := service.store.Context(service.user.ID, id, now)
+	if err == nil {
+		err = service.inScope(id)
+	}
 	if err != nil {
 		return session.Session{}, requestError(err)
 	}
@@ -116,10 +150,28 @@ func (service *Service) Get(ctx context.Context, id string) (Context, error) {
 		return Context{}, err
 	}
 	item, err := service.store.Context(service.user.ID, id, time.Now())
+	if err == nil {
+		err = service.inScope(id)
+	}
 	if err != nil {
 		return Context{}, requestError(err)
 	}
 	return service.present(item)
+}
+
+// inScope reports out-of-scope contexts as not found, never as forbidden.
+func (service *Service) inScope(id string) error {
+	if service.scope == (Scope{}) {
+		return nil
+	}
+	items, err := service.store.ObservationContexts(service.user.ID, 1, 0, "", ingestion.Filter{Selection: service.scope.selection(id)})
+	if err != nil {
+		return err
+	}
+	if len(items) == 0 {
+		return reviewdata.ErrNotFound
+	}
+	return nil
 }
 
 type cursorValue struct {
@@ -150,6 +202,7 @@ func (service *Service) ListFiltered(ctx context.Context, limit int, cursor stri
 	}
 	var items []reviewdata.ContextInfo
 	var err error
+	filter.Selection = service.scope.selection("")
 	if filter != (ingestion.Filter{}) {
 		items, err = service.store.ObservationContexts(service.user.ID, limit+1, before.Time, before.ID, filter)
 	} else {
@@ -183,7 +236,7 @@ func (service *Service) Count(ctx context.Context) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
-	return service.store.ContextCount(service.user.ID, time.Now())
+	return service.store.ContextCount(service.user.ID, service.scope.selection(""), time.Now())
 }
 
 func (service *Service) present(item reviewdata.ContextInfo) (Context, error) {

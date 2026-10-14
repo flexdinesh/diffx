@@ -44,9 +44,16 @@ export function readBootstrap(value: unknown): ApiBootstrap {
     value.mode === "local" &&
     value.signupEnabled === false &&
     value.user === null &&
-    value.csrfToken === null
+    value.csrfToken === null &&
+    typeof value.collect === "boolean"
   )
-    return { mode: "local", signupEnabled: false, user: null, csrfToken: null };
+    return {
+      mode: "local",
+      signupEnabled: false,
+      user: null,
+      csrfToken: null,
+      collect: value.collect,
+    };
   if (value.mode !== "remote" || typeof value.signupEnabled !== "boolean")
     throw new Error("Invalid server identity response");
   if (value.user === null && value.csrfToken === null)

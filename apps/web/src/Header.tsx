@@ -19,11 +19,7 @@ import { ProjectsToggle } from "./ProjectsNav.tsx";
 import { useDiffSource } from "./app-state.tsx";
 import { useAppearance } from "./appearance-context.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
-import {
-  ContextSwitcher,
-  capabilityEnabled,
-  useSession,
-} from "./session-context.tsx";
+import { CurrentContext, useCatalog, useSession } from "./session-context.tsx";
 import { contextDiagnostics, observationSummary } from "./project-picker.ts";
 import { readThemePreference, type ThemePreference } from "./theme.ts";
 
@@ -34,12 +30,12 @@ function themeLabel(theme: ThemePreference) {
 }
 
 export function Header() {
-  const { repository, piped, diff } = useDiffSource();
+  const { repository, piped, diff, refresh, refreshEnabled } = useDiffSource();
   const session = useSession();
-  const { capabilities, observation } = session;
+  const { observation } = session;
+  const { collect, collecting } = useCatalog();
   const { themePreference, setThemePreference } = useAppearance();
   const sidebar = useSidebarState();
-  const refreshEnabled = capabilityEnabled(capabilities.diff.refresh);
   return (
     <header className="topbar">
       <ProjectsToggle />
@@ -56,7 +52,7 @@ export function Header() {
       >
         <ListTreeIcon className="size-(--icon-base)" />
       </Button>
-      <ContextSwitcher />
+      <CurrentContext />
       <div className="header-heading">
         <h1
           id="changes-title"
@@ -91,13 +87,15 @@ export function Header() {
             refreshEnabled ? "Refresh changes" : "Retry loading changes"
           }
           title={
-            refreshEnabled
-              ? "Refresh changes (Alt+R)"
-              : "Retry loading stored changes"
+            collect
+              ? "Collect the latest changes from this checkout (Alt+R)"
+              : refreshEnabled
+                ? "Refresh changes (Alt+R)"
+                : "Retry loading stored changes"
           }
           hidden={!refreshEnabled && !diff.notice}
-          aria-busy={diff.busy}
-          onClick={diff.refresh}
+          aria-busy={collecting || diff.busy}
+          onClick={refresh}
         >
           <RefreshCwIcon className="size-(--icon-base)" aria-hidden="true" />
           <span className="refresh-label">

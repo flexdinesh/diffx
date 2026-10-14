@@ -16,6 +16,7 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/contextservice"
 	"github.com/flexdinesh/diffx/internal/daemon"
+	"github.com/flexdinesh/diffx/internal/ingestion"
 )
 
 func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, stderr io.Writer) error {
@@ -47,10 +48,15 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 	}
 
 	label := "Piped diff"
+	selected := daemon.Input{Request: request}
 	if input.Kind == "worktree" {
 		input.Path, label = request.Metadata.Root, request.Metadata.Root
+		checkout := input
+		selected.Collect = func(ctx context.Context) (ingestion.Request, error) {
+			return collectInitialInput(ctx, values, checkout)
+		}
 	}
-	return daemon.RunForeground(ctx, settings, request, func(status daemon.Status) (bool, error) {
+	return daemon.RunForeground(ctx, settings, selected, func(status daemon.Status) (bool, error) {
 		if values.replace {
 			return true, nil
 		}

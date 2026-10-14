@@ -106,9 +106,11 @@ the triggering checkout. Use
 `--base HEAD` for working changes only, and `--branch` for explicit object-only
 recovery. `sync` submits to one configured destination and exits.
 Redirected stdin (`git diff | diffx`) starts a foreground local process with
-a fixed patch and ignores remote config. `diffx [PATH]` likewise collects
-once, defaults to the current directory, and opens a fixed checkout snapshot.
-Neither mode watches Git or automatically replaces the selected snapshot.
+a fixed patch and ignores remote config. `diffx [PATH]` collects at startup,
+defaults to the current directory, and opens a fixed checkout snapshot; only an
+explicit `POST /api/v2/collections` collects that checkout again. Neither mode
+watches Git or automatically replaces the selected snapshot. Each process lists
+only its own checkout or capture from the shared database.
 A path argument or
 `--path` cannot be combined with redirected stdin.
 `CollectPatch` preserves the supplied patch without Git lookup;
@@ -250,9 +252,15 @@ and workspace owners. The identity owner loads server mode and the current
 account before mounting review state; distributed login and `/settings` work with
 zero observations. Account changes dispose workspace requests and event streams.
 Local mode bypasses account flows. Consumers subscribe through domain hooks for diff source,
-navigation, draft, review, reviewed files, and collapse state. One draft persists
-across scopes. Context selection uses the top-bar popup picker (also Cmd/Ctrl+K)
-and scopes every request. The “Switch review” picker first selects a repository
+navigation, draft, review, reviewed files, and collapse state. Collapsed diff
+files (per context and scope) and closed tree folders (per context) persist in
+`sessionStorage`, so reloads keep them within a tab. One draft persists
+across scopes. Context selection uses the projects drawer, whose search filters
+loaded stream heads, and the popup picker (Cmd/Ctrl+K or the drawer's “Browse
+all reviews” action); the header shows the open review's identity without a
+picker. The selected context scopes every request. The session owner exposes
+local checkout collection when bootstrap reports `collect`; Refresh and Alt+R
+then call `POST /api/v2/collections` and open a changed result. The “Switch review” picker first selects a repository
 or Piped, then an immutable observation. Repository observations retain branch,
 worktree, source/run, comparison, and collection-time metadata. Submission/session
 associations remain separate from original snapshot metadata; catalog API filters

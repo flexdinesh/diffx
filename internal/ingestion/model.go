@@ -77,6 +77,18 @@ type Filter struct {
 	// Latest omits stale snapshots: each stream's head plus stream-less
 	// observations such as piped diffs.
 	Latest bool
+	// Selection is composition policy, never parsed from requests.
+	Selection Selection
+}
+
+// Selection restricts the catalog to one selected checkout or capture
+// submission, optionally one context. Empty fields do not restrict.
+type Selection struct {
+	SourceID      string
+	RepositoryKey string
+	CheckoutKey   string
+	SubmissionID  string
+	ContextID     string
 }
 
 type Job struct {

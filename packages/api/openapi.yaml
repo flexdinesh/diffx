@@ -425,6 +425,21 @@ paths:
                 $ref: "#/components/schemas/Context"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v2/collections:
+    post:
+      operationId: collectCheckout
+      description: Local checkout mode only. Collects the process's selected checkout again and ingests it as a fresh observation. Absent when the process serves piped input, a fixture or remote storage.
+      responses:
+        "200":
+          description: The context holding the new collection; unchanged content reuses its existing review.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Context"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v2/metrics:
     get:
       operationId: getServerMetricsV2
@@ -888,7 +903,7 @@ components:
       oneOf:
         - type: object
           additionalProperties: false
-          required: [mode, signupEnabled, user, csrfToken]
+          required: [mode, signupEnabled, user, csrfToken, collect]
           properties:
             mode:
               type: string
@@ -900,6 +915,9 @@ components:
               type: "null"
             csrfToken:
               type: "null"
+            collect:
+              type: boolean
+              description: Whether this process can collect its selected checkout again through POST /api/v2/collections.
         - type: object
           additionalProperties: false
           required: [mode, signupEnabled, user, csrfToken]

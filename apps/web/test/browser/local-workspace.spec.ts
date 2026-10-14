@@ -2,6 +2,10 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import type { ApiContext, ApiRepositoryDiff } from "@diffx/api";
 import { isDiffMode, type DiffMode, type ReviewComment } from "@diffx/shared";
 
+async function openReviewPicker(page: Page) {
+  await page.keyboard.press("ControlOrMeta+k");
+}
+
 async function localWorkspace(page: Page) {
   await page.route("**/api/v2/metrics", (route) =>
     route.fulfill({ json: { cpuUsage: 0, rssBytes: 0 } }),
@@ -455,12 +459,10 @@ test("snapshot deletion navigates to another review and removes the snapshot fro
   await ready(page);
   await expect(dialog).toBeHidden();
   expect(state.requests).toEqual(["local-review"]);
-  const picker = page.getByRole("button", {
-    name: "Switch review",
-    exact: true,
-  });
-  await expect(picker).toBeFocused();
-  await picker.click();
+  await expect(
+    page.locator('#projects-nav [aria-current="page"]'),
+  ).toBeFocused();
+  await openReviewPicker(page);
   await expect(page.getByRole("option")).toHaveCount(1);
   await expect(page.getByRole("option")).toContainText("Piped");
   await page.getByRole("option").click();
@@ -787,15 +789,13 @@ test("context switching isolates delayed repository responses and fixed captures
   delay = true;
   await page.getByRole("button", { name: "Refresh changes" }).click();
   await expect.poll(() => delayed !== undefined).toBe(true);
-  await page
-    .getByRole("button", { name: "Switch review", exact: true })
-    .click();
+  await openReviewPicker(page);
   await page
     .getByRole("combobox", { name: "Search reviews" })
     .fill("Second repo");
   await page.keyboard.press("Enter");
   await page.keyboard.press("Enter");
-  await expect(page.locator(".context-switcher-name")).toHaveText(
+  await expect(page.locator(".context-identity-name")).toHaveText(
     "Second repo",
   );
   await ready(page);
@@ -803,12 +803,10 @@ test("context switching isolates delayed repository responses and fixed captures
   await delayed.fulfill({
     json: { ...state.repository("all"), name: "Stale repo" },
   });
-  await expect(page.locator(".context-switcher-name")).toHaveText(
+  await expect(page.locator(".context-identity-name")).toHaveText(
     "Second repo",
   );
-  await page
-    .getByRole("button", { name: "Switch review", exact: true })
-    .click();
+  await openReviewPicker(page);
   await page.getByRole("option", { name: /^Piped/ }).click();
   await page.getByRole("option").click();
   await expect(page.locator("#changes-title")).toHaveText("Piped");
@@ -880,11 +878,7 @@ test("Piped history ignores repository filters and switches timestamp rows by ke
   });
   await page.goto("/");
   await ready(page);
-  const trigger = page.getByRole("button", {
-    name: "Switch review",
-    exact: true,
-  });
-  await trigger.click();
+  await openReviewPicker(page);
   const dialog = page.getByRole("dialog", { name: "Switch review" });
   await dialog.getByRole("button", { name: "Filters", exact: true }).click();
   await dialog.getByRole("button", { name: "Stale", exact: true }).click();
@@ -910,11 +904,12 @@ test("Piped history ignores repository filters and switches timestamp rows by ke
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/contexts\/piped-observation$/);
-  await expect(trigger).toContainText("Piped");
-  await expect(trigger).not.toContainText("Invoking project");
-  await expect(trigger.locator(".context-switcher-worktree")).toHaveCount(0);
+  const identity = page.locator(".context-identity");
+  await expect(identity).toContainText("Piped");
+  await expect(identity).not.toContainText("Invoking project");
+  await expect(identity.locator(".context-identity-worktree")).toHaveCount(0);
   await expect(page).toHaveTitle("diffx · Piped");
-  await trigger.click();
+  await openReviewPicker(page);
   await page.keyboard.press("Enter");
   await expect(
     dialog.getByRole("option", { name: /Current review/ }),
@@ -927,7 +922,7 @@ test("Piped history ignores repository filters and switches timestamp rows by ke
     dialog.getByText("Stale snapshots · With changes", { exact: true }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(trigger).toBeFocused();
+  await expect(dialog).toBeHidden();
 });
 
 for (const kind of ["observation"] satisfies ApiContext["kind"][]) {
@@ -953,14 +948,9 @@ for (const kind of ["observation"] satisfies ApiContext["kind"][]) {
       page.getByRole("heading", { name: "No changes to review" }),
     ).toBeVisible();
     await expect(page).toHaveURL(/\/$/);
-    const trigger = page.getByRole("button", {
-      name: "Switch review",
-      exact: true,
-    });
-    await expect(trigger).toHaveText(/Switch review/);
-    await expect(trigger).not.toContainText("Local review");
+    await expect(page.locator(".context-identity")).toHaveCount(0);
     expect(state.scopes).toEqual([]);
-    await trigger.click();
+    await openReviewPicker(page);
     const dialog = page.getByRole("dialog", { name: "Switch review" });
     if (state.context.source === "stdin") {
       await expect(dialog.getByRole("option")).toHaveCount(1);
@@ -1052,9 +1042,7 @@ test("empty contexts remain accessible through the picker and direct URLs", asyn
   await expect(
     page.getByRole("heading", { name: "No changes to review" }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Switch review", exact: true })
-    .click();
+  await openReviewPicker(page);
   const dialog = page.getByRole("dialog", { name: "Switch review" });
   await dialog.getByRole("button", { name: "Filters", exact: true }).click();
   await dialog.getByRole("checkbox", { name: "All", exact: true }).check();
@@ -1083,11 +1071,7 @@ test("deleting the last diff returns to landing when empty contexts remain", asy
   await page.evaluate(() =>
     document.dispatchEvent(new Event("visibilitychange")),
   );
-  const trigger = page.getByRole("button", {
-    name: "Switch review",
-    exact: true,
-  });
-  await trigger.click();
+  await openReviewPicker(page);
   const picker = page.getByRole("dialog", { name: "Switch review" });
   await picker.getByRole("button", { name: "Filters", exact: true }).click();
   await picker.getByRole("checkbox", { name: "All", exact: true }).check();
@@ -1125,18 +1109,14 @@ test("unavailable context keeps the switcher usable", async ({ page }) => {
   );
   await page.goto("/contexts/unavailable");
   await expect(page.getByText("Repository moved")).toBeVisible();
-  await page
-    .getByRole("button", { name: "Switch review", exact: true })
-    .click();
+  await openReviewPicker(page);
   await page
     .getByRole("combobox", { name: "Search reviews" })
     .fill("Local review");
   await page.keyboard.press("Enter");
   await page.keyboard.press("Enter");
   await ready(page);
-  await page
-    .getByRole("button", { name: "Switch review", exact: true })
-    .click();
+  await openReviewPicker(page);
   const dialog = page.getByRole("dialog", { name: "Switch review" });
   await dialog.getByRole("button", { name: "Filters", exact: true }).click();
   await dialog.getByRole("checkbox", { name: "All", exact: true }).check();
@@ -1239,17 +1219,13 @@ test("observation picker drills into repositories and searches independent sourc
     "title",
     /Context: first/,
   );
-  await expect(page.locator(".context-switcher-worktree")).toHaveCount(0);
+  await expect(page.locator(".context-identity-worktree")).toHaveCount(0);
   const requests = state.scopes.length;
   const catalogReads = catalogRequests;
   await page.clock.fastForward(9000);
   expect(state.scopes).toHaveLength(requests);
   expect(catalogRequests).toBe(catalogReads);
-  const trigger = page.getByRole("button", {
-    name: "Switch review",
-    exact: true,
-  });
-  await trigger.click();
+  await openReviewPicker(page);
   const dialog = page.getByRole("dialog", { name: "Switch review" });
   const search = dialog.getByRole("combobox", { name: "Search reviews" });
   await expect(dialog.getByRole("option")).toHaveCount(1);
@@ -1271,20 +1247,22 @@ test("observation picker drills into repositories and searches independent sourc
   await search.press("Enter");
   await search.press("Enter");
   await expect(page).toHaveURL(/\/contexts\/second$/);
-  await expect(trigger).toBeFocused();
-  await expect(page.locator(".context-switcher-worktree")).toHaveAccessibleName(
+  await expect(
+    page.locator('#projects-nav [aria-current="page"]'),
+  ).toBeFocused();
+  await expect(page.locator(".context-identity-worktree")).toHaveAccessibleName(
     "Linked worktree: main-checkout",
   );
   await expect(page.locator("#repo-path")).toContainText("container-b");
   await expect(page.locator("#repo-path")).not.toContainText("run-b");
-  await expect(trigger).toHaveAttribute(
+  await expect(page.locator(".context-identity")).toHaveAttribute(
     "title",
     /Run: run-b[\s\S]*Context: second/,
   );
   await page.setViewportSize({ width: 360, height: 640 });
-  await expect(page.locator(".context-switcher-worktree")).toBeVisible();
-  await expect(page.locator(".context-switcher-worktree-name")).toBeHidden();
-  await trigger.click();
+  await expect(page.locator(".context-identity-worktree")).toBeVisible();
+  await expect(page.locator(".context-identity-worktree-name")).toBeHidden();
+  await openReviewPicker(page);
   await search.press("Enter");
   const bounds = await dialog.boundingBox();
   if (!bounds) throw new Error("Missing picker bounds");
@@ -1377,11 +1355,7 @@ test("picker combines filters before grouping and preserves them across navigati
   });
   await page.goto("/");
   await ready(page);
-  const trigger = page.getByRole("button", {
-    name: "Switch review",
-    exact: true,
-  });
-  await trigger.click();
+  await openReviewPicker(page);
   const dialog = page.getByRole("dialog", { name: "Switch review" });
   const search = dialog.getByRole("combobox", { name: "Search reviews" });
   await expect(dialog.getByRole("option")).toContainText("2 snapshots");
@@ -1421,7 +1395,7 @@ test("picker combines filters before grouping and preserves them across navigati
   await dialog.getByRole("button", { name: "Back to reviews" }).click();
   await expect(dialog.getByRole("option")).toContainText("1 snapshot");
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
-  await trigger.click();
+  await openReviewPicker(page);
   await expect(dialog.getByRole("option")).toContainText("1 snapshot");
   await expect(dialog.locator(".project-picker-filter-summary")).toContainText(
     "Host: host-a · Host: host-b · Branch: feature · Worktree: tree-b",
@@ -1539,6 +1513,20 @@ test("projects drawer lists current changed streams and announces newer snapshot
 
   await nav.getByRole("link", { name: /^main/ }).click();
   await expect(page).toHaveURL(/\/contexts\/web-1$/);
+  const search = nav.getByRole("searchbox", { name: "Search projects" });
+  await search.fill("acme rate-limit");
+  await expect(nav.locator(".stream-row")).toHaveCount(1);
+  await expect(nav.locator(".stream-row")).toContainText("feat/rate-limit");
+  await search.fill("missing");
+  await expect(nav).toContainText("No matching projects");
+  await search.press("Escape");
+  await expect(search).toHaveValue("");
+  await expect(nav.locator(".stream-row")).toHaveCount(2);
+  await nav.getByRole("button", { name: "Browse all reviews" }).click();
+  const picker = page.getByRole("dialog", { name: "Switch review" });
+  await expect(picker).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(picker).toBeHidden();
   await nav.getByRole("button", { name: "Hide projects" }).click();
   await expect(nav).toBeHidden();
   await page.reload();
@@ -1548,4 +1536,56 @@ test("projects drawer lists current changed streams and announces newer snapshot
   await expect(
     page.getByRole("navigation", { name: "Projects" }),
   ).toBeVisible();
+});
+
+test("local checkout refresh collects on request and opens the new snapshot", async ({
+  page,
+}) => {
+  const state = await localWorkspace(page);
+  await page.route("**/api/v2/bootstrap", (route) =>
+    route.fulfill({
+      json: {
+        mode: "local",
+        signupEnabled: false,
+        user: null,
+        csrfToken: null,
+        collect: true,
+      },
+    }),
+  );
+  await page.route("**/api/v2/contexts/*", (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-1) ?? "";
+    return route.fulfill({ json: { ...state.context, id } });
+  });
+  const collections: string[] = [];
+  let result = "refreshed";
+  await page.route("**/api/v2/collections", (route) => {
+    collections.push(route.request().method());
+    return result === "fail"
+      ? route.fulfill({
+          status: 422,
+          json: { detail: "Unable to collect checkout: git failed" },
+        })
+      : route.fulfill({ json: { ...state.context, id: result } });
+  });
+  await page.goto("/contexts/local-review");
+  await ready(page);
+  const refresh = page.getByRole("button", { name: "Refresh changes" });
+  await expect(refresh).toHaveAttribute("title", /Collect the latest changes/);
+  await refresh.click();
+  await expect(page).toHaveURL(/\/contexts\/refreshed$/);
+  await ready(page);
+  expect(collections).toEqual(["POST"]);
+  await page.keyboard.press("Alt+r");
+  await expect(page.locator("#comment-feedback")).toHaveText(
+    "No new changes since this snapshot.",
+  );
+  await expect(page).toHaveURL(/\/contexts\/refreshed$/);
+  result = "fail";
+  await refresh.click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "git failed" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/contexts\/refreshed$/);
+  expect(collections).toHaveLength(3);
 });

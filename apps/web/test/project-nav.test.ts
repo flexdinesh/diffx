@@ -7,6 +7,7 @@ import {
   projectGroups,
   readSeen,
   relativeAge,
+  searchProjectGroups,
   streamMeta,
 } from "../src/project-nav.ts";
 
@@ -78,6 +79,30 @@ test("projects list current changed streams by recent activity, piped last", () 
     ],
   );
   assert.equal(groups[1]?.lastActivity, 20);
+});
+
+test("project search keeps matching streams in order and drops empty projects", () => {
+  const groups = projectGroups(
+    [
+      head("auth", "api", 30, { branch: "feature/auth" }),
+      head("main", "api", 20, { branch: "main" }),
+      head("web", "web", 10, { branch: "feature/auth-ui" }),
+    ],
+    null,
+  );
+  const ids = (query: string) =>
+    searchProjectGroups(groups, query).map((group) => [
+      group.name,
+      group.streams.map((stream) => stream.context.id),
+    ]);
+  assert.equal(searchProjectGroups(groups, "  "), groups);
+  assert.deepEqual(ids("auth"), [
+    ["api", ["auth"]],
+    ["web", ["web"]],
+  ]);
+  assert.deepEqual(ids("api main"), [["api", ["main"]]]);
+  assert.deepEqual(ids("WEB"), [["web", ["web"]]]);
+  assert.deepEqual(ids("missing"), []);
 });
 
 test("unseen marks follow the newest opened snapshot per stream", () => {

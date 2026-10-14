@@ -10,7 +10,12 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import { capabilityEnabled, useSession } from "./session-context.tsx";
+import { saveSessionPaths, sessionPaths } from "./preferences.ts";
+import {
+  capabilityEnabled,
+  useCatalog,
+  useSession,
+} from "./session-context.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
 import { useDiff } from "./use-diff.ts";
 import { useFileNavigation } from "./use-file-navigation.ts";
@@ -30,6 +35,9 @@ interface DiffSource {
   mode: DiffMode;
   piped: boolean;
   changeMode: (mode: DiffMode) => void;
+  /** Collects the checkout again when the process supports it, else reloads. */
+  refresh: () => void;
+  refreshEnabled: boolean;
 }
 const SourceContext = createContext<DiffSource | null>(null);
 const NavigationContext = createContext<ReturnType<
@@ -48,14 +56,24 @@ const CollapseContext = createContext<{
   setCollapsed: Dispatch<SetStateAction<Set<string>>>;
 } | null>(null);
 
+const collapsedKey = (contextId: string, mode: DiffMode) =>
+  `collapsed-files:${contextId}:${mode}`;
+
 function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { id: contextId, capabilities } = useSession();
-  const refreshEnabled = capabilityEnabled(capabilities.diff.refresh);
+  const { collect } = useCatalog();
+  const refreshEnabled =
+    collect !== null || capabilityEnabled(capabilities.diff.refresh);
   const commentsEnabled = capabilityEnabled(capabilities.review.comments);
   const scopes = capabilities.diff.scopes.values;
   const [mode, setMode] = useState<DiffMode>("all");
   const [draft, setDraft] = useState<ReviewComment | null>(null);
-  const [collapsed, setCollapsed] = useState(new Set<string>());
+  const [collapsed, setCollapsed] = useState(() =>
+    sessionPaths(collapsedKey(contextId, "all")),
+  );
+  useEffect(() => {
+    saveSessionPaths(collapsedKey(contextId, mode), collapsed);
+  }, [contextId, mode, collapsed]);
   const diff = useDiff(contextId, mode);
   const repository = diff.repository;
   const review = useReview(
@@ -65,23 +83,33 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
     setDraft,
     commentsEnabled,
   );
+  const { refresh: reload } = diff;
+  const { setFeedback } = review;
+  const refresh = useCallback(() => {
+    if (!collect) return reload();
+    void collect().then((result) => {
+      if (result === "unchanged")
+        setFeedback("No new changes since this snapshot.");
+    });
+  }, [collect, reload, setFeedback]);
   const reviewed = useReviewedFiles(contextId, repository, mode, setCollapsed);
   const { show: showSidebar, closeMobile } = useSidebarState();
   const changeMode = useCallback(
     (value: DiffMode) => {
       if (value === mode || !scopes.includes(value)) return;
       setMode(value);
-      setCollapsed(new Set());
+      setCollapsed(sessionPaths(collapsedKey(contextId, value)));
     },
-    [mode, scopes],
+    [contextId, mode, scopes],
   );
   const navigation = useFileNavigation({
+    contextId,
     repository,
     mode,
     scopes,
     busy: diff.busy,
     refreshEnabled,
-    refresh: diff.refresh,
+    refresh,
     changeMode,
     setCollapsed,
     setFeedback: review.setFeedback,
@@ -93,8 +121,16 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
     document.title = `diffx · ${piped ? "Piped" : "Git diff"}`;
   }, [piped]);
   const source = useMemo(
-    () => ({ diff, repository, mode, piped, changeMode }),
-    [diff, repository, mode, piped, changeMode],
+    () => ({
+      diff,
+      repository,
+      mode,
+      piped,
+      changeMode,
+      refresh,
+      refreshEnabled,
+    }),
+    [diff, repository, mode, piped, changeMode, refresh, refreshEnabled],
   );
   const draftState = useMemo(() => ({ draft, setDraft }), [draft]);
   const collapse = useMemo(() => ({ collapsed, setCollapsed }), [collapsed]);

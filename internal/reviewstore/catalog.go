@@ -160,11 +160,13 @@ func (store *Store) Contexts(ownerID string, limit int, beforeTime int64, before
 	return items, rows.Err()
 }
 
-func (store *Store) ContextCount(ownerID string, now time.Time) (int, error) {
+func (store *Store) ContextCount(ownerID string, selection ingestion.Selection, now time.Time) (int, error) {
 	var count int
+	predicate, values := selectionPredicate(selection)
 	err := store.db.QueryRow(`SELECT COUNT(*)
-		FROM contexts c LEFT JOIN diffs d ON d.id=c.anchor_diff_id WHERE c.owner_id=? AND (d.expires_at IS NULL OR d.expires_at>?)`,
-		ownerID, now.UnixMilli()).Scan(&count)
+		FROM contexts c LEFT JOIN diffs d ON d.id=c.anchor_diff_id LEFT JOIN observations o ON o.context_id=c.id
+		WHERE c.owner_id=? AND (d.expires_at IS NULL OR d.expires_at>?)`+predicate,
+		append([]any{ownerID, now.UnixMilli()}, values...)...).Scan(&count)
 	return count, err
 }
 

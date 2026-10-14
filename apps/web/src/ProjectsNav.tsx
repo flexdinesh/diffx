@@ -4,6 +4,7 @@ import {
   FolderGit2Icon,
   GitBranchIcon,
   HistoryIcon,
+  ListIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   SearchIcon,
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { save, saved } from "./preferences.ts";
 import { contextChangeLabel, contextIsPiped } from "./project-picker.ts";
@@ -20,6 +22,7 @@ import {
   projectGroups,
   readSeen,
   relativeAge,
+  searchProjectGroups,
   streamKey,
   streamMeta,
   streamTitle,
@@ -116,8 +119,11 @@ export function ProjectsNav() {
   const { heads, current, select, openPicker } = useCatalog();
   const seen = useSeenStreams(heads.contexts, heads.loaded);
   const [closed, setClosed] = useState(readCollapsedGroups);
+  const [query, setQuery] = useState("");
   const now = useNow();
-  const groups = projectGroups(heads.contexts, seen);
+  const searching = query.trim() !== "";
+  const allGroups = projectGroups(heads.contexts, seen);
+  const groups = searchProjectGroups(allGroups, query);
   const currentStream = current ? streamKey(current) : "";
   const { closeMobile: closeFiles } = sidebar;
   useEffect(() => {
@@ -173,19 +179,44 @@ export function ProjectsNav() {
             <PanelLeftCloseIcon className="size-(--icon-base)" />
           </Button>
         </div>
-        <button
-          type="button"
-          className="projects-search"
-          onClick={() => {
-            projects.closeMobile();
-            openPicker();
-          }}
-        >
+        <div className="search-box projects-search">
           <SearchIcon className="size-(--icon-sm)" aria-hidden="true" />
-          <span>Search reviews</span>
-          <kbd>{shortcut}</kbd>
-        </button>
-        <h2 className="projects-heading">Projects</h2>
+          <Input
+            id="projects-search"
+            type="search"
+            placeholder="Search projects…"
+            aria-label="Search projects"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape" || !query) return;
+              event.stopPropagation();
+              setQuery("");
+            }}
+          />
+        </div>
+        <p className="visually-hidden" role="status" aria-live="polite">
+          {searching
+            ? `${groups.reduce((sum, group) => sum + group.streams.length, 0)} matching streams`
+            : ""}
+        </p>
+        <div className="projects-heading">
+          <h2>Projects</h2>
+          <Button
+            type="button"
+            id="projects-browse"
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Browse all reviews"
+            title={`Browse all reviews (${shortcut})`}
+            onClick={() => {
+              projects.closeMobile();
+              openPicker();
+            }}
+          >
+            <ListIcon aria-hidden="true" />
+          </Button>
+        </div>
         <div className="projects-scroll">
           {groups.length ? (
             <ul className="projects-list">
@@ -193,7 +224,7 @@ export function ProjectsNav() {
                 <ProjectItem
                   key={group.id}
                   group={group}
-                  expanded={!closed.has(group.id)}
+                  expanded={searching || !closed.has(group.id)}
                   onToggle={() => toggleGroup(group.id)}
                   currentStream={currentStream}
                   now={now}
@@ -201,6 +232,10 @@ export function ProjectsNav() {
                 />
               ))}
             </ul>
+          ) : searching && allGroups.length ? (
+            <div className="projects-empty" role="status">
+              <p>No matching projects</p>
+            </div>
           ) : (
             <ProjectsEmpty
               loaded={heads.loaded}

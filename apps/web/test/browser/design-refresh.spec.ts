@@ -145,7 +145,7 @@ test("interactive controls share the semantic control radius", async ({
     (control) => getComputedStyle(control).borderTopLeftRadius,
   );
   const controls = [
-    page.locator(".search-box"),
+    page.locator("#file-panel .search-box"),
     page.locator(".tree-folder").first(),
     page.locator(".file-row").first(),
     page.locator(".layout-control"),

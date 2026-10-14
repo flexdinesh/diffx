@@ -204,15 +204,17 @@ such detail into a token. New layout spacing must use the scale.
   16px icons, and 1.7px strokes, including menu and dialog triggers. Hover and
   expanded states use the same neutral surface feedback. On mobile, both rows
   use 8px action gaps and the same trailing inset so icon columns align.
-- Header uses `--panel`, a quiet brand, and the review trigger as its primary
+- Header uses `--panel`, a quiet brand, and the review identity as its primary
   context. Keep the secondary scope heading and muted monospace path inline;
   hide the path at 768–1011px and both below 768px. Group ghost Refresh/theme
   actions at the trailing edge; share `--hover` feedback with the trigger.
 - Projects drawer: the outermost full-height column, `--projects-width` (16rem)
   on `--panel` with a separator edge. Its header matches `--topbar-height` and
   holds the brand and a ghost “Hide projects” action (panel-left icon). Below it:
-  a search row styled like the file filter that opens the review picker, a quiet
-  semibold “Projects” caption, then repositories ordered by latest arrival.
+  a “Search projects” field styled like the file filter that filters current
+  streams in place (Escape clears it; matching repositories expand), a quiet
+  semibold “Projects” caption with a trailing compact ghost “Browse all reviews”
+  icon action that opens the review picker, then repositories ordered by latest arrival.
   Repository rows match tree-row height with a chevron, repository icon, medium
   name and muted monospace age. Stream rows indent under them: branch icon, name,
   trailing monospace changed-file count, and a muted metadata line (worktree,
@@ -363,16 +365,18 @@ such detail into a token. New layout spacing must use the scale.
 
 ### Overlays
 
-- Project navigation uses a compact borderless ghost action after the brand
-  divider, with a semibold repository name, quieter branch, and repository
-  icon. Give the repository name priority when long context labels truncate.
+- The header identifies the open review after the brand divider with static,
+  non-interactive text at control height: a semibold repository name, quieter
+  branch, and repository icon. Give the repository name priority when long context labels truncate.
   Piped reviews use a terminal icon, “Piped”, and collection time; omit repository,
   branch, worktree, and directory identity.
-  Use a search icon and shortcut hint, never a dropdown chevron. Click and
-  Cmd/Ctrl+K open the same searchable “Switch review” dialog. Position it at
+  Switching lives in the projects drawer; never add a dropdown chevron.
+  Cmd/Ctrl+K and the drawer's browse action open the searchable “Switch review”
+  dialog. Position it at
   `--topbar-height` plus `--space-6` on desktop (64px default), `--space-4` on
   mobile (16px default). Bound picker width to 35rem and viewport gutters. The
-  picker owns focus and stays available during context errors.
+  picker owns focus and stays available during context errors. Choosing a
+  review moves focus to the drawer's current stream.
 - Search leads the picker; keep “Switch review” as its screen-reader title.
   Label global search “Search reviews” and Piped history search “Search Piped”.
   Use one integrated field (36px input) with close at its right edge and the
@@ -432,7 +436,7 @@ Do not add motion for decoration. New animation must honor
 - Keep scope and desktop layout choice visible. View options and collapse/expand
   all are adjacent icon buttons with action titles. Put wrap, inline detail,
   code theme, and narrow layout choice in View options.
-- Mobile retains the review trigger's repository/branch or Piped/time context; truncate long
+- Mobile retains the review identity's repository/branch or Piped/time context; truncate long
   labels and hide its shortcut hint. Hide the secondary heading/path and refresh
   text, preserving accessible labels and theme/sidebar controls.
   Keep the linked-worktree icon visible when its text label is hidden.

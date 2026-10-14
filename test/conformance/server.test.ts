@@ -93,7 +93,12 @@ test("Go distribution implements the API contract", async (t) => {
     signupEnabled: false,
     user: null,
     csrfToken: null,
+    collect: false,
   });
+  const collection = await fetch(`${url}/api/v2/collections`, {
+    method: "POST",
+  });
+  assert.equal(collection.status, 404);
   const health = await client.GET("/api/v2/health");
   assert.equal(health.data?.ingestionEnabled, false);
   assert.equal(health.data?.queuedIngestion, false);

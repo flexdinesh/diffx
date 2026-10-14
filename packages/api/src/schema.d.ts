@@ -227,6 +227,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v2/collections": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Local checkout mode only. Collects the process's selected checkout again and ingests it as a fresh observation. Absent when the process serves piped input, a fixture or remote storage. */
+    post: operations["collectCheckout"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v2/metrics": {
     parameters: {
       query?: never;
@@ -493,6 +510,8 @@ export interface components {
           signupEnabled: false;
           user: null;
           csrfToken: null;
+          /** @description Whether this process can collect its selected checkout again through POST /api/v2/collections. */
+          collect: boolean;
         }
       | {
           /** @enum {string} */
@@ -1282,6 +1301,28 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  collectCheckout: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The context holding the new collection; unchanged content reuses its existing review. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Context"];
+        };
       };
       404: components["responses"]["Problem"];
       default: components["responses"]["Problem"];

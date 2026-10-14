@@ -10,9 +10,11 @@ import {
   type SetStateAction,
 } from "react";
 import { ancestorPaths, filesInTreeOrder } from "./file-tree.ts";
+import { saveSessionPaths, sessionPaths } from "./preferences.ts";
 import { anchored, type CommentAnnotation } from "./review-model.ts";
 
 interface NavigationOptions {
+  contextId: string;
   repository: RepositoryDiff | null;
   mode: DiffMode;
   scopes: readonly DiffMode[];
@@ -27,6 +29,7 @@ interface NavigationOptions {
 }
 
 export function useFileNavigation({
+  contextId,
   repository,
   mode,
   scopes,
@@ -53,7 +56,11 @@ export function useFileNavigation({
     end: number;
     sequence: number;
   } | null>(null);
-  const [closed, setClosed] = useState(new Set<string>());
+  const closedKey = `closed-folders:${contextId}`;
+  const [closed, setClosed] = useState(() => sessionPaths(closedKey));
+  useEffect(() => {
+    saveSessionPaths(closedKey, closed);
+  }, [closedKey, closed]);
   const [filteredClosed, setFilteredClosed] = useState(new Set<string>());
   const [pendingComment, setPendingComment] = useState<ReviewComment | null>(
     null,

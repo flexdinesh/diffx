@@ -179,7 +179,10 @@ test("renders and filters a piped diff", async ({ page }) => {
     "height",
     "28px",
   );
-  await expect(page.locator(".search-box")).toHaveCSS("height", "28px");
+  await expect(page.locator("#file-panel .search-box")).toHaveCSS(
+    "height",
+    "28px",
+  );
   await expect(page.getByRole("searchbox", { name: "Filter files" })).toHaveCSS(
     "font-size",
     "13px",
@@ -1099,7 +1102,7 @@ test("inline comments use a distinct structured surface while sidebar comments r
   const viewed = page.locator("#viewer .review-button").first();
   await expect(viewed).toHaveCSS("height", "28px");
   await expect(viewed).toHaveAttribute("data-size", "sm");
-  await expect(page.locator(".context-switcher")).toHaveCSS(
+  await expect(page.locator(".context-identity")).toHaveCSS(
     "height",
     await page
       .locator("#refresh")
@@ -1340,7 +1343,7 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
     colorProbe.remove();
     return {
       sidebar: size("#sidebar-toggle svg"),
-      branch: size(".context-switcher-search"),
+      identity: size(".context-identity > svg"),
       viewOptions: size("#view-options svg"),
       refresh: size("#refresh svg"),
       theme: size("#theme svg"),
@@ -1371,7 +1374,7 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
     dividerHeight: 16,
     headerHeight: 40,
   });
-  expect(styles.branch).toBe(styles.viewOptions);
+  expect(styles.identity).toBe(styles.viewOptions);
   expect(styles.chromeStrokes.every((stroke) => stroke === "1.7px")).toBe(true);
   expect(styles.dividerCenterOffset).toBeLessThanOrEqual(0.5);
   expect(styles.indicatorColor).toBe(styles.accent);
@@ -1683,7 +1686,7 @@ test("drawer aligns its header and retains desktop navigation density", async ({
         ".tree-folder",
         ".summary-section .review-tools-toggle",
         "#reset-reviewed",
-        ".search-box",
+        "#file-panel .search-box",
         ".review-progress",
         ".sidebar-footer",
       ];
@@ -1824,4 +1827,41 @@ test("file comments remain available without a text diff", async ({ page }) => {
   await expect(file.locator(".comment-card")).toContainText(
     "Review this binary asset",
   );
+});
+
+test("diff file and folder collapse state survives reload within the tab", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 4_000 });
+  await page.goto("/");
+  await page
+    .getByRole("button", {
+      name: "Collapse src/components/Badge.tsx",
+      exact: true,
+    })
+    .click();
+  await page.getByRole("button", { name: "Collapse folder docs" }).click();
+  await page.reload();
+  await expect(
+    page.getByRole("button", {
+      name: "Expand src/components/Badge.tsx",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Expand folder docs" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", {
+      name: "Expand src/components/Badge.tsx",
+      exact: true,
+    })
+    .click();
+  await page.reload();
+  await expect(
+    page.getByRole("button", {
+      name: "Collapse src/components/Badge.tsx",
+      exact: true,
+    }),
+  ).toBeVisible();
 });

@@ -31,7 +31,7 @@ go install github.com/flexdinesh/diffx/cmd/diffx@main
 
 ## Usage
 
-Capture the selected checkout once in one foreground process:
+Capture the selected checkout in one foreground process:
 
 ```sh
 diffx
@@ -45,9 +45,10 @@ Collection and ingestion run in-process. The same process serves the web UI,
 REST and MCP until Ctrl-C. The path defaults to the current directory and resolves
 to its containing checkout, including linked worktrees. Only that checkout is
 collected. The browser opens the captured snapshot; later edits and branch switches
-do not change it. Run the command again to capture a newer diff. Observations and
-comments persist across restarts in the shared local database. Failed collection
-never substitutes an empty diff.
+do not change it until you explicitly refresh, which captures a new snapshot of
+the same checkout. Observations and comments persist across restarts in the
+shared local database; each process shows only its own checkout or piped diff.
+Failed collection never substitutes an empty diff.
 
 Only one local instance runs. Starting another prompts before replacing it;
 scripts must pass `--replace`. Replacement requests authenticated graceful
@@ -256,12 +257,16 @@ the bundled plugins invoke the Go collector.
 The Projects drawer lists repositories by recent activity, each with its current
 streams: one per source, checkout, branch and comparison. Each stream shows its
 newest snapshot only; clean or merged streams and superseded snapshots are hidden.
-A dot marks streams with changes you have not opened in this browser. Collapse the
-drawer from its header; it stays collapsed across visits. When a newer snapshot
+A dot marks streams with changes you have not opened in this browser. Search
+projects to filter current streams by repository, branch, worktree, host or agent.
+Collapse the drawer from its header; it stays collapsed across visits. The header
+names the open review's repository, branch and worktree. In a local checkout
+process, **Refresh** (Alt+R) collects the checkout again and opens the new snapshot.
+Collapsed files and folders are remembered across reloads in the same tab. When a newer snapshot
 arrives for the stream you are reviewing, a notice offers **View latest** without
 replacing the open review.
 
-Search reviews (Ctrl/Cmd+K) to reach older or empty snapshots. Select a
+Browse all reviews (Ctrl/Cmd+K) to reach older or empty snapshots. Select a
 repository, then an observation. Search/filter stored metadata to find
 a branch, worktree, host, source or agent run. Switch between its collected all,
 staged and unstaged scopes. Use the file tree to navigate, mark files as reviewed

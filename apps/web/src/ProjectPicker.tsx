@@ -5,13 +5,12 @@ import {
   CheckIcon,
   FolderGit2Icon,
   GitBranchIcon,
-  GitForkIcon,
   SearchIcon,
   SquareTerminalIcon,
   SlidersHorizontalIcon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,7 +25,6 @@ import {
   contextDetail,
   contextDiagnostics,
   contextIsLinkedWorktree,
-  contextCheckoutLabel,
   contextHasChanges,
   contextIsPiped,
   contextTimestampLabel,
@@ -49,92 +47,18 @@ function ContextIcon({ context }: { context: ApiContext }) {
   return <Icon className="size-(--icon-base)" aria-hidden="true" />;
 }
 
-export function ProjectPickerTrigger({
-  current,
-  open,
-  onOpen,
-  triggerRef,
-}: {
-  current: ApiContext | undefined;
-  open: boolean;
-  onOpen: () => void;
-  triggerRef: RefObject<HTMLButtonElement | null>;
-}) {
-  return (
-    <Button
-      ref={triggerRef}
-      type="button"
-      variant="ghost"
-      className="context-switcher"
-      aria-label="Switch review"
-      aria-haspopup="dialog"
-      aria-expanded={open}
-      title={current ? contextDiagnostics(current) : "Switch review"}
-      onClick={onOpen}
-    >
-      {current && <ContextIcon context={current} />}
-      <span className="context-switcher-name">
-        {current
-          ? contextIsPiped(current)
-            ? "Piped"
-            : current.name
-          : "Switch review"}
-      </span>
-      {current && contextIsPiped(current) && (
-        <span className="context-switcher-branch">
-          · {contextTimestampLabel(current)}
-        </span>
-      )}
-      {current && !contextIsPiped(current) && (
-        <>
-          <span className="context-switcher-separator" aria-hidden="true">
-            /
-          </span>
-          <GitBranchIcon className="size-(--icon-sm)" aria-hidden="true" />
-          <span className="context-switcher-branch">
-            {contextDetail(current)}
-          </span>
-        </>
-      )}
-      {current && contextIsLinkedWorktree(current) && (
-        <span
-          className="context-switcher-worktree"
-          role="img"
-          aria-label={contextCheckoutLabel(current)}
-          title={contextCheckoutLabel(current)}
-        >
-          <GitForkIcon className="size-(--icon-sm)" aria-hidden="true" />
-          <span className="context-switcher-worktree-name" aria-hidden="true">
-            Worktree:{" "}
-            {current.worktreeName || current.observation?.worktreeName}
-          </span>
-        </span>
-      )}
-      <SearchIcon
-        className="context-switcher-search size-(--icon-base)"
-        aria-hidden="true"
-      />
-      <kbd className="context-switcher-shortcut">
-        {navigator.platform.includes("Mac") ? "⌘K" : "Ctrl K"}
-      </kbd>
-    </Button>
-  );
-}
-
 export function ProjectPicker({
   contexts,
   selectedId,
   select,
   open,
   onOpenChange,
-  triggerRef,
 }: {
   contexts: ApiContext[];
   selectedId: string;
   select: (id: string) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  triggerRef: RefObject<HTMLButtonElement | null>;
 }) {
   const [query, setQuery] = useState("");
   const [repositoryId, setRepositoryId] = useState("");
@@ -228,7 +152,6 @@ export function ProjectPicker({
       <DialogContent
         className="project-picker"
         initialFocus={searchRef}
-        finalFocus={triggerRef}
         showCloseButton={false}
       >
         <DialogTitle className="sr-only">Switch review</DialogTitle>

@@ -35,12 +35,17 @@ register paths for later server collection or maintain its own catalog.
 The application core has two compositions. See [architecture.md](architecture.md)
 for contracts, durability rules and migration details.
 
-`diffx [PATH]` is one foreground process: collect the selected checkout once,
+`diffx [PATH]` is one foreground process: collect the selected checkout,
 ingest directly, and serve UI/REST/MCP. Omitted paths mean the current directory.
-The captured snapshot remains fixed after edits and branch switches.
-The home-directory database survives process termination. Only one local process
-owns it; another invocation prompts before authenticated graceful replacement.
-Noninteractive callers use `--replace`. There is no collector daemon.
+The captured snapshot remains fixed after edits and branch switches until the
+user explicitly requests collection, which ingests a new snapshot of the same
+checkout; nothing watches Git. Piped input is collected once.
+The home-directory database survives process termination, but each process
+serves only its selected checkout (every branch and earlier run of it) or its
+own piped capture, so other checkouts' history reappears only when reopened.
+Only one local process owns the database; another invocation prompts before
+authenticated graceful replacement. Noninteractive callers use `--replace`.
+There is no collector daemon.
 
 `diffx sync` collects the selected checkout once,
 saves immutable pending payloads, and submits them over authenticated HTTP.
@@ -93,8 +98,12 @@ unknown-status heads, orders repositories and streams by latest arrival, and
 marks streams whose head this browser has not opened. Ingestion events reload
 the heads; when the viewed context's stream has a newer head, a notice offers it
 without replacing the open review. The root URL opens the newest changed head.
+The drawer's search filters those loaded heads by the picker's metadata terms;
+the header only names the open review. An explicit local checkout refresh may
+open its new collection, unlike an arrival.
 
-The review picker loads the full catalog only while open. It selects a
+The review picker, opened by Cmd/Ctrl+K or the drawer's “Browse all reviews”
+action, loads the full catalog only while open. It selects a
 repository, then an observation identified by worktree, branch, source, run and time. Distinct
 content from the same worktree remains independently selectable; unchanged
 reviews reuse one context. Search supports repository, branch, worktree,

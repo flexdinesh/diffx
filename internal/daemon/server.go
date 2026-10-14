@@ -46,12 +46,14 @@ func Run(ctx context.Context, settings Settings, runtimeDir string, initial *ing
 		}
 		defer output.Close()
 		logger := log.New(output, "diffx: ", log.LstdFlags)
-		return runServer(ctx, cancel, settings, runtimeDir, instanceID, initial, ready, logger)
+		return runServer(ctx, cancel, settings, runtimeDir, instanceID, initial, nil, ready, logger)
 	}
-	return runServer(ctx, cancel, settings, "", instanceID, initial, ready, log.New(os.Stderr, "diffx: ", log.LstdFlags))
+	return runServer(ctx, cancel, settings, "", instanceID, initial, nil, ready, log.New(os.Stderr, "diffx: ", log.LstdFlags))
 }
 
-func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings, runtimeDir, instanceID string, initial *ingestion.Request, ready func(Status, *contextservice.Submission), logger *log.Logger) error {
+// runServer scopes queries to the initial checkout or capture; collect, when
+// present, lets the user collect that checkout again.
+func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings, runtimeDir, instanceID string, initial *ingestion.Request, collect func(context.Context) (ingestion.Request, error), ready func(Status, *contextservice.Submission), logger *log.Logger) error {
 	settings = normalizeSettings(settings)
 	if settings.RetentionDays < 1 || settings.RetentionDays > 106751 {
 		return errors.New("retention-days must be between 1 and 106751")
@@ -83,7 +85,11 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 	if err := store.PruneExpired(time.Now()); err != nil {
 		return err
 	}
-	service := contextservice.NewWithContext(ctx, store, user)
+	scope := contextservice.Scope{}
+	if initial != nil {
+		scope = contextservice.ScopeFor(*initial)
+	}
+	service := contextservice.NewScoped(ctx, store, user, scope)
 	defer service.Close()
 	var submitted *contextservice.Submission
 	defaultContextID := ""
@@ -137,7 +143,7 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 		value.Observations, err = service.Count(ctx)
 		return value, err
 	}
-	configuration := serverapp.Options{}
+	configuration := serverapp.Options{Collect: collect}
 	mux := serverapp.Handler(ctx, service, store, assets, defaultContextID, configuration)
 	webServer := &http.Server{Handler: publicRequests(mux, settings), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, ErrorLog: logger}
 	endpoints := []serverapp.Endpoint{{Server: webServer, Listener: listener}}

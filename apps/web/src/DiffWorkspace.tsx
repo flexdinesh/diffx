@@ -156,7 +156,7 @@ function itemVersions() {
 
 // Keep Pierre's annotation versions and event callbacks local to its renderer.
 export function DiffWorkspace() {
-  const { diff, repository, piped, mode } = useDiffSource();
+  const { diff, repository, piped, mode, refreshEnabled } = useDiffSource();
   const { id: contextId, capabilities } = useSession();
   const { theme, diffTheme, lineDiffType, layout, wrap } = useAppearance();
   const { collapsed, setCollapsed } = useDiffCollapse();
@@ -176,7 +176,6 @@ export function DiffWorkspace() {
   const review = useReviewState();
   const commentsEnabled = capabilityEnabled(capabilities.review.comments);
   const contentsEnabled = capabilityEnabled(capabilities.files.contents);
-  const refreshEnabled = capabilityEnabled(capabilities.diff.refresh);
   const lineMetric = useRef<HTMLSpanElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const [scrollbarHeight, setScrollbarHeight] = useState(0);

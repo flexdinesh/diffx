@@ -18,6 +18,6 @@ type Store interface {
 	Context(string, string, time.Time) (reviewdata.ContextInfo, error)
 	ContextBinding(string, string, time.Time) (reviewdata.Binding, error)
 	Contexts(string, int, int64, string, time.Time) ([]reviewdata.ContextInfo, error)
-	ContextCount(string, time.Time) (int, error)
+	ContextCount(string, ingestion.Selection, time.Time) (int, error)
 	DeleteContext(string, string) error
 }

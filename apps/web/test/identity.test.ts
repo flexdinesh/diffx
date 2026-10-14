@@ -9,8 +9,15 @@ test("server mode requires explicit bootstrap and consistent session identity", 
       signupEnabled: false,
       user: null,
       csrfToken: null,
+      collect: true,
     }),
-    { mode: "local", signupEnabled: false, user: null, csrfToken: null },
+    {
+      mode: "local",
+      signupEnabled: false,
+      user: null,
+      csrfToken: null,
+      collect: true,
+    },
   );
   assert.deepEqual(
     readBootstrap({
@@ -24,7 +31,14 @@ test("server mode requires explicit bootstrap and consistent session identity", 
   for (const invalid of [
     null,
     {},
-    { mode: "local", signupEnabled: true, user: null, csrfToken: null },
+    {
+      mode: "local",
+      signupEnabled: true,
+      user: null,
+      csrfToken: null,
+      collect: false,
+    },
+    { mode: "local", signupEnabled: false, user: null, csrfToken: null },
     {
       mode: "remote",
       signupEnabled: false,

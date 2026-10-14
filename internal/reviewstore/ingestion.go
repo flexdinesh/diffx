@@ -350,6 +350,9 @@ func (store *Store) ObservationContexts(ownerID string, limit int, beforeTime in
 		query += ` AND (` + strings.Join(terms, " OR ") + `)`
 	}
 	query += `)`
+	predicate, values := selectionPredicate(filter.Selection)
+	query += predicate
+	arguments = append(arguments, values...)
 	if filter.Latest {
 		query += ` AND (head.context_id IS NULL OR head.context_id=c.id)`
 	}
@@ -373,6 +376,31 @@ func (store *Store) ObservationContexts(ownerID string, limit int, beforeTime in
 		result = append(result, item)
 	}
 	return result, rows.Err()
+}
+
+// selectionPredicate matches the selected checkout identity, or a capture by
+// any submission, including fresh submissions that reused its snapshot.
+func selectionPredicate(selection ingestion.Selection) (string, []any) {
+	query := ""
+	arguments := []any{}
+	fields := []struct{ expression, value string }{
+		{"o.source_id", selection.SourceID},
+		{"json_extract(o.metadata,'$.repositoryKey')", selection.RepositoryKey},
+		{"json_extract(o.metadata,'$.checkoutKey')", selection.CheckoutKey},
+		{"c.id", selection.ContextID},
+	}
+	for _, field := range fields {
+		if field.value != "" {
+			query += ` AND ` + field.expression + `=?`
+			arguments = append(arguments, field.value)
+		}
+	}
+	if selection.SubmissionID != "" {
+		query += ` AND EXISTS (SELECT 1 FROM observation_submissions selected WHERE selected.owner_id=c.owner_id AND selected.context_id=c.id
+			AND selected.source_id=o.source_id AND selected.submission_id=?)`
+		arguments = append(arguments, selection.SubmissionID)
+	}
+	return query, arguments
 }
 
 func branchIdentity(metadata ingestion.Metadata) string {
