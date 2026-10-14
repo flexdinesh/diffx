@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/flexdinesh/diffx/internal/processlock"
@@ -36,6 +37,8 @@ func TestUnsupportedLegacyFilePreserved(t *testing.T) {
 	}
 	if _, err := Open(path); err == nil {
 		t.Fatal("unsupported legacy state opened")
+	} else if !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "--state /path/to/new-state.db") {
+		t.Fatalf("missing state path or recovery guidance: %v", err)
 	}
 	preserved, err := os.ReadFile(path)
 	if err != nil || string(preserved) != string(raw) {
