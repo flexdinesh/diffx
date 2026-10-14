@@ -106,7 +106,7 @@ func OpenWithRetention(path string, retention time.Duration) (*Store, error) {
 	db.SetMaxOpenConns(1)
 	store := &Store{db: db, lock: lock, retention: retention}
 	if _, err = db.Exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000"); err == nil {
-		err = store.initialize()
+		err = store.initialize(name)
 	}
 	if err != nil {
 		_ = db.Close()
@@ -139,19 +139,23 @@ func validateStateFile(path string) error {
 	if count == 0 || string(header) == "SQLite format 3\x00" {
 		return nil
 	}
-	return errors.New("unrecognized or unsupported diffx state file; existing data preserved")
+	return stateRecoveryError(path, "unrecognized or unsupported diffx state file; check that --state selects the intended SQLite database")
 }
 
-func (store *Store) initialize() error {
+func stateRecoveryError(path, reason string) error {
+	return fmt.Errorf("state database %q: %s\n  Existing data preserved; automatic reset is disabled.\n  To start fresh: stop processes using this database, back up %q (including SQLite sidecar files), then retry your command with --state /path/to/new-state.db (choose an unused path).\n  Fresh state has no saved reviews or server accounts.", path, reason, filepath.Dir(path))
+}
+
+func (store *Store) initialize(path string) error {
 	var version int
 	if err := store.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
 	if version > schemaVersion {
-		return fmt.Errorf("diffx state schema %d is newer than supported schema %d", version, schemaVersion)
+		return stateRecoveryError(path, fmt.Sprintf("diffx state schema %d is newer than supported schema %d; to keep existing data, use a diffx binary supporting schema %d", version, schemaVersion, version))
 	}
 	if version > 0 && version < schemaVersion {
-		return fmt.Errorf("diffx state schema %d is older than supported schema %d; automatic reset is disabled: use a compatible binary or back up the state directory and explicitly choose a fresh database path", version, schemaVersion)
+		return stateRecoveryError(path, fmt.Sprintf("diffx state schema %d is older than supported schema %d; to keep existing data, use a diffx binary supporting schema %d", version, schemaVersion, version))
 	}
 	if _, err := store.db.Exec("PRAGMA foreign_keys=OFF"); err != nil {
 		return err
@@ -166,7 +170,7 @@ func (store *Store) initialize() error {
 		var existing string
 		err := transaction.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' LIMIT 1`).Scan(&existing)
 		if err == nil {
-			return errors.New("unversioned state database")
+			return stateRecoveryError(path, "unversioned state database; check that --state selects the intended diffx database")
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
 			return err

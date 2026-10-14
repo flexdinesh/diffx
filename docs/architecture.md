@@ -149,6 +149,9 @@ Schema 10 preserves current state across starts. Older, future and unrecognized
 schemas are refused; opening a database never resets it. Durable server volumes
 require an explicit reset decision: stop the owner, back up its state directory,
 then select a fresh database path. No automatic schema migration is implemented.
+State errors identify the database and backup directory, name the compatible
+schema, and show the `--state` override for explicitly selecting fresh state.
+Fresh state has no saved reviews or server accounts.
 Upgrade server and collectors together.
 Versioned producer directories ignore old manual/hook pending payloads.
 Stop old binaries before upgrading.
@@ -168,4 +171,7 @@ hooks. Mode is chosen by the command, never by a config field: local commands
 reject remote flags, and sync, hooks and `remote status` fail without a complete
 remote destination. Hooks check that destination before discovery, so an
 unconfigured machine never enrolls identities or collects checkouts. Flat
-pre-namespace config files are rejected with each key's replacement.
+pre-namespace config files are rejected with each key's replacement and a nested
+JSON example. Misplaced keys name their target section and field; invalid values
+include accepted examples. Diagnostics never echo tokens or credential-bearing
+URLs, and rejected files remain unchanged.

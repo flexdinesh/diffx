@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -257,8 +258,19 @@ func TestInvalidConfigNeverChangesSavedSettings(t *testing.T) {
 func TestMalformedConfigFileErrorsNameFileAndFix(t *testing.T) {
 	for raw, want := range map[string][]string{
 		`{"host":"127.0.0.1","port":null,"server":"","token":""}`: {"retired flat format", "host → local.host", "port → local.port", "server → remote.url", "token → remote.token"},
+		`{"local":{"server":"https://example.com"}}`:              {`unknown config key "local.server"`, `move its value to "remote.url"`, `{"remote": {"url": "https://reviews.example.com"}}`},
+		`{"remote":{"server":"https://example.com"}}`:             {`move its value to "remote.url"`},
+		`{"local":{"token":"secret-token"}}`:                      {`move its value to "remote.token"`, `{"remote": {"token": "<existing token>"}}`},
+		`{"local":{"url":"https://example.com"}}`:                 {`move its value to "remote.url"`},
+		`{"remote":{"port":4000}}`:                                {`move its value to "local.port"`},
 		`{"local":{"prot":4000}}`:                                 {`unknown config key "local.prot"`, "local.port"},
-		`{"local":{"port":"4000"}}`:                               {"local.port must be a whole number or null"},
+		`{"local":{"port":"4000"}}`:                               {"local.port must be a whole number or null", `{"local": {"port": null}}`},
+		`{"local":{"port":65536}}`:                                {"use 0 for an ephemeral port"},
+		`{"local":{"host":null}}`:                                 {"local.host cannot be null", "omit it to use the default", `{"local": {"host": "127.0.0.1"}}`},
+		`{"local":{"host":"localhost"}}`:                          {"local.host must be an IP address", `use "127.0.0.1"`},
+		`{"local":{"state":""}}`:                                  {"omit it to use the default persistent database"},
+		`{"local":{"retentionDays":0}}`:                           {"use 7 for one week"},
+		`{"remote":{"url":"https://user:password@example.com"}}`:  {`use "https://reviews.example.com"`, "remote.token"},
 		`{"remote":"https://example.com"}`:                        {"remote must be a JSON object"},
 		`{"servers":{}}`:                                          {`unknown config section "servers"`},
 		`{"local":`:                                               {"invalid config JSON"},
@@ -271,10 +283,50 @@ func TestMalformedConfigFileErrorsNameFileAndFix(t *testing.T) {
 		if err == nil {
 			t.Fatalf("accepted %s", raw)
 		}
-		for _, text := range append(want, path, "delete it to recreate defaults") {
+		for _, text := range append(want, path, "Edit this file, then retry") {
 			if !strings.Contains(err.Error(), text) {
 				t.Fatalf("%s: error %q lacks %q", raw, err, text)
 			}
 		}
+		for _, secret := range []string{"secret-token", "user:password"} {
+			if strings.Contains(err.Error(), secret) {
+				t.Fatalf("error exposes credentials: %v", err)
+			}
+		}
+		after, err := os.ReadFile(path)
+		if err != nil || string(after) != raw {
+			t.Fatalf("rejected config changed: %q, %v", after, err)
+		}
+	}
+}
+
+func TestFlatConfigErrorProvidesValidNestedExample(t *testing.T) {
+	values, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Merge(values, `{"host":"127.0.0.1","server":"https://user:password@example.com","token":"secret-token"}`)
+	if err == nil {
+		t.Fatal("accepted flat config")
+	}
+	message := err.Error()
+	start := strings.Index(message, "{")
+	end := strings.LastIndex(message, "}")
+	if start < 0 || end < start {
+		t.Fatalf("missing JSON example: %s", message)
+	}
+	example := message[start : end+1]
+	var document Values
+	if err := json.Unmarshal([]byte(example), &document); err != nil {
+		t.Fatalf("invalid JSON example: %v", err)
+	}
+	if _, err := Merge(values, example); err != nil {
+		t.Fatalf("example rejected by config loader: %v", err)
+	}
+	if document.Local.Host != "127.0.0.1" || document.Remote.URL == "" || document.Remote.Token == "" {
+		t.Fatalf("example missing local/remote structure: %+v", document)
+	}
+	if strings.Contains(message, "secret-token") || strings.Contains(message, "user:password") {
+		t.Fatalf("error exposes credentials: %s", message)
 	}
 }

@@ -73,9 +73,40 @@ func (values *Values) field(key string) (interface{}, error) {
 		return &values.Remote.Token, nil
 	}
 	if replacement, ok := legacyKeys[key]; ok {
-		return nil, fmt.Errorf("config key %q moved to %q", key, replacement)
+		return nil, fmt.Errorf("config key %q moved to %q; use %s with your existing value", key, replacement, keyExample(replacement))
 	}
-	return nil, fmt.Errorf("unknown config key %q", key)
+	if section, name, ok := strings.Cut(key, "."); ok && (section == "local" || section == "remote") {
+		replacement := legacyKeys[name]
+		if name == "url" {
+			replacement = "remote.url"
+		}
+		if replacement != "" {
+			return nil, fmt.Errorf("unknown config key %q; move its value to %q; use %s with your existing value", key, replacement, keyExample(replacement))
+		}
+	}
+	return nil, fmt.Errorf("unknown config key %q; remove or rename it; valid keys: %s", key, strings.Join(Keys, ", "))
+}
+
+// Examples never interpolate config values: errors may be logged, including
+// when a token or credentials in a URL caused validation to fail.
+func keyExample(key string) string {
+	section, name, _ := strings.Cut(key, ".")
+	value := `""`
+	switch key {
+	case "local.host":
+		value = `"127.0.0.1"`
+	case "local.port":
+		value = "null"
+	case "local.state":
+		value = `"/path/to/state.db"`
+	case "local.retentionDays":
+		value = "7"
+	case "remote.url":
+		value = `"https://reviews.example.com"`
+	case "remote.token":
+		value = `"<existing token>"`
+	}
+	return fmt.Sprintf(`{%q: {%q: %s}}`, section, name, value)
 }
 
 // Get returns one persisted setting by dotted path.
@@ -163,14 +194,14 @@ func LoadFile(path string) (Values, error) {
 	if raw, exists := os.LookupEnv("DIFFX_LOCAL_PORT"); exists {
 		port, err := strconv.Atoi(raw)
 		if err != nil {
-			return values, fmt.Errorf("invalid DIFFX_LOCAL_PORT: %w", err)
+			return values, errors.New("invalid DIFFX_LOCAL_PORT: set a whole number between 0 and 65535, or unset it for automatic port selection")
 		}
 		values.Local.Port = &port
 	}
 	if raw, exists := os.LookupEnv("DIFFX_LOCAL_RETENTION_DAYS"); exists {
 		days, err := strconv.Atoi(raw)
 		if err != nil {
-			return values, fmt.Errorf("invalid DIFFX_LOCAL_RETENTION_DAYS: %w", err)
+			return values, errors.New("invalid DIFFX_LOCAL_RETENTION_DAYS: set a whole number between 1 and 106751; use 7 for one week")
 		}
 		values.Local.RetentionDays = days
 	}
@@ -194,7 +225,7 @@ func load(path string) (Values, error) {
 	}
 	values, err = Merge(values, string(raw))
 	if err != nil {
-		return values, fmt.Errorf("config file %s: %w; edit it or delete it to recreate defaults", path, err)
+		return values, fmt.Errorf("config file %s: %w\n  Edit this file, then retry. Omitted keys use defaults.", path, err)
 	}
 	return values, nil
 }
@@ -203,13 +234,13 @@ func decodeObject(raw []byte, name string) (map[string]json.RawMessage, error) {
 	var fields map[string]json.RawMessage
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	if err := decoder.Decode(&fields); err != nil {
-		return nil, fmt.Errorf("invalid %s JSON: %w", name, err)
+		return nil, fmt.Errorf("invalid %s JSON: %w; use a JSON object with double-quoted keys and no trailing commas", name, err)
 	}
 	if fields == nil {
-		return nil, fmt.Errorf("%s must be a JSON object", name)
+		return nil, fmt.Errorf("%s must be a JSON object; use {} for defaults", name)
 	}
 	if decoder.Decode(&struct{}{}) != io.EOF {
-		return nil, fmt.Errorf("%s must contain one JSON object", name)
+		return nil, fmt.Errorf("%s must contain one JSON object; combine settings inside a single pair of braces", name)
 	}
 	return fields, nil
 }
@@ -227,27 +258,33 @@ func Merge(values Values, raw string) (Values, error) {
 	}
 	if len(moves) > 0 {
 		sort.Strings(moves)
-		return values, fmt.Errorf(`uses the retired flat format; move each key into its "local" or "remote" section (%s)`, strings.Join(moves, ", "))
+		return values, fmt.Errorf(`uses the retired flat format; move each key into its "local" or "remote" section (%s).
+  Use nested JSON, keeping your existing values (omit settings you do not need):
+  {
+    "local": {"host": "127.0.0.1", "port": null, "state": "/path/to/state.db", "webDir": "", "retentionDays": 7},
+    "remote": {"url": "https://reviews.example.com", "token": "<existing token>"}
+  }
+  "server" becomes "url" inside "remote"; "token" also belongs inside "remote".`, strings.Join(moves, ", "))
 	}
 	for section, body := range sections {
 		if section != "local" && section != "remote" {
-			return values, fmt.Errorf(`unknown config section %q; expected "local" and "remote"`, section)
+			return values, fmt.Errorf(`unknown config section %q; remove or rename it; expected "local" and "remote", like {"local": {"port": null}, "remote": {"url": "https://reviews.example.com"}}`, section)
 		}
 		var fields map[string]json.RawMessage
 		if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
-			return values, fmt.Errorf("%s must be a JSON object, like {%q: {...}}", section, section)
+			return values, fmt.Errorf("%s must be a JSON object; use {%q: {}} for defaults, then put settings inside that object", section, section)
 		}
 		for name, field := range fields {
 			key := section + "." + name
 			target, err := values.field(key)
 			if err != nil {
-				return values, fmt.Errorf("unknown config key %q; valid keys: %s", key, strings.Join(Keys, ", "))
+				return values, err
 			}
 			if string(field) == "null" && key != "local.port" {
-				return values, fmt.Errorf("%s cannot be null", key)
+				return values, fmt.Errorf("%s cannot be null; omit it to use the default, or use %s", key, keyExample(key))
 			}
 			if err := json.Unmarshal(field, target); err != nil {
-				return values, fmt.Errorf("%s must be %s", key, expectedType(target))
+				return values, fmt.Errorf("%s must be %s; use %s", key, expectedType(target), keyExample(key))
 			}
 		}
 	}
@@ -271,21 +308,21 @@ func expectedType(target interface{}) string {
 func (values Values) Validate() error {
 	local := values.Local
 	if net.ParseIP(local.Host) == nil {
-		return errors.New("local.host must be an IP address")
+		return errors.New(`local.host must be an IP address; use "127.0.0.1" for this machine or "0.0.0.0" to listen on all IPv4 interfaces`)
 	}
 	if local.Port != nil && (*local.Port < 0 || *local.Port > 65535) {
-		return errors.New("local.port must be null (automatic) or between 0 and 65535")
+		return errors.New("local.port must be null (automatic) or between 0 and 65535; use 0 for an ephemeral port, or omit the setting for automatic selection")
 	}
 	if local.State == "" {
-		return errors.New("local.state must be a database path or memory")
+		return errors.New(`local.state must be a database path or memory; omit it to use the default persistent database, or use "memory" for temporary state`)
 	}
 	if local.RetentionDays <= 0 || local.RetentionDays > 106751 {
-		return errors.New("local.retentionDays must be between 1 and 106751")
+		return errors.New("local.retentionDays must be between 1 and 106751; use 7 for one week")
 	}
 	if values.Remote.URL != "" {
 		endpoint, err := url.Parse(values.Remote.URL)
 		if err != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" || (endpoint.Path != "" && endpoint.Path != "/") {
-			return errors.New("remote.url must be an HTTP(S) origin without credentials, path, query, or fragment")
+			return errors.New(`remote.url must be an HTTP(S) origin without credentials, path, query, or fragment; use "https://reviews.example.com" and put the API token in remote.token`)
 		}
 	}
 	return nil
