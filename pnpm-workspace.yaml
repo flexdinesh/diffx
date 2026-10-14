@@ -1,6 +1,7 @@
 packages:
   - apps/*
   - packages/*
+  - docs-website
 
 catalog:
   "@opencode/plugin": 2.0.22

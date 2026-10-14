@@ -1,0 +1,9 @@
+{
+  "name": "@diffx/docs",
+  "private": true,
+  "scripts": {
+    "dev": "mise run docs:dev",
+    "build": "mise run docs:build",
+    "check": "mise run docs:check"
+  }
+}
