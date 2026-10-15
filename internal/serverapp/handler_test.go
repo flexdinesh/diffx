@@ -570,6 +570,7 @@ func TestForeignRESTMutationsLeaveReviewStateUntouched(t *testing.T) {
 		{"DELETE", "/comments?status=all", nil},
 		{"POST", "/comments/import", map[string]any{"comments": []review.ReviewComment{original}}},
 		{"POST", "/review/comments/foreign-comment/resolve", map[string]any{}},
+		{"POST", "/comments/foreign-comment/carry", nil},
 		{"PUT", "/review-marks/" + file.ID + "?scope=all", map[string]string{"versionId": snapshot.VersionID, "fileVersion": file.Fingerprint}},
 		{"DELETE", "/review-marks/" + file.ID + "?scope=all", nil},
 		{"DELETE", "/review-marks?scope=all", nil},
@@ -597,5 +598,143 @@ func TestForeignRESTMutationsLeaveReviewStateUntouched(t *testing.T) {
 	marks, err := d.store.Marks(foreign.Context.ID, review.DiffAll)
 	if err != nil || !reflect.DeepEqual(marks, []review.ReviewMark{mark}) {
 		t.Fatalf("foreign marks changed: %#v %v", marks, err)
+	}
+}
+
+// Review state belongs to the checkout stream: later snapshots re-anchor its
+// comments, carry unchanged marks, and keep both after an older snapshot is deleted.
+func TestStreamReviewSpansSnapshotsInBothCompositions(t *testing.T) {
+	root := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		if raw, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, raw)
+		}
+	}
+	write := func(files map[string]string) {
+		t.Helper()
+		for name, content := range files {
+			if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	collect := func(submission string) ingestion.Request {
+		t.Helper()
+		input, err := collector.Collect(t.Context(), root, collector.Options{SourceID: "container-a", SubmissionID: submission})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return input
+	}
+	git("init")
+	git("symbolic-ref", "HEAD", "refs/heads/shared")
+	git("remote", "add", "origin", "https://example.com/acme/stream.git")
+	write(map[string]string{"file.txt": "alpha\nbeta\n", "other.txt": "keep\n", "same.txt": "base\n"})
+	git("add", ".")
+	git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "initial")
+	write(map[string]string{"file.txt": "alpha\nadded\nbeta\n", "other.txt": "keep\nold concern\n", "same.txt": "base\nsame change\n"})
+	first := collect("turn-1")
+	write(map[string]string{"file.txt": "inserted\nalpha\nadded\nbeta\n", "other.txt": "keep\nnew code\n"})
+	second := collect("turn-2")
+	second.Metadata.CollectedAt = first.Metadata.CollectedAt + 1
+	for _, remote := range []bool{false, true} {
+		t.Run(fmt.Sprintf("remote=%v", remote), func(t *testing.T) {
+			d := start(t, "", remote)
+			client := testsupport.NewClient(d.server.URL, d.token)
+			older, err := client.Submit(t.Context(), first)
+			if err != nil {
+				t.Fatal(err)
+			}
+			later, err := client.Submit(t.Context(), second)
+			if err != nil || later.ContextID == older.ContextID {
+				t.Fatalf("second snapshot: %#v %v", later, err)
+			}
+			call := func(method, path string, body any, status int, result any) {
+				t.Helper()
+				var reader io.Reader
+				if body != nil {
+					raw, err := json.Marshal(body)
+					if err != nil {
+						t.Fatal(err)
+					}
+					reader = bytes.NewReader(raw)
+				}
+				response := request(t, d, method, path, reader)
+				defer response.Body.Close()
+				if response.StatusCode != status {
+					raw, _ := io.ReadAll(response.Body)
+					t.Fatalf("%s %s status %d: %s", method, path, response.StatusCode, raw)
+				}
+				if result != nil {
+					if err := json.NewDecoder(response.Body).Decode(result); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			file := func(snapshot review.RepositoryDiff, path string) review.ChangedFile {
+				t.Helper()
+				for _, candidate := range snapshot.Files {
+					if candidate.Path == path {
+						return candidate
+					}
+				}
+				t.Fatalf("%s missing from %#v", path, snapshot.Files)
+				return review.ChangedFile{}
+			}
+			olderBase, laterBase := "/api/v2/contexts/"+older.ContextID, "/api/v2/contexts/"+later.ContextID
+			ids := map[string]string{}
+			for _, path := range []string{"file.txt", "other.txt"} {
+				changed := file(older.Snapshot, path)
+				var created review.ReviewComment
+				call("POST", olderBase+"/comments", map[string]any{"diffId": older.Snapshot.ID, "versionId": older.Snapshot.VersionID, "fileId": changed.ID, "fileVersion": changed.Fingerprint, "scope": "all", "side": "additions", "start": 2, "end": 2, "body": "Check " + path}, 201, &created)
+				if created.Anchor == nil || created.Placement == nil || created.Placement.Applicability != review.Anchored {
+					t.Fatalf("created comment: %#v", created)
+				}
+				ids[path] = created.ID
+			}
+			for _, path := range []string{"file.txt", "same.txt"} {
+				marked := file(older.Snapshot, path)
+				call("PUT", olderBase+"/review-marks/"+marked.ID+"?scope=all", map[string]string{"versionId": older.Snapshot.VersionID, "fileVersion": marked.Fingerprint}, 200, nil)
+			}
+			var marks struct{ Marks []review.ReviewMark }
+			call("GET", laterBase+"/review-marks?scope=all", nil, 200, &marks)
+			same := file(later.Snapshot, "same.txt")
+			if want := (review.ReviewMark{DiffID: later.Snapshot.ID, VersionID: later.Snapshot.VersionID, FileID: same.ID, FileVersion: same.Fingerprint, Scope: review.DiffAll}); len(marks.Marks) != 1 || marks.Marks[0] != want {
+				t.Fatalf("marks carried to later snapshot: %#v", marks.Marks)
+			}
+			call("DELETE", olderBase, nil, 204, nil)
+			var listed struct{ Comments []review.ReviewComment }
+			call("GET", laterBase+"/comments", nil, 200, &listed)
+			placements := map[string]review.CommentPlacement{}
+			for _, comment := range listed.Comments {
+				placements[comment.ID] = *comment.Placement
+			}
+			if placements[ids["file.txt"]] != (review.CommentPlacement{Applicability: review.Moved, Side: "additions", Start: 3, End: 3}) ||
+				placements[ids["other.txt"]] != (review.CommentPlacement{Applicability: review.Outdated, Side: "additions", Start: 2, End: 2}) {
+				t.Fatalf("stream comments after deleting their snapshot: %#v", listed.Comments)
+			}
+			call("POST", laterBase+"/comments/"+ids["file.txt"]+"/carry", nil, 409, nil)
+			var carried review.ReviewComment
+			call("POST", laterBase+"/comments/"+ids["other.txt"]+"/carry", nil, 200, &carried)
+			if carried.Target != "file" || carried.DiffID != later.Snapshot.ID || carried.CarriedFrom == nil || carried.CarriedFrom.Start != 2 || carried.Code != "+ old concern" || carried.Placement.Applicability != review.Anchored {
+				t.Fatalf("carried comment: %#v", carried)
+			}
+			var agent struct {
+				Comments []struct {
+					ID            string
+					Applicability review.Applicability
+					Actionable    bool
+				}
+			}
+			call("GET", laterBase+"/review/comments", nil, 200, &agent)
+			if len(agent.Comments) != 2 || !agent.Comments[0].Actionable || !agent.Comments[1].Actionable {
+				t.Fatalf("agent comments: %#v", agent.Comments)
+			}
+			call("DELETE", laterBase, nil, 204, nil)
+			if comments, err := d.store.Comments(later.ContextID); err != nil || len(comments) != 0 {
+				t.Fatalf("stream end kept comments: %#v %v", comments, err)
+			}
+		})
 	}
 }

@@ -30,7 +30,14 @@ import { DiffToolbar } from "./DiffToolbar.tsx";
 import { DiffComparison } from "./DiffComparison.tsx";
 import { themesFor } from "./display-options.ts";
 import { DraftComment, ReviewCommentCard } from "./review.tsx";
-import type { CommentAnnotation } from "./review-model.ts";
+import {
+  commentInFile,
+  commentStale,
+  placedInline,
+  placedOutdated,
+  placementFor,
+  type CommentAnnotation,
+} from "./review-model.ts";
 import { ServerMetrics } from "./ServerMetrics.tsx";
 import { WorkspaceFeedback } from "./WorkspaceFeedback.tsx";
 import { capabilityEnabled, useSession } from "./session-context.tsx";
@@ -234,19 +241,33 @@ export function DiffWorkspace() {
         )
           .filter(
             (comment) =>
-              comment.path === file.path &&
+              commentInFile(comment, file) &&
               comment.scope === mode &&
-              comment.fingerprint === file.fingerprint &&
               comment.id !== draft?.id,
           )
-          .map((comment) => ({
-            side:
-              comment.target === "file" && file.status === "D"
-                ? "deletions"
-                : comment.side,
-            lineNumber: comment.end,
-            metadata: { kind: "saved", comment },
-          }));
+          .flatMap((comment): DiffLineAnnotation<CommentAnnotation>[] => {
+            const placement = placementFor(comment, repository);
+            const fileSide = file.status === "D" ? "deletions" : "additions";
+            // Inline comments sit on their (possibly moved) lines; outdated
+            // ones stay at file level with their original code.
+            if (placedInline(placement.applicability))
+              return [
+                {
+                  side: comment.target === "file" ? fileSide : placement.side,
+                  lineNumber: comment.target === "file" ? 0 : placement.end,
+                  metadata: { kind: "saved", comment },
+                },
+              ];
+            return placedOutdated(placement.applicability)
+              ? [
+                  {
+                    side: fileSide,
+                    lineNumber: 0,
+                    metadata: { kind: "saved", comment },
+                  },
+                ]
+              : [];
+          });
         if (
           draft &&
           draft.path === file.path &&
@@ -296,6 +317,7 @@ export function DiffWorkspace() {
       files,
       diff.items,
       review.comments,
+      repository,
       draft,
       mode,
       collapsed,
@@ -553,8 +575,17 @@ export function DiffWorkspace() {
         const currentDraft = actions.current.draft;
         const ranges = (context.item.annotations ?? []).flatMap(
           (annotation): CommentLineRange[] => {
-            if (annotation.metadata.kind === "saved")
-              return [annotation.metadata.comment];
+            if (annotation.metadata.kind === "saved") {
+              const { comment } = annotation.metadata;
+              const placement = placementFor(
+                comment,
+                actions.current.repository,
+              );
+              return comment.target !== "file" &&
+                placedInline(placement.applicability)
+                ? [placement]
+                : [];
+            }
             return currentDraft && currentDraft.path === context.item.id
               ? [currentDraft]
               : [];
@@ -709,8 +740,25 @@ export function DiffWorkspace() {
             )}
             renderHeaderMetadata={(item) => {
               const file = allFiles.find((file) => file.path === item.id);
+              const outdated =
+                commentsEnabled && file
+                  ? review.comments.filter(
+                      (comment) =>
+                        comment.scope === mode &&
+                        commentInFile(comment, file) &&
+                        commentStale(comment, repository),
+                    ).length
+                  : 0;
               return file ? (
                 <div className="diff-file-actions">
+                  {outdated > 0 && (
+                    <span
+                      className="file-outdated-count"
+                      title={`${outdated} outdated review ${outdated === 1 ? "comment" : "comments"} shown at the top of this file`}
+                    >
+                      {outdated} outdated
+                    </span>
+                  )}
                   <Button
                     type="button"
                     className="review-button"

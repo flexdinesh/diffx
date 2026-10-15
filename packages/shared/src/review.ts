@@ -3,23 +3,12 @@ import type {
   FileDiffMetadata,
   SelectedLineRange,
 } from "@pierre/diffs";
-import type { DiffMode, RepositoryDiff } from "./index.ts";
+import type { DiffMode } from "./index.ts";
 
 import type { ApiReviewComment, ApiReviewMark } from "@diffx/api";
 export type ReviewComment = ApiReviewComment;
 export type ReviewOrigin = NonNullable<ReviewComment["origin"]>;
-
-export interface ReviewRound {
-  key: string;
-  comments: ReviewComment[];
-  current: boolean;
-}
-
-export type CommentApplicability =
-  | "anchored"
-  | "stale"
-  | "other-scope"
-  | "unknown";
+type CommentPlacement = NonNullable<ReviewComment["placement"]>;
 
 export function lineContext(
   diff: FileDiffMetadata,
@@ -107,23 +96,48 @@ function validOrigin(value: unknown): value is ReviewOrigin {
   );
 }
 
+function validLines(side: unknown, start: unknown, end: unknown) {
+  return (
+    (side === "additions" || side === "deletions") &&
+    typeof start === "number" &&
+    Number.isInteger(start) &&
+    start > 0 &&
+    typeof end === "number" &&
+    Number.isInteger(end) &&
+    end >= start &&
+    end - start < 200
+  );
+}
+
+function validCarriedFrom(value: unknown) {
+  return (
+    record(value) &&
+    typeof value.versionId === "string" &&
+    validLines(value.side, value.start, value.end)
+  );
+}
+
+function validAnchor(value: unknown) {
+  return (
+    record(value) &&
+    typeof value.before === "string" &&
+    typeof value.after === "string"
+  );
+}
+
 export function validComment(value: unknown): value is ReviewComment {
   if (!record(value)) return false;
+  const carried = value.carriedFrom !== undefined;
   const validSelection =
     value.target === "file"
       ? value.side === "additions" &&
         value.start === 0 &&
         value.end === 0 &&
-        value.code === ""
+        // Carried comments keep their original code; other file comments have none.
+        (value.code === "" || carried)
       : (value.target === undefined || value.target === "lines") &&
-        (value.side === "additions" || value.side === "deletions") &&
-        typeof value.start === "number" &&
-        Number.isInteger(value.start) &&
-        value.start > 0 &&
-        typeof value.end === "number" &&
-        Number.isInteger(value.end) &&
-        value.end >= value.start &&
-        value.end - value.start < 200;
+        !carried &&
+        validLines(value.side, value.start, value.end);
   return (
     typeof value.id === "string" &&
     typeof value.diffId === "string" &&
@@ -138,7 +152,9 @@ export function validComment(value: unknown): value is ReviewComment {
     (value.status === "open" || value.status === "resolved") &&
     typeof value.createdAt === "number" &&
     Number.isFinite(value.createdAt) &&
-    (value.origin === undefined || validOrigin(value.origin))
+    (value.origin === undefined || validOrigin(value.origin)) &&
+    (value.anchor === undefined || validAnchor(value.anchor)) &&
+    (!carried || validCarriedFrom(value.carriedFrom))
   );
 }
 
@@ -204,23 +220,26 @@ function snapshotKey(origin: ReviewOrigin | undefined) {
     : "unknown";
 }
 
+function placement(comment: ReviewComment): CommentPlacement {
+  return (
+    comment.placement ?? {
+      applicability: "unknown",
+      side: comment.side,
+      start: comment.start,
+      end: comment.end,
+    }
+  );
+}
+
+// Exports comments using their server-computed placements. Unresolved exports
+// include every open comment; stale and carried ones are tagged.
 export function formatComments(
   comments: readonly ReviewComment[],
   includeResolved: boolean,
-  repositories: readonly RepositoryDiff[] = [],
 ): string {
-  const applicability = (comment: ReviewComment) => {
-    const repository = repositories.find(
-      (candidate) => candidate.mode === comment.scope,
-    );
-    return commentApplicability(comment, repository ?? null);
-  };
   const selected = includeResolved
     ? comments
-    : comments.filter(
-        (comment) =>
-          comment.status === "open" && applicability(comment) !== "stale",
-      );
+    : comments.filter((comment) => comment.status === "open");
   if (selected.length === 0) return "";
   const reviews = new Map<
     string,
@@ -240,18 +259,21 @@ export function formatComments(
     review.files.set(comment.path, file);
     reviews.set(key, review);
   }
+  const stale =
+    "Comments marked stale were written against earlier code; verify they still apply before acting, and report any that no longer apply using the comment ID.";
   const instruction = [
     includeResolved
-      ? "Address every anchored open review comment."
+      ? "Address every open review comment."
       : "Address every unresolved review comment.",
     "Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot.",
     "Preserve unrelated changes.",
     ...(includeResolved
       ? [
-          "Resolved and stale comments are context only; do not act on them.",
-          "If an anchored open comment cannot be applied, report it using its comment ID.",
+          "Resolved comments are context only; do not act on them.",
+          stale,
+          "If an open comment cannot be applied, report it using its comment ID.",
         ]
-      : []),
+      : [stale]),
   ].join(" ");
   const lines = [
     '<code-review-comments version="2">',
@@ -277,19 +299,35 @@ export function formatComments(
         : "";
       lines.push(`    <file path="${attribute(path)}"${oldPath}${change}>`);
       for (const { id, comment } of commentsForFile) {
+        const place = placement(comment);
+        const staleComment =
+          place.applicability === "outdated" ||
+          place.applicability === "unchanged" ||
+          comment.carriedFrom !== undefined;
+        const state = `scope="${comment.scope}" status="${comment.status}" applicability="${place.applicability}"${staleComment ? ' stale="true"' : ""}`;
         if (comment.target === "file") {
+          const carried = comment.carriedFrom;
+          if (carried) {
+            lines.push(
+              `      <comment id="${id}" selection="file" ${state} original-line="${carried.start}" original-end-line="${carried.end}" original-side="${carried.side}">`,
+              `        <code>${xml(comment.code)}</code>`,
+            );
+          } else {
+            lines.push(`      <comment id="${id}" selection="file" ${state}>`);
+          }
           lines.push(
-            `      <comment id="${id}" selection="file" scope="${comment.scope}" status="${comment.status}" applicability="${applicability(comment)}">`,
             `        <body>${xml(comment.body)}</body>`,
             "      </comment>",
           );
           continue;
         }
-        const selection =
-          comment.start === comment.end ? "single-line" : "range";
-        const anchorState = applicability(comment);
+        const inline =
+          place.applicability === "anchored" || place.applicability === "moved";
+        const start = inline ? place.start : comment.start;
+        const end = inline ? place.end : comment.end;
+        const selection = start === end ? "single-line" : "range";
         lines.push(
-          `      <comment id="${id}" selection="${selection}" line="${comment.start}" end-line="${comment.end}" side="${comment.side}" scope="${comment.scope}" status="${comment.status}" applicability="${anchorState}">`,
+          `      <comment id="${id}" selection="${selection}" line="${start}" end-line="${end}" side="${comment.side}" ${state}>`,
           `        <code>${xml(comment.code)}</code>`,
           `        <body>${xml(comment.body)}</body>`,
           "      </comment>",
@@ -301,61 +339,4 @@ export function formatComments(
   }
   lines.push("</code-review-comments>");
   return lines.join("\n");
-}
-
-export function anchored(
-  comment: ReviewComment,
-  repository: RepositoryDiff | null,
-) {
-  return commentApplicability(comment, repository) === "anchored";
-}
-
-export function commentApplicability(
-  comment: ReviewComment,
-  repository: RepositoryDiff | null,
-): CommentApplicability {
-  if (!repository || !comment.diffId || !repository.id) return "unknown";
-  if (comment.diffId !== repository.id) return "other-scope";
-  if (comment.scope !== repository.mode) return "other-scope";
-  return repository.files.some(
-    (file) =>
-      file.path === comment.path && file.fingerprint === comment.fingerprint,
-  )
-    ? "anchored"
-    : "stale";
-}
-
-function currentComment(
-  comment: ReviewComment,
-  repository: RepositoryDiff | null,
-) {
-  if (comment.scope !== repository?.mode || comment.diffId !== repository.id)
-    return false;
-  if (comment.versionId) return comment.versionId === repository.versionId;
-  return repository.files.some(
-    (file) =>
-      file.path === comment.path && file.fingerprint === comment.fingerprint,
-  );
-}
-
-export function reviewRounds(
-  comments: readonly ReviewComment[],
-  repository: RepositoryDiff | null,
-): ReviewRound[] {
-  const rounds = new Map<string, ReviewRound>();
-  for (const comment of comments) {
-    const current = currentComment(comment, repository);
-    const key = comment.versionId
-      ? `snapshot:${comment.diffId}:${comment.versionId}`
-      : `legacy:${current ? "current" : comment.fingerprint}`;
-    const round = rounds.get(key) ?? { key, comments: [], current };
-    round.comments.push(comment);
-    rounds.set(key, round);
-  }
-  return [...rounds.values()].sort((left, right) => {
-    if (left.current !== right.current) return left.current ? -1 : 1;
-    return (
-      (right.comments[0]?.createdAt ?? 0) - (left.comments[0]?.createdAt ?? 0)
-    );
-  });
 }

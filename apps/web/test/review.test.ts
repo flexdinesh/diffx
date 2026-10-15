@@ -10,12 +10,12 @@ import {
 } from "../src/file-tree.ts";
 import {
   commentContext,
-  commentApplicability,
+  commentStale,
   createCommentId,
   formatComments,
   lineContext,
   parseComments,
-  reviewRounds,
+  placementFor,
   type ReviewComment,
   type ReviewOrigin,
 } from "../src/review-model.ts";
@@ -233,65 +233,54 @@ test("copies unresolved comments by default and all comments when requested", ()
   assert.ok(allOutput.includes('status="resolved"'));
   assert.ok(
     allOutput.includes(
-      "Resolved and stale comments are context only; do not act on them.",
+      "Resolved comments are context only; do not act on them.",
     ),
   );
 });
 
-test("treats changed file references as stale export-only context", () => {
-  const repository: RepositoryDiff = {
-    id: "diff",
-    versionId: "current",
-    locationId: "location",
-    repositoryId: "repo",
-    source: "local",
-    root: "/repo",
-    name: "repo",
-    branch: "main",
-    head: "abc",
-    mode: "staged",
-    revision: "current",
-    files: [file("src/file.ts")],
-  };
+test("exports outdated open comments tagged stale", () => {
   const anchoredComment: ReviewComment = {
     ...comment,
     id: "anchored",
-    fingerprint: "src/file.ts",
     body: "Act on this current comment.",
+    placement: {
+      applicability: "anchored",
+      side: "deletions",
+      start: 100,
+      end: 101,
+    },
   };
-  const resolvedStale: ReviewComment = {
+  const outdated: ReviewComment = {
     ...comment,
-    id: "resolved-stale",
+    placement: {
+      applicability: "outdated",
+      side: "deletions",
+      start: 100,
+      end: 101,
+    },
+  };
+  const resolvedOutdated: ReviewComment = {
+    ...outdated,
+    id: "resolved-outdated",
     status: "resolved",
   };
 
-  assert.equal(commentApplicability(anchoredComment, repository), "anchored");
-  assert.equal(commentApplicability(comment, repository), "stale");
-  assert.equal(commentApplicability(resolvedStale, repository), "stale");
-
   const unresolvedOutput = formatComments(
-    [comment, anchoredComment, resolvedStale],
+    [outdated, anchoredComment, resolvedOutdated],
     false,
-    [repository],
   );
-  assert.ok(unresolvedOutput.includes('id="C1"'));
+  assert.equal(unresolvedOutput.match(/<comment /g)?.length, 2);
+  assert.ok(unresolvedOutput.includes('applicability="outdated" stale="true"'));
   assert.ok(unresolvedOutput.includes('applicability="anchored"'));
   assert.ok(unresolvedOutput.includes("Act on this current comment."));
-  assert.ok(!unresolvedOutput.includes("Keep this behavior."));
+  assert.ok(unresolvedOutput.includes("Comments marked stale"));
 
   const allOutput = formatComments(
-    [comment, anchoredComment, resolvedStale],
+    [outdated, anchoredComment, resolvedOutdated],
     true,
-    [repository],
   );
-  assert.equal(allOutput.match(/applicability="stale"/g)?.length, 2);
-  assert.ok(allOutput.includes('status="open" applicability="stale"'));
-  assert.ok(allOutput.includes('status="resolved" applicability="stale"'));
-  assert.ok(
-    allOutput.includes(
-      "Resolved and stale comments are context only; do not act on them.",
-    ),
-  );
+  assert.equal(allOutput.match(/stale="true"/g)?.length, 2);
+  assert.ok(allOutput.includes('status="resolved" applicability="outdated"'));
 });
 
 test("groups comments by snapshot then file while preserving export order", () => {
@@ -336,7 +325,7 @@ test("groups comments by snapshot then file while preserving export order", () =
   assert.ok(output.indexOf('id="C1"') < output.indexOf('id="C4"'));
 });
 
-test("separates current comments from earlier review rounds", () => {
+test("places unplaced comments conservatively and labels stale ones", () => {
   const repository: RepositoryDiff = {
     id: "diff",
     versionId: "current",
@@ -351,48 +340,36 @@ test("separates current comments from earlier review rounds", () => {
     revision: "current",
     files: [file("src/file.ts")],
   };
-  const oldOrigin: ReviewOrigin = {
-    diffId: "diff",
-    versionId: "earlier",
-    source: "local",
-    repository: "repo",
-    branch: "main",
-    head: "abc",
-    revision: "earlier",
-    file: { status: "M", oldPath: null },
+  const current: ReviewComment = { ...comment, versionId: "current" };
+  const earlier: ReviewComment = { ...comment, versionId: "earlier" };
+  const unstaged: ReviewComment = { ...comment, scope: "unstaged" };
+  const carried: ReviewComment = {
+    ...current,
+    target: "file",
+    start: 0,
+    end: 0,
+    side: "additions",
+    carriedFrom: {
+      versionId: "earlier",
+      side: "deletions",
+      start: 100,
+      end: 101,
+    },
+    placement: {
+      applicability: "anchored",
+      side: "additions",
+      start: 0,
+      end: 0,
+    },
   };
-  const currentOrigin: ReviewOrigin = {
-    ...oldOrigin,
-    versionId: "current",
-    revision: "current",
-  };
-  const rounds = reviewRounds(
-    [
-      { ...comment, versionId: "earlier", origin: oldOrigin, createdAt: 1 },
-      {
-        ...comment,
-        id: "two",
-        versionId: "current",
-        origin: currentOrigin,
-        createdAt: 2,
-      },
-      {
-        ...comment,
-        id: "three",
-        versionId: "earlier",
-        origin: oldOrigin,
-        createdAt: 3,
-      },
-    ],
-    repository,
-  );
-  assert.deepEqual(
-    rounds.map((round) => [round.current, round.comments.map(({ id }) => id)]),
-    [
-      [true, ["two"]],
-      [false, ["one", "three"]],
-    ],
-  );
+  assert.equal(placementFor(current, repository).applicability, "anchored");
+  assert.equal(placementFor(earlier, repository).applicability, "outdated");
+  assert.equal(placementFor(unstaged, repository).applicability, "other-scope");
+  assert.equal(placementFor(current, null).applicability, "unknown");
+  assert.equal(commentStale(current, repository), false);
+  assert.equal(commentStale(earlier, repository), true);
+  assert.equal(commentStale(unstaged, repository), false);
+  assert.equal(commentStale(carried, repository), true);
 });
 
 test("copies rename and status metadata with XML-safe attributes and content", () => {
@@ -553,20 +530,6 @@ test("persists whole-file comments without accepting zero-line line comments", (
 });
 
 test("exports file selections without synthetic code or line anchors", () => {
-  const repository: RepositoryDiff = {
-    id: comment.diffId,
-    versionId: comment.versionId,
-    locationId: null,
-    repositoryId: null,
-    source: "stdin",
-    root: "",
-    name: "Piped diff",
-    branch: "",
-    head: null,
-    mode: comment.scope,
-    revision: "snapshot",
-    files: [{ ...file(comment.path), fingerprint: comment.fingerprint }],
-  };
   const fileComment: ReviewComment = {
     ...comment,
     target: "file",
@@ -575,17 +538,29 @@ test("exports file selections without synthetic code or line anchors", () => {
     end: 0,
     code: "",
     body: "Review <whole file>",
+    placement: {
+      applicability: "anchored",
+      side: "additions",
+      start: 0,
+      end: 0,
+    },
   };
-  const output = formatComments([fileComment], false, [repository]);
+  const output = formatComments([fileComment], false);
   assert.match(output, /selection="file"/);
   assert.match(output, /applicability="anchored"/);
   assert.match(output, /<body>Review &lt;whole file&gt;<\/body>/);
   assert.doesNotMatch(output, / line=| end-line=| side=|<code>/);
-  const stale = { ...fileComment, fingerprint: "changed" };
-  assert.equal(commentApplicability(stale, repository), "stale");
-  assert.equal(formatComments([stale], false, [repository]), "");
+  const outdated: ReviewComment = {
+    ...fileComment,
+    placement: {
+      applicability: "outdated",
+      side: "additions",
+      start: 0,
+      end: 0,
+    },
+  };
   assert.match(
-    formatComments([stale], true, [repository]),
-    /selection="file".*applicability="stale"/,
+    formatComments([outdated], false),
+    /selection="file".*applicability="outdated" stale="true"/,
   );
 });

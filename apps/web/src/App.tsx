@@ -1,4 +1,5 @@
 import { useReviewState } from "./app-state.tsx";
+import { OutdatedCommentsNotice } from "./CommentsPanel.tsx";
 import { DiffWorkspace } from "./DiffWorkspace.tsx";
 import { FileExplorerNav, SidebarResizer } from "./FileExplorerNav.tsx";
 import { Header } from "./Header.tsx";
@@ -14,6 +15,7 @@ export function App() {
       <WebMCPTools />
       <Header />
       <NewerSnapshotNotice />
+      <OutdatedCommentsNotice />
       <SidebarBackdrop />
       <div className="workspace">
         <FileExplorerNav />

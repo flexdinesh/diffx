@@ -33,7 +33,7 @@ When the selected context's review-comments capability is enabled, the page regi
 The tools have the same input and behavior as their [MCP
 counterparts](mcp.md#tools). Results use real server comment IDs and identify
 every comment's lifecycle status, applicability, and whether it is currently
-actionable. Stale comments are returned and may be resolved by ID.
+actionable. Outdated and unchanged comments are returned and may be resolved by ID.
 
 The getter is marked read-only and its comment content is marked untrusted. The
 resolver is marked mutating and idempotent. Both operate only against the open

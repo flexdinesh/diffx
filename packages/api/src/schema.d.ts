@@ -458,6 +458,25 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v2/contexts/{contextId}/comments/{commentId}/carry": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Keep an outdated or no-longer-changed comment open as a file-level comment on this context's snapshot. The comment keeps its original code and records where it came from. */
+    post: operations["carryComment"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v2/contexts/{contextId}/review-marks": {
     parameters: {
       query?: never;
@@ -770,7 +789,7 @@ export interface components {
       scope: components["schemas"]["DiffMode"];
       fingerprint: string;
       /**
-       * @description Omitted means a line comment. File comments use additions, zero start/end, and empty code.
+       * @description Omitted means a line comment. File comments use additions, zero start/end, and empty code unless carried from an earlier line selection.
        * @enum {string}
        */
       target?: "file" | "lines";
@@ -784,6 +803,9 @@ export interface components {
       status: "open" | "resolved";
       createdAt: number;
       origin?: components["schemas"]["ReviewOrigin"];
+      anchor?: components["schemas"]["CommentAnchor"];
+      carriedFrom?: components["schemas"]["CommentCarriedFrom"];
+      placement?: components["schemas"]["CommentPlacement"];
     };
     AgentReviewComment: {
       id: string;
@@ -793,7 +815,7 @@ export interface components {
       scope: components["schemas"]["DiffMode"];
       fingerprint: string;
       /**
-       * @description Omitted means a line comment. File comments use additions, zero start/end, and empty code.
+       * @description Omitted means a line comment. File comments use additions, zero start/end, and empty code unless carried from an earlier line selection.
        * @enum {string}
        */
       target?: "file" | "lines";
@@ -807,9 +829,43 @@ export interface components {
       status: "open" | "resolved";
       createdAt: number;
       origin?: components["schemas"]["ReviewOrigin"];
-      /** @enum {string} */
-      applicability: "anchored" | "stale" | "other-scope" | "unknown";
+      anchor?: components["schemas"]["CommentAnchor"];
+      carriedFrom?: components["schemas"]["CommentCarriedFrom"];
+      placement?: components["schemas"]["CommentPlacement"];
+      applicability: components["schemas"]["CommentApplicability"];
       actionable: boolean;
+    };
+    /**
+     * @description Where a stream comment applies in the viewed snapshot. anchored and moved render inline; outdated means the commented code changed or its file left the diff; unchanged means the code still exists but is no longer changed; other-scope means the comment belongs to another scope; unknown means the snapshot cannot be compared.
+     * @enum {string}
+     */
+    CommentApplicability:
+      | "anchored"
+      | "moved"
+      | "outdated"
+      | "unchanged"
+      | "other-scope"
+      | "unknown";
+    /** @description Server-computed position of a comment in the viewed snapshot. Ignored on import. */
+    CommentPlacement: {
+      applicability: components["schemas"]["CommentApplicability"];
+      /** @enum {string} */
+      side: "additions" | "deletions";
+      start: number;
+      end: number;
+    };
+    /** @description Same-side lines around the commented code, captured by the server when the comment is created and used to re-anchor it in later snapshots. */
+    CommentAnchor: {
+      before: string;
+      after: string;
+    };
+    /** @description Original line selection of an outdated comment kept open at file level. */
+    CommentCarriedFrom: {
+      versionId: string;
+      /** @enum {string} */
+      side: "additions" | "deletions";
+      start: number;
+      end: number;
     };
     ResolveReviewComment: {
       comment_id: string;
@@ -1535,7 +1591,7 @@ export interface operations {
   deleteCommentsV2: {
     parameters: {
       query: {
-        status: "all" | "open" | "resolved" | "stale";
+        status: "all" | "open" | "resolved" | "outdated";
       };
       header?: never;
       path: {
@@ -1717,6 +1773,32 @@ export interface operations {
           "application/json": components["schemas"]["ResolveReviewComment"];
         };
       };
+      default: components["responses"]["Problem"];
+    };
+  };
+  carryComment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        commentId: components["parameters"]["CommentId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The carried file-level comment, placed on this snapshot. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReviewComment"];
+        };
+      };
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
       default: components["responses"]["Problem"];
     };
   };

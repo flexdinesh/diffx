@@ -15,6 +15,7 @@ type sourceStub struct {
 	support   diffsource.Support
 	snapshots map[review.DiffMode]review.RepositoryDiff
 	errors    map[review.DiffMode]error
+	patches   map[string]review.FilePatch
 	calls     []review.DiffMode
 }
 
@@ -33,8 +34,8 @@ func (source *sourceStub) Snapshot(ctx context.Context, mode review.DiffMode) (r
 	}
 	return source.snapshots[mode], nil
 }
-func (source *sourceStub) Patch(context.Context, review.DiffMode, review.ChangedFile, *string) (review.FilePatch, error) {
-	return review.FilePatch{}, nil
+func (source *sourceStub) Patch(_ context.Context, _ review.DiffMode, file review.ChangedFile, _ *string) (review.FilePatch, error) {
+	return source.patches[file.Path], nil
 }
 func (source *sourceStub) Contents(context.Context, review.DiffMode, review.ChangedFile, *string) (review.FileContents, error) {
 	return review.FileContents{}, nil
@@ -89,8 +90,8 @@ func TestListCommentsFiltersAndEnrichesInStoredOrder(t *testing.T) {
 	if ids := commentIDs(got); !reflect.DeepEqual(ids, []string{"first", "second", "unknown"}) {
 		t.Fatalf("comment IDs = %v", ids)
 	}
-	if got[0].Applicability != "stale" || got[0].Actionable {
-		t.Fatalf("stale comment = %#v", got[0])
+	if got[0].Applicability != review.Outdated || got[0].Actionable || got[0].Placement == nil {
+		t.Fatalf("outdated comment = %#v", got[0])
 	}
 	if got[1].Applicability != "anchored" || !got[1].Actionable {
 		t.Fatalf("anchored comment = %#v", got[1])
@@ -98,7 +99,8 @@ func TestListCommentsFiltersAndEnrichesInStoredOrder(t *testing.T) {
 	if got[2].Applicability != "unknown" || got[2].Actionable {
 		t.Fatalf("unknown comment = %#v", got[2])
 	}
-	if !reflect.DeepEqual(source.calls, []review.DiffMode{review.DiffStaged, review.DiffUnstaged}) {
+	// Each needed enabled scope is loaded once; the unavailable all scope is not.
+	if !reflect.DeepEqual(source.calls, []review.DiffMode{review.DiffUnstaged, review.DiffStaged}) {
 		t.Fatalf("snapshot calls = %v", source.calls)
 	}
 
@@ -242,14 +244,14 @@ func capabilityError(err error) bool {
 
 func comment(id string, scope review.DiffMode, path, fingerprint, status string) review.ReviewComment {
 	return review.ReviewComment{
-		ID: id, DiffID: "diff-" + string(scope), Path: path, Scope: scope, Fingerprint: fingerprint,
+		ID: id, DiffID: "diff-" + string(scope), VersionID: "version-" + string(scope), Path: path, Scope: scope, Fingerprint: fingerprint,
 		Side: "additions", Start: 1, End: 1, Code: "+code", Body: "Fix it",
 		Status: status, CreatedAt: 1,
 	}
 }
 
 func repository(mode review.DiffMode, files ...review.ChangedFile) review.RepositoryDiff {
-	return review.RepositoryDiff{ID: "diff-" + string(mode), Mode: mode, Files: files}
+	return review.RepositoryDiff{ID: "diff-" + string(mode), VersionID: "version-" + string(mode), Mode: mode, Files: files}
 }
 
 func changedFile(path, fingerprint string) review.ChangedFile {
@@ -270,23 +272,24 @@ func TestUpdateCommentPreservesAnchorAndValidatesBeforeWriting(t *testing.T) {
 	store := &storeStub{comments: []review.ReviewComment{original}}
 	service := New(boundSession(source, session.Policies{}), store)
 	body, status := "  revised concern  ", "resolved"
-	got, err := service.UpdateComment("id", UpdateCommentInput{Body: &body, Status: &status})
+	got, err := service.UpdateComment(context.Background(), "id", UpdateCommentInput{Body: &body, Status: &status})
 	if err != nil {
 		t.Fatal(err)
 	}
 	expected := original
 	expected.Body, expected.Status = "revised concern", "resolved"
-	if !reflect.DeepEqual(got, expected) || store.putCalls != 1 {
+	expected.Placement = &review.CommentPlacement{Applicability: review.Unknown, Side: "additions", Start: 1, End: 1}
+	if !reflect.DeepEqual(got, expected) || store.putCalls != 1 || store.comments[0].Placement != nil {
 		t.Fatalf("updated comment: %#v writes %d", got, store.putCalls)
 	}
 	empty, invalid := "  ", "dismissed"
 	for _, input := range []UpdateCommentInput{{}, {Body: &empty}, {Status: &invalid}} {
-		if _, err := service.UpdateComment("id", input); err == nil {
+		if _, err := service.UpdateComment(context.Background(), "id", input); err == nil {
 			t.Fatalf("accepted invalid update: %#v", input)
 		}
 	}
 	disabled := New(boundSession(source, session.Policies{Comments: session.DisablePolicy}), store)
-	if _, err := disabled.UpdateComment("id", UpdateCommentInput{Body: &body}); !capabilityError(err) {
+	if _, err := disabled.UpdateComment(context.Background(), "id", UpdateCommentInput{Body: &body}); !capabilityError(err) {
 		t.Fatalf("disabled update: %v", err)
 	}
 	if store.putCalls != 1 {
@@ -298,4 +301,113 @@ func boundSession(source review.Source, policies session.Policies) session.Sessi
 	active := session.Resolve(source, policies)
 	active.DiffIDs = map[review.DiffMode]string{review.DiffAll: "diff-all", review.DiffStaged: "diff-staged", review.DiffUnstaged: "diff-unstaged"}
 	return active
+}
+
+func (store *storeStub) DeleteComments(_ string, selected map[string]bool) (int, error) {
+	remaining := store.comments[:0]
+	deleted := 0
+	for _, comment := range store.comments {
+		if selected[comment.ID] {
+			deleted++
+			continue
+		}
+		remaining = append(remaining, comment)
+	}
+	store.comments = remaining
+	return deleted, nil
+}
+
+// streamSource views a later snapshot where one line moved and another changed.
+func streamSource() *sourceStub {
+	oldPath := "old.go"
+	return &sourceStub{
+		support: diffsource.Support{Scopes: []review.DiffMode{review.DiffAll}},
+		snapshots: map[review.DiffMode]review.RepositoryDiff{review.DiffAll: repository(review.DiffAll,
+			changedFile("file.go", "current"),
+			review.ChangedFile{Path: "renamed.go", OldPath: &oldPath, Fingerprint: "renamed"},
+		)},
+		patches: map[string]review.FilePatch{
+			"file.go":    {Patch: "@@ -1,2 +1,4 @@\n+inserted\n+inserted again\n context\n-old\n+kept\n"},
+			"renamed.go": {Patch: "@@ -1,1 +1,1 @@\n-before\n+after\n"},
+		},
+	}
+}
+
+func earlierComment(id, path, code string, start int) review.ReviewComment {
+	result := comment(id, review.DiffAll, path, "earlier", "open")
+	result.VersionID, result.Start, result.End, result.Code = "earlier-version", start, start, code
+	return result
+}
+
+func TestListCommentsPlacesStreamCommentsInViewedSnapshot(t *testing.T) {
+	store := &storeStub{comments: []review.ReviewComment{
+		earlierComment("moved", "file.go", "+ kept", 2),
+		earlierComment("changed", "file.go", "+ rewritten", 2),
+		earlierComment("renamed", "old.go", "+ before", 1),
+	}}
+	service := New(boundSession(streamSource(), session.Policies{}), store)
+	got, err := service.ListComments(context.Background(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []review.CommentPlacement{
+		{Applicability: review.Moved, Side: "additions", Start: 4, End: 4},
+		{Applicability: review.Outdated, Side: "additions", Start: 2, End: 2},
+		{Applicability: review.Outdated, Side: "additions", Start: 1, End: 1},
+	}
+	for index, comment := range got {
+		if *comment.Placement != want[index] || comment.Applicability != want[index].Applicability || comment.Actionable != want[index].Applicability.Inline() {
+			t.Fatalf("%s placement = %#v actionable=%v", comment.ID, comment.Placement, comment.Actionable)
+		}
+	}
+	all, err := service.Comments(context.Background())
+	if err != nil || len(all) != 3 || *all[0].Placement != want[0] {
+		t.Fatalf("REST comments lack placement: %#v %v", all, err)
+	}
+}
+
+func TestCarryCommentKeepsOutdatedCommentAtFileLevel(t *testing.T) {
+	resolved := earlierComment("resolved", "file.go", "+ rewritten", 2)
+	resolved.Status = "resolved"
+	store := &storeStub{comments: []review.ReviewComment{
+		earlierComment("moved", "file.go", "+ kept", 2),
+		earlierComment("renamed", "old.go", "+ removed", 1),
+		earlierComment("gone", "gone.go", "+ gone", 1),
+		resolved,
+	}}
+	service := New(boundSession(streamSource(), session.Policies{}), store)
+	for id, status := range map[string]int{"moved": 409, "gone": 409, "resolved": 409, "missing": 404} {
+		var request *review.RequestError
+		if _, err := service.CarryComment(context.Background(), id); !errors.As(err, &request) || request.Status != status {
+			t.Fatalf("carry %s: %v", id, err)
+		}
+	}
+	carried, err := service.CarryComment(context.Background(), "renamed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := review.CommentCarriedFrom{VersionID: "earlier-version", Side: "additions", Start: 1, End: 1}
+	if carried.Target != "file" || carried.Path != "renamed.go" || carried.VersionID != "version-all" || carried.Fingerprint != "renamed" ||
+		carried.Start != 0 || carried.End != 0 || carried.Code != "+ removed" || *carried.CarriedFrom != want || carried.Anchor != nil ||
+		carried.Placement.Applicability != review.Anchored || !carried.Valid() {
+		t.Fatalf("carried comment = %#v", carried)
+	}
+	if store.comments[1].Placement != nil || store.comments[1].CarriedFrom == nil {
+		t.Fatalf("stored carried comment = %#v", store.comments[1])
+	}
+}
+
+func TestDeleteOutdatedCommentsUsesPlacement(t *testing.T) {
+	store := &storeStub{comments: []review.ReviewComment{
+		earlierComment("moved", "file.go", "+ kept", 2),
+		earlierComment("changed", "file.go", "+ rewritten", 2),
+	}}
+	service := New(boundSession(streamSource(), session.Policies{}), store)
+	if _, err := service.DeleteComments(context.Background(), "stale"); err == nil {
+		t.Fatal("retired stale selection accepted")
+	}
+	result, err := service.DeleteComments(context.Background(), "outdated")
+	if err != nil || result.Deleted != 1 || len(result.Comments) != 1 || result.Comments[0].ID != "moved" || result.Comments[0].Placement == nil {
+		t.Fatalf("delete outdated = %#v %v", result, err)
+	}
 }

@@ -120,7 +120,7 @@ runtime directories (`DIFFX_RUNTIME_DIR`) and in-memory state for lifecycle test
 must not register inputs in the personal service. `DIFFX_EXIT_ON_STDIN_CLOSE`
 is a foreground development-process lifecycle hook.
 
-Stop running processes before upgrading. Current schema 10 databases survive
+Stop running processes before upgrading. Current schema 11 databases survive
 restart; incompatible schemas are refused without resetting data. To start
 fresh, back up the state directory while stopped and explicitly choose a new
 database path. In-memory state does not survive restart. Local `local.retentionDays` defaults to seven; fresh

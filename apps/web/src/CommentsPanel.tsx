@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { ChevronDownIcon, Trash2Icon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  MessageSquareWarningIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,32 +29,33 @@ import {
   useReviewState,
 } from "./app-state.tsx";
 import { DraftComment, ReviewCommentCard } from "./review.tsx";
+import { capabilityEnabled, useSession } from "./session-context.tsx";
 import {
-  anchored,
-  commentApplicability,
+  commentStale,
+  placedInline,
+  placementFor,
   type ReviewComment,
 } from "./review-model.ts";
 
-type CommentState = "open" | "resolved" | "stale";
-type CommentFilter = CommentState | "all";
+type CommentFilter = "open" | "resolved" | "outdated" | "all";
 
 const COMMENT_FILTERS: readonly CommentFilter[] = [
   "open",
   "resolved",
-  "stale",
+  "outdated",
   "all",
 ];
 const DELETE_FILTERS: readonly CommentFilter[] = [
   "all",
   "open",
   "resolved",
-  "stale",
+  "outdated",
 ];
 
 function filterLabel(filter: CommentFilter) {
   if (filter === "open") return "Open";
   if (filter === "resolved") return "Resolved";
-  if (filter === "stale") return "Stale";
+  if (filter === "outdated") return "Outdated";
   return "All";
 }
 
@@ -63,15 +68,17 @@ export function CommentsPanel() {
   const { draft } = useDraft();
   const review = useReviewState();
   const { navigateComment } = useNavigation();
-  const state = (comment: ReviewComment): CommentState =>
-    commentApplicability(comment, repository) === "stale"
-      ? "stale"
-      : comment.status;
+  // Lifecycle filters by status; Outdated selects comments written against earlier code.
+  const matches = (comment: ReviewComment, value: CommentFilter) =>
+    value === "all" ||
+    (value === "outdated"
+      ? commentStale(comment, repository)
+      : comment.status === value);
   const counts = {
-    open: review.comments.filter((comment) => state(comment) === "open").length,
-    resolved: review.comments.filter((comment) => state(comment) === "resolved")
+    open: review.comments.filter((comment) => matches(comment, "open")).length,
+    resolved: review.comments.filter((comment) => matches(comment, "resolved"))
       .length,
-    stale: review.comments.filter((comment) => state(comment) === "stale")
+    outdated: review.comments.filter((comment) => matches(comment, "outdated"))
       .length,
   };
   const activeCount =
@@ -82,14 +89,11 @@ export function CommentsPanel() {
       : deleteSelection === "all"
         ? review.comments.length
         : counts[deleteSelection];
-  const currentRound = review.rounds.find((round) => round.current);
-  const earlierRounds = review.rounds.filter((round) => !round.current);
-  const visible = (comment: ReviewComment) =>
-    filter === "all" || filter === state(comment);
-  const currentComments = currentRound?.comments.filter(visible) ?? [];
-  const visibleEarlierComments = earlierRounds.reduce(
-    (count, round) => count + round.comments.filter(visible).length,
-    0,
+  const currentComments = review.currentComments.filter((comment) =>
+    matches(comment, filter),
+  );
+  const outdatedComments = review.outdatedComments.filter((comment) =>
+    matches(comment, filter),
   );
   return (
     <TabsContent
@@ -129,7 +133,7 @@ export function CommentsPanel() {
                     if (
                       value === "open" ||
                       value === "resolved" ||
-                      value === "stale" ||
+                      value === "outdated" ||
                       value === "all"
                     )
                       setFilter(value);
@@ -211,7 +215,7 @@ export function CommentsPanel() {
         )}
       </div>
       {draft &&
-        (!anchored(draft, repository) ? (
+        (!placedInline(placementFor(draft, repository).applicability) ? (
           <DraftComment />
         ) : (
           <Button
@@ -223,37 +227,30 @@ export function CommentsPanel() {
             Continue draft
           </Button>
         ))}
-      {currentRound && !!currentComments.length && (
-        <section className="review-round" aria-label="Current review">
-          <h2>Current review</h2>
+      {!!currentComments.length && (
+        <section className="review-round" aria-label="Current comments">
+          <h2>Current</h2>
           {currentComments.map((comment) => (
             <ReviewCommentCard key={comment.id} comment={comment} sidebar />
           ))}
         </section>
       )}
-      {earlierRounds.map((round, index) => {
-        const open = round.comments.filter(
-          (comment) => state(comment) === "open",
-        ).length;
-        const resolved = round.comments.filter(
-          (comment) => state(comment) === "resolved",
-        ).length;
-        const stale = round.comments.length - open - resolved;
-        const comments = round.comments.filter(visible);
-        if (!comments.length) return null;
-        return (
-          <details className="review-round earlier-review" key={round.key}>
-            <summary>
-              Earlier review {earlierRounds.length - index} · {open} open ·{" "}
-              {resolved} resolved
-              {!!stale && ` · ${stale} stale`}
-            </summary>
-            {comments.map((comment) => (
-              <ReviewCommentCard key={comment.id} comment={comment} sidebar />
-            ))}
-          </details>
-        );
-      })}
+      {!!outdatedComments.length && (
+        <section
+          id="outdated-comments"
+          className="review-round outdated-review"
+          aria-label="Outdated comments"
+        >
+          <h2>Outdated</h2>
+          <p className="review-round-hint">
+            Written against earlier code. Resolve them, keep them open on their
+            file, or delete them.
+          </p>
+          {outdatedComments.map((comment) => (
+            <ReviewCommentCard key={comment.id} comment={comment} sidebar />
+          ))}
+        </section>
+      )}
       {!review.comments.length && (
         <p className="comment-empty">
           Hover a code line and click + to leave feedback. Select several lines
@@ -262,16 +259,8 @@ export function CommentsPanel() {
         </p>
       )}
       {!!review.comments.length &&
-        !currentRound &&
-        !!visibleEarlierComments && (
-          <p className="comment-empty">
-            No comments in this review yet. Changes after copied feedback start
-            a new review round; add comments from the Files tab.
-          </p>
-        )}
-      {!!review.comments.length &&
         !currentComments.length &&
-        !visibleEarlierComments && (
+        !outdatedComments.length && (
           <p className="comment-empty">No {filter} comments.</p>
         )}
       <Dialog
@@ -319,5 +308,40 @@ export function CommentsPanel() {
         </DialogContent>
       </Dialog>
     </TabsContent>
+  );
+}
+
+/** Points to open comments whose code changed since they were written. */
+export function OutdatedCommentsNotice() {
+  const { capabilities } = useSession();
+  const review = useReviewState();
+  const { showOutdatedComments } = useNavigation();
+  const open = review.outdatedComments.filter(
+    (comment) => comment.status === "open",
+  ).length;
+  const visible = capabilityEnabled(capabilities.review.comments) && open > 0;
+  return (
+    <div className="outdated-notice" role="status" hidden={!visible}>
+      {visible && (
+        <>
+          <MessageSquareWarningIcon
+            className="size-(--icon-sm)"
+            aria-hidden="true"
+          />
+          <p>
+            {open} open {open === 1 ? "comment is" : "comments are"} outdated by
+            code changes
+          </p>
+          <Button
+            type="button"
+            variant="outline-muted"
+            size="sm"
+            onClick={showOutdatedComments}
+          >
+            Review outdated
+          </Button>
+        </>
+      )}
+    </div>
   );
 }
