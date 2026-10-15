@@ -37,7 +37,8 @@ function commentTarget(
 }
 
 interface NavigationOptions {
-  contextId: string;
+  /** Persisted tree state belongs to the viewed stream. */
+  stream: string;
   repository: RepositoryDiff | null;
   mode: DiffMode;
   scopes: readonly DiffMode[];
@@ -52,7 +53,7 @@ interface NavigationOptions {
 }
 
 export function useFileNavigation({
-  contextId,
+  stream,
   repository,
   mode,
   scopes,
@@ -79,7 +80,7 @@ export function useFileNavigation({
     end: number;
     sequence: number;
   } | null>(null);
-  const closedKey = `closed-folders:${contextId}`;
+  const closedKey = `closed-folders:${stream}`;
   const [closed, setClosed] = useState(() => sessionPaths(closedKey));
   useEffect(() => {
     saveSessionPaths(closedKey, closed);

@@ -253,14 +253,17 @@ account before mounting review state; distributed login and `/settings` work wit
 zero observations. Account changes dispose workspace requests and event streams.
 Local mode bypasses account flows. Consumers subscribe through domain hooks for diff source,
 navigation, draft, review, reviewed files, and collapse state. Collapsed diff
-files (per context and scope) and closed tree folders (per context) persist in
-`sessionStorage`, so reloads keep them within a tab. One draft persists
+files (per stream and scope) and closed tree folders (per stream) persist in
+`sessionStorage`, so reloads and newer snapshots keep them within a tab; piped
+snapshots key by context. One draft persists
 across scopes. Context selection uses the projects drawer, whose search filters
 loaded stream heads, and the popup picker (Cmd/Ctrl+K or the drawer's “Browse
 all reviews” action); the header shows the open review's identity without a
 picker. The selected context scopes every request. The session owner exposes
-local checkout collection when bootstrap reports `collect`; Refresh and Alt+R
-then call `POST /api/v2/collections` and open a changed result. The “Switch review” picker first selects a repository
+local checkout collection when bootstrap reports `collect`; loading `/` or a
+live `/streams/{streamId}` URL, Refresh and Alt+R call `POST /api/v2/collections`
+and open the result's live URL. Load-time collection shows “Collecting latest
+changes” until it resolves. The “Switch review” picker first selects a repository
 or Piped, then an immutable observation. Repository observations retain branch,
 worktree, source/run, comparison, and collection-time metadata. Submission/session
 associations remain separate from original snapshot metadata; catalog API filters

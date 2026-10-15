@@ -130,7 +130,9 @@ func (multi *Multi) ServeHTTP(response http.ResponseWriter, request *http.Reques
 			return
 		}
 		assetRequest := request
-		if _, ok := routeValue(pathname, "/contexts/"); ok {
+		_, pinned := routeValue(pathname, "/contexts/")
+		_, live := routeValue(pathname, "/streams/")
+		if pinned || live {
 			assetRequest = request.Clone(request.Context())
 			assetRequest.URL.Path = "/"
 		}

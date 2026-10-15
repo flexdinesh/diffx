@@ -139,7 +139,7 @@ func TestMultiGlobalRoutesWithoutContext(t *testing.T) {
 	defer store.Close()
 	server := httptest.NewServer(NewMulti(&testProvider{}, store, fstest.MapFS{"index.html": {Data: []byte("web")}}))
 	defer server.Close()
-	for _, suffix := range []string{"/api/v2/contexts", "/api/v2/metrics", "/openapi.yaml", "/contexts/example"} {
+	for _, suffix := range []string{"/api/v2/contexts", "/api/v2/metrics", "/openapi.yaml", "/contexts/example", "/streams/example"} {
 		response := request(t, server.Client(), http.MethodGet, server.URL+suffix, nil)
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("global route %s status %d", suffix, response.StatusCode)

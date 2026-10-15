@@ -33,7 +33,10 @@ interface Catalog {
   /** The selected review once loaded, otherwise its catalog entry if known. */
   current: ApiContext | undefined;
   selectedId: string;
+  /** Pins one snapshot. */
   select: (id: string, options?: { restoreFocus?: boolean }) => void;
+  /** Follows a stream's latest head; piped snapshots stay pinned. */
+  openStream: (head: ApiContext, options?: { restoreFocus?: boolean }) => void;
   deleteContext: (id: string) => Promise<void>;
   pickerOpen: boolean;
   openPicker: () => void;
@@ -49,8 +52,19 @@ export function capabilityEnabled(capability: { state: string }) {
   return capability.state === "enabled";
 }
 
-function contextFromUrl() {
-  const match = /^\/contexts\/([^/]+)\/?$/.exec(window.location.pathname);
+/**
+ * `/contexts/{id}` pins one snapshot. `/streams/{id}` follows a stream's latest
+ * head, resolved on load and navigation only. `/` resolves to a live stream.
+ */
+type Route =
+  | { kind: "pinned"; id: string }
+  | { kind: "live"; stream: string }
+  | { kind: "root" };
+
+function routeValue(prefix: string) {
+  const match = new RegExp(`^/${prefix}/([^/]+)/?$`).exec(
+    window.location.pathname,
+  );
   if (!match?.[1]) return "";
   try {
     return decodeURIComponent(match[1]);
@@ -59,8 +73,21 @@ function contextFromUrl() {
   }
 }
 
+function routeFromUrl(): Route {
+  const id = routeValue("contexts");
+  if (id) return { kind: "pinned", id };
+  const stream = routeValue("streams");
+  return stream ? { kind: "live", stream } : { kind: "root" };
+}
+
 export function contextPath(id: string) {
   return `/contexts/${encodeURIComponent(id)}`;
+}
+
+export function streamPath(head: ApiContext) {
+  return head.streamId
+    ? `/streams/${encodeURIComponent(head.streamId)}`
+    : contextPath(head.id);
 }
 
 export function CurrentContext() {
@@ -78,7 +105,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     identity.status === "ready" &&
     identity.bootstrap.mode === "local" &&
     identity.bootstrap.collect;
-  const [selectedId, setSelectedId] = useState(contextFromUrl);
+  const [route, setRoute] = useState(routeFromUrl);
+  const [selectedId, setSelectedId] = useState(() =>
+    route.kind === "pinned" ? route.id : "",
+  );
+  // A live route without a current head (expired, deleted, or unknown).
+  const [missing, setMissing] = useState(false);
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -88,26 +120,56 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [collecting, setCollecting] = useState(false);
   const [collectError, setCollectError] = useState("");
   const collectingRef = useRef(false);
+  const selectedRef = useRef(selectedId);
+  useEffect(() => {
+    selectedRef.current = selectedId;
+  }, [selectedId]);
   const statusRef = useRef<HTMLElement>(null);
   const restorePickerFocus = useRef(false);
   const openPicker = useCallback(() => setPickerOpen(true), []);
-  const select = useCallback(
-    (id: string, options?: { restoreFocus?: boolean }) => {
-      if (id === contextFromUrl()) {
-        window.history.replaceState(null, "", contextPath(id));
-        return;
-      }
+  const show = useCallback(
+    (
+      next: Route,
+      path: string,
+      id: string,
+      options?: { restoreFocus?: boolean; replace?: boolean },
+    ) => {
+      if (options?.replace || path === window.location.pathname)
+        window.history.replaceState(null, "", path);
+      else window.history.pushState(null, "", path);
+      setRoute(next);
+      setMissing(false);
+      if (id === selectedRef.current) return;
       restorePickerFocus.current = options?.restoreFocus ?? true;
-      window.history.pushState(null, "", contextPath(id));
       setSelectedId(id);
       setState({ status: "loading" });
     },
     [],
   );
+  const select = useCallback(
+    (id: string, options?: { restoreFocus?: boolean }) =>
+      show({ kind: "pinned", id }, contextPath(id), id, options),
+    [show],
+  );
+  const openStream = useCallback(
+    (
+      head: ApiContext,
+      options?: { restoreFocus?: boolean; replace?: boolean },
+    ) =>
+      show(
+        head.streamId
+          ? { kind: "live", stream: head.streamId }
+          : { kind: "pinned", id: head.id },
+        streamPath(head),
+        head.id,
+        options,
+      ),
+    [show],
+  );
   const { remove: removeHead, retry: reloadHeads } = heads;
-  // An explicit request may replace the open review; arrivals never do.
-  const collectCheckout = useCallback(async () => {
-    if (collectingRef.current) return "failed" as const;
+  // Collects the local checkout; null when it fails or one is running.
+  const collectLatest = useCallback(async () => {
+    if (collectingRef.current) return null;
     collectingRef.current = true;
     setCollecting(true);
     setCollectError("");
@@ -116,17 +178,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (!data)
         throw new Error(errorDetail(error, "Unable to refresh changes"));
       reloadHeads();
-      if (data.id === contextFromUrl()) return "unchanged" as const;
-      select(data.id, { restoreFocus: false });
-      return "changed" as const;
+      return data;
     } catch (error) {
       setCollectError(errorDetail(error, "Unable to refresh changes"));
-      return "failed" as const;
+      return null;
     } finally {
       collectingRef.current = false;
       setCollecting(false);
     }
-  }, [reloadHeads, select]);
+  }, [reloadHeads]);
+  // An explicit request may replace the open review; arrivals never do.
+  const collectCheckout = useCallback(async () => {
+    const latest = await collectLatest();
+    if (!latest) return "failed" as const;
+    const unchanged = latest.id === selectedRef.current;
+    openStream(latest, { restoreFocus: false });
+    return unchanged ? ("unchanged" as const) : ("changed" as const);
+  }, [collectLatest, openStream]);
   const collect = collectEnabled ? collectCheckout : null;
   const { remove: removeHistory } = history;
   const deleteContext = useCallback(
@@ -143,39 +211,68 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         );
       removeHead(id);
       removeHistory(id);
-      if (contextFromUrl() === id) {
+      if (selectedRef.current === id) {
         const next = heads.contexts.find(
           (context) => context.id !== id && contextHasChanges(context),
         );
-        restorePickerFocus.current = true;
-        window.history.replaceState(
-          null,
-          "",
-          next ? contextPath(next.id) : "/",
-        );
-        setSelectedId(next?.id ?? "");
-        setState({ status: "loading" });
+        if (next) openStream(next, { replace: true });
+        else {
+          restorePickerFocus.current = true;
+          window.history.replaceState(null, "", "/");
+          setRoute({ kind: "root" });
+          setSelectedId("");
+          setState({ status: "loading" });
+        }
       }
       reloadHeads();
     },
-    [heads.contexts, removeHead, removeHistory, reloadHeads],
+    [heads.contexts, removeHead, removeHistory, reloadHeads, openStream],
   );
   useEffect(() => {
     const handleNavigation = () => {
-      setSelectedId(contextFromUrl());
+      const next = routeFromUrl();
+      setRoute(next);
+      setMissing(false);
+      setSelectedId(next.kind === "pinned" ? next.id : "");
       setState({ status: "loading" });
     };
     window.addEventListener("popstate", handleNavigation);
     return () => window.removeEventListener("popstate", handleNavigation);
   }, []);
-  // The root URL opens the most recently submitted current work.
+  // Live routes resolve once per load or navigation. Local checkouts collect
+  // first; otherwise the stream's ingested head (or the newest changed head
+  // for the root URL) opens. Later arrivals only raise the newer-head notice.
+  // The route whose load-time collection started, and one whose failed.
+  const [collected, setCollected] = useState<Route | null>(null);
+  const [uncollected, setUncollected] = useState<Route | null>(null);
+  const resolving = route.kind !== "pinned" && !selectedId && !missing;
+  const collectOnLoad = resolving && collectEnabled && uncollected !== route;
   useEffect(() => {
-    if (contextFromUrl()) return;
-    const first = heads.contexts.find(contextHasChanges);
-    if (!first) return;
-    window.history.replaceState(null, "", contextPath(first.id));
-    setSelectedId(first.id);
-  }, [heads.contexts]);
+    if (!collectOnLoad || collected === route) return;
+    setCollected(route);
+    void collectLatest().then((latest) => {
+      if (latest) openStream(latest, { replace: true, restoreFocus: false });
+      else setUncollected(route);
+    });
+  }, [collectOnLoad, collected, route, collectLatest, openStream]);
+  useEffect(() => {
+    if (!resolving || !heads.loaded) return;
+    if (collectEnabled && uncollected !== route) return;
+    const head =
+      route.kind === "live"
+        ? heads.contexts.find((context) => context.streamId === route.stream)
+        : heads.contexts.find(contextHasChanges);
+    if (head) openStream(head, { replace: true, restoreFocus: false });
+    else if (route.kind === "live") setMissing(true);
+  }, [
+    resolving,
+    heads.loaded,
+    heads.contexts,
+    collectEnabled,
+    uncollected,
+    route,
+    openStream,
+  ]);
   useEffect(() => {
     if (!selectedId) return;
     const controller = new AbortController();
@@ -213,6 +310,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       current,
       selectedId,
       select,
+      openStream,
       deleteContext,
       pickerOpen,
       openPicker,
@@ -225,6 +323,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       current,
       selectedId,
       select,
+      openStream,
       deleteContext,
       pickerOpen,
       openPicker,
@@ -233,7 +332,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       collectError,
     ],
   );
-  const empty = heads.loaded && !selectedId;
+  // The root URL keeps waiting for changed work while showing the empty state.
+  const empty =
+    heads.loaded && !selectedId && route.kind === "root" && !collectOnLoad;
   useEffect(() => {
     if (!restorePickerFocus.current || (!empty && state.status === "loading"))
       return;
@@ -271,22 +372,32 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 tabIndex={-1}
               >
                 <h1>
-                  {empty
-                    ? heads.contexts.length
-                      ? "No changes to review"
-                      : "No review contexts yet"
-                    : state.status === "error" || heads.error
-                      ? "Cannot load diffx"
-                      : "Loading diffx"}
+                  {missing
+                    ? "No current snapshot"
+                    : empty
+                      ? heads.contexts.length
+                        ? "No changes to review"
+                        : "No review contexts yet"
+                      : state.status === "error" || heads.error
+                        ? "Cannot load diffx"
+                        : collectOnLoad
+                          ? "Collecting latest changes"
+                          : "Loading diffx"}
                 </h1>
                 <p>
-                  {empty
-                    ? remote
-                      ? "Create a collector token in settings, then run diffx sync to publish your changes."
-                      : "Run diffx to review a checkout, or diffx sync to publish remotely."
-                    : state.status === "error"
-                      ? state.detail
-                      : heads.error || "Reading review context…"}
+                  {missing
+                    ? collectError ||
+                      "This stream's snapshots expired or were deleted. Pick current work from Projects."
+                    : empty
+                      ? remote
+                        ? "Create a collector token in settings, then run diffx sync to publish your changes."
+                        : "Run diffx to review a checkout, or diffx sync to publish remotely."
+                      : state.status === "error"
+                        ? state.detail
+                        : heads.error ||
+                          (collectOnLoad
+                            ? "Reading the checkout for new changes…"
+                            : "Reading review context…")}
                 </p>
                 {empty && remote && (
                   <Button

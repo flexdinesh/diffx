@@ -11,6 +11,7 @@ import {
   type SetStateAction,
 } from "react";
 import { saveSessionPaths, sessionPaths } from "./preferences.ts";
+import { streamKey } from "./project-nav.ts";
 import {
   capabilityEnabled,
   useCatalog,
@@ -56,11 +57,14 @@ const CollapseContext = createContext<{
   setCollapsed: Dispatch<SetStateAction<Set<string>>>;
 } | null>(null);
 
-const collapsedKey = (contextId: string, mode: DiffMode) =>
-  `collapsed-files:${contextId}:${mode}`;
+// Collapse state belongs to the stream so it survives newer snapshots.
+const collapsedKey = (stream: string, mode: DiffMode) =>
+  `collapsed-files:${stream}:${mode}`;
 
 function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const { id: contextId, capabilities } = useSession();
+  const session = useSession();
+  const { id: contextId, capabilities } = session;
+  const stream = streamKey(session);
   const { collect } = useCatalog();
   const refreshEnabled =
     collect !== null || capabilityEnabled(capabilities.diff.refresh);
@@ -69,11 +73,11 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<DiffMode>("all");
   const [draft, setDraft] = useState<ReviewComment | null>(null);
   const [collapsed, setCollapsed] = useState(() =>
-    sessionPaths(collapsedKey(contextId, "all")),
+    sessionPaths(collapsedKey(stream, "all")),
   );
   useEffect(() => {
-    saveSessionPaths(collapsedKey(contextId, mode), collapsed);
-  }, [contextId, mode, collapsed]);
+    saveSessionPaths(collapsedKey(stream, mode), collapsed);
+  }, [stream, mode, collapsed]);
   const diff = useDiff(contextId, mode);
   const repository = diff.repository;
   const review = useReview(
@@ -98,12 +102,12 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
     (value: DiffMode) => {
       if (value === mode || !scopes.includes(value)) return;
       setMode(value);
-      setCollapsed(sessionPaths(collapsedKey(contextId, value)));
+      setCollapsed(sessionPaths(collapsedKey(stream, value)));
     },
-    [contextId, mode, scopes],
+    [stream, mode, scopes],
   );
   const navigation = useFileNavigation({
-    contextId,
+    stream,
     repository,
     mode,
     scopes,

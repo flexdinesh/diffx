@@ -30,7 +30,7 @@ import {
   type SeenStreams,
 } from "./project-nav.ts";
 import { useProjectsNavState } from "./projects-nav-context.tsx";
-import { contextPath, useCatalog, useSession } from "./session-context.tsx";
+import { streamPath, useCatalog, useSession } from "./session-context.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
 
 const shortcut = navigator.platform.includes("Mac") ? "⌘K" : "Ctrl K";
@@ -116,7 +116,7 @@ function useSeenStreams(heads: ApiContext[], loaded: boolean) {
 export function ProjectsNav() {
   const projects = useProjectsNavState();
   const sidebar = useSidebarState();
-  const { heads, current, select, openPicker } = useCatalog();
+  const { heads, current, openStream, openPicker } = useCatalog();
   const seen = useSeenStreams(heads.contexts, heads.loaded);
   const [closed, setClosed] = useState(readCollapsedGroups);
   const [query, setQuery] = useState("");
@@ -138,11 +138,11 @@ export function ProjectsNav() {
       if (!next.delete(id)) next.add(id);
       return next;
     });
-  const open = (event: MouseEvent<HTMLAnchorElement>, id: string) => {
+  const open = (event: MouseEvent<HTMLAnchorElement>, head: ApiContext) => {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)
       return;
     event.preventDefault();
-    select(id, { restoreFocus: false });
+    openStream(head, { restoreFocus: false });
     projects.closeMobile();
   };
   return (
@@ -262,7 +262,7 @@ function ProjectItem({
   onToggle: () => void;
   currentStream: string;
   now: number;
-  onOpen: (event: MouseEvent<HTMLAnchorElement>, id: string) => void;
+  onOpen: (event: MouseEvent<HTMLAnchorElement>, head: ApiContext) => void;
 }) {
   const unseen = group.streams.some((stream) => stream.unseen);
   const Icon = group.kind === "piped" ? SquareTerminalIcon : FolderGit2Icon;
@@ -294,10 +294,10 @@ function ProjectItem({
             <li key={id}>
               <a
                 className="stream-row"
-                href={contextPath(context.id)}
+                href={streamPath(context)}
                 aria-current={id === currentStream ? "page" : undefined}
                 title={`${streamTitle(context)} · ${contextChangeLabel(context)}`}
-                onClick={(event) => onOpen(event, context.id)}
+                onClick={(event) => onOpen(event, context)}
               >
                 <span className="stream-title">
                   {!contextIsPiped(context) && (
@@ -368,7 +368,7 @@ function ProjectsEmpty({
 /** Announces a newer head for the viewed stream without replacing the review. */
 export function NewerSnapshotNotice() {
   const session = useSession();
-  const { heads, select } = useCatalog();
+  const { heads, openStream } = useCatalog();
   const newer = newerHead(session, heads.contexts);
   const now = useNow();
   return (
@@ -384,7 +384,7 @@ export function NewerSnapshotNotice() {
             type="button"
             variant="outline-muted"
             size="sm"
-            onClick={() => select(newer.id, { restoreFocus: false })}
+            onClick={() => openStream(newer, { restoreFocus: false })}
           >
             View latest
           </Button>

@@ -7,23 +7,23 @@ canonical record of package boundaries and architectural decisions.
 
 ## Modes are compositions
 
-| Concern    | Local `diffx [PATH]`                                       | Remote `diffx-server`                    |
-| ---------- | ---------------------------------------------------------- | ---------------------------------------- |
-| Collection | Selected checkout at start and on user request; stdin once | Separate finite sync or hook producer    |
-| Admission  | Direct application call before serving                     | Authenticated durable queue and worker   |
-| Lifetime   | Foreground; authenticated singleton replacement            | Foreground; graceful worker shutdown     |
-| Storage    | One owner of persistent SQLite                             | One owner of persistent SQLite           |
-| Queries    | Selected checkout or capture via REST/MCP                  | Same application services via REST/MCP   |
-| Access     | Public listener; private lifecycle credential              | Account credentials wrap the application |
-| Identity   | Automatic stable local owner; no account UI                | Account sessions and scoped API tokens   |
+| Concern    | Local `diffx [PATH]`                                                | Remote `diffx-server`                    |
+| ---------- | ------------------------------------------------------------------- | ---------------------------------------- |
+| Collection | Selected checkout at start, live page loads and refresh; stdin once | Separate finite sync or hook producer    |
+| Admission  | Direct application call before serving                              | Authenticated durable queue and worker   |
+| Lifetime   | Foreground; authenticated singleton replacement                     | Foreground; graceful worker shutdown     |
+| Storage    | One owner of persistent SQLite                                      | One owner of persistent SQLite           |
+| Queries    | Selected checkout or capture via REST/MCP                           | Same application services via REST/MCP   |
+| Access     | Public listener; private lifecycle credential                       | Account credentials wrap the application |
+| Identity   | Automatic stable local owner; no account UI                         | Account sessions and scoped API tokens   |
 
 Source support and review policy resolve snapshot capabilities. A mode never
 invents contents, scopes or refresh support. Queue presence at the composition
 root enables remote admission; no queue means no admission routes.
 Local, manual sync and hook producers collect only the selected checkout.
 Stored observations cannot refresh from Git. A local checkout process collects
-again only on explicit user request (`POST /api/v2/collections`), creating a new
-observation; piped and fixture processes have no collection route. Local queries
+again only on user request (`POST /api/v2/collections`): opening a live URL or
+pressing Refresh. Each collection creates a new observation; piped and fixture processes have no collection route. Local queries
 are scoped to the selected checkout, or to the capture's submission, because
 the persistent home-directory database retains every earlier run. The entry
 point supplies that scope; `contextservice` applies it to listing, counting,
