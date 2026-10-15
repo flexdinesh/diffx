@@ -96,15 +96,39 @@ type ReviewComment struct {
 	Status      string        `json:"status"`
 	CreatedAt   float64       `json:"createdAt"`
 	Origin      *ReviewOrigin `json:"origin,omitempty"`
+	// Anchor holds same-side content lines around the selection, captured at creation.
+	Anchor *CommentAnchor `json:"anchor,omitempty"`
+	// CarriedFrom records the original selection of a comment kept open at file level.
+	CarriedFrom *CommentCarriedFrom `json:"carriedFrom,omitempty"`
+	// Placement is computed for the viewed snapshot and never persisted.
+	Placement *CommentPlacement `json:"placement,omitempty"`
+}
+
+type CommentAnchor struct {
+	Before string `json:"before"`
+	After  string `json:"after"`
+}
+
+type CommentCarriedFrom struct {
+	VersionID string `json:"versionId"`
+	Side      string `json:"side"`
+	Start     int    `json:"start"`
+	End       int    `json:"end"`
+}
+
+func validLines(side string, start, end int) bool {
+	return (side == "additions" || side == "deletions") && start > 0 && end >= start && end-start < 200
 }
 
 func (comment ReviewComment) Valid() bool {
 	_, modeError := ParseDiffMode(string(comment.Scope))
-	validSelection := (comment.Target == "" || comment.Target == "lines") &&
-		(comment.Side == "additions" || comment.Side == "deletions") &&
-		comment.Start > 0 && comment.End >= comment.Start && comment.End-comment.Start < 200
+	validSelection := (comment.Target == "" || comment.Target == "lines") && validLines(comment.Side, comment.Start, comment.End)
 	if comment.Target == "file" {
-		validSelection = comment.Side == "additions" && comment.Start == 0 && comment.End == 0 && comment.Code == ""
+		// Carried comments keep their original code; other file comments have none.
+		validSelection = comment.Side == "additions" && comment.Start == 0 && comment.End == 0 && (comment.Code == "" || comment.CarriedFrom != nil)
+	}
+	if carried := comment.CarriedFrom; carried != nil && (comment.Target != "file" || !validLines(carried.Side, carried.Start, carried.End)) {
+		validSelection = false
 	}
 	return comment.Scope != "" && modeError == nil &&
 		validSelection &&

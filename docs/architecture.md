@@ -7,21 +7,27 @@ canonical record of package boundaries and architectural decisions.
 
 ## Modes are compositions
 
-| Concern    | Local `diffx [PATH]`                            | Remote `diffx-server`                    |
-| ---------- | ----------------------------------------------- | ---------------------------------------- |
-| Collection | Selected checkout or stdin, once                | Separate finite sync or hook producer    |
-| Admission  | Direct application call before serving          | Authenticated durable queue and worker   |
-| Lifetime   | Foreground; authenticated singleton replacement | Foreground; graceful worker shutdown     |
-| Storage    | One owner of persistent SQLite                  | One owner of persistent SQLite           |
-| Queries    | Stored observations via REST/MCP                | Same application services via REST/MCP   |
-| Access     | Public listener; private lifecycle credential   | Account credentials wrap the application |
-| Identity   | Automatic stable local owner; no account UI     | Account sessions and scoped API tokens   |
+| Concern    | Local `diffx [PATH]`                                       | Remote `diffx-server`                    |
+| ---------- | ---------------------------------------------------------- | ---------------------------------------- |
+| Collection | Selected checkout at start and on user request; stdin once | Separate finite sync or hook producer    |
+| Admission  | Direct application call before serving                     | Authenticated durable queue and worker   |
+| Lifetime   | Foreground; authenticated singleton replacement            | Foreground; graceful worker shutdown     |
+| Storage    | One owner of persistent SQLite                             | One owner of persistent SQLite           |
+| Queries    | Selected checkout or capture via REST/MCP                  | Same application services via REST/MCP   |
+| Access     | Public listener; private lifecycle credential              | Account credentials wrap the application |
+| Identity   | Automatic stable local owner; no account UI                | Account sessions and scoped API tokens   |
 
 Source support and review policy resolve snapshot capabilities. A mode never
 invents contents, scopes or refresh support. Queue presence at the composition
 root enables remote admission; no queue means no admission routes.
 Local, manual sync and hook producers collect only the selected checkout.
-Stored observations cannot refresh from Git.
+Stored observations cannot refresh from Git. A local checkout process collects
+again only on explicit user request (`POST /api/v2/collections`), creating a new
+observation; piped and fixture processes have no collection route. Local queries
+are scoped to the selected checkout, or to the capture's submission, because
+the persistent home-directory database retains every earlier run. The entry
+point supplies that scope; `contextservice` applies it to listing, counting,
+resolution and deletion, and out-of-scope contexts are not found.
 
 Private local control supports authenticated status/shutdown only. Replacement
 uses lifecycle locking, a validated descriptor and graceful shutdown; a PID
@@ -145,7 +151,9 @@ uses `X-Diffx-State` to pin submission and polling to the destination identity;
 older protocols are rejected. Release artifacts use the explicit `diffx` project
 name, independent of the checkout directory.
 
-Schema 10 preserves current state across starts. Older, future and unrecognized
+Schema 11 preserves current state across starts. It moved review state from
+each snapshot scope to its stream and scope, because comments and reviewed marks
+must survive new collections and snapshot deletion. Older, future and unrecognized
 schemas are refused; opening a database never resets it. Durable server volumes
 require an explicit reset decision: stop the owner, back up its state directory,
 then select a fresh database path. No automatic schema migration is implemented.

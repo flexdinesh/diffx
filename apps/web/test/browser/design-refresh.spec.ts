@@ -145,7 +145,7 @@ test("interactive controls share the semantic control radius", async ({
     (control) => getComputedStyle(control).borderTopLeftRadius,
   );
   const controls = [
-    page.locator(".search-box"),
+    page.locator("#file-panel .search-box"),
     page.locator(".tree-folder").first(),
     page.locator(".file-row").first(),
     page.locator(".layout-control"),
@@ -257,10 +257,12 @@ test("review actions use progressive disclosure, status filters, and confirmed d
   const resolvedFilter = filters.getByRole("menuitemradio", {
     name: "Resolved 1",
   });
-  const staleFilter = filters.getByRole("menuitemradio", { name: "Stale 0" });
+  const outdatedFilter = filters.getByRole("menuitemradio", {
+    name: "Outdated 0",
+  });
   await expect(openFilter.locator(".comment-filter-count")).toHaveText("1");
   await expect(resolvedFilter.locator(".comment-filter-count")).toHaveText("1");
-  await expect(staleFilter.locator(".comment-filter-count")).toHaveText("0");
+  await expect(outdatedFilter.locator(".comment-filter-count")).toHaveText("0");
   await expect(
     filters.getByRole("menuitemradio", { name: "All 2" }),
   ).toBeVisible();
@@ -397,10 +399,9 @@ test("bulk comment deletion selects a status and defaults to all", async ({
   await expect(
     menu.getByRole("menuitem", { name: "Resolved 0" }),
   ).toHaveAttribute("data-disabled", "");
-  await expect(menu.getByRole("menuitem", { name: "Stale 0" })).toHaveAttribute(
-    "data-disabled",
-    "",
-  );
+  await expect(
+    menu.getByRole("menuitem", { name: "Outdated 0" }),
+  ).toHaveAttribute("data-disabled", "");
   await page.keyboard.press("Escape");
 
   await remove.click();

@@ -36,11 +36,12 @@ func TestLocalIdentityIsAutomaticWithoutAccountManagement(t *testing.T) {
 		SignupEnabled bool            `json:"signupEnabled"`
 		User          json.RawMessage `json:"user"`
 		CSRFToken     json.RawMessage `json:"csrfToken"`
+		Collect       json.RawMessage `json:"collect"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &bootstrap); err != nil {
 		t.Fatal(err)
 	}
-	if response.Code != http.StatusOK || bootstrap.Mode != "local" || bootstrap.SignupEnabled || string(bootstrap.User) != "null" || string(bootstrap.CSRFToken) != "null" {
+	if response.Code != http.StatusOK || bootstrap.Mode != "local" || bootstrap.SignupEnabled || string(bootstrap.User) != "null" || string(bootstrap.CSRFToken) != "null" || string(bootstrap.Collect) != "false" {
 		t.Fatalf("local composition exposed remote identity: %d %s", response.Code, response.Body.String())
 	}
 	for method, paths := range map[string][]string{

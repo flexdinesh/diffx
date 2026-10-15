@@ -137,48 +137,57 @@ function pickerRecency(context: ApiContext) {
   return context.lastSubmittedAt;
 }
 
+export function searchWords(query: string) {
+  return query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+}
+
+/** Each word's best match across searchable metadata; 0 means no match. */
+export function contextMatches(context: ApiContext, words: string[]) {
+  const values = (
+    contextIsPiped(context)
+      ? [
+          "Piped",
+          contextTimestampLabel(context),
+          new Date(contextTimestamp(context)).toLocaleString(),
+          context.id,
+        ]
+      : [
+          context.name,
+          context.branch,
+          context.worktreeName,
+          context.root,
+          context.observation?.repositoryName,
+          context.observation?.remoteUrl,
+          context.observation?.hostname,
+          context.observation?.sourceId,
+          context.observation?.runId,
+          context.observation?.agent,
+          context.observation?.trigger,
+          ...(context.sessions?.flatMap((session) => [
+            session.sourceId,
+            session.harness,
+            session.id,
+            session.name,
+          ]) ?? []),
+        ]
+  )
+    .filter((value) => typeof value === "string")
+    .map((value) => value.toLowerCase());
+  return words.map((word) =>
+    Math.max(...values.map((value) => matchScore(value, word))),
+  );
+}
+
 export function pickerResults(
   contexts: ApiContext[],
   query: string,
   filters: PickerFilters = defaultPickerFilters,
 ) {
-  const words = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  const words = searchWords(query);
   return contexts
     .filter((context) => matchesFilters(context, filters))
     .map((context) => {
-      const values = (
-        contextIsPiped(context)
-          ? [
-              "Piped",
-              contextTimestampLabel(context),
-              new Date(contextTimestamp(context)).toLocaleString(),
-              context.id,
-            ]
-          : [
-              context.name,
-              context.branch,
-              context.worktreeName,
-              context.root,
-              context.observation?.repositoryName,
-              context.observation?.remoteUrl,
-              context.observation?.hostname,
-              context.observation?.sourceId,
-              context.observation?.runId,
-              context.observation?.agent,
-              context.observation?.trigger,
-              ...(context.sessions?.flatMap((session) => [
-                session.sourceId,
-                session.harness,
-                session.id,
-                session.name,
-              ]) ?? []),
-            ]
-      )
-        .filter((value) => typeof value === "string")
-        .map((value) => value.toLowerCase());
-      const matches = words.map((word) =>
-        Math.max(...values.map((value) => matchScore(value, word))),
-      );
+      const matches = contextMatches(context, words);
       return {
         context,
         matches,

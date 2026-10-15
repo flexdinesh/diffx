@@ -14,8 +14,8 @@ import {
 import { createRequestOwner } from "./request-owner.ts";
 import {
   commentContext,
+  commentStale,
   createCommentId,
-  reviewRounds,
 } from "./review-model.ts";
 
 interface CopyPayload {
@@ -61,12 +61,18 @@ export function useReview(
   const requests = useRef<ReturnType<typeof createRequestOwner> | null>(null);
   const refreshComments = useRef<() => void>(() => {});
   const comments = enabled && stored.key === key ? stored.comments : noComments;
-  const rounds = useMemo(
-    () => reviewRounds(comments, repository),
+  // Stream comments split by where they apply in the viewed snapshot.
+  const { currentComments, outdatedComments } = useMemo(
+    () => ({
+      currentComments: comments.filter(
+        (comment) => !commentStale(comment, repository),
+      ),
+      outdatedComments: comments.filter((comment) =>
+        commentStale(comment, repository),
+      ),
+    }),
     [comments, repository],
   );
-  const currentComments =
-    rounds.find((round) => round.current)?.comments ?? noComments;
   const [feedback, setFeedback] = useState("");
   const [copyContent, setCopyContent] = useState<CopyContent | null>(null);
   const [pending, setPending] = useState(new Set<string>());
@@ -392,7 +398,7 @@ export function useReview(
   );
 
   const removeComments = useCallback(
-    async (status: "all" | "open" | "resolved" | "stale") => {
+    async (status: "all" | "open" | "resolved" | "outdated") => {
       const request = startMutation("*");
       if (!request) return;
       try {
@@ -430,6 +436,36 @@ export function useReview(
       }
     },
     [contextId, key, startMutation, finishMutation, setDraft],
+  );
+
+  // Keeps an outdated comment open at file level on the viewed snapshot.
+  const carry = useCallback(
+    async (comment: ReviewComment) => {
+      const request = startMutation(comment.id);
+      if (!request) return;
+      try {
+        const { data, error } = await api.POST(
+          "/api/v2/contexts/{contextId}/comments/{commentId}/carry",
+          {
+            params: { path: { contextId, commentId: comment.id } },
+            signal: request.signal,
+          },
+        );
+        if (!request.isCurrent()) return;
+        if (!data) {
+          setFeedback(errorDetail(error, "Unable to keep comment open"));
+          return;
+        }
+        replace(data);
+        setFeedback("Comment kept open on its file.");
+      } catch (error) {
+        if (!request.isCurrent()) return;
+        setFeedback(errorDetail(error, "Unable to keep comment open"));
+      } finally {
+        finishMutation(comment.id, request);
+      }
+    },
+    [contextId, startMutation, finishMutation, replace],
   );
 
   const resolveComment = useCallback(
@@ -528,8 +564,8 @@ export function useReview(
   return useMemo(
     () => ({
       comments,
-      rounds,
       currentComments,
+      outdatedComments,
       feedback,
       setFeedback,
       pending,
@@ -539,6 +575,7 @@ export function useReview(
       cancel,
       edit,
       toggle,
+      carry,
       markResolved,
       resolveComment,
       remove,
@@ -566,8 +603,8 @@ export function useReview(
     }),
     [
       comments,
-      rounds,
       currentComments,
+      outdatedComments,
       feedback,
       pending,
       saveError,
@@ -576,6 +613,7 @@ export function useReview(
       cancel,
       edit,
       toggle,
+      carry,
       markResolved,
       resolveComment,
       remove,

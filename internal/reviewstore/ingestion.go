@@ -2,7 +2,9 @@ package reviewstore
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -15,7 +17,7 @@ import (
 func initializeIngestion(tx *sql.Tx) error {
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS observation_repositories (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, repository_key TEXT NOT NULL, UNIQUE(owner_id,repository_key))`,
-		`CREATE TABLE IF NOT EXISTS observations (context_id TEXT PRIMARY KEY REFERENCES contexts(id) ON DELETE CASCADE, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, source_id TEXT NOT NULL, submission_id TEXT NOT NULL, payload_hash TEXT NOT NULL, repository_id TEXT REFERENCES observation_repositories(id), metadata TEXT NOT NULL, UNIQUE(owner_id,source_id,submission_id))`,
+		`CREATE TABLE IF NOT EXISTS observations (context_id TEXT PRIMARY KEY REFERENCES contexts(id) ON DELETE CASCADE, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, source_id TEXT NOT NULL, submission_id TEXT NOT NULL, payload_hash TEXT NOT NULL, repository_id TEXT REFERENCES observation_repositories(id), metadata TEXT NOT NULL, stream_key TEXT NOT NULL, UNIQUE(owner_id,source_id,submission_id))`,
 		`CREATE TABLE IF NOT EXISTS observation_scopes (context_id TEXT NOT NULL REFERENCES observations(context_id) ON DELETE CASCADE, mode TEXT NOT NULL, diff_id TEXT NOT NULL UNIQUE REFERENCES diffs(id) ON DELETE CASCADE, version_id TEXT NOT NULL REFERENCES diff_versions(id) ON DELETE CASCADE, PRIMARY KEY(context_id,mode))`,
 		`CREATE TABLE IF NOT EXISTS observation_submissions (owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, source_id TEXT NOT NULL, submission_id TEXT NOT NULL, context_id TEXT NOT NULL REFERENCES observations(context_id) ON DELETE CASCADE, payload_hash TEXT NOT NULL, metadata TEXT NOT NULL, PRIMARY KEY(owner_id,source_id,submission_id))`,
 		// Stream heads outlive snapshot retention. Backfill newest arrivals first;
@@ -23,6 +25,7 @@ func initializeIngestion(tx *sql.Tx) error {
 		`CREATE TABLE IF NOT EXISTS observation_stream_heads (owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, source_id TEXT NOT NULL, repository_key TEXT NOT NULL, checkout_key TEXT NOT NULL, branch TEXT NOT NULL, comparison_policy TEXT NOT NULL DEFAULT '', context_id TEXT NOT NULL, collected_at INTEGER NOT NULL, arrival_sequence INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(owner_id,source_id,repository_key,checkout_key,branch,comparison_policy))`,
 		`CREATE TABLE IF NOT EXISTS observation_identities (owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, identity_hash TEXT NOT NULL, context_id TEXT NOT NULL REFERENCES observations(context_id) ON DELETE CASCADE, PRIMARY KEY(owner_id,identity_hash))`,
 		`CREATE INDEX IF NOT EXISTS observations_source ON observations(owner_id,source_id)`,
+		`CREATE INDEX IF NOT EXISTS observations_stream ON observations(owner_id,stream_key)`,
 		`CREATE INDEX IF NOT EXISTS observations_branch ON observations(owner_id,json_extract(metadata,'$.branch'))`,
 	}
 	for _, statement := range statements {
@@ -155,11 +158,12 @@ func (store *Store) IngestContext(ctx context.Context, ownerID string, request i
 		if err := pinObservationVersion(tx, snapshot, scope.Patches, now); err != nil {
 			return Binding{}, err
 		}
-		if err := ensureReview(tx, ownerID, diffID); err != nil {
-			return Binding{}, err
-		}
 		binding.DiffIDs[snapshot.Mode] = diffID
-		if len(request.Scopes) == 1 {
+	}
+	stream := streamKey(id, request.Metadata)
+	for mode := range binding.DiffIDs {
+		if err := ensureReview(tx, ownerID, stream, mode); err != nil {
+			return Binding{}, err
 		}
 	}
 	if err := putObservationContext(tx, ownerID, id, request.Metadata.Root, now); err != nil {
@@ -169,7 +173,7 @@ func (store *Store) IngestContext(ctx context.Context, ownerID string, request i
 	if err != nil {
 		return Binding{}, err
 	}
-	if _, err := tx.Exec(`INSERT INTO observations(context_id,owner_id,source_id,submission_id,payload_hash,repository_id,metadata) VALUES(?,?,?,?,?,?,?)`, id, ownerID, request.Metadata.SourceID, request.SubmissionID, hash, repositoryID, string(metadata)); err != nil {
+	if _, err := tx.Exec(`INSERT INTO observations(context_id,owner_id,source_id,submission_id,payload_hash,repository_id,metadata,stream_key) VALUES(?,?,?,?,?,?,?,?)`, id, ownerID, request.Metadata.SourceID, request.SubmissionID, hash, repositoryID, string(metadata), stream); err != nil {
 		return Binding{}, err
 	}
 	for mode, diffID := range binding.DiffIDs {
@@ -186,6 +190,15 @@ func (store *Store) IngestContext(ctx context.Context, ownerID string, request i
 		}
 	}
 	return binding, tx.Commit()
+}
+
+// streamKey names the review stream of a new observation. Keyed checkouts share
+// their stream head identity; piped observations form a stream of their own.
+func streamKey(contextID string, metadata ingestion.Metadata) string {
+	if metadata.RepositoryKey == "" || metadata.CheckoutKey == "" {
+		return "context:" + contextID
+	}
+	return streamID(metadata.SourceID, metadata.RepositoryKey, metadata.CheckoutKey, branchIdentity(metadata), comparisonPolicy(metadata))
 }
 
 // Missing hashes from older producers dedupe only known empty snapshots.
@@ -236,11 +249,18 @@ func pinObservationVersion(tx *sql.Tx, snapshot review.RepositoryDiff, patches m
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`INSERT INTO diff_files(version_id,file_id,path,fingerprint,patch) VALUES(?,?,?,?,?)`, snapshot.VersionID, file.ID, file.Path, file.Fingerprint, string(encoded)); err != nil {
+		if _, err := tx.Exec(`INSERT INTO diff_files(version_id,file_id,path,fingerprint,patch,patch_digest) VALUES(?,?,?,?,?,?)`, snapshot.VersionID, file.ID, file.Path, file.Fingerprint, string(encoded), patchDigest(patch)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// patchDigest identifies a file's stored patch text so review marks carry
+// between snapshots only while the reviewed change is identical.
+func patchDigest(patch review.FilePatch) string {
+	digest := sha256.Sum256([]byte(patch.Patch))
+	return hex.EncodeToString(digest[:])
 }
 
 func observationBinding(db queryer, ownerID, contextID string) (Binding, error) {
@@ -350,6 +370,9 @@ func (store *Store) ObservationContexts(ownerID string, limit int, beforeTime in
 		query += ` AND (` + strings.Join(terms, " OR ") + `)`
 	}
 	query += `)`
+	predicate, values := selectionPredicate(filter.Selection)
+	query += predicate
+	arguments = append(arguments, values...)
 	if filter.Latest {
 		query += ` AND (head.context_id IS NULL OR head.context_id=c.id)`
 	}
@@ -373,6 +396,31 @@ func (store *Store) ObservationContexts(ownerID string, limit int, beforeTime in
 		result = append(result, item)
 	}
 	return result, rows.Err()
+}
+
+// selectionPredicate matches the selected checkout identity, or a capture by
+// any submission, including fresh submissions that reused its snapshot.
+func selectionPredicate(selection ingestion.Selection) (string, []any) {
+	query := ""
+	arguments := []any{}
+	fields := []struct{ expression, value string }{
+		{"o.source_id", selection.SourceID},
+		{"json_extract(o.metadata,'$.repositoryKey')", selection.RepositoryKey},
+		{"json_extract(o.metadata,'$.checkoutKey')", selection.CheckoutKey},
+		{"c.id", selection.ContextID},
+	}
+	for _, field := range fields {
+		if field.value != "" {
+			query += ` AND ` + field.expression + `=?`
+			arguments = append(arguments, field.value)
+		}
+	}
+	if selection.SubmissionID != "" {
+		query += ` AND EXISTS (SELECT 1 FROM observation_submissions selected WHERE selected.owner_id=c.owner_id AND selected.context_id=c.id
+			AND selected.source_id=o.source_id AND selected.submission_id=?)`
+		arguments = append(arguments, selection.SubmissionID)
+	}
+	return query, arguments
 }
 
 func branchIdentity(metadata ingestion.Metadata) string {

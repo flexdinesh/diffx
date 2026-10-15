@@ -24,6 +24,9 @@ import (
 
 type Options struct {
 	Queue ingestionqueue.Queue
+	// Collect collects the composition's selected checkout again on explicit
+	// request. Piped captures, fixtures and remote storage have none.
+	Collect func(context.Context) (ingestion.Request, error)
 }
 
 // Capabilities are resolved once by the transport composition. Both admission
@@ -31,12 +34,14 @@ type Options struct {
 type Capabilities struct {
 	IngestionEnabled bool
 	QueuedIngestion  bool
+	Collection       bool
 }
 
 func (options Options) Capabilities() Capabilities {
 	return Capabilities{
 		IngestionEnabled: options.Queue != nil,
 		QueuedIngestion:  options.Queue != nil,
+		Collection:       options.Collect != nil,
 	}
 }
 
@@ -48,11 +53,12 @@ func Handler(ctx context.Context, service *contextservice.Service, store httpapi
 	capabilities := configuration.Capabilities()
 
 	mux := http.NewServeMux()
-	mcp := contextMCP(service, store, defaultID)
+	current := &defaultContext{id: defaultID}
+	mcp := contextMCP(service, store, current)
 	mux.Handle("/mcp", mcp)
 	mux.Handle("/mcp/", mcp)
 	mux.Handle("/control/", http.NotFoundHandler())
-	mux.HandleFunc("/api/v2/bootstrap", localBootstrap)
+	mux.HandleFunc("/api/v2/bootstrap", localBootstrap(capabilities))
 	mux.HandleFunc("/api/v2/health", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			problem(w, 405, "Method not allowed")
@@ -68,6 +74,9 @@ func Handler(ctx context.Context, service *contextservice.Service, store httpapi
 	if capabilities.QueuedIngestion {
 		mux.HandleFunc("/api/v2/ingestion-jobs", func(w http.ResponseWriter, r *http.Request) { acceptJob(service, configuration.Queue, w, r) })
 		mux.HandleFunc("/api/v2/ingestion-jobs/", func(w http.ResponseWriter, r *http.Request) { getJob(service, configuration.Queue, w, r) })
+	}
+	if capabilities.Collection {
+		mux.Handle("/api/v2/collections", &collection{service: service, collect: configuration.Collect, current: current})
 	}
 	mux.HandleFunc("/api/v2/events", func(w http.ResponseWriter, r *http.Request) { stream(ctx, service, w, r) })
 	mux.Handle("/", httpapi.NewMulti(service, store, assets))
@@ -173,9 +182,9 @@ func stream(ctx context.Context, service *contextservice.Service, w http.Respons
 	}
 }
 
-func contextMCP(service *contextservice.Service, store httpapi.Store, defaultID string) http.Handler {
+func contextMCP(service *contextservice.Service, store httpapi.Store, current *defaultContext) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := defaultID
+		id := current.get()
 		if strings.HasPrefix(r.URL.Path, "/mcp/contexts/") {
 			id = strings.TrimPrefix(r.URL.Path, "/mcp/contexts/")
 			if id == "" || strings.Contains(id, "/") {

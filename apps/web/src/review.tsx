@@ -5,6 +5,7 @@ import {
   CircleDotIcon,
   CopyIcon,
   PencilIcon,
+  PinIcon,
   RotateCcwIcon,
   SendIcon,
   Trash2Icon,
@@ -38,11 +39,49 @@ import {
 } from "./app-state.tsx";
 import { useAppearance } from "./appearance-context.tsx";
 import { CopyPathButton } from "./CopyPathButton.tsx";
-import { commentApplicability, type ReviewComment } from "./review-model.ts";
+import {
+  commentInFile,
+  commentStale,
+  placedInline,
+  placedOutdated,
+  placementFor,
+  type CommentPlacement,
+  type ReviewComment,
+} from "./review-model.ts";
 
-function location(comment: ReviewComment) {
+function lines(start: number, end: number) {
+  return `${start}${end !== start ? `–${end}` : ""}`;
+}
+
+// Inline comments name their current lines; outdated ones their original lines.
+function location(comment: ReviewComment, placement: CommentPlacement) {
   if (comment.target === "file") return comment.path;
-  return `${comment.path}:${comment.start}${comment.end !== comment.start ? `–${comment.end}` : ""}`;
+  return placedInline(placement.applicability)
+    ? `${comment.path}:${lines(placement.start, placement.end)}`
+    : `${comment.path}:${lines(comment.start, comment.end)}`;
+}
+
+function draftLocation(draft: ReviewComment) {
+  return draft.target === "file"
+    ? draft.path
+    : `${draft.path}:${lines(draft.start, draft.end)}`;
+}
+
+function placementNote(comment: ReviewComment, placement: CommentPlacement) {
+  if (comment.carriedFrom)
+    return `Outdated — kept open from line ${lines(comment.carriedFrom.start, comment.carriedFrom.end)} of earlier code`;
+  switch (placement.applicability) {
+    case "moved":
+      return `Moved from line ${lines(comment.start, comment.end)}`;
+    case "outdated":
+      return "Outdated — the commented code changed or left the diff";
+    case "unchanged":
+      return "Outdated — the commented code is no longer changed";
+    case "unknown":
+      return "Original code preserved";
+    default:
+      return "";
+  }
 }
 
 // Both the diff annotations and sidebar edit the same page-level draft.
@@ -91,6 +130,7 @@ export function ReviewCommentCard({
         if (review.edit(comment)) navigateComment(comment);
       }}
       onToggle={review.toggle}
+      onCarry={review.carry}
       onDelete={review.remove}
       onCopy={sidebar ? review.copySidebarComment : review.copyComment}
     />
@@ -144,7 +184,7 @@ export function CommentEditor({
       <Card size="sm" className="comment-editor">
         <CardHeader className="comment-editor-header">
           <CardTitle className="comment-editor-title">
-            <small>{location(draft)}</small>
+            <small>{draftLocation(draft)}</small>
             <CopyPathButton
               value={
                 draft.target === "file"
@@ -221,6 +261,7 @@ export function CommentCard({
   onNavigate,
   onEdit,
   onToggle,
+  onCarry,
   onDelete,
   onCopy,
 }: {
@@ -232,12 +273,24 @@ export function CommentCard({
   onNavigate: (comment: ReviewComment) => void;
   onEdit: (comment: ReviewComment) => void;
   onToggle: (comment: ReviewComment) => void;
+  onCarry: (comment: ReviewComment) => void;
   onDelete: (comment: ReviewComment) => void;
   onCopy: (comment: ReviewComment) => void;
 }) {
   const resolved = comment.status === "resolved";
-  const applicability = commentApplicability(comment, repository);
-  const stale = applicability === "stale";
+  const placement = placementFor(comment, repository);
+  const { applicability } = placement;
+  const stale = commentStale(comment, repository);
+  const note =
+    applicability === "other-scope" && sidebar
+      ? `From ${comment.scope} changes`
+      : placementNote(comment, placement);
+  // Keep open re-targets the comment to its file in the viewed snapshot.
+  const carryable =
+    !resolved &&
+    !comment.carriedFrom &&
+    placedOutdated(applicability) &&
+    !!repository?.files.some((file) => commentInFile(comment, file));
   const [expanded, setExpanded] = useState(!resolved && !stale);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const contentId = useId();
@@ -262,7 +315,7 @@ export function CommentCard({
             size="icon-xs"
             aria-controls={contentId}
             aria-expanded={expanded}
-            aria-label={`${expanded ? "Collapse" : "Expand"} ${stale ? "stale " : resolved ? "resolved " : ""}comment at ${location(comment)}`}
+            aria-label={`${expanded ? "Collapse" : "Expand"} ${stale ? "outdated " : resolved ? "resolved " : ""}comment at ${location(comment, placement)}`}
             onClick={() => setExpanded((current) => !current)}
           >
             <ChevronDownIcon aria-hidden="true" />
@@ -274,10 +327,10 @@ export function CommentCard({
                 className="comment-location"
                 variant="ghost"
                 size="xs"
-                title={location(comment)}
+                title={location(comment, placement)}
                 onClick={() => onNavigate(comment)}
               >
-                {location(comment)}
+                {location(comment, placement)}
               </Button>
             ) : (
               <>
@@ -285,7 +338,9 @@ export function CommentCard({
                 <span>
                   {comment.target === "file"
                     ? "· file"
-                    : `· line ${comment.start}${comment.end !== comment.start ? `–${comment.end}` : ""}`}
+                    : placedInline(applicability)
+                      ? `· line ${lines(placement.start, placement.end)}`
+                      : `· line ${lines(comment.start, comment.end)}`}
                 </span>
               </>
             )}
@@ -303,7 +358,7 @@ export function CommentCard({
               ) : (
                 <CircleDotIcon aria-hidden="true" />
               )}
-              {stale ? "Stale" : resolved ? "Resolved" : "Open"}
+              {stale ? "Outdated" : resolved ? "Resolved" : "Open"}
             </Badge>
           </CardAction>
         </CardHeader>
@@ -314,28 +369,12 @@ export function CommentCard({
         >
           <CardContent className="comment-card-content">
             <p className="comment-body">{comment.body}</p>
-            {sidebar && (
-              <>
-                {applicability !== "anchored" && (
-                  <p className="comment-outdated">
-                    {applicability === "other-scope"
-                      ? `From ${comment.scope} changes`
-                      : applicability === "stale"
-                        ? comment.target === "file"
-                          ? "Stale — file changed"
-                          : "Stale — file changed; original code preserved"
-                        : comment.target === "file"
-                          ? "File comment from an earlier diff"
-                          : "Original code preserved"}
-                  </p>
-                )}
-                {comment.target !== "file" && (
-                  <details>
-                    <summary>Code context</summary>
-                    <pre>{comment.code}</pre>
-                  </details>
-                )}
-              </>
+            {note && <p className="comment-outdated">{note}</p>}
+            {(sidebar || stale) && comment.code && (
+              <details open={stale && !sidebar}>
+                <summary>{stale ? "Original code" : "Code context"}</summary>
+                <pre>{comment.code}</pre>
+              </details>
             )}
           </CardContent>
           <CardFooter className="comment-actions">
@@ -344,7 +383,7 @@ export function CommentCard({
               className="copy-comment"
               variant="ghost"
               size={sidebar ? "icon-xs" : "icon-sm"}
-              aria-label={`Copy comment at ${location(comment)}`}
+              aria-label={`Copy comment at ${location(comment, placement)}`}
               title="Copy comment"
               onClick={() => onCopy(comment)}
             >
@@ -375,6 +414,18 @@ export function CommentCard({
               )}
               {resolved ? "Reopen" : "Resolve"}
             </Button>
+            {carryable && (
+              <Button
+                type="button"
+                variant="outline"
+                size={sidebar ? "xs" : "sm"}
+                title="Keep this comment open on its file in the current snapshot"
+                onClick={() => onCarry(comment)}
+              >
+                <PinIcon aria-hidden="true" />
+                Keep open
+              </Button>
+            )}
             <Button
               type="button"
               variant="destructive"

@@ -30,8 +30,8 @@ type CommentStore interface {
 
 type Comment struct {
 	review.ReviewComment
-	Applicability string `json:"applicability"`
-	Actionable    bool   `json:"actionable"`
+	Applicability review.Applicability `json:"applicability"`
+	Actionable    bool                 `json:"actionable"`
 }
 
 type Resolution struct {
@@ -49,53 +49,74 @@ func New(active session.Session, store MutationStore) *Service {
 	return service
 }
 
+// ListComments returns the stream's comments placed in this context. Only open
+// comments that render on current lines are actionable.
 func (service *Service) ListComments(ctx context.Context, includeResolved bool) ([]Comment, error) {
 	if err := service.requireComments(); err != nil {
 		return nil, err
 	}
-	selected := make([]review.ReviewComment, 0)
-	needed := make(map[review.DiffMode]bool)
 	storedComments, err := service.store.Comments(service.session.ContextID)
 	if err != nil {
 		return nil, err
 	}
+	selected := make([]review.ReviewComment, 0, len(storedComments))
 	for _, comment := range storedComments {
-		if !includeResolved && comment.Status != "open" {
-			continue
+		if includeResolved || comment.Status == "open" {
+			selected = append(selected, comment)
 		}
-		selected = append(selected, comment)
-		needed[comment.Scope] = true
 	}
-
-	repositories := make(map[review.DiffMode]review.RepositoryDiff)
-	for _, scope := range service.session.Capabilities.Diff.Scopes.Values {
-		if !needed[scope] || !service.session.Capabilities.Diff.Scopes.Allows(scope) {
-			continue
-		}
-		if _, exists := repositories[scope]; exists {
-			continue
-		}
-		repository, err := service.Snapshot(ctx, scope)
-		if err != nil {
-			return nil, err
-		}
-		repositories[scope] = repository
+	if err := service.place(ctx, selected); err != nil {
+		return nil, err
 	}
-
 	comments := make([]Comment, 0, len(selected))
-	for _, stored := range selected {
-		var repository *review.RepositoryDiff
-		if current, ok := repositories[stored.Scope]; ok {
-			repository = &current
-		}
-		applicability := review.Applicability(stored, repository)
+	for _, comment := range selected {
+		applicability := comment.Placement.Applicability
 		comments = append(comments, Comment{
-			ReviewComment: stored,
+			ReviewComment: comment,
 			Applicability: applicability,
-			Actionable:    stored.Status == "open" && applicability == "anchored",
+			Actionable:    comment.Status == "open" && applicability.Inline(),
 		})
 	}
 	return comments, nil
+}
+
+// place locates stream comments in this context's snapshot of each comment's
+// scope, loading each snapshot and file patch at most once.
+func (service *Service) place(ctx context.Context, comments []review.ReviewComment) error {
+	snapshots := make(map[review.DiffMode]*review.RepositoryDiff)
+	patches := make(map[review.DiffMode]map[string]review.FilePatch)
+	for index := range comments {
+		mode := comments[index].Scope
+		viewed, loaded := snapshots[mode]
+		if !loaded {
+			if service.session.Capabilities.Diff.Scopes.Allows(mode) {
+				snapshot, err := service.Snapshot(ctx, mode)
+				if err != nil {
+					return err
+				}
+				viewed = &snapshot
+			}
+			snapshots[mode] = viewed
+			patches[mode] = make(map[string]review.FilePatch)
+		}
+		cache := patches[mode]
+		placement, err := review.Locate(comments[index], viewed, func(file review.ChangedFile) (review.FilePatch, error) {
+			if patch, ok := cache[file.ID]; ok {
+				return patch, nil
+			}
+			patch, err := service.session.Source.Patch(ctx, mode, file, viewed.Head)
+			if err != nil {
+				return review.FilePatch{}, err
+			}
+			cache[file.ID] = patch
+			return patch, nil
+		})
+		if err != nil {
+			return err
+		}
+		comments[index].Placement = &placement
+	}
+	return nil
 }
 
 func (service *Service) ResolveComment(commentID string) (Resolution, error) {

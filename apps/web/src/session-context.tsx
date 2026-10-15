@@ -8,13 +8,13 @@ import {
   useMemo,
   useRef,
   useState,
-  type RefObject,
 } from "react";
 import { AccountButton } from "./account.tsx";
 import { useIdentity, navigate } from "./identity-context.tsx";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ProjectPicker, ProjectPickerTrigger } from "./ProjectPicker.tsx";
+import { ContextIdentity } from "./ContextIdentity.tsx";
+import { ProjectPicker } from "./ProjectPicker.tsx";
 import { ProjectsNav, ProjectsToggle } from "./ProjectsNav.tsx";
 import { contextHasChanges } from "./project-picker.ts";
 import {
@@ -37,7 +37,10 @@ interface Catalog {
   deleteContext: (id: string) => Promise<void>;
   pickerOpen: boolean;
   openPicker: () => void;
-  triggerRef: RefObject<HTMLButtonElement | null>;
+  /** Collects the local process's checkout again; null when unsupported. */
+  collect: (() => Promise<"changed" | "unchanged" | "failed">) | null;
+  collecting: boolean;
+  collectError: string;
 }
 const CatalogContext = createContext<Catalog | null>(null);
 const SessionContext = createContext<ApiContext | null>(null);
@@ -60,24 +63,21 @@ export function contextPath(id: string) {
   return `/contexts/${encodeURIComponent(id)}`;
 }
 
-export function ContextSwitcher() {
+export function CurrentContext() {
   const catalog = useContext(CatalogContext);
-  if (!catalog || (!catalog.heads.contexts.length && !catalog.current))
-    return null;
-  return (
-    <ProjectPickerTrigger
-      current={catalog.current}
-      open={catalog.pickerOpen}
-      onOpen={catalog.openPicker}
-      triggerRef={catalog.triggerRef}
-    />
-  );
+  return catalog?.current ? (
+    <ContextIdentity current={catalog.current} />
+  ) : null;
 }
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const { state: identity } = useIdentity();
   const remote =
     identity.status === "ready" && identity.bootstrap.mode === "remote";
+  const collectEnabled =
+    identity.status === "ready" &&
+    identity.bootstrap.mode === "local" &&
+    identity.bootstrap.collect;
   const [selectedId, setSelectedId] = useState(contextFromUrl);
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -85,7 +85,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // Navigation needs only current work; the picker's history loads on demand.
   const heads = useContextCatalog(true, true);
   const history = useContextCatalog(false, pickerOpen);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [collecting, setCollecting] = useState(false);
+  const [collectError, setCollectError] = useState("");
+  const collectingRef = useRef(false);
   const statusRef = useRef<HTMLElement>(null);
   const restorePickerFocus = useRef(false);
   const openPicker = useCallback(() => setPickerOpen(true), []);
@@ -103,6 +105,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [],
   );
   const { remove: removeHead, retry: reloadHeads } = heads;
+  // An explicit request may replace the open review; arrivals never do.
+  const collectCheckout = useCallback(async () => {
+    if (collectingRef.current) return "failed" as const;
+    collectingRef.current = true;
+    setCollecting(true);
+    setCollectError("");
+    try {
+      const { data, error } = await api.POST("/api/v2/collections");
+      if (!data)
+        throw new Error(errorDetail(error, "Unable to refresh changes"));
+      reloadHeads();
+      if (data.id === contextFromUrl()) return "unchanged" as const;
+      select(data.id, { restoreFocus: false });
+      return "changed" as const;
+    } catch (error) {
+      setCollectError(errorDetail(error, "Unable to refresh changes"));
+      return "failed" as const;
+    } finally {
+      collectingRef.current = false;
+      setCollecting(false);
+    }
+  }, [reloadHeads, select]);
+  const collect = collectEnabled ? collectCheckout : null;
   const { remove: removeHistory } = history;
   const deleteContext = useCallback(
     async (id: string) => {
@@ -191,9 +216,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       deleteContext,
       pickerOpen,
       openPicker,
-      triggerRef,
+      collect,
+      collecting,
+      collectError,
     }),
-    [heads, current, selectedId, select, deleteContext, pickerOpen, openPicker],
+    [
+      heads,
+      current,
+      selectedId,
+      select,
+      deleteContext,
+      pickerOpen,
+      openPicker,
+      collect,
+      collecting,
+      collectError,
+    ],
   );
   const empty = heads.loaded && !selectedId;
   useEffect(() => {
@@ -201,7 +239,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return;
     restorePickerFocus.current = false;
     if (empty) statusRef.current?.focus();
-    else triggerRef.current?.focus();
+    else
+      document
+        .querySelector<HTMLElement>('#projects-nav [aria-current="page"]')
+        ?.focus();
   }, [state, empty]);
   return (
     <CatalogContext value={catalog}>
@@ -218,7 +259,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                   diffx
                 </a>
                 <Separator className="header-divider" orientation="vertical" />
-                <ContextSwitcher />
+                <CurrentContext />
                 <div className="header-actions">
                   <AccountButton />
                 </div>
@@ -279,7 +320,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         select={select}
         open={pickerOpen}
         onOpenChange={setPickerOpen}
-        triggerRef={triggerRef}
       />
     </CatalogContext>
   );

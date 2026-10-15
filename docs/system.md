@@ -35,12 +35,17 @@ register paths for later server collection or maintain its own catalog.
 The application core has two compositions. See [architecture.md](architecture.md)
 for contracts, durability rules and migration details.
 
-`diffx [PATH]` is one foreground process: collect the selected checkout once,
+`diffx [PATH]` is one foreground process: collect the selected checkout,
 ingest directly, and serve UI/REST/MCP. Omitted paths mean the current directory.
-The captured snapshot remains fixed after edits and branch switches.
-The home-directory database survives process termination. Only one local process
-owns it; another invocation prompts before authenticated graceful replacement.
-Noninteractive callers use `--replace`. There is no collector daemon.
+The captured snapshot remains fixed after edits and branch switches until the
+user explicitly requests collection, which ingests a new snapshot of the same
+checkout; nothing watches Git. Piped input is collected once.
+The home-directory database survives process termination, but each process
+serves only its selected checkout (every branch and earlier run of it) or its
+own piped capture, so other checkouts' history reappears only when reopened.
+Only one local process owns the database; another invocation prompts before
+authenticated graceful replacement. Noninteractive callers use `--replace`.
+There is no collector daemon.
 
 `diffx sync` collects the selected checkout once,
 saves immutable pending payloads, and submits them over authenticated HTTP.
@@ -93,8 +98,12 @@ unknown-status heads, orders repositories and streams by latest arrival, and
 marks streams whose head this browser has not opened. Ingestion events reload
 the heads; when the viewed context's stream has a newer head, a notice offers it
 without replacing the open review. The root URL opens the newest changed head.
+The drawer's search filters those loaded heads by the picker's metadata terms;
+the header only names the open review. An explicit local checkout refresh may
+open its new collection, unlike an arrival.
 
-The review picker loads the full catalog only while open. It selects a
+The review picker, opened by Cmd/Ctrl+K or the drawer's “Browse all reviews”
+action, loads the full catalog only while open. It selects a
 repository, then an observation identified by worktree, branch, source, run and time. Distinct
 content from the same worktree remains independently selectable; unchanged
 reviews reuse one context. Search supports repository, branch, worktree,
@@ -115,7 +124,17 @@ do not become latest through housekeeping.
 Opening a context or switching scope loads its stored manifest, patches and
 available contents through scoped REST endpoints. MCP uses the same stored
 context and review services. Comments and reviewed marks are mutable SQLite
-state bound to the observation and scope; the captured diff stays immutable.
+state of the stream and scope, spanning its snapshots, so a review continues
+across new collections; the captured diff stays immutable. Piped observations
+form a stream of their own. Comment responses carry a server-computed placement
+in the viewed snapshot. Line comments re-anchor by preserved code: the block
+must occur exactly once on its side, preferring a match whose captured
+surrounding lines also match; ambiguity never anchors. A found block is
+`anchored` at its original lines or `moved`; otherwise it is `unchanged` when
+it occurs once in collected full contents, else `outdated`. File comments follow
+their path or a rename. Open outdated or unchanged comments can be carried to
+the viewed snapshot as file comments keeping their original code and lines.
+Reviewed marks carry to snapshots whose stored file patch is identical.
 
 `GET /api/v2/events` supplies transient server-sent ingestion notifications.
 The browser reloads the catalog on events and reconnection. An arrival does not
@@ -134,7 +153,8 @@ user
       submissions and observing sessions
       immutable scopes: all / staged / unstaged
         manifest, patches, available contents
-        mutable review state
+    review stream (source/checkout/branch/comparison, or one piped capture)
+      mutable review state per scope, spanning its observations
 ```
 
 An observation can also be unassociated with a repository, such as a standalone
@@ -179,8 +199,8 @@ Each authenticated user can receive observations
 from many containers, including identical branch and path names. Source, session
 and checkout metadata preserve their differences. Provenance describes what a
 producer reported; it is not proof of repository ownership or trustworthiness.
-Identical snapshots share review state within the same user/source/checkout/
-branch/comparison identity. Sessions associate with those shared contexts;
+Review state is shared by every snapshot of the same user/source/repository/
+checkout/branch/comparison stream. Sessions associate with those shared contexts;
 renaming a session updates its searchable label without changing snapshot
 metadata. The triggering session observed collection; it does not own every
 worktree's edits.
@@ -192,9 +212,11 @@ Snapshot retention is configurable in whole days, default seven, after the last
 fresh submission. Changing configuration preserves existing expiry until a
 fresh submission; retries do not extend it. Reads enforce
 expiry immediately; local and remote servers prune at startup and hourly,
-removing all scopes, previews, comments and marks. Compact replay identities and
-stream heads survive deletion and expiry, preventing replay resurrection and
-regression of freshness. Incompatible schemas are refused without resetting data;
+removing all scopes and previews. Deleting or pruning a snapshot keeps its
+stream's comments and marks while another snapshot of the stream remains; the
+same transaction deletes them with the stream's last snapshot. Compact replay
+identities and stream heads survive deletion and expiry, preventing replay
+resurrection and regression of freshness. Incompatible schemas are refused without resetting data;
 see architecture.md for the explicit fresh-state procedure.
 
 ## Freshness and delivery

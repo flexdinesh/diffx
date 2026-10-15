@@ -1,8 +1,13 @@
 import type { ApiContext } from "@diffx/api";
-import { contextHasChanges, contextIsPiped } from "./project-picker.ts";
+import {
+  contextHasChanges,
+  contextIsPiped,
+  contextMatches,
+  searchWords,
+} from "./project-picker.ts";
 
 // The projects drawer shows only current work: each stream's head with changes.
-// Stale snapshots stay reachable through the review picker.
+// Stale snapshots stay reachable through the review picker (Cmd/Ctrl+K).
 
 export type ProjectStream = {
   id: string;
@@ -76,6 +81,20 @@ export function projectGroups(heads: ApiContext[], seen: SeenStreams | null) {
       right.lastActivity - left.lastActivity ||
       left.name.localeCompare(right.name),
   );
+}
+
+/** Keeps streams whose metadata matches every search word, preserving order. */
+export function searchProjectGroups(groups: ProjectGroup[], query: string) {
+  const words = searchWords(query);
+  if (!words.length) return groups;
+  return groups
+    .map((group) => ({
+      ...group,
+      streams: group.streams.filter((stream) =>
+        contextMatches(stream.context, words).every((score) => score > 0),
+      ),
+    }))
+    .filter((group) => group.streams.length);
 }
 
 function streamHost(context: ApiContext) {

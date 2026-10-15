@@ -179,7 +179,10 @@ test("renders and filters a piped diff", async ({ page }) => {
     "height",
     "28px",
   );
-  await expect(page.locator(".search-box")).toHaveCSS("height", "28px");
+  await expect(page.locator("#file-panel .search-box")).toHaveCSS(
+    "height",
+    "28px",
+  );
   await expect(page.getByRole("searchbox", { name: "Filter files" })).toHaveCSS(
     "font-size",
     "13px",
@@ -1099,7 +1102,7 @@ test("inline comments use a distinct structured surface while sidebar comments r
   const viewed = page.locator("#viewer .review-button").first();
   await expect(viewed).toHaveCSS("height", "28px");
   await expect(viewed).toHaveAttribute("data-size", "sm");
-  await expect(page.locator(".context-switcher")).toHaveCSS(
+  await expect(page.locator(".context-identity")).toHaveCSS(
     "height",
     await page
       .locator("#refresh")
@@ -1340,7 +1343,7 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
     colorProbe.remove();
     return {
       sidebar: size("#sidebar-toggle svg"),
-      branch: size(".context-switcher-search"),
+      identity: size(".context-identity > svg"),
       viewOptions: size("#view-options svg"),
       refresh: size("#refresh svg"),
       theme: size("#theme svg"),
@@ -1371,7 +1374,7 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
     dividerHeight: 16,
     headerHeight: 40,
   });
-  expect(styles.branch).toBe(styles.viewOptions);
+  expect(styles.identity).toBe(styles.viewOptions);
   expect(styles.chromeStrokes.every((stroke) => stroke === "1.7px")).toBe(true);
   expect(styles.dividerCenterOffset).toBeLessThanOrEqual(0.5);
   expect(styles.indicatorColor).toBe(styles.accent);
@@ -1494,7 +1497,7 @@ test("copy dialog reports clipboard status and restores focus", async ({
             side: "additions",
             start: 1,
             end: 1,
-            code: "+ export const value = 2;",
+            code: "+ export const value = 1;",
             body: "Keep the exported value stable.",
             status: "open",
             createdAt: 1,
@@ -1508,28 +1511,30 @@ test("copy dialog reports clipboard status and restores focus", async ({
 
   await page.getByRole("tab", { name: /Review/ }).click();
   await page.getByRole("button", { name: "Filter comments: Open" }).click();
-  await page.getByRole("menuitemradio", { name: "Stale 1" }).click();
-  await page.getByText(/Earlier review 1/).click();
+  await page.getByRole("menuitemradio", { name: "Outdated 1" }).click();
+  await expect(
+    page.getByRole("region", { name: "Outdated comments" }),
+  ).toBeVisible();
   const card = page.locator(
     '#comments-panel [data-comment-id="browser-test"] .comment-card',
   );
   await expect(card).toHaveAttribute("data-expanded", "false");
-  await expect(card.getByText("Stale", { exact: true })).toBeVisible();
+  await expect(card.getByText("Outdated", { exact: true })).toBeVisible();
   await expect(card.locator(".comment-state")).toHaveAttribute(
     "title",
-    "Lifecycle: open; applicability: stale",
+    "Lifecycle: open; applicability: outdated",
   );
   const expand = card.locator(".comment-collapse");
-  await expect(expand).toHaveAccessibleName(/Expand stale comment/);
+  await expect(expand).toHaveAccessibleName(/Expand outdated comment/);
   await expand.click();
   const resolve = card.getByRole("button", { name: "Resolve", exact: true });
   await resolve.click();
   await expect(card).toHaveAttribute("data-expanded", "false");
   await expect(card.locator(".comment-collapse-panel")).toBeHidden();
-  await expect(card.getByText("Stale", { exact: true })).toBeVisible();
+  await expect(card.getByText("Outdated", { exact: true })).toBeVisible();
   await expect(card.locator(".comment-state")).toHaveAttribute(
     "title",
-    "Lifecycle: resolved; applicability: stale",
+    "Lifecycle: resolved; applicability: outdated",
   );
   await expect(expand).toHaveAttribute("aria-expanded", "false");
   await expand.click();
@@ -1539,7 +1544,7 @@ test("copy dialog reports clipboard status and restores focus", async ({
   await reopen.click();
   await expect(card.locator(".comment-state")).toHaveAttribute(
     "title",
-    "Lifecycle: open; applicability: stale",
+    "Lifecycle: open; applicability: outdated",
   );
 
   const exportQueries: string[] = [];
@@ -1568,7 +1573,7 @@ test("copy dialog reports clipboard status and restores focus", async ({
   expect(query.get("includeResolved")).toBe("true");
   expect(query.get("commentId")).toBe("browser-test");
   await expect(commentOutput).toHaveValue(
-    /^<file [\s\S]*status="open" applicability="stale"[\s\S]*<\/file>$/,
+    /^<file [\s\S]*status="open" applicability="outdated" stale="true"[\s\S]*<\/file>$/,
   );
   await expect(commentOutput).not.toHaveValue(/code-review-comments|<review /);
   await expect(commentOutput).not.toHaveValue(/Keep the current value stable/);
@@ -1636,7 +1641,9 @@ test("copy dialog reports clipboard status and restores focus", async ({
   expect(query.get("revision")).toBeNull();
   expect(query.get("scope")).toBeNull();
   await expect(reviewOutput).toBeFocused();
-  await expect(reviewOutput).toHaveValue(/status="open" applicability="stale"/);
+  await expect(reviewOutput).toHaveValue(
+    /status="open" applicability="outdated" stale="true"/,
+  );
   await expect(reviewOutput).toHaveValue(
     /status="open" applicability="anchored"/,
   );
@@ -1683,7 +1690,7 @@ test("drawer aligns its header and retains desktop navigation density", async ({
         ".tree-folder",
         ".summary-section .review-tools-toggle",
         "#reset-reviewed",
-        ".search-box",
+        "#file-panel .search-box",
         ".review-progress",
         ".sidebar-footer",
       ];
@@ -1824,4 +1831,41 @@ test("file comments remain available without a text diff", async ({ page }) => {
   await expect(file.locator(".comment-card")).toContainText(
     "Review this binary asset",
   );
+});
+
+test("diff file and folder collapse state survives reload within the tab", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 4_000 });
+  await page.goto("/");
+  await page
+    .getByRole("button", {
+      name: "Collapse src/components/Badge.tsx",
+      exact: true,
+    })
+    .click();
+  await page.getByRole("button", { name: "Collapse folder docs" }).click();
+  await page.reload();
+  await expect(
+    page.getByRole("button", {
+      name: "Expand src/components/Badge.tsx",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Expand folder docs" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", {
+      name: "Expand src/components/Badge.tsx",
+      exact: true,
+    })
+    .click();
+  await page.reload();
+  await expect(
+    page.getByRole("button", {
+      name: "Collapse src/components/Badge.tsx",
+      exact: true,
+    }),
+  ).toBeVisible();
 });

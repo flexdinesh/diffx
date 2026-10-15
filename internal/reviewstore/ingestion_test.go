@@ -645,6 +645,15 @@ func TestObservationExpiryHidesReadsAndPrunesEveryScope(t *testing.T) {
 	if err := store.PruneExpired(time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	// Review state spans the stream; pruning an older snapshot keeps it.
+	comments, err = store.Comments(second.ContextID)
+	if err != nil || len(comments) != 2 {
+		t.Fatalf("stream comments lost with pruned snapshot: %#v %v", comments, err)
+	}
+	marks, err = store.Marks(second.ContextID, review.DiffStaged)
+	if err != nil || len(marks) != 1 || marks[0].DiffID != second.DiffIDs[review.DiffStaged] {
+		t.Fatalf("unchanged file mark not carried: %#v %v", marks, err)
+	}
 	for _, table := range []string{"diffs", "diff_versions", "reviews", "comments", "marks", "observation_scopes", "observation_submissions", "observation_identities", "observations", "contexts"} {
 		var count int
 		if err := store.db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&count); err != nil {
@@ -655,7 +664,7 @@ func TestObservationExpiryHidesReadsAndPrunesEveryScope(t *testing.T) {
 			expected = 3
 		}
 		if table == "comments" || table == "marks" {
-			expected = 0
+			expected = 2
 		}
 		if count != expected {
 			t.Fatalf("orphaned %s: %d want %d", table, count, expected)

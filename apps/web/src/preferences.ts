@@ -41,3 +41,26 @@ export function savedReviews(key: string): Map<string, string> {
     return new Map();
   }
 }
+
+// Per-tab view state survives reloads but not closing the tab.
+export function sessionPaths(key: string): Set<string> {
+  try {
+    const data: unknown = JSON.parse(sessionStorage.getItem(key) ?? "[]");
+    return new Set(
+      Array.isArray(data)
+        ? data.filter((value) => typeof value === "string")
+        : [],
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+export function saveSessionPaths(key: string, paths: ReadonlySet<string>) {
+  try {
+    if (paths.size) sessionStorage.setItem(key, JSON.stringify([...paths]));
+    else sessionStorage.removeItem(key);
+  } catch {
+    // Storage is optional.
+  }
+}

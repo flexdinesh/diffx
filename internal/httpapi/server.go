@@ -154,7 +154,7 @@ func (handler *Handler) api(response http.ResponseWriter, request *http.Request)
 	if pathname == "/api/review/comments" {
 		switch request.Method {
 		case http.MethodGet:
-			comments, err := handler.review.Comments()
+			comments, err := handler.review.Comments(request.Context())
 			return true, writeResult(response, map[string]any{"comments": comments}, err)
 		case http.MethodPost:
 			return true, handler.createComment(response, request)
@@ -167,6 +167,10 @@ func (handler *Handler) api(response http.ResponseWriter, request *http.Request)
 	}
 	if pathname == "/api/review/comments/export" && request.Method == http.MethodGet {
 		return true, handler.exportComments(response, request)
+	}
+	if commentID, ok := carryRoute(pathname); ok && request.Method == http.MethodPost {
+		comment, err := handler.review.CarryComment(request.Context(), commentID)
+		return true, writeResult(response, comment, err)
 	}
 	if commentID, ok := routeValue(pathname, "/api/review/comments/"); ok {
 		switch request.Method {
@@ -236,6 +240,9 @@ func (handler *Handler) api(response http.ResponseWriter, request *http.Request)
 	if _, ok := reviewResolveRoute(pathname); ok {
 		known = true
 	}
+	if _, ok := carryRoute(pathname); ok {
+		known = true
+	}
 	if known {
 		return true, review.Error(405, "Method not allowed")
 	}
@@ -272,6 +279,9 @@ func commentRoute(pathname string) bool {
 	if pathname == "/api/review/comments" || pathname == "/api/review/comments/import" || pathname == "/api/review/comments/export" {
 		return true
 	}
+	if _, ok := carryRoute(pathname); ok {
+		return true
+	}
 	_, ok := routeValue(pathname, "/api/review/comments/")
 	return ok
 }
@@ -285,8 +295,14 @@ func agentReviewRoute(pathname string) bool {
 }
 
 func reviewResolveRoute(pathname string) (string, bool) {
-	const prefix = "/api/review/review/comments/"
-	const suffix = "/resolve"
+	return commentAction(pathname, "/api/review/review/comments/", "/resolve")
+}
+
+func carryRoute(pathname string) (string, bool) {
+	return commentAction(pathname, "/api/review/comments/", "/carry")
+}
+
+func commentAction(pathname, prefix, suffix string) (string, bool) {
 	if !strings.HasPrefix(pathname, prefix) || !strings.HasSuffix(pathname, suffix) {
 		return "", false
 	}
@@ -412,7 +428,7 @@ func (handler *Handler) updateComment(response http.ResponseWriter, request *htt
 	if err := decodeBody(response, request, &body); err != nil {
 		return err
 	}
-	comment, err := handler.review.UpdateComment(commentID, body)
+	comment, err := handler.review.UpdateComment(request.Context(), commentID, body)
 	return writeResult(response, comment, err)
 }
 

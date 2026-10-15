@@ -12,11 +12,12 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/processlock"
+	"github.com/flexdinesh/diffx/internal/review"
 	"github.com/flexdinesh/diffx/internal/reviewdata"
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 10
+const schemaVersion = 11
 const DefaultRetention = 7 * 24 * time.Hour
 
 var ErrNotFound = reviewdata.ErrNotFound
@@ -181,11 +182,14 @@ func (store *Store) initialize(path string) error {
 		`CREATE TABLE IF NOT EXISTS diffs (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, kind TEXT NOT NULL, mode TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER)`,
 		`CREATE INDEX IF NOT EXISTS diffs_owner_expiry ON diffs(owner_id, kind, expires_at)`,
 		`CREATE TABLE IF NOT EXISTS diff_versions (id TEXT PRIMARY KEY, diff_id TEXT NOT NULL REFERENCES diffs(id) ON DELETE CASCADE, revision TEXT NOT NULL, manifest TEXT NOT NULL, created_at INTEGER NOT NULL, UNIQUE(diff_id, revision))`,
-		`CREATE TABLE IF NOT EXISTS diff_files (version_id TEXT NOT NULL REFERENCES diff_versions(id) ON DELETE CASCADE, file_id TEXT NOT NULL, path TEXT NOT NULL, fingerprint TEXT NOT NULL, patch TEXT NOT NULL, PRIMARY KEY(version_id, file_id))`,
-		`CREATE TABLE IF NOT EXISTS reviews (id TEXT PRIMARY KEY, diff_id TEXT NOT NULL UNIQUE REFERENCES diffs(id) ON DELETE CASCADE, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE)`,
+		`CREATE TABLE IF NOT EXISTS diff_files (version_id TEXT NOT NULL REFERENCES diff_versions(id) ON DELETE CASCADE, file_id TEXT NOT NULL, path TEXT NOT NULL, fingerprint TEXT NOT NULL, patch TEXT NOT NULL, patch_digest TEXT NOT NULL, PRIMARY KEY(version_id, file_id))`,
+		// Review state belongs to a stream and scope, spanning its snapshots. It
+		// ends when the stream's last observation is pruned or deleted.
+		`CREATE TABLE IF NOT EXISTS reviews (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, stream_key TEXT NOT NULL, mode TEXT NOT NULL, UNIQUE(owner_id, stream_key, mode))`,
 		`CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, version_id TEXT REFERENCES diff_versions(id) ON DELETE SET NULL, file_id TEXT NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL)`,
 		`CREATE INDEX IF NOT EXISTS comments_review_created ON comments(review_id, created_at)`,
-		`CREATE TABLE IF NOT EXISTS marks (review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, file_id TEXT NOT NULL, version_id TEXT REFERENCES diff_versions(id) ON DELETE SET NULL, data TEXT NOT NULL, PRIMARY KEY(review_id, file_id))`,
+		// Marks carry to snapshots whose stored file patch has the same digest.
+		`CREATE TABLE IF NOT EXISTS marks (review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, file_id TEXT NOT NULL, version_id TEXT REFERENCES diff_versions(id) ON DELETE SET NULL, patch_digest TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(review_id, file_id))`,
 	}
 	for _, statement := range statements {
 		if _, err := transaction.Exec(statement); err != nil {
@@ -235,12 +239,19 @@ func (store *Store) User(osUID, name string) (User, error) {
 	return result, err
 }
 
-func ensureReview(transaction *sql.Tx, ownerID, diffID string) error {
+func ensureReview(transaction *sql.Tx, ownerID, streamKey string, mode review.DiffMode) error {
 	id, err := newID()
 	if err != nil {
 		return err
 	}
-	_, err = transaction.Exec(`INSERT INTO reviews(id, diff_id, owner_id) VALUES(?, ?, ?) ON CONFLICT(diff_id) DO NOTHING`, id, diffID, ownerID)
+	_, err = transaction.Exec(`INSERT INTO reviews(id, owner_id, stream_key, mode) VALUES(?, ?, ?, ?) ON CONFLICT(owner_id, stream_key, mode) DO NOTHING`, id, ownerID, streamKey, mode)
+	return err
+}
+
+// endStreams deletes review state of streams without any remaining observation.
+// It runs in the transaction that removed observations.
+func endStreams(transaction *sql.Tx) error {
+	_, err := transaction.Exec(`DELETE FROM reviews WHERE NOT EXISTS (SELECT 1 FROM observations o WHERE o.owner_id=reviews.owner_id AND o.stream_key=reviews.stream_key)`)
 	return err
 }
 
@@ -254,6 +265,9 @@ func (store *Store) PruneExpired(now time.Time) error {
 		return err
 	}
 	if _, err := transaction.Exec(`DELETE FROM diffs WHERE expires_at<=?`, now.UnixMilli()); err != nil {
+		return err
+	}
+	if err := endStreams(transaction); err != nil {
 		return err
 	}
 

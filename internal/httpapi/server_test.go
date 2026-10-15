@@ -290,6 +290,7 @@ func TestDisabledCommentsRejectEveryRoute(t *testing.T) {
 		{method: http.MethodDelete, path: "/api/review/comments/id"},
 		{method: http.MethodGet, path: "/api/review/review/comments"},
 		{method: http.MethodPost, path: "/api/review/review/comments/id/resolve"},
+		{method: http.MethodPost, path: "/api/review/comments/id/carry"},
 	} {
 		response := request(t, server.Client(), test.method, server.URL+test.path, test.body)
 		assertCapabilityProblem(t, response, session.ReviewComments)
