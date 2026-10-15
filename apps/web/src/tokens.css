@@ -71,6 +71,8 @@
   --diff-gutter: var(--space-3);
   --sidebar-width: 330px;
   --projects-width: 16rem;
+  --activity-item: var(--control-large);
+  --activity-width: calc(var(--activity-item) + 2 * var(--space-1));
   --reading-width: 42.5rem;
   --layer-sidebar: 10;
   --layer-backdrop: 9;
@@ -127,5 +129,6 @@
 @media (max-width: 767px), (pointer: coarse) {
   :root {
     --topbar-height: var(--touch-target);
+    --activity-item: var(--touch-target);
   }
 }

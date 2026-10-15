@@ -1,3 +1,4 @@
+import { ActivityBar } from "./ActivityBar.tsx";
 import { useReviewState } from "./app-state.tsx";
 import { OutdatedCommentsNotice } from "./CommentsPanel.tsx";
 import { DiffWorkspace } from "./DiffWorkspace.tsx";
@@ -14,13 +15,16 @@ export function App() {
     <>
       <WebMCPTools />
       <Header />
-      <NewerSnapshotNotice />
-      <OutdatedCommentsNotice />
       <SidebarBackdrop />
-      <div className="workspace">
-        <FileExplorerNav />
-        <SidebarResizer />
-        <DiffWorkspace />
+      <div className="workbench">
+        <ActivityBar />
+        <NewerSnapshotNotice />
+        <OutdatedCommentsNotice />
+        <div className="workspace">
+          <FileExplorerNav />
+          <SidebarResizer />
+          <DiffWorkspace />
+        </div>
       </div>
       <ReviewCopyDialog />
     </>

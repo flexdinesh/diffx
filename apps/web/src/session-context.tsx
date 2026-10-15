@@ -9,14 +9,14 @@ import {
   useRef,
   useState,
 } from "react";
-import { AccountButton } from "./account.tsx";
+import { ActivityBar, ShellActions } from "./ActivityBar.tsx";
 import { useIdentity, navigate } from "./identity-context.tsx";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { ContextIdentity } from "./ContextIdentity.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { ProjectsNav, ProjectsToggle } from "./ProjectsNav.tsx";
 import { contextHasChanges } from "./project-picker.ts";
+import { useCompactChrome } from "./use-compact-chrome.ts";
 import {
   useContextCatalog,
   type ContextCatalog,
@@ -126,6 +126,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [selectedId]);
   const statusRef = useRef<HTMLElement>(null);
   const restorePickerFocus = useRef(false);
+  const compact = useCompactChrome();
   const openPicker = useCallback(() => setPickerOpen(true), []);
   const show = useCallback(
     (
@@ -356,71 +357,70 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             <>
               <header className="topbar">
                 <ProjectsToggle />
-                <a className="brand" href="/" aria-label="diffx home">
-                  diffx
-                </a>
-                <Separator className="header-divider" orientation="vertical" />
                 <CurrentContext />
                 <div className="header-actions">
-                  <AccountButton />
+                  {compact && <ShellActions side="bottom" />}
                 </div>
               </header>
-              <main
-                className="session-status"
-                role="status"
-                ref={statusRef}
-                tabIndex={-1}
-              >
-                <h1>
-                  {missing
-                    ? "No current snapshot"
-                    : empty
-                      ? heads.contexts.length
-                        ? "No changes to review"
-                        : "No review contexts yet"
-                      : state.status === "error" || heads.error
-                        ? "Cannot load diffx"
-                        : collectOnLoad
-                          ? "Collecting latest changes"
-                          : "Loading diffx"}
-                </h1>
-                <p>
-                  {missing
-                    ? collectError ||
-                      "This stream's snapshots expired or were deleted. Pick current work from Projects."
-                    : empty
-                      ? remote
-                        ? "Create a collector token in settings, then run diffx sync to publish your changes."
-                        : "Run diffx to review a checkout, or diffx sync to publish remotely."
-                      : state.status === "error"
-                        ? state.detail
-                        : heads.error ||
-                          (collectOnLoad
-                            ? "Reading the checkout for new changes…"
-                            : "Reading review context…")}
-                </p>
-                {empty && remote && (
-                  <Button
-                    variant="outline"
-                    onClick={() => navigate("/settings")}
-                  >
-                    Create a collector token
-                  </Button>
-                )}
-                {(state.status === "error" || heads.error) && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setState({ status: "loading" });
-                      reloadHeads();
-                      setAttempt((current) => current + 1);
-                    }}
-                  >
-                    Retry
-                  </Button>
-                )}
-              </main>
+              <div className="workbench">
+                <ActivityBar />
+                <main
+                  className="session-status"
+                  role="status"
+                  ref={statusRef}
+                  tabIndex={-1}
+                >
+                  <h1>
+                    {missing
+                      ? "No current snapshot"
+                      : empty
+                        ? heads.contexts.length
+                          ? "No changes to review"
+                          : "No review contexts yet"
+                        : state.status === "error" || heads.error
+                          ? "Cannot load diffx"
+                          : collectOnLoad
+                            ? "Collecting latest changes"
+                            : "Loading diffx"}
+                  </h1>
+                  <p>
+                    {missing
+                      ? collectError ||
+                        "This stream's snapshots expired or were deleted. Pick current work from Projects."
+                      : empty
+                        ? remote
+                          ? "Create a collector token in settings, then run diffx sync to publish your changes."
+                          : "Run diffx to review a checkout, or diffx sync to publish remotely."
+                        : state.status === "error"
+                          ? state.detail
+                          : heads.error ||
+                            (collectOnLoad
+                              ? "Reading the checkout for new changes…"
+                              : "Reading review context…")}
+                  </p>
+                  {empty && remote && (
+                    <Button
+                      variant="outline"
+                      onClick={() => navigate("/settings")}
+                    >
+                      Create a collector token
+                    </Button>
+                  )}
+                  {(state.status === "error" || heads.error) && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setState({ status: "loading" });
+                        reloadHeads();
+                        setAttempt((current) => current + 1);
+                      }}
+                    >
+                      Retry
+                    </Button>
+                  )}
+                </main>
+              </div>
             </>
           )}
         </div>

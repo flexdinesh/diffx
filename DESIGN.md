@@ -206,23 +206,36 @@ such detail into a token. New layout spacing must use the scale.
   use 8px action gaps and the same trailing inset so icon columns align.
 - Header uses `--panel`, a quiet brand, and the review identity as its primary
   context. Keep the secondary scope heading and muted monospace path inline;
-  hide the path at 768–1011px and both below 768px. Group ghost Refresh/theme
-  actions at the trailing edge; share `--hover` feedback with the trigger.
+  hide the path at 768–1011px and both below 768px. Group ghost Refresh and
+  delete actions at the trailing edge; share `--hover` feedback with the trigger.
+- Header lead: the “Show/Hide projects” toggle (panel-left open/close icon),
+  brand and divider always start the header, in that order. The toggle sits in
+  an `--activity-width` box so it centers over the activity bar's icons. The
+  drawer pushes the header right; the lead never moves into the drawer or
+  reorders. Below 768px the lead uses the normal header gutter.
+- Activity bar: a fixed `--activity-width` column (48px; 52px for coarse
+  pointers) between the projects drawer and file sidebar, spanning the header's
+  bottom edge to the viewport bottom on `--panel` with a separator edge. Views
+  (Diff now; Files and Git later) are `--activity-item` square ghost icon
+  buttons with 20px icons, `--radius-md`, hover `--hover`, and the current view
+  in accent text on `--accent-bg` with `aria-current="page"`. Theme and account
+  actions sit at its bottom, as in an editor's activity bar. Below 768px the bar
+  hides and those actions return to the header's trailing edge.
 - Projects drawer: the outermost full-height column, `--projects-width` (16rem)
   on `--panel` with a separator edge. Its header matches `--topbar-height` and
-  holds the brand and a ghost “Hide projects” action (panel-left icon). Below it:
-  a “Search projects” field styled like the file filter that filters current
-  streams in place (Escape clears it; matching repositories expand), a quiet
-  semibold “Projects” caption with a trailing compact ghost “Browse all reviews”
-  icon action that opens the review picker, then repositories ordered by latest arrival.
+  holds the “Projects” panel title (UI label size, medium, secondary text), a
+  ghost “Browse all reviews” icon action that opens the review picker, and a
+  close action in the modal drawer only. Below it: a “Search projects” field
+  styled like the file filter that filters current streams in place (Escape
+  clears it; matching repositories expand), then repositories ordered by latest
+  arrival.
   Repository rows match tree-row height with a chevron, repository icon, medium
   name and muted monospace age. Stream rows indent under them: branch icon, name,
   trailing monospace changed-file count, and a muted metadata line (worktree,
   harness, host only when a repository has several, age). Show only current
   heads with changes. The current stream uses `--accent-bg`, accent text and
   `aria-current="page"`. Unopened arrivals show a small accent dot labeled “New
-  changes”; a collapsed repository carries its streams' dot. While hidden, the
-  topbar starts with a “Show projects” action, the brand and divider. The file
+  changes”; a collapsed repository carries its streams' dot. The file
   sidebar toggle uses a list-tree icon so the two panel controls stay distinct.
   Collapse state persists per browser.
 - A newer head for the viewed stream shows a one-line `--accent-bg` notice below

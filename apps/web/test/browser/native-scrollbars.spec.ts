@@ -80,7 +80,12 @@ test("diff tracks fill frames and headers align with their gutters", async ({
       await expect
         .poll(() =>
           files.first().evaluate((element) => {
-            const theme = document.querySelector("#theme");
+            // The trailing header action; theme moves to the activity bar on desktop.
+            const theme = Array.from(
+              document.querySelectorAll(".header-actions > *"),
+            )
+              .filter((action) => action.getClientRects().length > 0)
+              .at(-1);
             const toggle = document.querySelector("#toggle-all-files");
             if (!theme || !toggle) throw new Error("Missing shell actions");
             const edge = element.getBoundingClientRect().right;

@@ -1651,7 +1651,7 @@ test("projects drawer lists current changed streams and announces newer snapshot
   await expect(picker).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(picker).toBeHidden();
-  await nav.getByRole("button", { name: "Hide projects" }).click();
+  await page.getByRole("button", { name: "Hide projects" }).click();
   await expect(nav).toBeHidden();
   await page.reload();
   await ready(page);

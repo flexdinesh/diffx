@@ -103,8 +103,14 @@ kbd {
   align-items: center;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
-  padding: 0 var(--diff-gutter);
-  padding-right: calc(var(--diff-gutter) + var(--diff-viewport-inset, 0px));
+  padding: 0 calc(var(--diff-gutter) + var(--diff-viewport-inset, 0px)) 0 0;
+}
+/* Centers the projects toggle over the activity bar so it never moves. */
+.topbar-lead {
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--activity-width);
 }
 .brand {
   display: flex;
@@ -196,10 +202,66 @@ kbd {
   display: flex;
   flex-direction: column;
 }
-.workspace {
+.workbench {
   flex: 1;
   min-height: 0;
+  display: grid;
+  grid-template: auto auto minmax(0, 1fr) / auto minmax(0, 1fr);
+}
+.workbench > * {
+  grid-area: 3 / 2;
+  min-width: 0;
+}
+.workbench > .snapshot-notice {
+  grid-row: 1;
+}
+.workbench > .outdated-notice {
+  grid-row: 2;
+}
+.workbench > .activity-bar {
+  grid-area: 1 / 1 / -1;
+}
+.workspace {
+  min-height: 0;
   display: flex;
+}
+.activity-bar {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: var(--activity-width);
+  padding: var(--space-1) 0;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+.activity-views,
+.activity-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.activity-bar button {
+  width: var(--activity-item);
+  height: var(--activity-item);
+  border-radius: var(--radius-md);
+}
+.activity-bar button svg {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  stroke-width: 1.7;
+}
+.activity-bar button:hover,
+.activity-bar button[aria-expanded="true"] {
+  background: var(--hover);
+}
+.activity-bar [aria-current="page"],
+.activity-bar [aria-current="page"]:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
 }
 .projects-nav {
   flex: 0 0 var(--projects-width);
@@ -220,7 +282,7 @@ kbd {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: 0 var(--diff-gutter);
+  padding: 0 var(--space-2) 0 var(--space-4);
   border-bottom: 1px solid var(--border);
 }
 .projects-nav-header button svg {
@@ -230,14 +292,13 @@ kbd {
   margin-top: var(--space-3);
 }
 .projects-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin: var(--space-2) var(--space-2) var(--space-1) var(--space-4);
-  color: var(--muted);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
+  flex: 1;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-ui);
+  letter-spacing: inherit;
 }
 .projects-scroll {
   flex: 1;
@@ -946,6 +1007,9 @@ h2 {
   .sidebar .mobile-only {
     display: inline-flex;
   }
+  .projects-nav .mobile-only {
+    display: inline-flex;
+  }
   .projects-nav.open {
     position: fixed;
     z-index: var(--layer-sidebar);
@@ -969,6 +1033,10 @@ h2 {
   }
   .brand {
     font-size: var(--text-md);
+  }
+  .topbar-lead {
+    width: auto;
+    padding-left: var(--diff-gutter);
   }
   .topbar .header-divider,
   .topbar .brand,
