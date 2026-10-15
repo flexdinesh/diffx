@@ -11,9 +11,11 @@ export function useModalDrawer(
     if (!active) return;
     const main = document.querySelector<HTMLElement>("main");
     const header = document.querySelector<HTMLElement>(".topbar");
+    const views = document.querySelector<HTMLElement>(".activity-bar");
     const drawer = document.querySelector<HTMLElement>(drawerSelector);
     main?.setAttribute("inert", "");
     header?.setAttribute("inert", "");
+    views?.setAttribute("inert", "");
     const focusable = () =>
       Array.from(
         drawer?.querySelectorAll<HTMLElement>(
@@ -40,6 +42,7 @@ export function useModalDrawer(
       document.removeEventListener("keydown", trapFocus);
       main?.removeAttribute("inert");
       header?.removeAttribute("inert");
+      views?.removeAttribute("inert");
       document.querySelector<HTMLElement>(toggleSelector)?.focus();
     };
   }, [active, drawerSelector, toggleSelector]);

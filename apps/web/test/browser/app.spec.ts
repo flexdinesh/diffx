@@ -1316,10 +1316,34 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
   page,
 }) => {
   await page.goto("/");
-  await expect(page.locator("#projects-nav .brand")).toHaveText("diffx");
-  // The topbar carries the brand and divider while the projects drawer is hidden.
+  // The projects toggle and brand keep their header order; opening the drawer
+  // shifts them right with the header instead of moving them into the drawer.
+  const toggle = page.locator("#projects-toggle");
+  const brand = page.locator(".topbar .brand");
+  const view = page.locator(".activity-bar [aria-current='page']");
+  // The loading shell's header is replaced once the review is ready.
+  await expect(page.locator("#sidebar-toggle")).toBeVisible();
+  await expect(brand).toHaveText("diffx");
+  await expect(view).toBeVisible();
+  const lead = async () => {
+    const [toggleBox, brandBox, viewBox] = await Promise.all([
+      toggle.boundingBox(),
+      brand.boundingBox(),
+      view.boundingBox(),
+    ]);
+    if (!toggleBox || !brandBox || !viewBox) throw new Error("Missing lead");
+    return { toggle: toggleBox, brand: brandBox, view: viewBox };
+  };
+  const open = await lead();
   await page.getByRole("button", { name: "Hide projects" }).click();
-  await expect(page.locator(".topbar .brand")).toHaveText("diffx");
+  await expect(page.locator("#projects-nav")).toBeHidden();
+  const closed = await lead();
+  expect(closed.brand.x - closed.toggle.x).toBe(open.brand.x - open.toggle.x);
+  expect(closed.toggle.y).toBe(open.toggle.y);
+  for (const { toggle, view } of [open, closed])
+    expect(
+      Math.abs(toggle.x + toggle.width / 2 - (view.x + view.width / 2)),
+    ).toBeLessThanOrEqual(0.5);
   await expect(page.locator('img[src="/logo.png"]')).toHaveCount(0);
 
   const styles = await page.evaluate(() => {
@@ -1347,8 +1371,11 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
       viewOptions: size("#view-options svg"),
       refresh: size("#refresh svg"),
       theme: size("#theme svg"),
+      view: size(".activity-bar [aria-current='page'] svg"),
       chromeStrokes: Array.from(
-        document.querySelectorAll(".topbar button svg, .toolbar button svg"),
+        document.querySelectorAll(
+          ".topbar button svg, .toolbar button svg, .activity-bar button svg",
+        ),
         (element) => getComputedStyle(element).strokeWidth,
       ),
       tabBorderWidth: getComputedStyle(tab).borderBottomWidth,
@@ -1368,7 +1395,8 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
   expect(styles).toMatchObject({
     sidebar: "16px",
     refresh: "16px",
-    theme: "16px",
+    theme: "20px",
+    view: "20px",
     tabBorderWidth: "1px",
     indicatorOpacity: "1",
     dividerHeight: 16,

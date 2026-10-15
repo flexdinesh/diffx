@@ -9,6 +9,7 @@ import {
   PanelLeftOpenIcon,
   SearchIcon,
   SquareTerminalIcon,
+  XIcon,
 } from "lucide-react";
 import { useEffect, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
@@ -35,25 +36,28 @@ import { useSidebarState } from "./sidebar-context.tsx";
 
 const shortcut = navigator.platform.includes("Mac") ? "⌘K" : "Ctrl K";
 
-/** Topbar start while the drawer is hidden: show-projects toggle and brand. */
+/** Topbar start: projects toggle above the activity bar, brand and divider. */
 export function ProjectsToggle() {
   const projects = useProjectsNavState();
-  if (projects.expanded) return null;
+  const action = projects.expanded ? "Hide projects" : "Show projects";
+  const Icon = projects.expanded ? PanelLeftCloseIcon : PanelLeftOpenIcon;
   return (
     <>
-      <Button
-        type="button"
-        id="projects-toggle"
-        variant="ghost"
-        size="icon"
-        aria-controls="projects-nav"
-        aria-expanded={false}
-        aria-label="Show projects"
-        title="Show projects"
-        onClick={projects.toggle}
-      >
-        <PanelLeftOpenIcon className="size-(--icon-base)" />
-      </Button>
+      <div className="topbar-lead">
+        <Button
+          type="button"
+          id="projects-toggle"
+          variant="ghost"
+          size="icon"
+          aria-controls="projects-nav"
+          aria-expanded={projects.expanded}
+          aria-label={action}
+          title={action}
+          onClick={projects.toggle}
+        >
+          <Icon className="size-(--icon-base)" />
+        </Button>
+      </div>
       <a className="brand" href="/" aria-label="diffx home">
         diffx
       </a>
@@ -163,20 +167,30 @@ export function ProjectsNav() {
         hidden={!projects.expanded}
       >
         <div className="projects-nav-header">
-          <a className="brand" href="/" aria-label="diffx home">
-            diffx
-          </a>
+          <h2 className="projects-heading">Projects</h2>
           <Button
             type="button"
-            id="projects-hide"
+            id="projects-browse"
             variant="ghost"
             size="icon"
-            aria-controls="projects-nav"
-            aria-label="Hide projects"
-            title="Hide projects"
-            onClick={projects.toggle}
+            aria-label="Browse all reviews"
+            title={`Browse all reviews (${shortcut})`}
+            onClick={() => {
+              projects.closeMobile();
+              openPicker();
+            }}
           >
-            <PanelLeftCloseIcon className="size-(--icon-base)" />
+            <ListIcon aria-hidden="true" />
+          </Button>
+          <Button
+            type="button"
+            className="mobile-only"
+            variant="ghost"
+            size="icon"
+            aria-label="Close projects"
+            onClick={projects.closeMobile}
+          >
+            <XIcon aria-hidden="true" />
           </Button>
         </div>
         <div className="search-box projects-search">
@@ -200,23 +214,6 @@ export function ProjectsNav() {
             ? `${groups.reduce((sum, group) => sum + group.streams.length, 0)} matching streams`
             : ""}
         </p>
-        <div className="projects-heading">
-          <h2>Projects</h2>
-          <Button
-            type="button"
-            id="projects-browse"
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Browse all reviews"
-            title={`Browse all reviews (${shortcut})`}
-            onClick={() => {
-              projects.closeMobile();
-              openPicker();
-            }}
-          >
-            <ListIcon aria-hidden="true" />
-          </Button>
-        </div>
         <div className="projects-scroll">
           {groups.length ? (
             <ul className="projects-list">

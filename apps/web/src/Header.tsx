@@ -1,40 +1,20 @@
-import {
-  MonitorIcon,
-  MoonIcon,
-  ListTreeIcon,
-  RefreshCwIcon,
-  SunIcon,
-} from "lucide-react";
+import { ListTreeIcon, RefreshCwIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { AccountButton } from "./account.tsx";
+import { ShellActions } from "./ActivityBar.tsx";
 import { DeleteContextButton } from "./DeleteContextButton.tsx";
 import { ProjectsToggle } from "./ProjectsNav.tsx";
 import { useDiffSource } from "./app-state.tsx";
-import { useAppearance } from "./appearance-context.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
 import { CurrentContext, useCatalog, useSession } from "./session-context.tsx";
 import { contextDiagnostics, observationSummary } from "./project-picker.ts";
-import { readThemePreference, type ThemePreference } from "./theme.ts";
-
-function themeLabel(theme: ThemePreference) {
-  if (theme === "light") return "Light";
-  if (theme === "dark") return "Dark";
-  return "System";
-}
+import { useCompactChrome } from "./use-compact-chrome.ts";
 
 export function Header() {
   const { repository, piped, diff, refresh, refreshEnabled } = useDiffSource();
   const session = useSession();
   const { observation } = session;
   const { collect, collecting } = useCatalog();
-  const { themePreference, setThemePreference } = useAppearance();
+  const compact = useCompactChrome();
   const sidebar = useSidebarState();
   return (
     <header className="topbar">
@@ -102,47 +82,7 @@ export function Header() {
             {refreshEnabled ? "Refresh" : "Retry"}
           </span>
         </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                type="button"
-                id="theme"
-                variant="ghost"
-                size="icon"
-                aria-label={`Theme: ${themeLabel(themePreference)}`}
-                title={`Theme: ${themeLabel(themePreference)}`}
-              />
-            }
-          >
-            {themePreference === "system" ? (
-              <MonitorIcon className="size-(--icon-base)" aria-hidden="true" />
-            ) : themePreference === "dark" ? (
-              <MoonIcon className="size-(--icon-base)" aria-hidden="true" />
-            ) : (
-              <SunIcon className="size-(--icon-base)" aria-hidden="true" />
-            )}
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" aria-label="Theme">
-            <DropdownMenuRadioGroup
-              value={themePreference}
-              onValueChange={(value: unknown) =>
-                setThemePreference(readThemePreference(value))
-              }
-            >
-              <DropdownMenuRadioItem value="light" closeOnClick>
-                <SunIcon aria-hidden="true" /> Light
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="dark" closeOnClick>
-                <MoonIcon aria-hidden="true" /> Dark
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="system" closeOnClick>
-                <MonitorIcon aria-hidden="true" /> System
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <AccountButton />
+        {compact && <ShellActions side="bottom" />}
       </div>
     </header>
   );
