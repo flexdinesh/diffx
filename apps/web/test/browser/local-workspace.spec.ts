@@ -698,7 +698,6 @@ test("comment navigation changes scope and clears filters after previews load", 
   await page.getByRole("searchbox", { name: "Filter files" }).fill("unmatched");
   await expect(page.locator("#viewer diffs-container")).toHaveCount(0);
   await page.getByRole("tab", { name: /Review/ }).click();
-  await page.locator("#comments-panel .earlier-review > summary").click();
   await page
     .locator(
       '#comments-panel [data-comment-id="staged-comment"] .comment-location',
@@ -721,6 +720,128 @@ test("comment navigation changes scope and clears filters after previews load", 
   await expect(
     page.getByRole("searchbox", { name: "Filter files" }),
   ).toHaveValue("");
+});
+
+test("stream comments show moved and outdated placements and keep outdated comments open", async ({
+  page,
+}) => {
+  const state = await localWorkspace(page);
+  const earlier: Pick<
+    ReviewComment,
+    | "diffId"
+    | "versionId"
+    | "path"
+    | "scope"
+    | "fingerprint"
+    | "side"
+    | "status"
+  > = {
+    diffId: "diff-earlier",
+    versionId: "all-v0",
+    path: "src/value.ts",
+    scope: "all",
+    fingerprint: "all-v0",
+    side: "additions",
+    status: "open",
+  };
+  const movedComment: ReviewComment = {
+    ...earlier,
+    id: "moved-comment",
+    start: 40,
+    end: 40,
+    code: '+export const value = "all-v1";',
+    body: "Moved concern",
+    createdAt: 1,
+    placement: {
+      applicability: "moved",
+      side: "additions",
+      start: 50,
+      end: 50,
+    },
+  };
+  const outdatedComment: ReviewComment = {
+    ...earlier,
+    id: "outdated-comment",
+    start: 10,
+    end: 10,
+    code: "+export const removed = true;",
+    body: "Outdated concern",
+    createdAt: 2,
+    placement: {
+      applicability: "outdated",
+      side: "additions",
+      start: 10,
+      end: 10,
+    },
+  };
+  state.comments = [movedComment, outdatedComment];
+  const carried: string[] = [];
+  await page.route("**/api/v2/contexts/*/comments/*/carry", (route: Route) => {
+    carried.push(route.request().url());
+    const comment: ReviewComment = {
+      ...outdatedComment,
+      diffId: "diff-all",
+      versionId: "all-v1",
+      fingerprint: "all-v1",
+      target: "file",
+      start: 0,
+      end: 0,
+      carriedFrom: {
+        versionId: "all-v0",
+        side: "additions",
+        start: 10,
+        end: 10,
+      },
+      placement: {
+        applicability: "anchored",
+        side: "additions",
+        start: 0,
+        end: 0,
+      },
+    };
+    state.comments = [movedComment, comment];
+    return route.fulfill({ json: comment });
+  });
+  await page.goto("/");
+  await ready(page);
+
+  const viewer = page.locator("#viewer");
+  await expect(viewer.locator(".file-outdated-count")).toHaveText("1 outdated");
+  await expect(
+    page.locator("#file-panel .file-comment-count:not(.outdated)"),
+  ).toHaveText("1");
+  await expect(
+    page.locator("#file-panel .file-comment-count.outdated"),
+  ).toHaveText("1");
+  await expect(
+    viewer.locator('[data-comment-id="moved-comment"]'),
+  ).toContainText("Moved from line 40");
+  const outdated = viewer.locator('[data-comment-id="outdated-comment"]');
+  await expect(outdated.getByText("Outdated", { exact: true })).toBeVisible();
+
+  const notice = page.locator(".outdated-notice");
+  await expect(notice).toContainText(
+    "1 open comment is outdated by code changes",
+  );
+  await notice.getByRole("button", { name: "Review outdated" }).click();
+  const section = page.getByRole("region", { name: "Outdated comments" });
+  await expect(section).toBeVisible();
+  const card = section.locator(
+    '[data-comment-id="outdated-comment"] .comment-card',
+  );
+  await expect(card).toHaveAttribute("data-expanded", "false");
+  await card.locator(".comment-collapse").click();
+  await card.getByRole("button", { name: "Keep open", exact: true }).click();
+  await expect.poll(() => carried.length).toBe(1);
+  await expect(page.locator("#comment-feedback")).toContainText(
+    "Comment kept open on its file.",
+  );
+  await expect(
+    section.locator('[data-comment-id="outdated-comment"]'),
+  ).toContainText("Outdated — kept open from line 10 of earlier code");
+  await expect(
+    section.getByRole("button", { name: "Keep open", exact: true }),
+  ).toHaveCount(0);
 });
 
 test("context switching isolates delayed repository responses and fixed captures", async ({

@@ -151,7 +151,9 @@ uses `X-Diffx-State` to pin submission and polling to the destination identity;
 older protocols are rejected. Release artifacts use the explicit `diffx` project
 name, independent of the checkout directory.
 
-Schema 10 preserves current state across starts. Older, future and unrecognized
+Schema 11 preserves current state across starts. It moved review state from
+each snapshot scope to its stream and scope, because comments and reviewed marks
+must survive new collections and snapshot deletion. Older, future and unrecognized
 schemas are refused; opening a database never resets it. Durable server volumes
 require an explicit reset decision: stop the owner, back up its state directory,
 then select a fresh database path. No automatic schema migration is implemented.

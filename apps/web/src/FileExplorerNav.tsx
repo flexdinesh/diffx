@@ -12,13 +12,14 @@ import {
 } from "./app-state.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
 import { CommentsPanel } from "./CommentsPanel.tsx";
-import { FileNavigation } from "./file-navigation.tsx";
+import { type CommentCount, FileNavigation } from "./file-navigation.tsx";
 import { ancestorPaths } from "./file-tree.ts";
+import { commentInFile, commentStale } from "./review-model.ts";
 import { ChangeSummary, ReviewTools } from "./ReviewTools.tsx";
 import { capabilityEnabled, useSession } from "./session-context.tsx";
 
 export function FileExplorerNav() {
-  const { repository, diff } = useDiffSource();
+  const { repository, diff, mode } = useDiffSource();
   const { capabilities } = useSession();
   const {
     tab,
@@ -53,12 +54,22 @@ export function FileExplorerNav() {
     folderPaths
       .filter((path) => !path.includes("/"))
       .every((path) => (filter ? filteredClosed : closed).has(path));
+  // Counts follow renames to the viewed file and separate outdated comments.
   const commentCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const comment of review.currentComments)
-      counts.set(comment.path, (counts.get(comment.path) ?? 0) + 1);
+    const counts = new Map<string, CommentCount>();
+    for (const comment of review.comments) {
+      if (comment.scope !== mode) continue;
+      const file = repository?.files.find((entry) =>
+        commentInFile(comment, entry),
+      );
+      if (!file) continue;
+      const count = counts.get(file.path) ?? { current: 0, outdated: 0 };
+      if (commentStale(comment, repository)) count.outdated += 1;
+      else count.current += 1;
+      counts.set(file.path, count);
+    }
     return counts;
-  }, [review.currentComments]);
+  }, [review.comments, repository, mode]);
   const connection = !diff.connected
     ? diff.busy && !repository
       ? "Connecting…"

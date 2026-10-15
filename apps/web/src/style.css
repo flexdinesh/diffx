@@ -359,7 +359,8 @@ kbd {
   color: var(--muted);
   font-size: var(--text-xs);
 }
-.snapshot-notice {
+.snapshot-notice,
+.outdated-notice {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -370,10 +371,12 @@ kbd {
   color: var(--accent);
   font-size: var(--text-sm);
 }
-.snapshot-notice[hidden] {
+.snapshot-notice[hidden],
+.outdated-notice[hidden] {
   display: none;
 }
-.snapshot-notice p {
+.snapshot-notice p,
+.outdated-notice p {
   flex: 1;
   min-width: 0;
   margin: 0;

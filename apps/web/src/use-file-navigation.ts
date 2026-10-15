@@ -11,7 +11,30 @@ import {
 } from "react";
 import { ancestorPaths, filesInTreeOrder } from "./file-tree.ts";
 import { saveSessionPaths, sessionPaths } from "./preferences.ts";
-import { anchored, type CommentAnnotation } from "./review-model.ts";
+import {
+  commentInFile,
+  placedInline,
+  placedOutdated,
+  placementFor,
+  type CommentAnnotation,
+} from "./review-model.ts";
+
+// Inline comments open at their placed lines; outdated ones at their file's top.
+function commentTarget(
+  comment: ReviewComment,
+  repository: RepositoryDiff | null,
+) {
+  const file = repository?.files.find((entry) => commentInFile(comment, entry));
+  if (!file) return null;
+  const placement = placementFor(comment, repository);
+  if (placedInline(placement.applicability))
+    return comment.target === "file"
+      ? { path: file.path, range: null }
+      : { path: file.path, range: placement };
+  return placedOutdated(placement.applicability)
+    ? { path: file.path, range: null }
+    : null;
+}
 
 interface NavigationOptions {
   contextId: string;
@@ -136,13 +159,11 @@ export function useFileNavigation({
         changeMode(comment.scope);
         return;
       }
-      if (!anchored(comment, repository)) {
+      if (!commentTarget(comment, repository)) {
         setTab("comments");
         showSidebar();
         setFeedback(
-          comment.target === "file"
-            ? "This file comment belongs to an earlier diff. Open it in the review sidebar."
-            : "This comment belongs to an earlier diff. Its original code context is preserved below.",
+          "This comment's file is not in this diff. Its original code is preserved in the review sidebar.",
         );
         return;
       }
@@ -155,42 +176,40 @@ export function useFileNavigation({
   useEffect(() => {
     if (!pendingComment || busy || repository?.mode !== pendingComment.scope)
       return;
-    if (anchored(pendingComment, repository)) {
+    const target = commentTarget(pendingComment, repository);
+    if (target) {
       if (filter) {
         setFilter("");
         return;
       }
-      revealFile(pendingComment.path);
+      revealFile(target.path);
       const frame = requestAnimationFrame(() => {
-        if (pendingComment.target === "file") {
+        if (!target.range) {
           viewer.current?.scrollTo({
             type: "item",
-            id: pendingComment.path,
+            id: target.path,
             align: "start",
             behavior: "instant",
           });
           setNavigationTarget((previous) => ({
-            path: pendingComment.path,
+            path: target.path,
             sequence: previous.sequence + 1,
           }));
           setCommentNavigationTarget(null);
         } else {
+          const { side, start, end } = target.range;
           viewer.current?.scrollTo({
             type: "range",
-            id: pendingComment.path,
-            range: {
-              start: pendingComment.start,
-              end: pendingComment.end,
-              side: pendingComment.side,
-            },
+            id: target.path,
+            range: { start, end, side },
             align: "center",
             behavior: "instant",
           });
           setCommentNavigationTarget((previous) => ({
-            path: pendingComment.path,
-            side: pendingComment.side,
-            start: pendingComment.start,
-            end: pendingComment.end,
+            path: target.path,
+            side,
+            start,
+            end,
             sequence: (previous?.sequence ?? 0) + 1,
           }));
         }
@@ -201,6 +220,16 @@ export function useFileNavigation({
     setTab("comments");
     setPendingComment(null);
   }, [pendingComment, busy, repository, filter, revealFile]);
+
+  const showOutdatedComments = useCallback(() => {
+    setTab("comments");
+    showSidebar();
+    requestAnimationFrame(() =>
+      document
+        .getElementById("outdated-comments")
+        ?.scrollIntoView({ block: "start" }),
+    );
+  }, [showSidebar]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -267,6 +296,7 @@ export function useFileNavigation({
       setFilteredClosed,
       selectFile,
       selectVisibleFile,
+      showOutdatedComments,
       search,
       viewer,
       navigateComment,
@@ -282,6 +312,7 @@ export function useFileNavigation({
       filteredClosed,
       selectFile,
       selectVisibleFile,
+      showOutdatedComments,
       navigateComment,
     ],
   );

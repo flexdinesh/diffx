@@ -567,7 +567,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [all, open, resolved, stale]
+            enum: [all, open, resolved, outdated]
       responses:
         "200":
           description: Remaining comments after bulk deletion.
@@ -745,6 +745,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ResolveReviewComment"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/contexts/{contextId}/comments/{commentId}/carry:
+    parameters:
+      - $ref: "#/components/parameters/ContextId"
+    post:
+      operationId: carryComment
+      description: Keep an outdated or no-longer-changed comment open as a file-level comment on this context's snapshot. The comment keeps its original code and records where it came from.
+      parameters:
+        - $ref: "#/components/parameters/CommentId"
+      responses:
+        "200":
+          description: The carried file-level comment, placed on this snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewComment"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
   /api/v2/contexts/{contextId}/review-marks:
@@ -1473,9 +1494,14 @@ components:
             const: 0
           end:
             const: 0
-          code:
-            const: ""
+        anyOf:
+          - required: [carriedFrom]
+          - properties:
+              code:
+                const: ""
       else:
+        not:
+          required: [carriedFrom]
         properties:
           start:
             minimum: 1
@@ -1513,7 +1539,7 @@ components:
         target:
           type: string
           enum: [file, lines]
-          description: Omitted means a line comment. File comments use additions, zero start/end, and empty code.
+          description: Omitted means a line comment. File comments use additions, zero start/end, and empty code unless carried from an earlier line selection.
         side:
           type: string
           enum: [additions, deletions]
@@ -1534,6 +1560,12 @@ components:
           type: number
         origin:
           $ref: "#/components/schemas/ReviewOrigin"
+        anchor:
+          $ref: "#/components/schemas/CommentAnchor"
+        carriedFrom:
+          $ref: "#/components/schemas/CommentCarriedFrom"
+        placement:
+          $ref: "#/components/schemas/CommentPlacement"
     AgentReviewComment:
       type: object
       additionalProperties: false
@@ -1550,9 +1582,14 @@ components:
             const: 0
           end:
             const: 0
-          code:
-            const: ""
+        anyOf:
+          - required: [carriedFrom]
+          - properties:
+              code:
+                const: ""
       else:
+        not:
+          required: [carriedFrom]
         properties:
           start:
             minimum: 1
@@ -1592,7 +1629,7 @@ components:
         target:
           type: string
           enum: [file, lines]
-          description: Omitted means a line comment. File comments use additions, zero start/end, and empty code.
+          description: Omitted means a line comment. File comments use additions, zero start/end, and empty code unless carried from an earlier line selection.
         side:
           type: string
           enum: [additions, deletions]
@@ -1613,11 +1650,69 @@ components:
           type: number
         origin:
           $ref: "#/components/schemas/ReviewOrigin"
+        anchor:
+          $ref: "#/components/schemas/CommentAnchor"
+        carriedFrom:
+          $ref: "#/components/schemas/CommentCarriedFrom"
+        placement:
+          $ref: "#/components/schemas/CommentPlacement"
         applicability:
-          type: string
-          enum: [anchored, stale, other-scope, unknown]
+          $ref: "#/components/schemas/CommentApplicability"
         actionable:
           type: boolean
+    CommentApplicability:
+      type: string
+      enum: [anchored, moved, outdated, unchanged, other-scope, unknown]
+      description: >-
+        Where a stream comment applies in the viewed snapshot. anchored and moved
+        render inline; outdated means the commented code changed or its file left
+        the diff; unchanged means the code still exists but is no longer changed;
+        other-scope means the comment belongs to another scope; unknown means the
+        snapshot cannot be compared.
+    CommentPlacement:
+      type: object
+      additionalProperties: false
+      required: [applicability, side, start, end]
+      description: Server-computed position of a comment in the viewed snapshot. Ignored on import.
+      properties:
+        applicability:
+          $ref: "#/components/schemas/CommentApplicability"
+        side:
+          type: string
+          enum: [additions, deletions]
+        start:
+          type: integer
+          minimum: 0
+        end:
+          type: integer
+          minimum: 0
+    CommentAnchor:
+      type: object
+      additionalProperties: false
+      required: [before, after]
+      description: Same-side lines around the commented code, captured by the server when the comment is created and used to re-anchor it in later snapshots.
+      properties:
+        before:
+          type: string
+        after:
+          type: string
+    CommentCarriedFrom:
+      type: object
+      additionalProperties: false
+      required: [versionId, side, start, end]
+      description: Original line selection of an outdated comment kept open at file level.
+      properties:
+        versionId:
+          type: string
+        side:
+          type: string
+          enum: [additions, deletions]
+        start:
+          type: integer
+          minimum: 1
+        end:
+          type: integer
+          minimum: 1
     ResolveReviewComment:
       type: object
       additionalProperties: false

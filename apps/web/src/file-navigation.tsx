@@ -84,13 +84,18 @@ function StatusBadge({
   );
 }
 
+export interface CommentCount {
+  current: number;
+  outdated: number;
+}
+
 interface Props {
   files: ChangedFile[];
   selected: string;
   closed: Set<string>;
   filtering: boolean;
   isReviewed: (file: ChangedFile) => boolean;
-  commentCounts: Map<string, number>;
+  commentCounts: Map<string, CommentCount>;
   stagingMetadata: boolean;
   onToggle: (path: string) => void;
   onSelect: (path: string) => void;
@@ -181,7 +186,10 @@ export function FileNavigation({
           const file = node.file;
           const viewed = isReviewed(file);
           const decoration = gitDecoration(file);
-          const count = commentCounts.get(file.path) ?? 0;
+          const { current: count, outdated } = commentCounts.get(file.path) ?? {
+            current: 0,
+            outdated: 0,
+          };
           return (
             <li key={node.path}>
               <Button
@@ -194,7 +202,7 @@ export function FileNavigation({
                 data-tree-path={file.path}
                 tabIndex={selected === file.path ? 0 : -1}
                 aria-current={selected === file.path}
-                aria-label={`${file.path}, ${decoration.label}${viewed ? ", reviewed" : ""}${count ? `, ${count} review ${count === 1 ? "comment" : "comments"}` : ""}`}
+                aria-label={`${file.path}, ${decoration.label}${viewed ? ", reviewed" : ""}${count ? `, ${count} review ${count === 1 ? "comment" : "comments"}` : ""}${outdated ? `, ${outdated} outdated` : ""}`}
                 title={`${file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}\n${decoration.details}`}
                 onClick={() => onSelect(file.path)}
                 onKeyDown={onKeyDown}
@@ -207,6 +215,14 @@ export function FileNavigation({
                     title={`${count} review ${count === 1 ? "comment" : "comments"}`}
                   >
                     <CommentIcon /> {count}
+                  </span>
+                )}
+                {outdated > 0 && (
+                  <span
+                    className="file-comment-count outdated"
+                    title={`${outdated} outdated review ${outdated === 1 ? "comment" : "comments"}`}
+                  >
+                    <CommentIcon /> {outdated}
                   </span>
                 )}
                 <StatusBadge file={file} stagingMetadata={stagingMetadata} />

@@ -62,11 +62,41 @@ type ExportCommentsInput struct {
 	IncludeResolved            bool
 }
 
-func (service *Service) Comments() ([]review.ReviewComment, error) {
+// Comments returns the stream's comments placed in this context.
+func (service *Service) Comments(ctx context.Context) ([]review.ReviewComment, error) {
 	if err := service.requireComments(); err != nil {
 		return nil, err
 	}
-	return service.store.Comments(service.session.ContextID)
+	return service.placedComments(ctx)
+}
+
+func (service *Service) placedComments(ctx context.Context) ([]review.ReviewComment, error) {
+	comments, err := service.store.Comments(service.session.ContextID)
+	if err != nil {
+		return nil, err
+	}
+	if err := service.place(ctx, comments); err != nil {
+		return nil, err
+	}
+	return comments, nil
+}
+
+// placedComment returns one placed comment from this context's stream review.
+func (service *Service) placedComment(ctx context.Context, commentID string) (review.ReviewComment, error) {
+	comments, err := service.store.Comments(service.session.ContextID)
+	if err != nil {
+		return review.ReviewComment{}, err
+	}
+	for _, comment := range comments {
+		if comment.ID == commentID {
+			placed := []review.ReviewComment{comment}
+			if err := service.place(ctx, placed); err != nil {
+				return review.ReviewComment{}, err
+			}
+			return placed[0], nil
+		}
+	}
+	return review.ReviewComment{}, review.Error(404, "Comment not found")
 }
 func (service *Service) DeleteComment(id string) (bool, error) {
 	if err := service.requireComments(); err != nil {
@@ -110,15 +140,6 @@ func contentContext(contents string, start, end int) (string, bool) {
 	return strings.Join(selected, "\n"), true
 }
 
-func repositoryFor(comment review.ReviewComment, repositories []review.RepositoryDiff) *review.RepositoryDiff {
-	for index := range repositories {
-		if repositories[index].Mode == comment.Scope {
-			return &repositories[index]
-		}
-	}
-	return nil
-}
-
 func (service *Service) CurrentFile(ctx context.Context, mode review.DiffMode, diffID, versionID, fileID, fileVersion string) (review.RepositoryDiff, review.ChangedFile, error) {
 	snapshot, err := service.Snapshot(ctx, mode)
 	if err != nil {
@@ -137,29 +158,6 @@ func (service *Service) CurrentFile(ctx context.Context, mode review.DiffMode, d
 		return snapshot, file, nil
 	}
 	return review.RepositoryDiff{}, review.ChangedFile{}, review.Error(404, "File is not in the current diff")
-}
-
-func (service *Service) repositories(ctx context.Context, comments []review.ReviewComment) ([]review.RepositoryDiff, error) {
-	needed := make(map[review.DiffMode]bool)
-	allowed := make(map[review.DiffMode]bool)
-	for _, scope := range service.session.Capabilities.Diff.Scopes.Values {
-		allowed[scope] = true
-	}
-	for _, comment := range comments {
-		needed[comment.Scope] = allowed[comment.Scope]
-	}
-	result := make([]review.RepositoryDiff, 0, len(needed))
-	for mode, include := range needed {
-		if !include {
-			continue
-		}
-		snapshot, err := service.Snapshot(ctx, mode)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, snapshot)
-	}
-	return result, nil
 }
 
 func (service *Service) validateReference(ctx context.Context, diffID, versionID string) error {
@@ -222,12 +220,19 @@ func (service *Service) CreateComment(ctx context.Context, body CreateCommentInp
 	if err != nil {
 		return review.ReviewComment{}, err
 	}
+	start, end := body.Start, body.End
+	if start > end {
+		start, end = end, start
+	}
 	code := ""
+	var anchor *review.CommentAnchor
 	if body.Target != "file" {
 		preview, err := service.session.Source.Patch(ctx, body.Scope, file, snapshot.Head)
 		if err != nil {
 			return review.ReviewComment{}, err
 		}
+		// Surrounding same-side lines re-anchor the comment in later snapshots.
+		anchor = review.PatchAnchor(preview.Patch, body.Side, start, end)
 		var ok bool
 		code, ok = review.PatchContext(preview.Patch, body.Side, body.Start, body.End)
 		if !ok && preview.Contents != nil {
@@ -241,26 +246,22 @@ func (service *Service) CreateComment(ctx context.Context, body CreateCommentInp
 			return review.ReviewComment{}, review.Error(400, "Select up to 200 visible lines on one side")
 		}
 	}
-	start, end := body.Start, body.End
-	if start > end {
-		start, end = end, start
-	}
 	id, err := randomID()
 	if err != nil {
 		return review.ReviewComment{}, err
 	}
 	comment := review.ReviewComment{
 		ID: id, DiffID: snapshot.ID, VersionID: snapshot.VersionID, Path: file.Path, Scope: body.Scope, Fingerprint: file.Fingerprint,
-		Target: body.Target, Side: body.Side, Start: start, End: end, Code: code, Body: strings.TrimSpace(body.Body), Status: "open", CreatedAt: float64(time.Now().UnixMilli()),
+		Target: body.Target, Side: body.Side, Start: start, End: end, Code: code, Anchor: anchor, Body: strings.TrimSpace(body.Body), Status: "open", CreatedAt: float64(time.Now().UnixMilli()),
 		Origin: &review.ReviewOrigin{DiffID: snapshot.ID, VersionID: snapshot.VersionID, Source: snapshot.Source, Repository: snapshot.Name, Branch: snapshot.Branch, Head: snapshot.Head, Revision: snapshot.Revision, File: review.ReviewFileOrigin{Status: file.Status, OldPath: file.OldPath}},
 	}
 	if err := service.store.PutComment(service.session.ContextID, comment); err != nil {
 		return review.ReviewComment{}, err
 	}
-	return comment, nil
+	return service.placedComment(ctx, comment.ID)
 }
 
-func (service *Service) UpdateComment(commentID string, body UpdateCommentInput) (review.ReviewComment, error) {
+func (service *Service) UpdateComment(ctx context.Context, commentID string, body UpdateCommentInput) (review.ReviewComment, error) {
 	if err := service.requireComments(); err != nil {
 		return review.ReviewComment{}, err
 	}
@@ -284,30 +285,59 @@ func (service *Service) UpdateComment(commentID string, body UpdateCommentInput)
 		if err := service.store.PutComment(service.session.ContextID, comment); err != nil {
 			return review.ReviewComment{}, err
 		}
-		return comment, nil
+		return service.placedComment(ctx, comment.ID)
 	}
 	return review.ReviewComment{}, review.Error(404, "Comment not found")
+}
+
+// CarryComment keeps an open comment whose code changed or is no longer
+// changed as a file comment on this context's snapshot. It preserves the
+// original code and selection.
+func (service *Service) CarryComment(ctx context.Context, commentID string) (review.ReviewComment, error) {
+	if err := service.requireComments(); err != nil {
+		return review.ReviewComment{}, err
+	}
+	comment, err := service.placedComment(ctx, commentID)
+	if err != nil {
+		return review.ReviewComment{}, err
+	}
+	if comment.Status != "open" || !comment.Placement.Applicability.Stale() {
+		return review.ReviewComment{}, review.Error(409, "Only open outdated or unchanged comments can be kept")
+	}
+	snapshot, err := service.Snapshot(ctx, comment.Scope)
+	if err != nil {
+		return review.ReviewComment{}, err
+	}
+	file, found := review.FileFor(comment.Path, snapshot.Files)
+	if !found {
+		return review.ReviewComment{}, review.Error(409, "Comment file is not in this snapshot")
+	}
+	carried := comment
+	carried.DiffID, carried.VersionID, carried.Fingerprint, carried.Path = snapshot.ID, snapshot.VersionID, file.Fingerprint, file.Path
+	carried.Target, carried.Side, carried.Start, carried.End = "file", "additions", 0, 0
+	carried.CarriedFrom = &review.CommentCarriedFrom{VersionID: comment.VersionID, Side: comment.Side, Start: comment.Start, End: comment.End}
+	carried.Anchor, carried.Placement = nil, nil
+	if err := service.store.PutComment(service.session.ContextID, carried); err != nil {
+		return review.ReviewComment{}, err
+	}
+	return service.placedComment(ctx, carried.ID)
 }
 
 func (service *Service) DeleteComments(ctx context.Context, selection string) (DeletedComments, error) {
 	if err := service.requireComments(); err != nil {
 		return DeletedComments{}, err
 	}
-	if selection != "all" && selection != "open" && selection != "resolved" && selection != "stale" {
+	if selection != "all" && selection != "open" && selection != "resolved" && selection != "outdated" {
 		return DeletedComments{}, review.Error(400, "Invalid comment status")
 	}
-	comments, err := service.store.Comments(service.session.ContextID)
-	if err != nil {
-		return DeletedComments{}, err
-	}
-	repositories, err := service.repositories(ctx, comments)
+	comments, err := service.placedComments(ctx)
 	if err != nil {
 		return DeletedComments{}, err
 	}
 	selected := make(map[string]bool)
 	for _, comment := range comments {
-		stale := review.Applicability(comment, repositoryFor(comment, repositories)) == "stale"
-		if selection == "all" || (selection == "stale" && stale) || (!stale && comment.Status == selection) {
+		stale := comment.Placement.Applicability.Stale()
+		if selection == "all" || (selection == "outdated" && stale) || (!stale && comment.Status == selection) {
 			selected[comment.ID] = true
 		}
 	}
@@ -315,7 +345,7 @@ func (service *Service) DeleteComments(ctx context.Context, selection string) (D
 	if err != nil {
 		return DeletedComments{}, err
 	}
-	remaining, err := service.store.Comments(service.session.ContextID)
+	remaining, err := service.placedComments(ctx)
 	return DeletedComments{Comments: remaining, Deleted: deleted}, err
 }
 
@@ -339,8 +369,12 @@ func (service *Service) ImportComments(ctx context.Context, input []review.Revie
 			}
 		}
 	}
+	// Placement is computed per viewed snapshot; storage never keeps imported placements.
 	comments, err := service.store.ImportComments(service.session.ContextID, input)
 	if err != nil {
+		return nil, err
+	}
+	if err := service.place(ctx, comments); err != nil {
 		return nil, err
 	}
 	return comments, nil
@@ -387,11 +421,10 @@ func (service *Service) ExportComments(ctx context.Context, input ExportComments
 		}
 		selected = append(selected, comment)
 	}
-	repositories, err := service.repositories(ctx, selected)
-	if err != nil {
+	if err := service.place(ctx, selected); err != nil {
 		return "", err
 	}
-	return review.FormatComments(selected, input.IncludeResolved, repositories), nil
+	return review.FormatComments(selected, input.IncludeResolved), nil
 }
 
 func (service *Service) PutMark(ctx context.Context, mode review.DiffMode, fileID, versionID, fileVersion string) (review.ReviewMark, error) {

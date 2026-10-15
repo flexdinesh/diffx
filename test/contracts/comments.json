@@ -1,6 +1,64 @@
 [
   {
-    "name": "anchored",
+    "name": "same snapshot anchored",
+    "comment": {
+      "id": "comment",
+      "diffId": "diff",
+      "versionId": "v2",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash2",
+      "side": "additions",
+      "start": 2,
+      "end": 2,
+      "code": "+ changed",
+      "body": "Check <this> & that",
+      "status": "open",
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      }
+    },
+    "repository": {
+      "id": "diff",
+      "versionId": "v2",
+      "locationId": null,
+      "repositoryId": null,
+      "source": "stdin",
+      "root": "",
+      "name": "Piped",
+      "branch": "",
+      "head": null,
+      "mode": "all",
+      "files": [
+        {
+          "id": "file",
+          "path": "file.txt",
+          "oldPath": null,
+          "status": "M",
+          "indexStatus": "",
+          "worktreeStatus": "",
+          "additions": 1,
+          "deletions": 1,
+          "binary": false,
+          "fingerprint": "hash2"
+        }
+      ],
+      "revision": "r2"
+    },
+    "valid": true,
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    },
+    "export": "<code-review-comments version=\"2\">\n  <instructions>Address every open review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes. Resolved comments are context only; do not act on them. Comments marked stale were written against earlier code; verify they still apply before acting, and report any that no longer apply using the comment ID. If an open comment cannot be applied, report it using its comment ID.</instructions>\n  <review origin=\"unknown\">\n    <file path=\"file.txt\">\n      <comment id=\"C1\" selection=\"single-line\" line=\"2\" end-line=\"2\" side=\"additions\" scope=\"all\" status=\"open\" applicability=\"anchored\">\n        <code>+ changed</code>\n        <body>Check &lt;this&gt; &amp; that</body>\n      </comment>\n    </file>\n  </review>\n</code-review-comments>",
+    "exportUnresolved": "<code-review-comments version=\"2\">\n  <instructions>Address every unresolved review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes. Comments marked stale were written against earlier code; verify they still apply before acting, and report any that no longer apply using the comment ID.</instructions>\n  <review origin=\"unknown\">\n    <file path=\"file.txt\">\n      <comment id=\"C1\" selection=\"single-line\" line=\"2\" end-line=\"2\" side=\"additions\" scope=\"all\" status=\"open\" applicability=\"anchored\">\n        <code>+ changed</code>\n        <body>Check &lt;this&gt; &amp; that</body>\n      </comment>\n    </file>\n  </review>\n</code-review-comments>"
+  },
+  {
+    "name": "moved after inserted lines",
     "comment": {
       "id": "comment",
       "diffId": "diff",
@@ -9,16 +67,20 @@
       "scope": "all",
       "fingerprint": "hash",
       "side": "additions",
-      "start": 1,
-      "end": 1,
+      "start": 2,
+      "end": 2,
       "code": "+ changed",
       "body": "Check <this> & that",
       "status": "open",
-      "createdAt": 1
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      }
     },
     "repository": {
       "id": "diff",
-      "versionId": "v1",
+      "versionId": "v2",
       "locationId": null,
       "repositoryId": null,
       "source": "stdin",
@@ -38,17 +100,26 @@
           "additions": 1,
           "deletions": 1,
           "binary": false,
-          "fingerprint": "hash"
+          "fingerprint": "hash2"
         }
       ],
-      "revision": "r1"
+      "revision": "r2"
     },
     "valid": true,
-    "applicability": "anchored",
-    "export": "<code-review-comments version=\"2\">\n  <instructions>Address every anchored open review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes. Resolved and stale comments are context only; do not act on them. If an anchored open comment cannot be applied, report it using its comment ID.</instructions>\n  <review origin=\"unknown\">\n    <file path=\"file.txt\">\n      <comment id=\"C1\" selection=\"single-line\" line=\"1\" end-line=\"1\" side=\"additions\" scope=\"all\" status=\"open\" applicability=\"anchored\">\n        <code>+ changed</code>\n        <body>Check &lt;this&gt; &amp; that</body>\n      </comment>\n    </file>\n  </review>\n</code-review-comments>"
+    "placement": {
+      "applicability": "moved",
+      "side": "additions",
+      "start": 4,
+      "end": 4
+    },
+    "patch": {
+      "patch": "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,4 @@\n+first insert\n+second insert\n alpha\n-beta\n+changed\n",
+      "message": null
+    },
+    "export": "<code-review-comments version=\"2\">\n  <instructions>Address every open review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes. Resolved comments are context only; do not act on them. Comments marked stale were written against earlier code; verify they still apply before acting, and report any that no longer apply using the comment ID. If an open comment cannot be applied, report it using its comment ID.</instructions>\n  <review origin=\"unknown\">\n    <file path=\"file.txt\">\n      <comment id=\"C1\" selection=\"single-line\" line=\"4\" end-line=\"4\" side=\"additions\" scope=\"all\" status=\"open\" applicability=\"moved\">\n        <code>+ changed</code>\n        <body>Check &lt;this&gt; &amp; that</body>\n      </comment>\n    </file>\n  </review>\n</code-review-comments>"
   },
   {
-    "name": "unknown snapshot",
+    "name": "content anchored in later snapshot",
     "comment": {
       "id": "comment",
       "diffId": "diff",
@@ -57,37 +128,20 @@
       "scope": "all",
       "fingerprint": "hash",
       "side": "additions",
-      "start": 1,
-      "end": 1,
+      "start": 2,
+      "end": 2,
       "code": "+ changed",
       "body": "Check <this> & that",
       "status": "open",
-      "createdAt": 1
-    },
-    "repository": null,
-    "valid": true,
-    "applicability": "unknown"
-  },
-  {
-    "name": "unknown identity",
-    "comment": {
-      "id": "comment",
-      "diffId": "",
-      "versionId": "v1",
-      "path": "file.txt",
-      "scope": "all",
-      "fingerprint": "hash",
-      "side": "additions",
-      "start": 1,
-      "end": 1,
-      "code": "+ changed",
-      "body": "Check <this> & that",
-      "status": "open",
-      "createdAt": 1
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      }
     },
     "repository": {
       "id": "diff",
-      "versionId": "v1",
+      "versionId": "v2",
       "locationId": null,
       "repositoryId": null,
       "source": "stdin",
@@ -107,34 +161,47 @@
           "additions": 1,
           "deletions": 1,
           "binary": false,
-          "fingerprint": "hash"
+          "fingerprint": "hash2"
         }
       ],
-      "revision": "r1"
+      "revision": "r2"
     },
     "valid": true,
-    "applicability": "unknown"
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    },
+    "patch": {
+      "patch": "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n alpha\n-beta\n+changed\n",
+      "message": null
+    }
   },
   {
-    "name": "other diff",
+    "name": "duplicate block resolved by context",
     "comment": {
       "id": "comment",
-      "diffId": "other",
+      "diffId": "diff",
       "versionId": "v1",
       "path": "file.txt",
       "scope": "all",
       "fingerprint": "hash",
       "side": "additions",
-      "start": 1,
-      "end": 1,
-      "code": "+ changed",
+      "start": 5,
+      "end": 5,
+      "code": "+   return value",
       "body": "Check <this> & that",
       "status": "open",
-      "createdAt": 1
+      "createdAt": 1,
+      "anchor": {
+        "before": "}\nfunction two() {",
+        "after": "}"
+      }
     },
     "repository": {
       "id": "diff",
-      "versionId": "v1",
+      "versionId": "v2",
       "locationId": null,
       "repositoryId": null,
       "source": "stdin",
@@ -154,13 +221,325 @@
           "additions": 1,
           "deletions": 1,
           "binary": false,
-          "fingerprint": "hash"
+          "fingerprint": "hash2"
         }
       ],
-      "revision": "r1"
+      "revision": "r2"
     },
     "valid": true,
-    "applicability": "other-scope"
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 5,
+      "end": 5
+    },
+    "patch": {
+      "patch": "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -0,0 +1,6 @@\n+function one() {\n+  return value\n+}\n+function two() {\n+  return value\n+}\n",
+      "message": null
+    }
+  },
+  {
+    "name": "ambiguous duplicate block",
+    "comment": {
+      "id": "comment",
+      "diffId": "diff",
+      "versionId": "v1",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash",
+      "side": "additions",
+      "start": 5,
+      "end": 5,
+      "code": "+   return value",
+      "body": "Check <this> & that",
+      "status": "open",
+      "createdAt": 1,
+      "anchor": {
+        "before": "",
+        "after": "}"
+      }
+    },
+    "repository": {
+      "id": "diff",
+      "versionId": "v2",
+      "locationId": null,
+      "repositoryId": null,
+      "source": "stdin",
+      "root": "",
+      "name": "Piped",
+      "branch": "",
+      "head": null,
+      "mode": "all",
+      "files": [
+        {
+          "id": "file",
+          "path": "file.txt",
+          "oldPath": null,
+          "status": "M",
+          "indexStatus": "",
+          "worktreeStatus": "",
+          "additions": 1,
+          "deletions": 1,
+          "binary": false,
+          "fingerprint": "hash2"
+        }
+      ],
+      "revision": "r2"
+    },
+    "valid": true,
+    "placement": {
+      "applicability": "outdated",
+      "side": "additions",
+      "start": 5,
+      "end": 5
+    },
+    "patch": {
+      "patch": "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -0,0 +1,6 @@\n+function one() {\n+  return value\n+}\n+function two() {\n+  return value\n+}\n",
+      "message": null
+    }
+  },
+  {
+    "name": "changed lines",
+    "comment": {
+      "id": "comment",
+      "diffId": "diff",
+      "versionId": "v1",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash",
+      "side": "additions",
+      "start": 2,
+      "end": 2,
+      "code": "+ changed",
+      "body": "Check <this> & that",
+      "status": "open",
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      }
+    },
+    "repository": {
+      "id": "diff",
+      "versionId": "v2",
+      "locationId": null,
+      "repositoryId": null,
+      "source": "stdin",
+      "root": "",
+      "name": "Piped",
+      "branch": "",
+      "head": null,
+      "mode": "all",
+      "files": [
+        {
+          "id": "file",
+          "path": "file.txt",
+          "oldPath": null,
+          "status": "M",
+          "indexStatus": "",
+          "worktreeStatus": "",
+          "additions": 1,
+          "deletions": 1,
+          "binary": false,
+          "fingerprint": "hash2"
+        }
+      ],
+      "revision": "r2"
+    },
+    "valid": true,
+    "placement": {
+      "applicability": "outdated",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    },
+    "patch": {
+      "patch": "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n alpha\n-beta\n+changed again\n",
+      "message": null
+    },
+    "export": "<code-review-comments version=\"2\">\n  <instructions>Address every open review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes. Resolved comments are context only; do not act on them. Comments marked stale were written against earlier code; verify they still apply before acting, and report any that no longer apply using the comment ID. If an open comment cannot be applied, report it using its comment ID.</instructions>\n  <review origin=\"unknown\">\n    <file path=\"file.txt\">\n      <comment id=\"C1\" selection=\"single-line\" line=\"2\" end-line=\"2\" side=\"additions\" scope=\"all\" status=\"open\" applicability=\"outdated\" stale=\"true\">\n        <code>+ changed</code>\n        <body>Check &lt;this&gt; &amp; that</body>\n      </comment>\n    </file>\n  </review>\n</code-review-comments>",
+    "exportUnresolved": "<code-review-comments version=\"2\">\n  <instructions>Address every unresolved review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes. Comments marked stale were written against earlier code; verify they still apply before acting, and report any that no longer apply using the comment ID.</instructions>\n  <review origin=\"unknown\">\n    <file path=\"file.txt\">\n      <comment id=\"C1\" selection=\"single-line\" line=\"2\" end-line=\"2\" side=\"additions\" scope=\"all\" status=\"open\" applicability=\"outdated\" stale=\"true\">\n        <code>+ changed</code>\n        <body>Check &lt;this&gt; &amp; that</body>\n      </comment>\n    </file>\n  </review>\n</code-review-comments>"
+  },
+  {
+    "name": "file left diff",
+    "comment": {
+      "id": "comment",
+      "diffId": "diff",
+      "versionId": "v1",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash",
+      "side": "additions",
+      "start": 2,
+      "end": 2,
+      "code": "+ changed",
+      "body": "Check <this> & that",
+      "status": "open",
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      }
+    },
+    "repository": {
+      "id": "diff",
+      "versionId": "v2",
+      "locationId": null,
+      "repositoryId": null,
+      "source": "stdin",
+      "root": "",
+      "name": "Piped",
+      "branch": "",
+      "head": null,
+      "mode": "all",
+      "files": [
+        {
+          "id": "other",
+          "path": "other.txt",
+          "oldPath": null,
+          "status": "M",
+          "indexStatus": "",
+          "worktreeStatus": "",
+          "additions": 1,
+          "deletions": 1,
+          "binary": false,
+          "fingerprint": "hash2"
+        }
+      ],
+      "revision": "r2"
+    },
+    "valid": true,
+    "placement": {
+      "applicability": "outdated",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    }
+  },
+  {
+    "name": "rename followed",
+    "comment": {
+      "id": "comment",
+      "diffId": "diff",
+      "versionId": "v1",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash",
+      "side": "additions",
+      "start": 2,
+      "end": 2,
+      "code": "+ changed",
+      "body": "Check <this> & that",
+      "status": "open",
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      }
+    },
+    "repository": {
+      "id": "diff",
+      "versionId": "v2",
+      "locationId": null,
+      "repositoryId": null,
+      "source": "stdin",
+      "root": "",
+      "name": "Piped",
+      "branch": "",
+      "head": null,
+      "mode": "all",
+      "files": [
+        {
+          "id": "file",
+          "path": "renamed.txt",
+          "oldPath": "file.txt",
+          "status": "R",
+          "indexStatus": "",
+          "worktreeStatus": "",
+          "additions": 1,
+          "deletions": 1,
+          "binary": false,
+          "fingerprint": "hash2"
+        }
+      ],
+      "revision": "r2"
+    },
+    "valid": true,
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    },
+    "patch": {
+      "patch": "diff --git a/file.txt b/renamed.txt\nrename from file.txt\nrename to renamed.txt\n--- a/file.txt\n+++ b/renamed.txt\n@@ -1,2 +1,2 @@\n alpha\n-beta\n+changed\n",
+      "message": null
+    }
+  },
+  {
+    "name": "no longer changed",
+    "comment": {
+      "id": "comment",
+      "diffId": "diff",
+      "versionId": "v1",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash",
+      "side": "additions",
+      "start": 2,
+      "end": 2,
+      "code": "+ changed",
+      "body": "Check <this> & that",
+      "status": "open",
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      }
+    },
+    "repository": {
+      "id": "diff",
+      "versionId": "v2",
+      "locationId": null,
+      "repositoryId": null,
+      "source": "stdin",
+      "root": "",
+      "name": "Piped",
+      "branch": "",
+      "head": null,
+      "mode": "all",
+      "files": [
+        {
+          "id": "file",
+          "path": "file.txt",
+          "oldPath": null,
+          "status": "M",
+          "indexStatus": "",
+          "worktreeStatus": "",
+          "additions": 1,
+          "deletions": 1,
+          "binary": false,
+          "fingerprint": "hash2"
+        }
+      ],
+      "revision": "r2"
+    },
+    "valid": true,
+    "placement": {
+      "applicability": "unchanged",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    },
+    "patch": {
+      "patch": "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -8,1 +8,1 @@\n-gamma\n+delta\n",
+      "message": null,
+      "contents": {
+        "before": "alpha\nchanged\nx\ny\nz\nw\nv\ngamma\n",
+        "after": "alpha\nchanged\nx\ny\nz\nw\nv\ndelta\n"
+      }
+    },
+    "export": "<code-review-comments version=\"2\">\n  <instructions>Address every open review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes. Resolved comments are context only; do not act on them. Comments marked stale were written against earlier code; verify they still apply before acting, and report any that no longer apply using the comment ID. If an open comment cannot be applied, report it using its comment ID.</instructions>\n  <review origin=\"unknown\">\n    <file path=\"file.txt\">\n      <comment id=\"C1\" selection=\"single-line\" line=\"2\" end-line=\"2\" side=\"additions\" scope=\"all\" status=\"open\" applicability=\"unchanged\" stale=\"true\">\n        <code>+ changed</code>\n        <body>Check &lt;this&gt; &amp; that</body>\n      </comment>\n    </file>\n  </review>\n</code-review-comments>"
   },
   {
     "name": "other scope",
@@ -172,16 +551,20 @@
       "scope": "staged",
       "fingerprint": "hash",
       "side": "additions",
-      "start": 1,
-      "end": 1,
+      "start": 2,
+      "end": 2,
       "code": "+ changed",
       "body": "Check <this> & that",
       "status": "open",
-      "createdAt": 1
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      }
     },
     "repository": {
       "id": "diff",
-      "versionId": "v1",
+      "versionId": "v2",
       "locationId": null,
       "repositoryId": null,
       "source": "stdin",
@@ -201,34 +584,74 @@
           "additions": 1,
           "deletions": 1,
           "binary": false,
-          "fingerprint": "hash"
+          "fingerprint": "hash2"
         }
       ],
-      "revision": "r1"
+      "revision": "r2"
     },
     "valid": true,
-    "applicability": "other-scope"
+    "placement": {
+      "applicability": "other-scope",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    }
   },
   {
-    "name": "stale fingerprint",
+    "name": "unknown snapshot",
     "comment": {
       "id": "comment",
       "diffId": "diff",
       "versionId": "v1",
       "path": "file.txt",
       "scope": "all",
-      "fingerprint": "old",
+      "fingerprint": "hash",
       "side": "additions",
-      "start": 1,
-      "end": 1,
+      "start": 2,
+      "end": 2,
       "code": "+ changed",
       "body": "Check <this> & that",
       "status": "open",
-      "createdAt": 1
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      }
+    },
+    "repository": null,
+    "valid": true,
+    "placement": {
+      "applicability": "unknown",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    },
+    "export": "<code-review-comments version=\"2\">\n  <instructions>Address every open review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes. Resolved comments are context only; do not act on them. Comments marked stale were written against earlier code; verify they still apply before acting, and report any that no longer apply using the comment ID. If an open comment cannot be applied, report it using its comment ID.</instructions>\n  <review origin=\"unknown\">\n    <file path=\"file.txt\">\n      <comment id=\"C1\" selection=\"single-line\" line=\"2\" end-line=\"2\" side=\"additions\" scope=\"all\" status=\"open\" applicability=\"unknown\">\n        <code>+ changed</code>\n        <body>Check &lt;this&gt; &amp; that</body>\n      </comment>\n    </file>\n  </review>\n</code-review-comments>"
+  },
+  {
+    "name": "unknown identity",
+    "comment": {
+      "id": "comment",
+      "diffId": "",
+      "versionId": "v1",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash",
+      "side": "additions",
+      "start": 2,
+      "end": 2,
+      "code": "+ changed",
+      "body": "Check <this> & that",
+      "status": "open",
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      }
     },
     "repository": {
       "id": "diff",
-      "versionId": "v1",
+      "versionId": "v2",
       "locationId": null,
       "repositoryId": null,
       "source": "stdin",
@@ -248,16 +671,21 @@
           "additions": 1,
           "deletions": 1,
           "binary": false,
-          "fingerprint": "hash"
+          "fingerprint": "hash2"
         }
       ],
-      "revision": "r1"
+      "revision": "r2"
     },
     "valid": true,
-    "applicability": "stale"
+    "placement": {
+      "applicability": "unknown",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    }
   },
   {
-    "name": "file target",
+    "name": "file comment anchored",
     "comment": {
       "id": "comment",
       "diffId": "diff",
@@ -276,7 +704,7 @@
     },
     "repository": {
       "id": "diff",
-      "versionId": "v1",
+      "versionId": "v2",
       "locationId": null,
       "repositoryId": null,
       "source": "stdin",
@@ -296,13 +724,304 @@
           "additions": 1,
           "deletions": 1,
           "binary": false,
-          "fingerprint": "hash"
+          "fingerprint": "hash2"
         }
       ],
-      "revision": "r1"
+      "revision": "r2"
     },
     "valid": true,
-    "applicability": "anchored"
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 0,
+      "end": 0
+    },
+    "export": "<code-review-comments version=\"2\">\n  <instructions>Address every open review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes. Resolved comments are context only; do not act on them. Comments marked stale were written against earlier code; verify they still apply before acting, and report any that no longer apply using the comment ID. If an open comment cannot be applied, report it using its comment ID.</instructions>\n  <review origin=\"unknown\">\n    <file path=\"file.txt\">\n      <comment id=\"C1\" selection=\"file\" scope=\"all\" status=\"open\" applicability=\"anchored\">\n        <body>Check &lt;this&gt; &amp; that</body>\n      </comment>\n    </file>\n  </review>\n</code-review-comments>"
+  },
+  {
+    "name": "carried comment",
+    "comment": {
+      "id": "comment",
+      "diffId": "diff",
+      "versionId": "v1",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash",
+      "side": "additions",
+      "start": 0,
+      "end": 0,
+      "code": "+ changed",
+      "body": "Check <this> & that",
+      "status": "open",
+      "createdAt": 1,
+      "target": "file",
+      "carriedFrom": {
+        "versionId": "v1",
+        "side": "additions",
+        "start": 2,
+        "end": 3
+      }
+    },
+    "repository": {
+      "id": "diff",
+      "versionId": "v2",
+      "locationId": null,
+      "repositoryId": null,
+      "source": "stdin",
+      "root": "",
+      "name": "Piped",
+      "branch": "",
+      "head": null,
+      "mode": "all",
+      "files": [
+        {
+          "id": "file",
+          "path": "file.txt",
+          "oldPath": null,
+          "status": "M",
+          "indexStatus": "",
+          "worktreeStatus": "",
+          "additions": 1,
+          "deletions": 1,
+          "binary": false,
+          "fingerprint": "hash2"
+        }
+      ],
+      "revision": "r2"
+    },
+    "valid": true,
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 0,
+      "end": 0
+    },
+    "export": "<code-review-comments version=\"2\">\n  <instructions>Address every open review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes. Resolved comments are context only; do not act on them. Comments marked stale were written against earlier code; verify they still apply before acting, and report any that no longer apply using the comment ID. If an open comment cannot be applied, report it using its comment ID.</instructions>\n  <review origin=\"unknown\">\n    <file path=\"file.txt\">\n      <comment id=\"C1\" selection=\"file\" scope=\"all\" status=\"open\" applicability=\"anchored\" stale=\"true\" original-line=\"2\" original-end-line=\"3\" original-side=\"additions\">\n        <code>+ changed</code>\n        <body>Check &lt;this&gt; &amp; that</body>\n      </comment>\n    </file>\n  </review>\n</code-review-comments>",
+    "exportUnresolved": "<code-review-comments version=\"2\">\n  <instructions>Address every unresolved review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes. Comments marked stale were written against earlier code; verify they still apply before acting, and report any that no longer apply using the comment ID.</instructions>\n  <review origin=\"unknown\">\n    <file path=\"file.txt\">\n      <comment id=\"C1\" selection=\"file\" scope=\"all\" status=\"open\" applicability=\"anchored\" stale=\"true\" original-line=\"2\" original-end-line=\"3\" original-side=\"additions\">\n        <code>+ changed</code>\n        <body>Check &lt;this&gt; &amp; that</body>\n      </comment>\n    </file>\n  </review>\n</code-review-comments>"
+  },
+  {
+    "name": "carried file gone",
+    "comment": {
+      "id": "comment",
+      "diffId": "diff",
+      "versionId": "v1",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash",
+      "side": "additions",
+      "start": 0,
+      "end": 0,
+      "code": "+ changed",
+      "body": "Check <this> & that",
+      "status": "open",
+      "createdAt": 1,
+      "target": "file",
+      "carriedFrom": {
+        "versionId": "v1",
+        "side": "additions",
+        "start": 2,
+        "end": 3
+      }
+    },
+    "repository": {
+      "id": "diff",
+      "versionId": "v2",
+      "locationId": null,
+      "repositoryId": null,
+      "source": "stdin",
+      "root": "",
+      "name": "Piped",
+      "branch": "",
+      "head": null,
+      "mode": "all",
+      "files": [],
+      "revision": "r2"
+    },
+    "valid": true,
+    "placement": {
+      "applicability": "outdated",
+      "side": "additions",
+      "start": 0,
+      "end": 0
+    }
+  },
+  {
+    "name": "carried requires file target",
+    "comment": {
+      "id": "comment",
+      "diffId": "diff",
+      "versionId": "v1",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash",
+      "side": "additions",
+      "start": 2,
+      "end": 2,
+      "code": "+ changed",
+      "body": "Check <this> & that",
+      "status": "open",
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      },
+      "carriedFrom": {
+        "versionId": "v1",
+        "side": "additions",
+        "start": 2,
+        "end": 2
+      }
+    },
+    "repository": {
+      "id": "diff",
+      "versionId": "v2",
+      "locationId": null,
+      "repositoryId": null,
+      "source": "stdin",
+      "root": "",
+      "name": "Piped",
+      "branch": "",
+      "head": null,
+      "mode": "all",
+      "files": [
+        {
+          "id": "file",
+          "path": "file.txt",
+          "oldPath": null,
+          "status": "M",
+          "indexStatus": "",
+          "worktreeStatus": "",
+          "additions": 1,
+          "deletions": 1,
+          "binary": false,
+          "fingerprint": "hash2"
+        }
+      ],
+      "revision": "r2"
+    },
+    "valid": false,
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    },
+    "patch": {
+      "patch": "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n alpha\n-beta\n+changed\n",
+      "message": null
+    }
+  },
+  {
+    "name": "carried invalid selection",
+    "comment": {
+      "id": "comment",
+      "diffId": "diff",
+      "versionId": "v1",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash",
+      "side": "additions",
+      "start": 0,
+      "end": 0,
+      "code": "+ changed",
+      "body": "Check <this> & that",
+      "status": "open",
+      "createdAt": 1,
+      "target": "file",
+      "carriedFrom": {
+        "versionId": "v1",
+        "side": "additions",
+        "start": 0,
+        "end": 0
+      }
+    },
+    "repository": {
+      "id": "diff",
+      "versionId": "v2",
+      "locationId": null,
+      "repositoryId": null,
+      "source": "stdin",
+      "root": "",
+      "name": "Piped",
+      "branch": "",
+      "head": null,
+      "mode": "all",
+      "files": [
+        {
+          "id": "file",
+          "path": "file.txt",
+          "oldPath": null,
+          "status": "M",
+          "indexStatus": "",
+          "worktreeStatus": "",
+          "additions": 1,
+          "deletions": 1,
+          "binary": false,
+          "fingerprint": "hash2"
+        }
+      ],
+      "revision": "r2"
+    },
+    "valid": false,
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 0,
+      "end": 0
+    }
+  },
+  {
+    "name": "file code without carry",
+    "comment": {
+      "id": "comment",
+      "diffId": "diff",
+      "versionId": "v1",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash",
+      "side": "additions",
+      "start": 0,
+      "end": 0,
+      "code": "+ changed",
+      "body": "Check <this> & that",
+      "status": "open",
+      "createdAt": 1,
+      "target": "file"
+    },
+    "repository": {
+      "id": "diff",
+      "versionId": "v2",
+      "locationId": null,
+      "repositoryId": null,
+      "source": "stdin",
+      "root": "",
+      "name": "Piped",
+      "branch": "",
+      "head": null,
+      "mode": "all",
+      "files": [
+        {
+          "id": "file",
+          "path": "file.txt",
+          "oldPath": null,
+          "status": "M",
+          "indexStatus": "",
+          "worktreeStatus": "",
+          "additions": 1,
+          "deletions": 1,
+          "binary": false,
+          "fingerprint": "hash2"
+        }
+      ],
+      "revision": "r2"
+    },
+    "valid": false,
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 0,
+      "end": 0
+    }
   },
   {
     "name": "bad file selection",
@@ -324,7 +1043,7 @@
     },
     "repository": {
       "id": "diff",
-      "versionId": "v1",
+      "versionId": "v2",
       "locationId": null,
       "repositoryId": null,
       "source": "stdin",
@@ -344,34 +1063,43 @@
           "additions": 1,
           "deletions": 1,
           "binary": false,
-          "fingerprint": "hash"
+          "fingerprint": "hash2"
         }
       ],
-      "revision": "r1"
+      "revision": "r2"
     },
     "valid": false,
-    "applicability": "anchored"
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 0,
+      "end": 0
+    }
   },
   {
     "name": "blank body",
     "comment": {
       "id": "comment",
       "diffId": "diff",
-      "versionId": "v1",
+      "versionId": "v2",
       "path": "file.txt",
       "scope": "all",
-      "fingerprint": "hash",
+      "fingerprint": "hash2",
       "side": "additions",
-      "start": 1,
-      "end": 1,
+      "start": 2,
+      "end": 2,
       "code": "+ changed",
       "body": "  ",
       "status": "open",
-      "createdAt": 1
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      }
     },
     "repository": {
       "id": "diff",
-      "versionId": "v1",
+      "versionId": "v2",
       "locationId": null,
       "repositoryId": null,
       "source": "stdin",
@@ -391,34 +1119,43 @@
           "additions": 1,
           "deletions": 1,
           "binary": false,
-          "fingerprint": "hash"
+          "fingerprint": "hash2"
         }
       ],
-      "revision": "r1"
+      "revision": "r2"
     },
     "valid": false,
-    "applicability": "anchored"
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    }
   },
   {
     "name": "range too large",
     "comment": {
       "id": "comment",
       "diffId": "diff",
-      "versionId": "v1",
+      "versionId": "v2",
       "path": "file.txt",
       "scope": "all",
-      "fingerprint": "hash",
+      "fingerprint": "hash2",
       "side": "additions",
       "start": 1,
       "end": 201,
       "code": "+ changed",
       "body": "Check <this> & that",
       "status": "open",
-      "createdAt": 1
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      }
     },
     "repository": {
       "id": "diff",
-      "versionId": "v1",
+      "versionId": "v2",
       "locationId": null,
       "repositoryId": null,
       "source": "stdin",
@@ -438,34 +1175,43 @@
           "additions": 1,
           "deletions": 1,
           "binary": false,
-          "fingerprint": "hash"
+          "fingerprint": "hash2"
         }
       ],
-      "revision": "r1"
+      "revision": "r2"
     },
     "valid": false,
-    "applicability": "anchored"
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 1,
+      "end": 201
+    }
   },
   {
     "name": "max range",
     "comment": {
       "id": "comment",
       "diffId": "diff",
-      "versionId": "v1",
+      "versionId": "v2",
       "path": "file.txt",
       "scope": "all",
-      "fingerprint": "hash",
+      "fingerprint": "hash2",
       "side": "additions",
       "start": 1,
       "end": 200,
       "code": "+ changed",
       "body": "Check <this> & that",
       "status": "open",
-      "createdAt": 1
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      }
     },
     "repository": {
       "id": "diff",
-      "versionId": "v1",
+      "versionId": "v2",
       "locationId": null,
       "repositoryId": null,
       "source": "stdin",
@@ -485,13 +1231,18 @@
           "additions": 1,
           "deletions": 1,
           "binary": false,
-          "fingerprint": "hash"
+          "fingerprint": "hash2"
         }
       ],
-      "revision": "r1"
+      "revision": "r2"
     },
     "valid": true,
-    "applicability": "anchored"
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 1,
+      "end": 200
+    }
   },
   {
     "name": "resolved",
@@ -503,16 +1254,20 @@
       "scope": "all",
       "fingerprint": "hash",
       "side": "additions",
-      "start": 1,
-      "end": 1,
+      "start": 2,
+      "end": 2,
       "code": "+ changed",
       "body": "Check <this> & that",
       "status": "resolved",
-      "createdAt": 1
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      }
     },
     "repository": {
       "id": "diff",
-      "versionId": "v1",
+      "versionId": "v2",
       "locationId": null,
       "repositoryId": null,
       "source": "stdin",
@@ -532,13 +1287,24 @@
           "additions": 1,
           "deletions": 1,
           "binary": false,
-          "fingerprint": "hash"
+          "fingerprint": "hash2"
         }
       ],
-      "revision": "r1"
+      "revision": "r2"
     },
     "valid": true,
-    "applicability": "anchored"
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    },
+    "patch": {
+      "patch": "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n alpha\n-beta\n+changed\n",
+      "message": null
+    },
+    "export": "<code-review-comments version=\"2\">\n  <instructions>Address every open review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes. Resolved comments are context only; do not act on them. Comments marked stale were written against earlier code; verify they still apply before acting, and report any that no longer apply using the comment ID. If an open comment cannot be applied, report it using its comment ID.</instructions>\n  <review origin=\"unknown\">\n    <file path=\"file.txt\">\n      <comment id=\"C1\" selection=\"single-line\" line=\"2\" end-line=\"2\" side=\"additions\" scope=\"all\" status=\"resolved\" applicability=\"anchored\">\n        <code>+ changed</code>\n        <body>Check &lt;this&gt; &amp; that</body>\n      </comment>\n    </file>\n  </review>\n</code-review-comments>",
+    "exportUnresolved": ""
   },
   {
     "name": "missing scope",
@@ -550,16 +1316,20 @@
       "scope": "",
       "fingerprint": "hash",
       "side": "additions",
-      "start": 1,
-      "end": 1,
+      "start": 2,
+      "end": 2,
       "code": "+ changed",
       "body": "Check <this> & that",
       "status": "open",
-      "createdAt": 1
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      }
     },
     "repository": {
       "id": "diff",
-      "versionId": "v1",
+      "versionId": "v2",
       "locationId": null,
       "repositoryId": null,
       "source": "stdin",
@@ -579,13 +1349,17 @@
           "additions": 1,
           "deletions": 1,
           "binary": false,
-          "fingerprint": "hash"
+          "fingerprint": "hash2"
         }
       ],
-      "revision": "r1"
+      "revision": "r2"
     },
     "valid": false,
-    "applicability": "other-scope",
-    "export": ""
+    "placement": {
+      "applicability": "other-scope",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    }
   }
 ]

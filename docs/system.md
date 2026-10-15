@@ -124,7 +124,17 @@ do not become latest through housekeeping.
 Opening a context or switching scope loads its stored manifest, patches and
 available contents through scoped REST endpoints. MCP uses the same stored
 context and review services. Comments and reviewed marks are mutable SQLite
-state bound to the observation and scope; the captured diff stays immutable.
+state of the stream and scope, spanning its snapshots, so a review continues
+across new collections; the captured diff stays immutable. Piped observations
+form a stream of their own. Comment responses carry a server-computed placement
+in the viewed snapshot. Line comments re-anchor by preserved code: the block
+must occur exactly once on its side, preferring a match whose captured
+surrounding lines also match; ambiguity never anchors. A found block is
+`anchored` at its original lines or `moved`; otherwise it is `unchanged` when
+it occurs once in collected full contents, else `outdated`. File comments follow
+their path or a rename. Open outdated or unchanged comments can be carried to
+the viewed snapshot as file comments keeping their original code and lines.
+Reviewed marks carry to snapshots whose stored file patch is identical.
 
 `GET /api/v2/events` supplies transient server-sent ingestion notifications.
 The browser reloads the catalog on events and reconnection. An arrival does not
@@ -143,7 +153,8 @@ user
       submissions and observing sessions
       immutable scopes: all / staged / unstaged
         manifest, patches, available contents
-        mutable review state
+    review stream (source/checkout/branch/comparison, or one piped capture)
+      mutable review state per scope, spanning its observations
 ```
 
 An observation can also be unassociated with a repository, such as a standalone
@@ -188,8 +199,8 @@ Each authenticated user can receive observations
 from many containers, including identical branch and path names. Source, session
 and checkout metadata preserve their differences. Provenance describes what a
 producer reported; it is not proof of repository ownership or trustworthiness.
-Identical snapshots share review state within the same user/source/checkout/
-branch/comparison identity. Sessions associate with those shared contexts;
+Review state is shared by every snapshot of the same user/source/repository/
+checkout/branch/comparison stream. Sessions associate with those shared contexts;
 renaming a session updates its searchable label without changing snapshot
 metadata. The triggering session observed collection; it does not own every
 worktree's edits.
@@ -201,9 +212,11 @@ Snapshot retention is configurable in whole days, default seven, after the last
 fresh submission. Changing configuration preserves existing expiry until a
 fresh submission; retries do not extend it. Reads enforce
 expiry immediately; local and remote servers prune at startup and hourly,
-removing all scopes, previews, comments and marks. Compact replay identities and
-stream heads survive deletion and expiry, preventing replay resurrection and
-regression of freshness. Incompatible schemas are refused without resetting data;
+removing all scopes and previews. Deleting or pruning a snapshot keeps its
+stream's comments and marks while another snapshot of the stream remains; the
+same transaction deletes them with the stream's last snapshot. Compact replay
+identities and stream heads survive deletion and expiry, preventing replay
+resurrection and regression of freshness. Incompatible schemas are refused without resetting data;
 see architecture.md for the explicit fresh-state procedure.
 
 ## Freshness and delivery

@@ -5,22 +5,12 @@ import (
 	"strings"
 )
 
-func Applicability(comment ReviewComment, repository *RepositoryDiff) string {
-	if repository == nil || comment.DiffID == "" || repository.ID == "" {
-		return "unknown"
+// placement returns the comment's computed placement; unplaced comments are unknown.
+func placement(comment ReviewComment) CommentPlacement {
+	if comment.Placement == nil {
+		return CommentPlacement{Applicability: Unknown, Side: comment.Side, Start: comment.Start, End: comment.End}
 	}
-	if comment.Scope != repository.Mode {
-		return "other-scope"
-	}
-	if comment.DiffID != repository.ID {
-		return "other-scope"
-	}
-	for _, file := range repository.Files {
-		if file.Path == comment.Path && file.Fingerprint == comment.Fingerprint {
-			return "anchored"
-		}
-	}
-	return "stale"
+	return *comment.Placement
 }
 
 func changeName(status string) string {
@@ -53,18 +43,12 @@ type exportComment struct {
 	comment ReviewComment
 }
 
-func FormatComments(comments []ReviewComment, includeResolved bool, repositories []RepositoryDiff) string {
-	repositoryFor := func(comment ReviewComment) *RepositoryDiff {
-		for index := range repositories {
-			if repositories[index].Mode == comment.Scope {
-				return &repositories[index]
-			}
-		}
-		return nil
-	}
+// FormatComments exports comments using their computed placements. Unresolved
+// exports include every open comment; stale and carried ones are tagged.
+func FormatComments(comments []ReviewComment, includeResolved bool) string {
 	selected := make([]ReviewComment, 0, len(comments))
 	for _, comment := range comments {
-		if includeResolved || (comment.Status == "open" && Applicability(comment, repositoryFor(comment)) != "stale") {
+		if includeResolved || comment.Status == "open" {
 			selected = append(selected, comment)
 		}
 	}
@@ -97,9 +81,10 @@ func FormatComments(comments []ReviewComment, includeResolved bool, repositories
 		}
 		reviews[reviewIndex].files[fileIndex].comments = append(reviews[reviewIndex].files[fileIndex].comments, exportComment{id: fmt.Sprintf("C%d", index+1), comment: comment})
 	}
-	instruction := "Address every unresolved review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes."
+	stale := "Comments marked stale were written against earlier code; verify they still apply before acting, and report any that no longer apply using the comment ID."
+	instruction := "Address every unresolved review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes. " + stale
 	if includeResolved {
-		instruction = "Address every anchored open review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes. Resolved and stale comments are context only; do not act on them. If an anchored open comment cannot be applied, report it using its comment ID."
+		instruction = "Address every open review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes. Resolved comments are context only; do not act on them. " + stale + " If an open comment cannot be applied, report it using its comment ID."
 	}
 	lines := []string{"<code-review-comments version=\"2\">", "  <instructions>" + xml(instruction) + "</instructions>"}
 	for _, item := range reviews {
@@ -127,20 +112,33 @@ func FormatComments(comments []ReviewComment, includeResolved bool, repositories
 			lines = append(lines, `    <file path="`+attribute(file.path)+`"`+metadata+`>`)
 			for _, exported := range file.comments {
 				comment := exported.comment
+				place := placement(comment)
+				state := fmt.Sprintf(`scope="%s" status="%s" applicability="%s"`, comment.Scope, comment.Status, place.Applicability)
+				if place.Applicability.Stale() || comment.CarriedFrom != nil {
+					state += ` stale="true"`
+				}
 				if comment.Target == "file" {
-					lines = append(lines,
-						fmt.Sprintf(`      <comment id="%s" selection="file" scope="%s" status="%s" applicability="%s">`, exported.id, comment.Scope, comment.Status, Applicability(comment, repositoryFor(comment))),
-						"        <body>"+xml(comment.Body)+"</body>",
-						"      </comment>",
-					)
+					if carried := comment.CarriedFrom; carried != nil {
+						lines = append(lines,
+							fmt.Sprintf(`      <comment id="%s" selection="file" %s original-line="%d" original-end-line="%d" original-side="%s">`, exported.id, state, carried.Start, carried.End, carried.Side),
+							"        <code>"+xml(comment.Code)+"</code>",
+						)
+					} else {
+						lines = append(lines, fmt.Sprintf(`      <comment id="%s" selection="file" %s>`, exported.id, state))
+					}
+					lines = append(lines, "        <body>"+xml(comment.Body)+"</body>", "      </comment>")
 					continue
 				}
+				start, end := comment.Start, comment.End
+				if place.Applicability.Inline() {
+					start, end = place.Start, place.End
+				}
 				selection := "range"
-				if comment.Start == comment.End {
+				if start == end {
 					selection = "single-line"
 				}
 				lines = append(lines,
-					fmt.Sprintf(`      <comment id="%s" selection="%s" line="%d" end-line="%d" side="%s" scope="%s" status="%s" applicability="%s">`, exported.id, selection, comment.Start, comment.End, comment.Side, comment.Scope, comment.Status, Applicability(comment, repositoryFor(comment))),
+					fmt.Sprintf(`      <comment id="%s" selection="%s" line="%d" end-line="%d" side="%s" %s>`, exported.id, selection, start, end, comment.Side, state),
 					"        <code>"+xml(comment.Code)+"</code>",
 					"        <body>"+xml(comment.Body)+"</body>",
 					"      </comment>",

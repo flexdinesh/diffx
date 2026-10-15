@@ -109,8 +109,9 @@ func (store *Store) Context(ownerID, id string, now time.Time) (ContextInfo, err
 	return item, nil
 }
 
-// DeleteContext removes the context and every scope's retained review data.
-// Stream heads intentionally survive so older observations remain stale.
+// DeleteContext removes the context and every scope's snapshot. Review state
+// survives while its stream has another observation. Stream heads intentionally
+// survive so older observations remain stale.
 func (store *Store) DeleteContext(ownerID, id string) error {
 	transaction, err := store.db.Begin()
 	if err != nil {
@@ -129,6 +130,9 @@ func (store *Store) DeleteContext(ownerID, id string) error {
 		return err
 	}
 	if _, err = transaction.Exec("DELETE FROM diffs WHERE owner_id=? AND id=?", ownerID, anchor); err != nil {
+		return err
+	}
+	if err := endStreams(transaction); err != nil {
 		return err
 	}
 	return transaction.Commit()

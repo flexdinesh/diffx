@@ -222,6 +222,15 @@
   font: var(--text-xs) var(--font-sans);
   white-space: nowrap;
 }
+.file-comment-count.outdated,
+.file-outdated-count {
+  color: var(--muted);
+}
+.file-outdated-count {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
 .file-comment-count svg {
   width: var(--icon-sm);
   height: var(--icon-sm);
@@ -426,12 +435,15 @@
 .review-round h2 {
   margin: 0 0 var(--space-2);
 }
-.earlier-review {
+.outdated-review {
   border-top: 1px solid var(--border);
   padding-top: var(--space-3);
 }
-.earlier-review summary {
-  cursor: pointer;
+.review-round-hint {
+  margin: 0 0 var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-copy);
 }
 .comment-card,
 .comment-editor {
@@ -652,7 +664,8 @@
   border-radius: var(--radius-sm);
 }
 #comments-panel .comment-actions {
-  flex-wrap: nowrap;
+  /* Outdated comments add Keep open; wrap instead of overflowing the card. */
+  flex-wrap: wrap;
   min-height: var(--control-height);
   gap: var(--space-1);
   padding: var(--space-0-5) var(--space-1-5);

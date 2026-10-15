@@ -1497,7 +1497,7 @@ test("copy dialog reports clipboard status and restores focus", async ({
             side: "additions",
             start: 1,
             end: 1,
-            code: "+ export const value = 2;",
+            code: "+ export const value = 1;",
             body: "Keep the exported value stable.",
             status: "open",
             createdAt: 1,
@@ -1511,28 +1511,30 @@ test("copy dialog reports clipboard status and restores focus", async ({
 
   await page.getByRole("tab", { name: /Review/ }).click();
   await page.getByRole("button", { name: "Filter comments: Open" }).click();
-  await page.getByRole("menuitemradio", { name: "Stale 1" }).click();
-  await page.getByText(/Earlier review 1/).click();
+  await page.getByRole("menuitemradio", { name: "Outdated 1" }).click();
+  await expect(
+    page.getByRole("region", { name: "Outdated comments" }),
+  ).toBeVisible();
   const card = page.locator(
     '#comments-panel [data-comment-id="browser-test"] .comment-card',
   );
   await expect(card).toHaveAttribute("data-expanded", "false");
-  await expect(card.getByText("Stale", { exact: true })).toBeVisible();
+  await expect(card.getByText("Outdated", { exact: true })).toBeVisible();
   await expect(card.locator(".comment-state")).toHaveAttribute(
     "title",
-    "Lifecycle: open; applicability: stale",
+    "Lifecycle: open; applicability: outdated",
   );
   const expand = card.locator(".comment-collapse");
-  await expect(expand).toHaveAccessibleName(/Expand stale comment/);
+  await expect(expand).toHaveAccessibleName(/Expand outdated comment/);
   await expand.click();
   const resolve = card.getByRole("button", { name: "Resolve", exact: true });
   await resolve.click();
   await expect(card).toHaveAttribute("data-expanded", "false");
   await expect(card.locator(".comment-collapse-panel")).toBeHidden();
-  await expect(card.getByText("Stale", { exact: true })).toBeVisible();
+  await expect(card.getByText("Outdated", { exact: true })).toBeVisible();
   await expect(card.locator(".comment-state")).toHaveAttribute(
     "title",
-    "Lifecycle: resolved; applicability: stale",
+    "Lifecycle: resolved; applicability: outdated",
   );
   await expect(expand).toHaveAttribute("aria-expanded", "false");
   await expand.click();
@@ -1542,7 +1544,7 @@ test("copy dialog reports clipboard status and restores focus", async ({
   await reopen.click();
   await expect(card.locator(".comment-state")).toHaveAttribute(
     "title",
-    "Lifecycle: open; applicability: stale",
+    "Lifecycle: open; applicability: outdated",
   );
 
   const exportQueries: string[] = [];
@@ -1571,7 +1573,7 @@ test("copy dialog reports clipboard status and restores focus", async ({
   expect(query.get("includeResolved")).toBe("true");
   expect(query.get("commentId")).toBe("browser-test");
   await expect(commentOutput).toHaveValue(
-    /^<file [\s\S]*status="open" applicability="stale"[\s\S]*<\/file>$/,
+    /^<file [\s\S]*status="open" applicability="outdated" stale="true"[\s\S]*<\/file>$/,
   );
   await expect(commentOutput).not.toHaveValue(/code-review-comments|<review /);
   await expect(commentOutput).not.toHaveValue(/Keep the current value stable/);
@@ -1639,7 +1641,9 @@ test("copy dialog reports clipboard status and restores focus", async ({
   expect(query.get("revision")).toBeNull();
   expect(query.get("scope")).toBeNull();
   await expect(reviewOutput).toBeFocused();
-  await expect(reviewOutput).toHaveValue(/status="open" applicability="stale"/);
+  await expect(reviewOutput).toHaveValue(
+    /status="open" applicability="outdated" stale="true"/,
+  );
   await expect(reviewOutput).toHaveValue(
     /status="open" applicability="anchored"/,
   );

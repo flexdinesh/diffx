@@ -342,7 +342,15 @@ such detail into a token. New layout spacing must use the scale.
   Comment status badges match the same control height.
 - Resolved comments collapse to their header by default. A labeled chevron
   expands the body and actions; reopening restores the expanded open state.
-- Comment views default to open comments and offer Open, Resolved, and All filters.
+- Comment views default to open comments and offer Open, Resolved, Outdated, and
+  All filters. The Comments panel lists Current comments, then an Outdated section
+  for comments whose code changed or left the diff. Outdated comments carry an
+  "Outdated" badge, a muted placement note, and their original code; they stay
+  out of code lines and render in the file's lineNumber 0 slot. File headers and
+  the file tree show muted outdated counts beside accent current counts. A
+  snapshot-notice-style banner points to open outdated comments. "Keep open"
+  moves an outdated comment to its file on the latest snapshot, still labeled
+  outdated.
   Export uses one primary `Copy review` action plus a menu for broader scopes.
 - Keep `Save comment` enabled when idle; empty submission focuses the labeled
   editor and shows an inline error. Disable it while saving. Deleting a saved
