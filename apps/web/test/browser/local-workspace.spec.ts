@@ -1615,6 +1615,9 @@ test("projects drawer lists current changed streams and announces newer snapshot
   await expect(
     nav.getByRole("link", { name: /feat\/rate-limit/ }),
   ).toHaveAttribute("aria-current", "page");
+  await expect(
+    nav.getByRole("link", { name: /feat\/rate-limit/ }),
+  ).toHaveAttribute("href", "/streams/stream-feat%2Frate-limit");
   await expect(page.locator(".snapshot-notice")).toBeHidden();
 
   const newer = {
@@ -1629,11 +1632,11 @@ test("projects drawer lists current changed streams and announces newer snapshot
   await expect(notice).toContainText("3 changed files");
   await expect(page).toHaveURL(/\/contexts\/rate-1$/);
   await notice.getByRole("button", { name: "View latest" }).click();
-  await expect(page).toHaveURL(/\/contexts\/rate-2$/);
+  await expect(page).toHaveURL(/\/streams\/stream-feat%2Frate-limit$/);
   await expect(notice).toBeHidden();
 
   await nav.getByRole("link", { name: /^main/ }).click();
-  await expect(page).toHaveURL(/\/contexts\/web-1$/);
+  await expect(page).toHaveURL(/\/streams\/stream-main$/);
   const search = nav.getByRole("searchbox", { name: "Search projects" });
   await search.fill("acme rate-limit");
   await expect(nav.locator(".stream-row")).toHaveCount(1);
@@ -1657,6 +1660,161 @@ test("projects drawer lists current changed streams and announces newer snapshot
   await expect(
     page.getByRole("navigation", { name: "Projects" }),
   ).toBeVisible();
+});
+
+test("live stream URLs open the latest head on load and keep it until navigation", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    class IngestionEvents extends EventTarget {
+      notify = () =>
+        this.dispatchEvent(new MessageEvent("ingestion", { data: "{}" }));
+      constructor() {
+        super();
+        window.addEventListener("test-ingestion", this.notify);
+      }
+      close() {
+        window.removeEventListener("test-ingestion", this.notify);
+      }
+    }
+    Object.defineProperty(window, "EventSource", { value: IngestionEvents });
+  });
+  const state = await localWorkspace(page);
+  const snapshot = (id: string, lastSubmittedAt: number): ApiContext => ({
+    ...state.context,
+    id,
+    streamId: "stream-main",
+    latestContextId: id,
+    lastSubmittedAt,
+  });
+  const contexts = new Map(
+    [snapshot("main-1", 10), snapshot("main-2", 20)].map((context) => [
+      context.id,
+      context,
+    ]),
+  );
+  let heads = [snapshot("main-1", 10)];
+  await page.route("**/api/v2/contexts?*", (route) =>
+    route.fulfill({ json: { contexts: heads, nextCursor: null } }),
+  );
+  await page.route("**/api/v2/contexts/*", (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-1) ?? "";
+    return route.fulfill({ json: contexts.get(id) });
+  });
+  const opened: string[] = [];
+  page.on("request", (request) => {
+    const match = /\/api\/v2\/contexts\/([^/?]+)$/.exec(
+      new URL(request.url()).pathname,
+    );
+    if (match?.[1]) opened.push(match[1]);
+  });
+
+  await page.goto("/");
+  await ready(page);
+  await expect(page).toHaveURL(/\/streams\/stream-main$/);
+  expect(opened.at(-1)).toBe("main-1");
+
+  heads = [snapshot("main-2", 20)];
+  await page.evaluate(() => window.dispatchEvent(new Event("test-ingestion")));
+  await expect(page.locator(".snapshot-notice")).toContainText(
+    "Newer snapshot",
+  );
+  expect(opened.at(-1)).toBe("main-1");
+
+  await page.reload();
+  await ready(page);
+  await expect(page).toHaveURL(/\/streams\/stream-main$/);
+  expect(opened.at(-1)).toBe("main-2");
+  await expect(page.locator(".snapshot-notice")).toBeHidden();
+
+  await page.goto("/contexts/main-1");
+  await ready(page);
+  await expect(page).toHaveURL(/\/contexts\/main-1$/);
+  expect(opened.at(-1)).toBe("main-1");
+
+  heads = [];
+  await page.goto("/streams/stream-main");
+  await expect(
+    page.getByRole("heading", { name: "No current snapshot" }),
+  ).toBeVisible();
+});
+
+test("local live URLs collect the checkout on every load", async ({ page }) => {
+  const state = await localWorkspace(page);
+  await page.route("**/api/v2/bootstrap", (route) =>
+    route.fulfill({
+      json: {
+        mode: "local",
+        signupEnabled: false,
+        user: null,
+        csrfToken: null,
+        collect: true,
+      },
+    }),
+  );
+  const snapshot = (id: string): ApiContext => ({
+    ...state.context,
+    id,
+    streamId: "local-stream",
+    latestContextId: id,
+  });
+  await page.route("**/api/v2/contexts?*", (route) =>
+    route.fulfill({
+      json: { contexts: [snapshot("stored")], nextCursor: null },
+    }),
+  );
+  await page.route("**/api/v2/contexts/*", (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-1) ?? "";
+    return route.fulfill({ json: snapshot(id) });
+  });
+  let collected = 0;
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let failNext = false;
+  await page.route("**/api/v2/collections", async (route) => {
+    collected++;
+    if (collected === 1) await held;
+    if (failNext)
+      return route.fulfill({
+        status: 422,
+        json: { detail: "Unable to collect checkout: git failed" },
+      });
+    return route.fulfill({ json: snapshot(`collected-${collected}`) });
+  });
+
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Collecting latest changes" }),
+  ).toBeVisible();
+  release();
+  await ready(page);
+  await expect(page).toHaveURL(/\/streams\/local-stream$/);
+  expect(collected).toBe(1);
+
+  // Collapse state belongs to the stream, so it survives the new snapshot.
+  await page.locator("#viewer .diff-collapse").first().click();
+  await page.reload();
+  await expect(
+    page.locator("#viewer .diff-collapse[aria-expanded=false]"),
+  ).toHaveCount(1);
+  expect(collected).toBe(2);
+  await expect(page).toHaveURL(/\/streams\/local-stream$/);
+  await page.locator("#viewer .diff-collapse").first().click();
+
+  await page.goto("/contexts/local-review");
+  await ready(page);
+  expect(collected).toBe(2);
+
+  // A failed collection falls back to the stream's stored head.
+  failNext = true;
+  await page.goto("/streams/local-stream");
+  await ready(page);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "git failed" }),
+  ).toBeVisible();
+  expect(collected).toBe(3);
 });
 
 test("local checkout refresh collects on request and opens the new snapshot", async ({

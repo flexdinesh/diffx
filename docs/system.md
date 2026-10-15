@@ -38,8 +38,8 @@ for contracts, durability rules and migration details.
 `diffx [PATH]` is one foreground process: collect the selected checkout,
 ingest directly, and serve UI/REST/MCP. Omitted paths mean the current directory.
 The captured snapshot remains fixed after edits and branch switches until the
-user explicitly requests collection, which ingests a new snapshot of the same
-checkout; nothing watches Git. Piped input is collected once.
+user requests collection by loading a live URL or pressing Refresh, which
+ingests a new snapshot of the same checkout; nothing watches Git. Piped input is collected once.
 The home-directory database survives process termination, but each process
 serves only its selected checkout (every branch and earlier run of it) or its
 own piped capture, so other checkouts' history reappears only when reopened.
@@ -97,7 +97,14 @@ stream's current `latestContextId`. The drawer hides clean, unavailable and
 unknown-status heads, orders repositories and streams by latest arrival, and
 marks streams whose head this browser has not opened. Ingestion events reload
 the heads; when the viewed context's stream has a newer head, a notice offers it
-without replacing the open review. The root URL opens the newest changed head.
+without replacing the open review. URLs are live or pinned: `/streams/{streamId}`
+opens the stream's latest head when loaded or navigated to, while
+`/contexts/{contextId}` pins one snapshot. Projects rows and “View latest” open
+live URLs; the picker opens pinned ones; piped snapshots have no stream and stay
+pinned. A live URL resolves once, so later arrivals raise the notice instead of
+swapping the open review. With local collection enabled, loading `/` or a live
+URL first collects the checkout; a failed collection opens the stored head and
+reports the error. Otherwise `/` opens the newest changed head's live URL.
 The drawer's search filters those loaded heads by the picker's metadata terms;
 the header only names the open review. An explicit local checkout refresh may
 open its new collection, unlike an arrival.
