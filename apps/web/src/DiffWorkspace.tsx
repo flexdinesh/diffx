@@ -92,22 +92,6 @@ function selectionLabel(prefix: string, range: SelectedLineRange | null) {
     : `${prefix} lines ${start}–${end}`;
 }
 
-function lineNumberColumnWidth(item: CodeViewItem<CommentAnnotation>) {
-  let maximum =
-    item.type === "file" ? item.file.contents.split(/\r\n|\r|\n/).length : 1;
-  if (item.type === "diff") {
-    for (const hunk of item.fileDiff.hunks) {
-      maximum = Math.max(
-        maximum,
-        hunk.additionStart + Math.max(0, hunk.additionCount - 1),
-        hunk.deletionStart + Math.max(0, hunk.deletionCount - 1),
-      );
-    }
-  }
-  const digits = String(maximum).length;
-  return `calc(${digits + 3}ch + var(--diff-gutter-divider-width))`;
-}
-
 async function loadDiffFiles(
   contextId: string,
   fileDiff: FileDiffMetadata,
@@ -711,10 +695,7 @@ export function DiffWorkspace() {
             options={options}
             style={{ height: "100%", width: "100%", overflow: "auto" }}
             renderHeaderPrefix={(item) => (
-              <span
-                className="diff-collapse-gutter"
-                style={{ width: lineNumberColumnWidth(item) }}
-              >
+              <span className="diff-collapse-gutter">
                 <Button
                   type="button"
                   className="diff-collapse"

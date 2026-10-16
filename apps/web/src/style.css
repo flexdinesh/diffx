@@ -784,12 +784,12 @@ main {
 }
 .diff-collapse-gutter {
   display: inline-flex;
+  width: var(--control-height);
   flex: none;
   align-items: center;
   align-self: stretch;
   justify-content: center;
   margin-left: calc(-1 * var(--space-4));
-  font-family: var(--diffs-font-family);
 }
 .diff-collapse {
   font-size: var(--icon-base);
