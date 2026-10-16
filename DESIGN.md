@@ -270,7 +270,8 @@ such detail into a token. New layout spacing must use the scale.
 - Pierre's header height is `2 * --space-4 + --space-1` (36px by default).
   Measure it as file spacing × 3 so browser font scaling updates CSS and
   `itemMetrics` together. Keep header-slot controls compact; do not apply global
-  touch sizing to these slots.
+  touch sizing to these slots. Collapse arrows share a `--control-height`-wide
+  header prefix across files, independent of line-number gutter widths.
 - Do not add outer margins, padding, or borders to virtualized `diffs-container`
   elements. Quiet frames use `--space-3` horizontal gutters on `CodeView` and
   Pierre-measured top/bottom padding and file gaps (12px by default), read from

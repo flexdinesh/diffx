@@ -401,23 +401,6 @@ test("file frames preserve measured gutters, gaps, and virtual geometry", async 
     "height",
     "28px",
   );
-  const collapseAlignment = await containers.evaluateAll((elements) =>
-    elements.map((element) => {
-      const button = element.querySelector(".diff-collapse");
-      const gutter = element.shadowRoot?.querySelector("[data-gutter]");
-      if (!button || !gutter) throw new Error("Missing diff header geometry");
-      const buttonBox = button.getBoundingClientRect();
-      const gutterBox = gutter.getBoundingClientRect();
-      return (
-        buttonBox.left +
-        buttonBox.width / 2 -
-        (gutterBox.left + gutterBox.width / 2)
-      );
-    }),
-  );
-  expect(collapseAlignment.every((offset) => Math.abs(offset) <= 0.5)).toBe(
-    true,
-  );
   for (const fontSize of [16, 20]) {
     const spacing = fontSize * 0.75;
     await page.locator("html").evaluate((element, size) => {
@@ -533,6 +516,69 @@ test("file frames preserve measured gutters, gaps, and virtual geometry", async 
   expect(headerColors.header).toBe(headerColors.expected);
   expect(headerColors.header).not.toBe(headerColors.gap);
   expect(headerColors.sidebar).toBe(headerColors.panel);
+});
+
+test("diff collapse arrows share a column across file sizes and collapse states", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 4_000 });
+  await page.goto("/");
+  const files = page.locator("#viewer diffs-container");
+  await expect(files).toHaveCount(12);
+  const gutterWidths = await files.evaluateAll((elements) =>
+    elements.map((element) => {
+      const gutter = element.shadowRoot?.querySelector("[data-gutter]");
+      if (!gutter) throw new Error("Missing code gutter");
+      return gutter.getBoundingClientRect().width;
+    }),
+  );
+  expect(new Set(gutterWidths).size).toBeGreaterThan(1);
+  await page.locator("#toggle-all-files").click();
+
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 4_000 });
+    await page.emulateMedia({ colorScheme: width === 1280 ? "light" : "dark" });
+    for (const fontSize of [16, 20]) {
+      await page.locator("html").evaluate((element, size) => {
+        element.style.fontSize = `${size}px`;
+      }, fontSize);
+      for (const state of ["expanded", "mixed", "collapsed"]) {
+        if (state === "mixed")
+          await files.first().locator(".diff-collapse").click();
+        else await page.locator("#toggle-all-files").click();
+        await expect
+          .poll(() =>
+            files.evaluateAll((elements) => {
+              const positions = elements.map((element) => {
+                const button = element.querySelector(".diff-collapse");
+                const header = element.shadowRoot?.querySelector(
+                  "[data-diffs-header]",
+                );
+                if (!button || !header)
+                  throw new Error("Missing diff header geometry");
+                const buttonBox = button.getBoundingClientRect();
+                const headerBox = header.getBoundingClientRect();
+                return {
+                  x: buttonBox.left + buttonBox.width / 2 - headerBox.left,
+                  y:
+                    buttonBox.top +
+                    buttonBox.height / 2 -
+                    headerBox.top -
+                    headerBox.height / 2,
+                };
+              });
+              const columns = positions.map((position) => position.x);
+              const centers = positions.map((position) => position.y);
+              return Math.max(
+                Math.max(...columns) - Math.min(...columns),
+                Math.max(...centers) - Math.min(...centers),
+              );
+            }),
+          )
+          .toBeLessThanOrEqual(0.5);
+      }
+    }
+  }
 });
 
 test("only the diff collapse button toggles a file and paths copy independently", async ({
