@@ -64,21 +64,7 @@ func (source *storedSource) Patch(ctx context.Context, mode review.DiffMode, fil
 	if err := ctx.Err(); err != nil {
 		return review.FilePatch{}, err
 	}
-	snapshot, err := source.Snapshot(ctx, mode)
-	if err != nil {
-		return review.FilePatch{}, err
-	}
-	found := false
-	for _, candidate := range snapshot.Files {
-		if candidate.ID == file.ID && candidate.Fingerprint == file.Fingerprint {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return review.FilePatch{}, review.Error(404, "File not in observation")
-	}
-	value, err := source.store.ObservationPatch(source.ownerID, source.id, mode, file.ID)
+	value, err := source.store.ObservationPatch(ctx, source.ownerID, source.id, mode, file.ID, file.Fingerprint)
 	return value, requestError(err)
 }
 func (source *storedSource) Contents(ctx context.Context, mode review.DiffMode, file review.ChangedFile, expected *string) (review.FileContents, error) {

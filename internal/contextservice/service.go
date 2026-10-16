@@ -131,11 +131,7 @@ func (service *Service) Resolve(ctx context.Context, id string) (session.Session
 	if item.Metadata == nil {
 		return session.Session{}, review.Error(500, "Observation metadata missing")
 	}
-	snapshot, err := service.store.ObservationSnapshot(service.user.ID, id, review.DiffAll)
-	if err != nil {
-		return session.Session{}, requestError(err)
-	}
-	source := &storedSource{store: service.store, ownerID: service.user.ID, id: id, metadata: *item.Metadata, binding: binding, kind: snapshot.Source}
+	source := &storedSource{store: service.store, ownerID: service.user.ID, id: id, metadata: *item.Metadata, binding: binding, kind: item.Source}
 	resolved := session.Resolve(source, session.Policies{})
 	resolved.User = session.User{ID: service.user.ID, Name: service.user.Name}
 	resolved.ContextID = binding.ContextID
@@ -252,16 +248,12 @@ func (service *Service) present(item reviewdata.ContextInfo) (Context, error) {
 				scopes = append(scopes, mode)
 			}
 		}
-		snapshot, err := service.store.ObservationSnapshot(service.user.ID, item.ID, review.DiffAll)
-		if err != nil {
-			return Context{}, requestError(err)
-		}
 		name := review.RemoteRepositoryName(m.RemoteURL, m.RepositoryName)
 		if name == "" {
 			name = "Piped"
 		}
-		value := Context{Source: snapshot.Source, Stale: item.Stale, ID: item.ID, Kind: "observation", Name: name, Root: &m.Root, RepositoryID: item.RepositoryID, CreatedAt: item.CreatedAt, LastSubmittedAt: item.LastSubmittedAt, LastChangedAt: m.CollectedAt, ExpiresAt: item.ExpiresAt, ChangedFileCount: item.ChangedFileCount, SubmittedFrom: item.SubmittedFrom, Observation: m, Sessions: item.Sessions, Branch: &m.Branch, WorktreeName: &m.WorktreeName, StreamID: item.StreamID, LatestContextID: item.LatestContextID, Availability: "available", Capabilities: storedCapabilities(scopes, snapshot.Source == "local")}
-		if snapshot.Source == "stdin" {
+		value := Context{Source: item.Source, Stale: item.Stale, ID: item.ID, Kind: "observation", Name: name, Root: &m.Root, RepositoryID: item.RepositoryID, CreatedAt: item.CreatedAt, LastSubmittedAt: item.LastSubmittedAt, LastChangedAt: m.CollectedAt, ExpiresAt: item.ExpiresAt, ChangedFileCount: item.ChangedFileCount, SubmittedFrom: item.SubmittedFrom, Observation: m, Sessions: item.Sessions, Branch: &m.Branch, WorktreeName: &m.WorktreeName, StreamID: item.StreamID, LatestContextID: item.LatestContextID, Availability: "available", Capabilities: storedCapabilities(scopes, item.Source == "local")}
+		if item.Source == "stdin" {
 			value.Name, value.Stale = "Piped", false
 			value.Root, value.RepositoryID, value.Branch, value.WorktreeName = nil, nil, nil, nil
 			value.StreamID, value.LatestContextID = nil, nil

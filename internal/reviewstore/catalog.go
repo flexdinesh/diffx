@@ -45,7 +45,8 @@ func putObservationContext(transaction *sql.Tx, ownerID, id, submittedFrom strin
 
 var contextSelect = `SELECT c.id,c.kind,json_extract(o.metadata,'$.root'),NULL,o.repository_id,NULL,json_extract(o.metadata,'$.checkoutKey'),c.submitted_from,
 	c.created_at,c.last_submitted_at,d.expires_at,
-	(SELECT json_array_length(v.manifest, '$.files') FROM diff_versions v WHERE v.diff_id=c.anchor_diff_id LIMIT 1),o.metadata,
+	(SELECT json_array_length(v.manifest, '$.files') FROM diff_versions v WHERE v.diff_id=c.anchor_diff_id LIMIT 1),
+	(SELECT json_extract(v.manifest, '$.source') FROM diff_versions v WHERE v.diff_id=c.anchor_diff_id LIMIT 1),o.metadata,
 	COALESCE(head.context_id<>c.id,0),
 	(SELECT json_group_array(json_object('sourceId',s.source_id,'harness',s.harness,'id',s.session_id,'name',s.name,'firstObservedAt',a.first_observed_at,'lastObservedAt',a.last_observed_at))
 	 FROM observation_sessions a JOIN agent_sessions s ON s.owner_id=a.owner_id AND s.source_id=a.source_id AND s.harness=a.harness AND s.session_id=a.session_id WHERE a.context_id=c.id),
@@ -73,7 +74,7 @@ func scanContext(row scanner) (ContextInfo, error) {
 	var sessions string
 	var head [5]sql.NullString
 	err := row.Scan(&item.ID, &item.Kind, &item.Root, &item.LocationID, &item.RepositoryID, &item.CommonDir, &item.WorktreeKey,
-		&item.SubmittedFrom, &item.CreatedAt, &item.LastSubmittedAt, &item.ExpiresAt, &item.ChangedFileCount, &metadata, &item.Stale, &sessions,
+		&item.SubmittedFrom, &item.CreatedAt, &item.LastSubmittedAt, &item.ExpiresAt, &item.ChangedFileCount, &item.Source, &metadata, &item.Stale, &sessions,
 		&head[0], &head[1], &head[2], &head[3], &head[4], &item.LatestContextID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ContextInfo{}, ErrNotFound

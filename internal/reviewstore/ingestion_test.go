@@ -58,7 +58,7 @@ func TestObservationRetryAndIndependentSources(t *testing.T) {
 	if _, err := store.ObservationSnapshot(other.ID, first.ContextID, review.DiffAll); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-user snapshot: %v", err)
 	}
-	if _, err := store.ObservationPatch(other.ID, first.ContextID, review.DiffAll, "file"); !errors.Is(err, ErrNotFound) {
+	if _, err := store.ObservationPatch(t.Context(), other.ID, first.ContextID, review.DiffAll, "file", "all-fingerprint"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-user patch: %v", err)
 	}
 }
@@ -359,7 +359,7 @@ func TestObservationReopensWithoutCheckoutWithinRetention(t *testing.T) {
 	if err != nil || snapshot.ID != binding.DiffIDs[review.DiffStaged] || snapshot.Revision != "staged-revision" {
 		t.Fatalf("snapshot: %#v, %v", snapshot, err)
 	}
-	patch, err := store.ObservationPatch(user.ID, binding.ContextID, review.DiffAll, "file")
+	patch, err := store.ObservationPatch(t.Context(), user.ID, binding.ContextID, review.DiffAll, "file", "all-fingerprint")
 	if err != nil || patch.Contents == nil || patch.Contents.After != "new" {
 		t.Fatalf("contents: %#v, %v", patch, err)
 	}
@@ -614,7 +614,7 @@ func TestObservationExpiryHidesReadsAndPrunesEveryScope(t *testing.T) {
 	if _, err := store.ObservationSnapshot(user.ID, first.ContextID, review.DiffAll); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expired snapshot: %v", err)
 	}
-	if _, err := store.ObservationPatch(user.ID, first.ContextID, review.DiffStaged, "file"); !errors.Is(err, ErrNotFound) {
+	if _, err := store.ObservationPatch(t.Context(), user.ID, first.ContextID, review.DiffStaged, "file", "staged-fingerprint"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expired patch: %v", err)
 	}
 	items, err := store.ObservationContexts(user.ID, 100, 0, "", ingestion.Filter{Repository: "my-repo"})

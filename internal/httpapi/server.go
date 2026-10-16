@@ -332,10 +332,6 @@ func (handler *Handler) requestScope(request *http.Request) (review.DiffMode, er
 	return mode, nil
 }
 
-func (handler *Handler) currentFile(request *http.Request, mode review.DiffMode, diffID, versionID, fileID, fileVersion string) (review.RepositoryDiff, review.ChangedFile, error) {
-	return handler.review.CurrentFile(request.Context(), mode, diffID, versionID, fileID, fileVersion)
-}
-
 func (handler *Handler) getFile(response http.ResponseWriter, request *http.Request, route fileRoute) error {
 	if !handler.ownsDiff(route.diffID) {
 		return review.Error(404, "File preview not found")
@@ -352,15 +348,11 @@ func (handler *Handler) getFile(response http.ResponseWriter, request *http.Requ
 		return review.Error(400, "Version ID is required")
 	}
 	fileVersion := request.URL.Query().Get("fileVersion")
-	snapshot, file, err := handler.currentFile(request, mode, route.diffID, versionID, route.fileID, fileVersion)
-	if err != nil {
-		return err
-	}
 	if route.resource == "patch" {
-		result, err := handler.session.Source.Patch(request.Context(), mode, file, snapshot.Head)
+		result, err := handler.review.CurrentPatch(request.Context(), mode, route.diffID, versionID, route.fileID, fileVersion)
 		return writeResult(response, result, err)
 	}
-	result, err := handler.session.Source.Contents(request.Context(), mode, file, snapshot.Head)
+	result, err := handler.review.CurrentContents(request.Context(), mode, route.diffID, versionID, route.fileID, fileVersion)
 	return writeResult(response, result, err)
 }
 

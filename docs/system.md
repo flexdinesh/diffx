@@ -130,7 +130,13 @@ do not become latest through housekeeping.
 
 Opening a context or switching scope loads its stored manifest, patches and
 available contents through scoped REST endpoints. MCP uses the same stored
-context and review services. Comments and reviewed marks are mutable SQLite
+context and review services. Preview reads validate scope/version and file
+fingerprint through indexed stored identities, then read only that file's
+preview. They do not decode the full manifest in Go. Context resolution and
+catalog presentation project the captured source kind from stored metadata;
+SQLite still parses manifest JSON for source kind and file counts. No server
+preview cache or schema change is required.
+Comments and reviewed marks are mutable SQLite
 state of the stream and scope, spanning its snapshots, so a review continues
 across new collections; the captured diff stays immutable. Piped observations
 form a stream of their own. Comment responses carry a server-computed placement

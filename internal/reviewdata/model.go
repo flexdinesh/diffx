@@ -26,7 +26,16 @@ type Binding struct {
 	DiffIDs      map[review.DiffMode]string
 }
 
+// FileVersion identifies a stored scope and requested file without loading its
+// manifest or preview. A nil fingerprint means the file is absent.
+type FileVersion struct {
+	DiffID      string
+	VersionID   string
+	Fingerprint *string
+}
+
 type ContextInfo struct {
+	Source           string
 	Stale            bool
 	Sessions         []SessionAssociation
 	Metadata         *ingestion.Metadata
