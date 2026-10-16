@@ -12,6 +12,7 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/review"
+	"github.com/flexdinesh/diffx/internal/reviewdata"
 )
 
 func initializeIngestion(tx *sql.Tx) error {
@@ -315,9 +316,25 @@ func (store *Store) ObservationSnapshot(ownerID, contextID string, mode review.D
 	return snapshot, err
 }
 
-func (store *Store) ObservationPatch(ownerID, contextID string, mode review.DiffMode, fileID string) (review.FilePatch, error) {
+// ObservationFileVersion reads only indexed identities. Missing files retain the
+// scope identity so callers can reject stale scope references before file errors.
+func (store *Store) ObservationFileVersion(ctx context.Context, ownerID, contextID string, mode review.DiffMode, fileID string) (reviewdata.FileVersion, error) {
+	var version reviewdata.FileVersion
+	err := store.db.QueryRowContext(ctx, `SELECT s.diff_id,s.version_id,f.fingerprint
+		FROM observations o JOIN observation_scopes s ON s.context_id=o.context_id
+		JOIN diffs d ON d.id=s.diff_id
+		LEFT JOIN diff_files f ON f.version_id=s.version_id AND f.file_id=?
+		WHERE o.owner_id=? AND o.context_id=? AND s.mode=? AND d.expires_at>?`,
+		fileID, ownerID, contextID, mode, time.Now().UnixMilli()).Scan(&version.DiffID, &version.VersionID, &version.Fingerprint)
+	if errors.Is(err, sql.ErrNoRows) {
+		return reviewdata.FileVersion{}, ErrNotFound
+	}
+	return version, err
+}
+
+func (store *Store) ObservationPatch(ctx context.Context, ownerID, contextID string, mode review.DiffMode, fileID, fileVersion string) (review.FilePatch, error) {
 	var raw string
-	err := store.db.QueryRow(`SELECT f.patch FROM observations o JOIN observation_scopes s ON s.context_id=o.context_id JOIN diff_files f ON f.version_id=s.version_id JOIN diffs d ON d.id=s.diff_id WHERE o.owner_id=? AND o.context_id=? AND s.mode=? AND f.file_id=? AND d.expires_at>?`, ownerID, contextID, mode, fileID, time.Now().UnixMilli()).Scan(&raw)
+	err := store.db.QueryRowContext(ctx, `SELECT f.patch FROM observations o JOIN observation_scopes s ON s.context_id=o.context_id JOIN diff_files f ON f.version_id=s.version_id JOIN diffs d ON d.id=s.diff_id WHERE o.owner_id=? AND o.context_id=? AND s.mode=? AND f.file_id=? AND f.fingerprint=? AND d.expires_at>?`, ownerID, contextID, mode, fileID, fileVersion, time.Now().UnixMilli()).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return review.FilePatch{}, ErrNotFound
 	}

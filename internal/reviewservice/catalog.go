@@ -51,14 +51,5 @@ func (catalog *Catalog) GetPatch(ctx context.Context, id string, scope review.Di
 	if err != nil {
 		return review.FilePatch{}, err
 	}
-	snapshot, err := service.Snapshot(ctx, scope)
-	if err != nil {
-		return review.FilePatch{}, err
-	}
-	for _, file := range snapshot.Files {
-		if file.ID == fileID {
-			return service.session.Source.Patch(ctx, scope, file, snapshot.Head)
-		}
-	}
-	return review.FilePatch{}, review.Error(404, "File is not in the stored diff")
+	return service.Patch(ctx, scope, fileID)
 }

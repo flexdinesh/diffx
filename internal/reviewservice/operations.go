@@ -23,6 +23,8 @@ type MutationStore interface {
 	DeleteMark(string, review.DiffMode, string) error
 	PutMark(string, review.ReviewMark) error
 	StoredVersion(string, string, string, time.Time) (review.RepositoryDiff, error)
+	ObservationFileVersion(context.Context, string, string, review.DiffMode, string) (reviewdata.FileVersion, error)
+	ObservationPatch(context.Context, string, string, review.DiffMode, string, string) (review.FilePatch, error)
 }
 
 // Snapshot reads and capability checks belong to the application, shared by transports.
