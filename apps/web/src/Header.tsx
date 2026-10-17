@@ -1,4 +1,4 @@
-import { ListTreeIcon, RefreshCwIcon } from "lucide-react";
+import { FolderSyncIcon, ListTreeIcon, RefreshCwIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ShellActions } from "./ActivityBar.tsx";
 import { DeleteContextButton } from "./DeleteContextButton.tsx";
@@ -59,29 +59,42 @@ export function Header() {
       </div>
       <div className="header-actions">
         <DeleteContextButton />
-        <Button
-          type="button"
-          id="refresh"
-          variant="ghost"
-          aria-label={
-            refreshEnabled ? "Refresh changes" : "Retry loading changes"
-          }
-          title={
-            collect
-              ? "Collect the latest changes from this checkout (Alt+R)"
-              : refreshEnabled
+        {collect ? (
+          <Button
+            type="button"
+            id="sync"
+            variant="ghost"
+            size="icon"
+            aria-label="Sync all checkouts"
+            title="Sync all checkouts (Alt+R)"
+            aria-busy={collecting}
+            onClick={refresh}
+          >
+            <FolderSyncIcon className="size-(--icon-base)" aria-hidden="true" />
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            id="refresh"
+            variant="ghost"
+            aria-label={
+              refreshEnabled ? "Refresh changes" : "Retry loading changes"
+            }
+            title={
+              refreshEnabled
                 ? "Refresh changes (Alt+R)"
                 : "Retry loading stored changes"
-          }
-          hidden={!refreshEnabled && !diff.notice}
-          aria-busy={collecting || diff.busy}
-          onClick={refresh}
-        >
-          <RefreshCwIcon className="size-(--icon-base)" aria-hidden="true" />
-          <span className="refresh-label">
-            {refreshEnabled ? "Refresh" : "Retry"}
-          </span>
-        </Button>
+            }
+            hidden={!refreshEnabled && !diff.notice}
+            aria-busy={diff.busy}
+            onClick={refresh}
+          >
+            <RefreshCwIcon className="size-(--icon-base)" aria-hidden="true" />
+            <span className="refresh-label">
+              {refreshEnabled ? "Refresh" : "Retry"}
+            </span>
+          </Button>
+        )}
         {compact && <ShellActions side="bottom" />}
       </div>
     </header>

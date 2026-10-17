@@ -1,4 +1,9 @@
-import { api, errorDetail, type ApiContext } from "@diffx/api";
+import {
+  api,
+  errorDetail,
+  type ApiCollectionFailure,
+  type ApiContext,
+} from "@diffx/api";
 import {
   createContext,
   type ReactNode,
@@ -40,10 +45,19 @@ interface Catalog {
   deleteContext: (id: string) => Promise<void>;
   pickerOpen: boolean;
   openPicker: () => void;
-  /** Collects the local process's checkout again; null when unsupported. */
-  collect: (() => Promise<"changed" | "unchanged" | "failed">) | null;
+  /**
+   * Syncs every checkout of the local process without replacing the open
+   * review; null when unsupported. Resolves null when the sync failed.
+   */
+  collect: (() => Promise<SyncSummary | null>) | null;
   collecting: boolean;
   collectError: string;
+}
+export interface SyncSummary {
+  checkouts: number;
+  /** Synced contexts that were not already current heads. */
+  updated: number;
+  failures: ApiCollectionFailure[];
 }
 const CatalogContext = createContext<Catalog | null>(null);
 const SessionContext = createContext<ApiContext | null>(null);
@@ -168,7 +182,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [show],
   );
   const { remove: removeHead, retry: reloadHeads } = heads;
-  // Collects the local checkout; null when it fails or one is running.
+  // Syncs the local checkouts; null when it fails or one is running.
   const collectLatest = useCallback(async () => {
     if (collectingRef.current) return null;
     collectingRef.current = true;
@@ -176,27 +190,35 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setCollectError("");
     try {
       const { data, error } = await api.POST("/api/v2/collections");
-      if (!data)
-        throw new Error(errorDetail(error, "Unable to refresh changes"));
+      if (!data) throw new Error(errorDetail(error, "Unable to sync changes"));
       reloadHeads();
       return data;
     } catch (error) {
-      setCollectError(errorDetail(error, "Unable to refresh changes"));
+      setCollectError(errorDetail(error, "Unable to sync changes"));
       return null;
     } finally {
       collectingRef.current = false;
       setCollecting(false);
     }
   }, [reloadHeads]);
-  // An explicit request may replace the open review; arrivals never do.
-  const collectCheckout = useCallback(async () => {
-    const latest = await collectLatest();
-    if (!latest) return "failed" as const;
-    const unchanged = latest.id === selectedRef.current;
-    openStream(latest, { restoreFocus: false });
-    return unchanged ? ("unchanged" as const) : ("changed" as const);
-  }, [collectLatest, openStream]);
-  const collect = collectEnabled ? collectCheckout : null;
+  const headsRef = useRef(heads.contexts);
+  useEffect(() => {
+    headsRef.current = heads.contexts;
+  }, [heads.contexts]);
+  // Like arrivals in distributed mode, synced snapshots never replace the open
+  // review; the newer-head notice and projects drawer announce them.
+  const syncCheckouts = useCallback(async () => {
+    const current = new Set(headsRef.current.map((context) => context.id));
+    const result = await collectLatest();
+    if (!result) return null;
+    return {
+      checkouts: result.contexts.length + result.failures.length,
+      updated: result.contexts.filter((context) => !current.has(context.id))
+        .length,
+      failures: result.failures,
+    };
+  }, [collectLatest]);
+  const collect = collectEnabled ? syncCheckouts : null;
   const { remove: removeHistory } = history;
   const deleteContext = useCallback(
     async (id: string) => {
@@ -240,10 +262,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     window.addEventListener("popstate", handleNavigation);
     return () => window.removeEventListener("popstate", handleNavigation);
   }, []);
-  // Live routes resolve once per load or navigation. Local checkouts collect
-  // first; otherwise the stream's ingested head (or the newest changed head
-  // for the root URL) opens. Later arrivals only raise the newer-head notice.
-  // The route whose load-time collection started, and one whose failed.
+  // Live routes resolve once per load or navigation. Local checkouts sync
+  // first and open the stream's synced head (or the newest changed one for the
+  // root URL); otherwise the catalog's head opens. Later arrivals only raise
+  // the newer-head notice. The route whose load-time sync started, and one
+  // whose sync failed or synced no matching head.
   const [collected, setCollected] = useState<Route | null>(null);
   const [uncollected, setUncollected] = useState<Route | null>(null);
   const resolving = route.kind !== "pinned" && !selectedId && !missing;
@@ -251,8 +274,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!collectOnLoad || collected === route) return;
     setCollected(route);
-    void collectLatest().then((latest) => {
-      if (latest) openStream(latest, { replace: true, restoreFocus: false });
+    void collectLatest().then((result) => {
+      const contexts = result?.contexts ?? [];
+      const head =
+        route.kind === "live"
+          ? contexts.find((context) => context.streamId === route.stream)
+          : contexts.findLast(contextHasChanges);
+      if (head) openStream(head, { replace: true, restoreFocus: false });
       else setUncollected(route);
     });
   }, [collectOnLoad, collected, route, collectLatest, openStream]);
@@ -395,7 +423,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                           ? state.detail
                           : heads.error ||
                             (collectOnLoad
-                              ? "Reading the checkout for new changes…"
+                              ? "Reading checkouts for new changes…"
                               : "Reading review context…")}
                   </p>
                   {empty && remote && (

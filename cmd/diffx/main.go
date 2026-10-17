@@ -55,6 +55,9 @@ func runFixture(ctx context.Context, arguments []string, stdin *os.File, stdout,
 	if values.fixture == "" {
 		return errors.New("dev requires --fixture")
 	}
+	if err := values.singleCheckout(); err != nil {
+		return err
+	}
 	input, err := acquireInput(values, stdin)
 	if err != nil {
 		return err

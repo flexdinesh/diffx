@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,12 +16,20 @@ func TestLocalInputDefaultsToCurrentDirectory(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
 	input, err := acquireLocalInput(options{directory: root, repositorySet: true}, nil)
-	if err != nil || input.Kind != "worktree" || input.Path != root {
+	if err != nil || input.Kind != "worktree" || !slices.Equal(input.Paths, []string{root}) {
 		t.Fatalf("path input: %+v %v", input, err)
 	}
 	input, err = acquireLocalInput(options{directory: "."}, nil)
-	if err != nil || input.Kind != "worktree" || input.Path != root {
+	if err != nil || input.Kind != "worktree" || !slices.Equal(input.Paths, []string{root}) {
 		t.Fatalf("default input: %+v %v", input, err)
+	}
+	values, err := parseOptions([]string{"--path", "one", "--path=two"}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err = acquireLocalInput(values, nil)
+	if err != nil || !slices.Equal(input.Paths, []string{filepath.Join(root, "one"), filepath.Join(root, "two")}) {
+		t.Fatalf("repeated paths: %+v %v", input, err)
 	}
 }
 

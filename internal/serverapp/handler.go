@@ -24,9 +24,9 @@ import (
 
 type Options struct {
 	Queue ingestionqueue.Queue
-	// Collect collects the composition's selected checkout again on explicit
+	// Collect collects the composition's selected checkouts again on explicit
 	// request. Piped captures, fixtures and remote storage have none.
-	Collect func(context.Context) (ingestion.Request, error)
+	Collect func(context.Context) (Collection, error)
 }
 
 // Capabilities are resolved once by the transport composition. Both admission

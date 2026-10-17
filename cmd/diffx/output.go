@@ -64,6 +64,13 @@ func writeStartup(writer io.Writer, input loadedInput, urls ...string) {
 		fmt.Fprintf(writer, "  %s  %s\n", color.paint(color.dim, "collected from:  "), input.directory)
 	}
 	fmt.Fprintf(writer, "  %s               %s\n", color.paint(color.dim, "mode:"), input.mode)
+	if input.checkouts > 0 {
+		summary := plural(input.checkouts, "checkout", "checkouts")
+		if input.failed > 0 {
+			summary += " · " + color.paint(color.yellow, fmt.Sprintf("%d failed", input.failed))
+		}
+		fmt.Fprintf(writer, "  %s          %s\n", color.paint(color.dim, "checkouts:"), summary)
+	}
 	for _, url := range urls {
 		fmt.Fprintf(writer, "  %s                %s\n", color.paint(color.dim, "url:"), color.paint(color.green, url))
 	}

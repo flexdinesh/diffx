@@ -9,25 +9,32 @@ canonical record of package boundaries and architectural decisions.
 
 | Concern    | Local `diffx [PATH]`                                                | Remote `diffx-server`                    |
 | ---------- | ------------------------------------------------------------------- | ---------------------------------------- |
-| Collection | Selected checkout at start, live page loads and refresh; stdin once | Separate finite sync or hook producer    |
+| Collection | Discovered checkouts at start, live page loads and sync; stdin once | Separate finite sync or hook producer    |
 | Admission  | Direct application call before serving                              | Authenticated durable queue and worker   |
 | Lifetime   | Foreground; authenticated singleton replacement                     | Foreground; graceful worker shutdown     |
 | Storage    | One owner of persistent SQLite                                      | One owner of persistent SQLite           |
-| Queries    | Selected checkout or capture via REST/MCP                           | Same application services via REST/MCP   |
+| Queries    | Discovered checkouts or capture via REST/MCP                        | Same application services via REST/MCP   |
 | Access     | Public listener; private lifecycle credential                       | Account credentials wrap the application |
 | Identity   | Automatic stable local owner; no account UI                         | Account sessions and scoped API tokens   |
 
 Source support and review policy resolve snapshot capabilities. A mode never
 invents contents, scopes or refresh support. Queue presence at the composition
 root enables remote admission; no queue means no admission routes.
-Local, manual sync and hook producers collect only the selected checkout.
-Stored observations cannot refresh from Git. A local checkout process collects
-again only on user request (`POST /api/v2/collections`): opening a live URL or
-pressing Refresh. Each collection creates a new observation; piped and fixture processes have no collection route. Local queries
-are scoped to the selected checkout, or to the capture's submission, because
-the persistent home-directory database retains every earlier run. The entry
-point supplies that scope; `contextservice` applies it to listing, counting,
-resolution and deletion, and out-of-scope contexts are not found.
+Manual sync and hook producers collect only the selected checkout. A local
+checkout process discovers every repository under its paths (bounded depth,
+stopping at repositories, skipping hidden directories) and collects all of their
+registered worktrees, because one review process serves a developer's whole
+workspace. Stored observations cannot refresh from Git. A local checkout process
+discovers and collects again only on user request (`POST /api/v2/collections`):
+opening a live URL or pressing Sync. Each checkout's collection creates a new
+observation independently; one failure is reported without blocking the others.
+Synced snapshots never replace the open review, matching remote arrivals. Piped
+and fixture processes have no collection route. Local queries are scoped to the
+discovered checkouts, or to the capture's submission, because the persistent
+home-directory database retains every earlier run. The entry point supplies that
+scope and widens it before ingesting a newly discovered checkout; `contextservice`
+applies it to listing, counting, resolution and deletion, and out-of-scope
+contexts are not found. A scoped selection without checkouts matches nothing.
 
 Private local control supports authenticated status/shutdown only. Replacement
 uses lifecycle locking, a validated descriptor and graceful shutdown; a PID

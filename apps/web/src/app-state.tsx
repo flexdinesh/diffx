@@ -14,6 +14,7 @@ import { saveSessionPaths, sessionPaths } from "./preferences.ts";
 import { streamKey } from "./project-nav.ts";
 import {
   capabilityEnabled,
+  type SyncSummary,
   useCatalog,
   useSession,
 } from "./session-context.tsx";
@@ -36,7 +37,7 @@ interface DiffSource {
   mode: DiffMode;
   piped: boolean;
   changeMode: (mode: DiffMode) => void;
-  /** Collects the checkout again when the process supports it, else reloads. */
+  /** Syncs local checkouts when the process supports it, else reloads. */
   refresh: () => void;
   refreshEnabled: boolean;
 }
@@ -91,9 +92,8 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { setFeedback } = review;
   const refresh = useCallback(() => {
     if (!collect) return reload();
-    void collect().then((result) => {
-      if (result === "unchanged")
-        setFeedback("No new changes since this snapshot.");
+    void collect().then((summary) => {
+      if (summary) setFeedback(syncFeedback(summary));
     });
   }, [collect, reload, setFeedback]);
   const reviewed = useReviewedFiles(contextId, repository, mode, setCollapsed);
@@ -151,6 +151,15 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
       </NavigationContext>
     </SourceContext>
   );
+}
+
+function syncFeedback({ checkouts, updated, failures }: SyncSummary) {
+  const synced = `${checkouts} ${checkouts === 1 ? "checkout" : "checkouts"}`;
+  if (!updated && !failures.length) return `No new changes in ${synced}.`;
+  const failed = failures.length
+    ? ` · ${failures.length} failed: ${failures.map((failure) => `${failure.path} (${failure.detail})`).join(", ")}`
+    : "";
+  return `Synced ${synced} · ${updated} updated${failed}`;
 }
 
 // Transient workspace ownership ends when the selected context changes.

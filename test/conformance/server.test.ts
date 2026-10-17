@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { parse } from "yaml";
 
@@ -16,7 +24,7 @@ function conforms(name: string, value: unknown) {
   const check = validator.compile({ $ref: "api#/components/schemas/" + name });
   assert.ok(check(value), JSON.stringify(check.errors));
 }
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -65,6 +73,66 @@ async function waitForServer(
   }
   throw new Error("Go server did not start", { cause: lastError });
 }
+
+test("Local workspace collection implements the API contract", async (t) => {
+  const home = mkdtempSync(join(tmpdir(), "diffx-conformance-"));
+  const workspace = join(home, "workspace");
+  for (const name of ["first", "second"]) {
+    const root = join(workspace, name);
+    mkdirSync(root, { recursive: true });
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", root, ...args], { stdio: "ignore" });
+    git("init", "-q");
+    writeFileSync(join(root, "file.txt"), "before\n");
+    git("add", ".");
+    git(
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.com",
+      "commit",
+      "-qm",
+      "initial",
+    );
+    writeFileSync(join(root, "file.txt"), `${name}\n`);
+  }
+  const port = await freePort();
+  const server = spawn(
+    binary,
+    [
+      "--path",
+      workspace,
+      "--state",
+      "memory",
+      "--no-browser",
+      "--port",
+      String(port),
+    ],
+    {
+      stdio: "ignore",
+      env: {
+        ...process.env,
+        DIFFX_RUNTIME_DIR: join(home, "runtime"),
+        DIFFX_CONFIG_PATH: join(home, "config.json"),
+        DIFFX_SOURCE_ID: "conformance",
+      },
+    },
+  );
+  t.after(() => {
+    server.kill("SIGTERM");
+    rmSync(home, { recursive: true, force: true });
+  });
+  const url = `http://127.0.0.1:${port}`;
+  await waitForServer(url);
+  const client = createApiClient({ baseUrl: url });
+  const bootstrap = await client.GET("/api/v2/bootstrap");
+  conforms("Bootstrap", bootstrap.data);
+  assert.ok(bootstrap.data?.mode === "local" && bootstrap.data.collect);
+  const collection = await client.POST("/api/v2/collections");
+  conforms("CollectionResult", collection.data);
+  assert.equal(collection.data?.contexts.length, 2);
+  assert.deepEqual(collection.data?.failures, []);
+});
 
 test("Go distribution implements the API contract", async (t) => {
   const port = await freePort();

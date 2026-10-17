@@ -28,6 +28,8 @@ type loadedInput struct {
 	contextID string
 	mcpURL    string
 	remote    bool
+	checkouts int
+	failed    int
 }
 
 func acquireInput(values options, stdin *os.File) (initialInput, error) {
@@ -170,6 +172,7 @@ func collectInitialInput(ctx context.Context, values options, input initialInput
 type initialInput struct {
 	Kind          string
 	Path          string
+	Paths         []string
 	Raw           []byte
 	SubmittedFrom string
 }

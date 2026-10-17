@@ -35,14 +35,16 @@ register paths for later server collection or maintain its own catalog.
 The application core has two compositions. See [architecture.md](architecture.md)
 for contracts, durability rules and migration details.
 
-`diffx [PATH]` is one foreground process: collect the selected checkout,
-ingest directly, and serve UI/REST/MCP. Omitted paths mean the current directory.
-The captured snapshot remains fixed after edits and branch switches until the
-user requests collection by loading a live URL or pressing Refresh, which
-ingests a new snapshot of the same checkout; nothing watches Git. Piped input is collected once.
+`diffx [PATH]` is one foreground process: discover and collect the checkouts
+under its paths, ingest directly, and serve UI/REST/MCP. Omitted paths mean the
+current directory; `--path` repeats and `--scan-depth` (default 8) bounds the
+search. Captured snapshots remain fixed after edits and branch switches until the
+user requests collection by loading a live URL or pressing Sync, which discovers
+the paths again and ingests a new snapshot of every checkout; nothing watches Git.
+Piped input is collected once.
 The home-directory database survives process termination, but each process
-serves only its selected checkout (every branch and earlier run of it) or its
-own piped capture, so other checkouts' history reappears only when reopened.
+serves only the checkouts it discovered (every branch and earlier run of them)
+or its own piped capture, so other checkouts' history reappears only when reopened.
 Only one local process owns the database; another invocation prompts before
 authenticated graceful replacement. Noninteractive callers use `--replace`.
 There is no collector daemon.
@@ -71,9 +73,13 @@ and review operations. Their lifecycle and submission delivery differ.
 
 Collection resolves the baseline and all/staged/unstaged scopes together with
 full-content identity and bounded immutable previews. It never fetches refs.
-Local, sync and hook collection select one checkout, resolving nested paths to
-its root. Other registered worktrees are not collected. Explicit `--branch`
-recovery remains available for remote collection.
+Sync and hook collection select one checkout, resolving nested paths to its
+root; their other registered worktrees are not collected. Local collection
+resolves each path inside a repository to its root, otherwise walks up to the
+scan depth, stopping at repositories and skipping hidden, `node_modules` and
+`vendor` directories, then collects every registered worktree of each repository
+found, at most 256 checkouts from 4096 directories. Each checkout gets its own
+submission ID. Explicit `--branch` recovery remains available for remote collection.
 
 Local composition calls `contextservice.Ingest` directly. Remote collectors
 POST to `/api/v2/ingestion-jobs`, receiving 202 with a durable job/status URL.
@@ -103,11 +109,12 @@ opens the stream's latest head when loaded or navigated to, while
 live URLs; the picker opens pinned ones; piped snapshots have no stream and stay
 pinned. A live URL resolves once, so later arrivals raise the notice instead of
 swapping the open review. With local collection enabled, loading `/` or a live
-URL first collects the checkout; a failed collection opens the stored head and
-reports the error. Otherwise `/` opens the newest changed head's live URL.
+URL first syncs the checkouts, then opens the stream's synced head or, for `/`,
+the newest changed one; a failed sync opens the stored head and reports the
+error. Otherwise `/` opens the newest changed head's live URL.
 The drawer's search filters those loaded heads by the picker's metadata terms;
-the header only names the open review. An explicit local checkout refresh may
-open its new collection, unlike an arrival.
+the header only names the open review. An explicit local sync, like an arrival,
+raises the notice instead of replacing the open review.
 
 The review picker, opened by Cmd/Ctrl+K or the drawer's “Browse all reviews”
 action, loads the full catalog only while open. It selects a

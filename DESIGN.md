@@ -208,6 +208,8 @@ such detail into a token. New layout spacing must use the scale.
   context. Keep the secondary scope heading and muted monospace path inline;
   hide the path at 768–1011px and both below 768px. Group ghost Refresh and
   delete actions at the trailing edge; share `--hover` feedback with the trigger.
+  A local checkout process replaces Refresh with an icon-only “Sync all
+  checkouts” action (folder-sync icon) that never swaps the open review.
 - Header lead: the “Show/Hide projects” toggle (panel-left open/close icon),
   brand and divider always start the header, in that order. The toggle sits in
   an `--activity-width` box so it centers over the activity bar's icons. The
