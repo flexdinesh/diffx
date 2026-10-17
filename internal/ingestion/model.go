@@ -81,14 +81,28 @@ type Filter struct {
 	Selection Selection
 }
 
-// Selection restricts the catalog to one selected checkout or capture
-// submission, optionally one context. Empty fields do not restrict.
+// IsZero reports a filter that neither restricts results nor selects a scope.
+func (filter Filter) IsZero() bool {
+	terms := filter.Query + filter.Repository + filter.Branch + filter.Worktree + filter.Hostname +
+		filter.SourceID + filter.RunID + filter.Harness + filter.SessionID + filter.SessionName
+	return terms == "" && !filter.Latest && !filter.Selection.Scoped && filter.Selection.ContextID == ""
+}
+
+// Selection restricts the catalog to the composition's selected checkouts or
+// capture submission, optionally one context. An unscoped selection restricts
+// only by ContextID; a scoped one without checkouts or submission matches nothing.
 type Selection struct {
-	SourceID      string
+	Scoped       bool
+	SourceID     string
+	Checkouts    []Checkout
+	SubmissionID string
+	ContextID    string
+}
+
+// Checkout is a persisted checkout identity within a source.
+type Checkout struct {
 	RepositoryKey string
 	CheckoutKey   string
-	SubmissionID  string
-	ContextID     string
 }
 
 type Job struct {

@@ -226,13 +226,28 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 	}
 	var initial contextservice.Page
 	requestJSON(t, status.BrowserURL+"/api/v2/contexts", &initial)
-	if len(initial.Contexts) != 1 {
-		t.Fatalf("local collection included sibling worktree: %+v", initial)
+	byRoot := func(page contextservice.Page, root string) contextservice.Context {
+		t.Helper()
+		for _, item := range page.Contexts {
+			if item.Observation != nil && item.Observation.Root == root {
+				return item
+			}
+		}
+		t.Fatalf("no context for %s: %+v", root, page)
+		return contextservice.Context{}
 	}
-	entry := initial.Contexts[0]
+	// Local collection includes every registered worktree of the repository.
+	if len(initial.Contexts) != 2 {
+		t.Fatalf("local collection missed sibling worktree: %+v", initial)
+	}
+	entry, linkedEntry := byRoot(initial, first), byRoot(initial, second)
 	metadata := entry.Observation
 	if metadata == nil || metadata.Root != first || metadata.RepositoryKey == "" || metadata.CheckoutKey == "" || metadata.Branch == "" || metadata.LinkedWorktree == nil || *metadata.LinkedWorktree || entry.Capabilities.Diff.Refresh.Enabled() {
 		t.Fatalf("local checkout metadata/capabilities: %+v", entry)
+	}
+	linked := linkedEntry.Observation
+	if linked == nil || linked.TriggerRoot != first || linked.Branch != "linked-branch" || linked.LinkedWorktree == nil || !*linked.LinkedWorktree || linked.RepositoryKey != metadata.RepositoryKey || linked.CheckoutKey == metadata.CheckoutKey {
+		t.Fatalf("linked checkout metadata lost: %+v", linked)
 	}
 	var snapshot review.RepositoryDiff
 	requestJSON(t, status.BrowserURL+"/api/v2/contexts/"+entry.ID+"/diffs/current?scope=all", &snapshot)
@@ -261,9 +276,9 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 	collectorGit(t, first, "switch", "-c", "later-branch")
 	deadline := time.Now().Add(1500 * time.Millisecond)
 	for time.Now().Before(deadline) {
-		var catalog contextCatalog
+		var catalog contextservice.Page
 		requestJSON(t, status.BrowserURL+"/api/v2/contexts", &catalog)
-		if len(catalog.Contexts) != 1 || catalog.Contexts[0].ID != entry.ID {
+		if len(catalog.Contexts) != 2 || byRoot(catalog, first).ID != entry.ID {
 			t.Fatalf("foreground recollected checkout: %+v", catalog)
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -280,27 +295,39 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 	if bootstrap.Collect == nil || !*bootstrap.Collect {
 		t.Fatalf("checkout process cannot collect: %+v", bootstrap)
 	}
-	// Only an explicit request collects the selected checkout again.
+	// Only an explicit request collects the selected checkouts again.
 	response, err = http.Post(status.BrowserURL+"/api/v2/collections", "application/json", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var refreshed contextservice.Context
-	err = json.NewDecoder(response.Body).Decode(&refreshed)
+	var result struct {
+		Contexts []contextservice.Context   `json:"contexts"`
+		Failures []daemon.CollectionFailure `json:"failures"`
+	}
+	err = json.NewDecoder(response.Body).Decode(&result)
 	response.Body.Close()
-	if err != nil || response.StatusCode != http.StatusOK || refreshed.ID == entry.ID || refreshed.Observation == nil || refreshed.Observation.Root != first || refreshed.Observation.Branch != "later-branch" || refreshed.Observation.CheckoutKey != metadata.CheckoutKey {
-		t.Fatalf("explicit collection: %d %+v %v", response.StatusCode, refreshed, err)
+	if err != nil || response.StatusCode != http.StatusOK || len(result.Contexts) != 2 || len(result.Failures) != 0 {
+		t.Fatalf("explicit collection: %d %+v %v", response.StatusCode, result, err)
+	}
+	refreshed := byRoot(contextservice.Page{Contexts: result.Contexts}, first)
+	if refreshed.ID == entry.ID || refreshed.Observation.Branch != "later-branch" || refreshed.Observation.CheckoutKey != metadata.CheckoutKey {
+		t.Fatalf("explicit collection: %+v", refreshed)
+	}
+	// Unchanged checkouts reuse their review.
+	if byRoot(contextservice.Page{Contexts: result.Contexts}, second).ID != linkedEntry.ID {
+		t.Fatalf("unchanged worktree created a new review: %+v", result.Contexts)
 	}
 	var collected contextCatalog
 	requestJSON(t, status.BrowserURL+"/api/v2/contexts", &collected)
-	if len(collected.Contexts) != 2 || collected.Contexts[0].ID != refreshed.ID || collected.Contexts[1].ID != entry.ID {
+	if len(collected.Contexts) != 3 {
 		t.Fatalf("explicit collection catalog: %+v", collected)
 	}
 	requestJSON(t, status.BrowserURL+"/api/v2/contexts/"+entry.ID+"/diffs/current?scope=all", &retained)
 	if retained.Revision != snapshot.Revision || retained.Branch != snapshot.Branch {
 		t.Fatalf("collection replaced stored snapshot: %+v", retained)
 	}
-	subdir := filepath.Join(second, "subdir")
+	other := createWorktree(t, "other-local")
+	subdir := filepath.Join(other, "subdir")
 	if err := os.Mkdir(subdir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -317,22 +344,22 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("old process survived replacement")
 	}
-	// The replacement serves only its own checkout.
+	// The replacement serves only its own discovered checkouts.
 	var catalog contextservice.Page
 	requestJSON(t, replacement.BrowserURL+"/api/v2/contexts", &catalog)
 	if len(catalog.Contexts) != 1 {
 		t.Fatalf("replacement showed another checkout: %+v", catalog)
 	}
-	linked := catalog.Contexts[0].Observation
-	if linked == nil || linked.Root != second || linked.TriggerRoot != subdir || linked.Branch != "linked-branch" || linked.LinkedWorktree == nil || !*linked.LinkedWorktree || linked.RepositoryKey != metadata.RepositoryKey || linked.CheckoutKey == metadata.CheckoutKey {
-		t.Fatalf("linked checkout metadata lost: %+v", linked)
+	nested := catalog.Contexts[0].Observation
+	if nested == nil || nested.Root != other || nested.TriggerRoot != subdir {
+		t.Fatalf("nested path did not resolve to its checkout: %+v", nested)
 	}
-	for _, id := range []string{entry.ID, refreshed.ID} {
+	for _, id := range []string{entry.ID, refreshed.ID, linkedEntry.ID} {
 		if code := statusOf(t, http.MethodGet, replacement.BrowserURL+"/api/v2/contexts/"+id); code != http.StatusNotFound {
 			t.Fatalf("other checkout context %s visible: %d", id, code)
 		}
 	}
-	// Reopening the first checkout shows its persistent history again.
+	// Reopening the first checkout shows its repository's persistent history again.
 	_, reopenedDone := start("", "--replace")
 	reopened := await(replacement.InstanceID)
 	select {
@@ -347,12 +374,12 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 	requestJSON(t, reopened.BrowserURL+"/api/v2/contexts", &history)
 	found := map[string]bool{}
 	for _, item := range history.Contexts {
-		if item.Root == nil || *item.Root != first {
+		if item.Root == nil || (*item.Root != first && *item.Root != second) {
 			t.Fatalf("reopened checkout showed another checkout: %+v", history)
 		}
 		found[item.ID] = true
 	}
-	if !found[entry.ID] || !found[refreshed.ID] {
+	if !found[entry.ID] || !found[refreshed.ID] || !found[linkedEntry.ID] {
 		t.Fatalf("reopened checkout lost history: %+v", history)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)

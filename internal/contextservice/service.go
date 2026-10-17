@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"slices"
+	"sync"
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/ingestion"
@@ -53,33 +55,51 @@ type Service struct {
 	events     events
 	store      Store
 	user       reviewdata.User
+	scopeMu    sync.RWMutex
 	scope      Scope
 	background context.Context
 	cancel     context.CancelFunc
 }
 
-// Scope limits a composition to one selected checkout or capture. The zero
-// value is unscoped. Contexts outside the scope behave as not found.
+// Scope limits a composition to its selected checkouts or one capture. The
+// zero value is unscoped. Contexts outside the scope behave as not found.
 type Scope struct {
-	SourceID      string
-	RepositoryKey string
-	CheckoutKey   string
-	SubmissionID  string
+	SourceID     string
+	Checkouts    []ingestion.Checkout
+	SubmissionID string
 }
 
-// ScopeFor selects the request's checkout, so later collections and branches
-// of that checkout stay visible. Captures without checkout identity select
+// ScopeFor selects the requests' checkouts, so later collections and branches
+// of those checkouts stay visible. Captures without checkout identity select
 // their own submission.
-func ScopeFor(input ingestion.Request) Scope {
-	metadata := input.Metadata
-	if metadata.RepositoryKey != "" && metadata.CheckoutKey != "" {
-		return Scope{SourceID: metadata.SourceID, RepositoryKey: metadata.RepositoryKey, CheckoutKey: metadata.CheckoutKey}
+func ScopeFor(inputs ...ingestion.Request) Scope {
+	var scope Scope
+	for _, input := range inputs {
+		scope = scope.with(input)
 	}
-	return Scope{SourceID: metadata.SourceID, SubmissionID: input.SubmissionID}
+	return scope
+}
+
+func (scope Scope) with(input ingestion.Request) Scope {
+	metadata := input.Metadata
+	scope.SourceID = metadata.SourceID
+	if metadata.RepositoryKey == "" || metadata.CheckoutKey == "" {
+		scope.SubmissionID = input.SubmissionID
+		return scope
+	}
+	checkout := ingestion.Checkout{RepositoryKey: metadata.RepositoryKey, CheckoutKey: metadata.CheckoutKey}
+	if !slices.Contains(scope.Checkouts, checkout) {
+		scope.Checkouts = append(slices.Clip(scope.Checkouts), checkout)
+	}
+	return scope
+}
+
+func (scope Scope) IsZero() bool {
+	return scope.SourceID == "" && len(scope.Checkouts) == 0 && scope.SubmissionID == ""
 }
 
 func (scope Scope) selection(contextID string) ingestion.Selection {
-	return ingestion.Selection{SourceID: scope.SourceID, RepositoryKey: scope.RepositoryKey, CheckoutKey: scope.CheckoutKey, SubmissionID: scope.SubmissionID, ContextID: contextID}
+	return ingestion.Selection{Scoped: !scope.IsZero(), SourceID: scope.SourceID, Checkouts: scope.Checkouts, SubmissionID: scope.SubmissionID, ContextID: contextID}
 }
 
 func New(store Store, user reviewdata.User) *Service {
@@ -92,7 +112,24 @@ func NewScoped(ctx context.Context, store Store, user reviewdata.User, scope Sco
 	background, cancel := context.WithCancel(ctx)
 	return &Service{store: store, user: user, scope: scope, background: background, cancel: cancel}
 }
-func (service *Service) Close() error   { service.cancel(); return nil }
+func (service *Service) Close() error { service.cancel(); return nil }
+
+// Select widens a scoped composition to the request's checkout before it is
+// ingested, so checkouts discovered after startup become visible. Unscoped
+// services are unchanged; only local entry points select.
+func (service *Service) Select(input ingestion.Request) {
+	service.scopeMu.Lock()
+	defer service.scopeMu.Unlock()
+	if !service.scope.IsZero() {
+		service.scope = service.scope.with(input)
+	}
+}
+
+func (service *Service) selection(contextID string) ingestion.Selection {
+	service.scopeMu.RLock()
+	defer service.scopeMu.RUnlock()
+	return service.scope.selection(contextID)
+}
 func (service *Service) UserID() string { return service.user.ID }
 
 func (service *Service) Delete(ctx context.Context, id string) error {
@@ -157,10 +194,11 @@ func (service *Service) Get(ctx context.Context, id string) (Context, error) {
 
 // inScope reports out-of-scope contexts as not found, never as forbidden.
 func (service *Service) inScope(id string) error {
-	if service.scope == (Scope{}) {
+	selection := service.selection(id)
+	if !selection.Scoped {
 		return nil
 	}
-	items, err := service.store.ObservationContexts(service.user.ID, 1, 0, "", ingestion.Filter{Selection: service.scope.selection(id)})
+	items, err := service.store.ObservationContexts(service.user.ID, 1, 0, "", ingestion.Filter{Selection: selection})
 	if err != nil {
 		return err
 	}
@@ -198,8 +236,8 @@ func (service *Service) ListFiltered(ctx context.Context, limit int, cursor stri
 	}
 	var items []reviewdata.ContextInfo
 	var err error
-	filter.Selection = service.scope.selection("")
-	if filter != (ingestion.Filter{}) {
+	filter.Selection = service.selection("")
+	if !filter.IsZero() {
 		items, err = service.store.ObservationContexts(service.user.ID, limit+1, before.Time, before.ID, filter)
 	} else {
 		items, err = service.store.Contexts(service.user.ID, limit+1, before.Time, before.ID, time.Now())
@@ -232,7 +270,7 @@ func (service *Service) Count(ctx context.Context) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
-	return service.store.ContextCount(service.user.ID, service.scope.selection(""), time.Now())
+	return service.store.ContextCount(service.user.ID, service.selection(""), time.Now())
 }
 
 func (service *Service) present(item reviewdata.ContextInfo) (Context, error) {

@@ -29,6 +29,20 @@ import (
 func Run(ctx context.Context, settings Settings, runtimeDir string, initial *ingestion.Request, ready func(Status, *contextservice.Submission)) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	var collection Collection
+	if initial != nil {
+		collection.Requests = []ingestion.Request{*initial}
+	}
+	published := func(status Status, value Published) {
+		if ready == nil {
+			return
+		}
+		var submitted *contextservice.Submission
+		if newest, ok := value.Newest(); ok {
+			submitted = &newest
+		}
+		ready(status, submitted)
+	}
 	instanceID := rand.Text()
 	if runtimeDir != "" {
 		if _, err := prepareRuntime(runtimeDir); err != nil {
@@ -46,14 +60,14 @@ func Run(ctx context.Context, settings Settings, runtimeDir string, initial *ing
 		}
 		defer output.Close()
 		logger := log.New(output, "diffx: ", log.LstdFlags)
-		return runServer(ctx, cancel, settings, runtimeDir, instanceID, initial, nil, ready, logger)
+		return runServer(ctx, cancel, settings, runtimeDir, instanceID, collection, nil, published, logger)
 	}
-	return runServer(ctx, cancel, settings, "", instanceID, initial, nil, ready, log.New(os.Stderr, "diffx: ", log.LstdFlags))
+	return runServer(ctx, cancel, settings, "", instanceID, collection, nil, published, log.New(os.Stderr, "diffx: ", log.LstdFlags))
 }
 
-// runServer scopes queries to the initial checkout or capture; collect, when
-// present, lets the user collect that checkout again.
-func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings, runtimeDir, instanceID string, initial *ingestion.Request, collect func(context.Context) (ingestion.Request, error), ready func(Status, *contextservice.Submission), logger *log.Logger) error {
+// runServer scopes queries to the initially collected checkouts or capture;
+// collect, when present, lets the user collect the checkouts again.
+func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings, runtimeDir, instanceID string, initial Collection, collect func(context.Context) (Collection, error), ready func(Status, Published), logger *log.Logger) error {
 	settings = normalizeSettings(settings)
 	if settings.RetentionDays < 1 || settings.RetentionDays > 106751 {
 		return errors.New("retention-days must be between 1 and 106751")
@@ -85,21 +99,17 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 	if err := store.PruneExpired(time.Now()); err != nil {
 		return err
 	}
-	scope := contextservice.Scope{}
-	if initial != nil {
-		scope = contextservice.ScopeFor(*initial)
-	}
-	service := contextservice.NewScoped(ctx, store, user, scope)
+	service := contextservice.NewScoped(ctx, store, user, contextservice.ScopeFor(initial.Requests...))
 	defer service.Close()
-	var submitted *contextservice.Submission
+	published, err := serverapp.Publish(ctx, service, initial)
+	if err != nil {
+		return err
+	}
 	defaultContextID := ""
-	if initial != nil {
-		value, err := service.Ingest(ctx, *initial)
-		if err != nil {
-			return err
-		}
-		submitted = &value
-		defaultContextID = value.Context.ID
+	if newest, ok := published.Newest(); ok {
+		defaultContextID = newest.Context.ID
+	} else if len(published.Failures) > 0 {
+		return errors.New("no checkout could be ingested: " + serverapp.FailureSummary(published.Failures))
 	}
 	var assets fs.FS = webui.Assets()
 	if settings.WebDir != "" {
@@ -175,7 +185,7 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 	tasks := []serverapp.Task{serverapp.Prune(store.PruneExpired)}
 	return serverapp.Run(ctx, endpoints, tasks, func() {
 		if ready != nil {
-			ready(status, submitted)
+			ready(status, published)
 		}
 	})
 }

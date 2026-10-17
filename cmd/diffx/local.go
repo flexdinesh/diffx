@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flexdinesh/diffx/internal/contextservice"
+	"github.com/flexdinesh/diffx/internal/collector"
 	"github.com/flexdinesh/diffx/internal/daemon"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 )
@@ -42,19 +42,24 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 		return err
 	}
 	started := time.Now()
-	request, err := collectInitialInput(ctx, values, input)
-	if err != nil {
-		return err
-	}
-
 	label := "Piped diff"
-	selected := daemon.Input{Request: request}
+	var selected daemon.Input
 	if input.Kind == "worktree" {
-		input.Path, label = request.Metadata.Root, request.Metadata.Root
-		checkout := input
-		selected.Collect = func(ctx context.Context) (ingestion.Request, error) {
-			return collectInitialInput(ctx, values, checkout)
+		label = strings.Join(input.Paths, ", ")
+		collect := func(ctx context.Context) (daemon.Collection, error) {
+			return collectWorkspaces(ctx, values, input.Paths, stderr)
 		}
+		initial, err := collect(ctx)
+		if err != nil {
+			return err
+		}
+		selected = daemon.Input{Collection: initial, Collect: collect}
+	} else {
+		request, err := collectInitialInput(ctx, values, input)
+		if err != nil {
+			return err
+		}
+		selected = daemon.Input{Collection: daemon.Collection{Requests: []ingestion.Request{request}}}
 	}
 	return daemon.RunForeground(ctx, settings, selected, func(status daemon.Status) (bool, error) {
 		if values.replace {
@@ -82,19 +87,51 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 			}
 			return strings.EqualFold(strings.TrimSpace(reply.answer), "y") || strings.EqualFold(strings.TrimSpace(reply.answer), "yes"), nil
 		}
-	}, func(status daemon.Status, submitted *contextservice.Submission) {
-		if submitted == nil {
+	}, func(status daemon.Status, published daemon.Published) {
+		submitted, ok := published.Newest()
+		if !ok {
 			return
 		}
 		address := status.BrowserURL + "/contexts/" + url.PathEscape(submitted.Context.ID)
-		loaded := submissionInput(*submitted, time.Since(started))
+		loaded := submissionInput(submitted, time.Since(started))
 		if input.Kind == "capture" {
 			loaded.mode, loaded.directory = "pipe", ""
+		} else {
+			loaded.directory = label
+			loaded.checkouts, loaded.failed = len(published.Submissions), len(published.Failures)
+			loaded.snapshot.Files = nil
+			for _, value := range published.Submissions {
+				loaded.snapshot.Files = append(loaded.snapshot.Files, value.Snapshot.Files...)
+			}
+		}
+		for _, failure := range published.Failures {
+			fmt.Fprintf(stderr, "  diffx: %s: %s\n", failure.Path, failure.Detail)
 		}
 		loaded.contextID, loaded.mcpURL = submitted.Context.ID, status.BrowserURL+"/mcp"
 		writeStartup(stdout, loaded, address)
 		openBrowser(values, address, stderr)
 	})
+}
+
+// collectWorkspaces collects every checkout discovered under the selected
+// paths. Discovery diagnostics go to stderr; failures stay in the collection.
+func collectWorkspaces(ctx context.Context, values options, paths []string, stderr io.Writer) (daemon.Collection, error) {
+	settings, err := collectionOptions(values)
+	if err != nil {
+		return daemon.Collection{}, err
+	}
+	batch, err := collector.CollectWorkspaces(ctx, paths, values.scanDepth, settings)
+	for _, diagnostic := range batch.Diagnostics {
+		fmt.Fprintf(stderr, "  diffx: %s\n", diagnostic)
+	}
+	if err != nil {
+		return daemon.Collection{}, err
+	}
+	collection := daemon.Collection{Requests: batch.Requests}
+	for _, failure := range batch.Failures {
+		collection.Failures = append(collection.Failures, daemon.CollectionFailure{Path: failure.Path, Detail: failure.Detail})
+	}
+	return collection, nil
 }
 
 func acquireLocalInput(values options, stdin *os.File) (initialInput, error) {
@@ -112,6 +149,17 @@ func acquireLocalInput(values options, stdin *os.File) (initialInput, error) {
 	if piped || values.directory == "-" {
 		return acquireInput(values, stdin)
 	}
-	path, err := filepath.Abs(values.directory)
-	return initialInput{Kind: "worktree", Path: path}, err
+	selected := values.paths
+	if len(selected) == 0 {
+		selected = []string{values.directory}
+	}
+	paths := make([]string, 0, len(selected))
+	for _, path := range selected {
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return initialInput{}, err
+		}
+		paths = append(paths, absolute)
+	}
+	return initialInput{Kind: "worktree", Paths: paths}, nil
 }

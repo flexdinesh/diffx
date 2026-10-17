@@ -31,24 +31,30 @@ go install github.com/flexdinesh/diffx/cmd/diffx@main
 
 ## Usage
 
-Capture the selected checkout in one foreground process:
+Capture the checkouts under the selected paths in one foreground process:
 
 ```sh
 diffx
 diffx .
 diffx /path/to/repo --host 0.0.0.0
+diffx --path ~/work --path ~/oss --scan-depth 4
 diffx . --replace
 diffx . --base HEAD --no-browser
 ```
 
 Collection and ingestion run in-process. The same process serves the web UI,
-REST and MCP until Ctrl-C. The path defaults to the current directory and resolves
-to its containing checkout, including linked worktrees. Only that checkout is
-collected. The browser opens the captured snapshot; later edits and branch switches
-do not change it until you explicitly refresh, which captures a new snapshot of
-the same checkout. Observations and comments persist across restarts in the
-shared local database; each process shows only its own checkout or piped diff.
-Failed collection never substitutes an empty diff.
+REST and MCP until Ctrl-C. The path defaults to the current directory; repeat
+`--path` for several. A path inside a repository resolves to its checkout;
+otherwise diffx searches up to `--scan-depth` levels (default 8) below it,
+stopping at each repository and skipping hidden, `node_modules` and `vendor`
+directories. Every registered worktree of each repository found is collected,
+including worktrees outside the paths. The browser opens the newest changed
+snapshot; later edits and branch switches do not change it until you sync, which
+discovers the paths again and captures a new snapshot of every checkout. A
+checkout that fails to collect is reported without blocking the others and never
+substitutes an empty diff. Observations and comments persist across restarts in
+the shared local database; each process shows only its discovered checkouts or
+piped diff.
 
 Only one local instance runs. Starting another prompts before replacing it;
 scripts must pass `--replace`. Replacement requests authenticated graceful
@@ -261,7 +267,8 @@ A dot marks streams with changes you have not opened in this browser. Search
 projects to filter current streams by repository, branch, worktree, host or agent.
 Collapse the drawer from its header; it stays collapsed across visits. The header
 names the open review's repository, branch and worktree. In a local checkout
-process, **Refresh** (Alt+R) collects the checkout again and opens the new snapshot.
+process, **Sync all checkouts** (Alt+R) collects every checkout again; like a
+remote arrival, a newer snapshot of the open stream is announced, not swapped in.
 Collapsed files and folders are remembered across reloads in the same tab. When a newer snapshot
 arrives for the stream you are reviewing, a notice offers **View latest** without
 replacing the open review.

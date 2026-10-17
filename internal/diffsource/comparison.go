@@ -62,35 +62,6 @@ func DefaultBranch(ctx context.Context, root string) (string, error) {
 	return "", ErrNoDefaultBranch
 }
 
-// LocalBranches enumerates unmerged local branches with a finite result bound.
-func LocalBranches(ctx context.Context, root, base string) ([]string, error) {
-	if base == "" || base == "auto" {
-		var err error
-		base, err = DefaultBranch(ctx, root)
-		if err != nil {
-			return nil, err
-		}
-	}
-	baseOID, err := resolveCommit(ctx, root, base)
-	if err != nil {
-		return nil, fmt.Errorf("resolve branch baseline %q: %w", base, err)
-	}
-	raw, err := runGit(ctx, root, 64<<10, "for-each-ref", "--count=129", "--format=%(refname:strip=2)", "--no-merged="+baseOID, "refs/heads/")
-	if err != nil {
-		return nil, err
-	}
-	branches := make([]string, 0)
-	for _, branch := range strings.Split(strings.TrimSpace(raw), "\n") {
-		if branch != "" {
-			branches = append(branches, branch)
-		}
-	}
-	if len(branches) > 128 {
-		return nil, errors.New("branch discovery exceeds 128 unmerged local branches; specify a branch")
-	}
-	return branches, nil
-}
-
 func resolveCommit(ctx context.Context, root, ref string) (string, error) {
 	raw, err := runGit(ctx, root, 1024, "rev-parse", "--verify", "--end-of-options", ref+"^{commit}")
 	return strings.TrimSpace(raw), err

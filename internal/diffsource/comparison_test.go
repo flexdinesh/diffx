@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -108,31 +107,6 @@ func TestComparisonDetectsMovedRefsAndSameHeadBranchSwitch(t *testing.T) {
 				t.Fatalf("moved comparison accepted: %v", err)
 			}
 		})
-	}
-}
-
-func TestLocalBranchesEnumeratesUnmergedRefsAndRejectsOverflow(t *testing.T) {
-	root := comparisonRepository(t)
-	testGit(t, root, "branch", "merged")
-	testGit(t, root, "switch", "-c", "feature")
-	testGit(t, root, "commit", "--allow-empty", "-m", "unmerged")
-	branches, err := LocalBranches(t.Context(), root, "auto")
-	if err != nil || len(branches) != 1 || branches[0] != "feature" {
-		t.Fatalf("unmerged local branches: %v %v", branches, err)
-	}
-	head := strings.TrimSpace(testGit(t, root, "rev-parse", "HEAD"))
-	var updates strings.Builder
-	for index := 0; index < 128; index++ {
-		updates.WriteString("create refs/heads/overflow-" + strconv.Itoa(index) + " " + head + "\n")
-	}
-	command := exec.Command("git", "update-ref", "--stdin")
-	command.Dir = root
-	command.Stdin = strings.NewReader(updates.String())
-	if raw, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("create overflow branches: %s %v", raw, err)
-	}
-	if _, err := LocalBranches(t.Context(), root, "main"); err == nil || !strings.Contains(err.Error(), "128") {
-		t.Fatalf("branch discovery silently truncated: %v", err)
 	}
 }
 
