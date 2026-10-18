@@ -7,10 +7,12 @@ set -euo pipefail
 git fetch --tags --force
 release_version="$(go run ./tools/release-version)"
 tag_exists=false
-if tag_commit="$(git rev-list -n 1 "$release_version" 2>/dev/null)"; then
+if git rev-parse --verify --quiet "refs/tags/$release_version" >/dev/null; then
+  # Release tags point at an asset commit whose first parent is main.
+  tag_parent="$(git rev-parse --verify "$release_version^1")"
   head_commit="$(git rev-parse HEAD)"
-  if [[ "$tag_commit" != "$head_commit" ]]; then
-    echo "$release_version points to $tag_commit, not current main $head_commit" >&2
+  if [[ "$tag_parent" != "$head_commit" ]]; then
+    echo "$release_version was released from $tag_parent, not current main $head_commit" >&2
     exit 1
   fi
   tag_exists=true

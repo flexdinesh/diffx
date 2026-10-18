@@ -8,7 +8,7 @@ Go CLI/server in `cmd/` and `internal/`; embedded React/Vite app in `apps/web/`.
 - Use mise tasks or pnpm scripts for project commands; toolchain and orchestration live in `mise.toml`.
 - Run relevant checks for changes; `mise run check` runs all checks.
 - Keep full suites and architecture/design guards local through the pre-push hook; keep CI/release verification lightweight.
-- After frontend changes, run `mise run web:stage` and commit `internal/webui/dist`.
+- `internal/webui/dist` is ignored on `main`; run `mise run web:stage` before Go builds/tests. CI commits it only on release tags and `edge`.
 - See `docs/development.md` and `docs/release.md` for workflows.
 
 ## Design and architecture
@@ -31,4 +31,3 @@ Go CLI/server in `cmd/` and `internal/`; embedded React/Vite app in `apps/web/`.
 ## Git etiquette
 
 - Before pushing to any remote, run all CI checks locally with `mise run check`; resolve failures.
-- After checks, `git status --porcelain --untracked-files=all -- internal/webui/dist` must be empty, matching CI's embedded-asset drift check.

@@ -28,7 +28,7 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
-	headTags, err := gitTags("--points-at", "HEAD", "--list")
+	headTags, err := releaseTagsFrom("HEAD", tags)
 	if err != nil {
 		fail(err)
 	}
@@ -112,6 +112,30 @@ func gitTags(arguments ...string) ([]string, error) {
 		return nil, nil
 	}
 	return strings.Split(value, "\n"), nil
+}
+
+// releaseTagsFrom returns tags whose release commit adds assets on top of commit.
+func releaseTagsFrom(commit string, tags []string) ([]string, error) {
+	head, err := gitRevision(commit)
+	if err != nil {
+		return nil, err
+	}
+	var released []string
+	for _, tag := range tags {
+		parent, err := gitRevision(tag + "^1")
+		if err == nil && parent == head {
+			released = append(released, tag)
+		}
+	}
+	return released, nil
+}
+
+func gitRevision(revision string) (string, error) {
+	output, err := exec.Command("git", "rev-parse", "--verify", "--quiet", revision+"^{commit}").Output()
+	if err != nil {
+		return "", fmt.Errorf("resolve Git revision %s: %w", revision, err)
+	}
+	return strings.TrimSpace(string(output)), nil
 }
 
 func fail(err error) {

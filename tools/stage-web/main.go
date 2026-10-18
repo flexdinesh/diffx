@@ -24,6 +24,9 @@ func stage(source, destination string) error {
 	if _, err := os.Stat(filepath.Join(source, "index.html")); err != nil {
 		return fmt.Errorf("web build missing: %w", err)
 	}
+	if err := createMarkedDestination(destination); err != nil {
+		return err
+	}
 	marker, err := os.Stat(filepath.Join(destination, "placeholder.txt"))
 	if err != nil || !marker.Mode().IsRegular() {
 		return errors.New("refusing to replace an unmarked web asset directory")
@@ -64,4 +67,15 @@ func stage(source, destination string) error {
 		closeError := output.Close()
 		return errors.Join(copyError, closeError)
 	})
+}
+
+// createMarkedDestination creates an ignored asset directory on fresh checkouts.
+func createMarkedDestination(destination string) error {
+	if _, err := os.Stat(destination); !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.MkdirAll(destination, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(destination, "placeholder.txt"), []byte("Run `mise run web:stage` before building diffx.\n"), 0o644)
 }

@@ -5,10 +5,10 @@ release binary. Node and pnpm are build and test dependencies only.
 
 ## Install development version
 
-Install the latest development changes from `main` with Go 1.25 or later:
+Install the latest `main` changes that passed CI with Go 1.25 or later:
 
 ```sh
-go install github.com/flexdinesh/diffx/cmd/diffx@main
+go install github.com/flexdinesh/diffx/cmd/diffx@edge
 ```
 
 ## Requirements
@@ -64,8 +64,8 @@ Set `DIFFX_TEST_PORT` for a separate browser-test server (default 4173), e.g. `D
 
 `mise run setup` enables the Husky `pre-push` hook. Every push runs
 `mise run check:push`: all repository suites, boundary contracts and Go race tests, then rejects
-uncommitted generated API types or embedded assets. `mise run setup` installs
-Playwright Chromium; reinstall it after upgrading Playwright.
+uncommitted generated API types or built plugins. `mise run setup` installs
+Playwright Chromium and stages embedded web assets; reinstall it after upgrading Playwright.
 The hook needs mise on `PATH`; mise activates project tools. Checks run on your
 local platform.
 
@@ -83,9 +83,11 @@ not by mise. PR evidence records full local validation.
 `$GOBIN`, or `$GOPATH/bin` when `GOBIN` is unset. Ensure that directory is on
 `PATH`.
 
-The production web build is committed under `internal/webui/dist` so installs
-from tags and `main` contain the complete application. Run `mise run web:stage` and
-commit asset changes after modifying the frontend.
+The production web build is staged into `internal/webui/dist`, which is ignored
+on `main`. Go builds, tests and vet embed that directory, so run
+`mise run web:stage` after a fresh checkout or frontend change; without it Go
+fails with `pattern all:dist: no matching files found`. CI commits the assets
+only on release tags and the `edge` branch; see [release.md](release.md).
 
 ## Development data
 
@@ -153,8 +155,8 @@ mise run docker:down
 ```
 
 The same server binary handles authentication, durable admission, workers and
-queries in both setups. The image uses committed embedded assets; run
-`mise run web:stage` before rebuilding it after UI changes.
+queries in both setups. The Docker tasks stage embedded web assets before
+building the image.
 
 | Setting                         | Binary default  | Container default | Flag                    |
 | ------------------------------- | --------------- | ----------------- | ----------------------- |
