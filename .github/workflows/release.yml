@@ -8,6 +8,10 @@ permissions:
 
 env:
   HUSKY: 0
+  GIT_AUTHOR_NAME: github-actions[bot]
+  GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+  GIT_COMMITTER_NAME: github-actions[bot]
+  GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
 
 concurrency:
   group: release
@@ -57,10 +61,16 @@ jobs:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: mise run release:tag
 
+      - name: Check out release commit
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: git checkout --detach "refs/tags/$RELEASE_TAG"
+
       - name: Publish GitHub release
         if: steps.version.outputs.release_exists != 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: mise run release:publish
 
       - name: Download existing release

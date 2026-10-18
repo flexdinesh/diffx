@@ -6,8 +6,6 @@ dist/
 !packages/plugin-opencode/dist/index.js
 !packages/plugin-pi/dist/
 !packages/plugin-pi/dist/index.js
-!internal/webui/dist/
-!internal/webui/dist/**
 .agents/ignore/
 test-results/
 mise.local.toml

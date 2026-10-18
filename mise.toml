@@ -6,11 +6,12 @@ idiomatic_version_file_enable_tools = ["node", "pnpm"]
 go = "1"
 
 [tasks.setup]
-description = "Install dependencies, hooks, and Playwright Chromium"
+description = "Install dependencies, hooks, Playwright Chromium, and embedded web assets"
 run = [
   "pnpm install --frozen-lockfile",
   "pnpm prepare",
   "pnpm test:browser:install",
+  { task = "web:stage" },
 ]
 
 [tasks.generate]
@@ -22,7 +23,7 @@ description = "Generate API types and build the web app"
 run = "pnpm build"
 
 [tasks."web:stage"]
-description = "Build and stage embedded web assets"
+description = "Build and stage ignored embedded web assets for Go builds"
 depends = ["web:build"]
 run = "go run ./tools/stage-web apps/web/dist internal/webui/dist"
 
@@ -105,25 +106,25 @@ description = "Run JavaScript checks, build, and test suites"
 run = "pnpm check:js"
 
 [tasks."check:generated"]
-description = "Reject uncommitted generated API types, embedded assets, and plugins"
+description = "Reject uncommitted generated API types and plugins"
 shell = "bash -e -o pipefail -c"
 run = '''
-generated_changes=$(git status --porcelain --untracked-files=all -- packages/api/src/schema.d.ts internal/webui/dist packages/plugin-opencode/dist packages/plugin-pi/dist)
+generated_changes=$(git status --porcelain --untracked-files=all -- packages/api/src/schema.d.ts packages/plugin-opencode/dist packages/plugin-pi/dist)
 if [ -n "$generated_changes" ]; then
   printf '%s\n' "$generated_changes"
-  echo 'Commit generated API types, embedded web assets, and built plugins before pushing.' >&2
+  echo 'Commit generated API types and built plugins before pushing.' >&2
   exit 1
 fi
 '''
 
 [tasks."check:ci"]
-description = "Lightweight CI: static checks, build, generated drift, API smoke test"
+description = "Lightweight CI: build, static checks, generated drift, API smoke test"
 run = [
+  { task = "build" },
   { tasks = [
     "check:static",
     "check:go:static",
   ] },
-  { task = "build" },
   { task = "check:generated" },
   "pnpm test:conformance",
 ]
@@ -167,9 +168,19 @@ description = "Full pre-push checks, race tests, and generated-file consistency"
 run = [{ task = "check" }, { task = "test:race" }, { task = "check:generated" }]
 
 [tasks."release:publish"]
-description = "Publish the tagged GitHub release with GoReleaser"
+description = "Publish the checked-out release tag with GoReleaser"
 tools = { "aqua:goreleaser/goreleaser" = "2.18.2" }
-run = "goreleaser release --clean"
+shell = "bash -e -o pipefail -c"
+run = '''
+: "${RELEASE_TAG:?RELEASE_TAG is required}"
+# Release commits are off main, so Git describe cannot find the previous release.
+previous_tag=$(git tag --list 'v[0-9]*' --sort=-v:refname | awk -v tag="$RELEASE_TAG" 'found && !previous { previous = $0 } $0 == tag { found = 1 } END { print previous }')
+export GORELEASER_CURRENT_TAG="$RELEASE_TAG"
+if [ -n "$previous_tag" ]; then
+  export GORELEASER_PREVIOUS_TAG="$previous_tag"
+fi
+goreleaser release --clean
+'''
 
 [tasks."release:homebrew:check"]
 description = "Validate the generated Homebrew formula syntax"
@@ -177,11 +188,13 @@ run = "ruby -c homebrew-tap/Formula/diffx.rb"
 
 
 [tasks."docker:build"]
-description = "Build the remote server image using committed embedded assets"
+description = "Build the remote server image with staged embedded assets"
+depends = ["web:stage"]
 run = "docker build --tag diffx-server:local ."
 
 [tasks."docker:up"]
 description = "Build and start the server with a persistent SQLite volume"
+depends = ["web:stage"]
 run = "docker compose up --build -d"
 
 [tasks."docker:down"]

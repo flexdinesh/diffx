@@ -27,8 +27,9 @@ Required repository secret:
 
 1. Merge release-ready code to `main`.
 2. Run the **Release** workflow with `main` selected. It requires no inputs.
-3. The workflow verifies the repository, creates the tag, and publishes the
-   GitHub Release with GoReleaser.
+3. The workflow verifies the repository, commits the embedded web assets on top
+   of the `main` tip as `release: vX.Y.Z`, pushes only the tag, and publishes
+   the GitHub Release with GoReleaser from that release commit.
 4. It generates `Formula/diffx.rb` and opens or updates a pull request in
    `flexdinesh/homebrew-tap`.
 5. Merge the tap pull request after its Homebrew checks pass.
@@ -45,7 +46,7 @@ database path if discarding incompatible state. Upgrade server and collectors
 together for ingestion protocol 4. In-memory state lasts only for one process.
 
 The tap branch is deterministic per version, such as `diffx-v0.2.0`.
-Rerunning a release whose tag still points to current `main` reuses the existing
+Rerunning a release whose tag's first parent is still current `main` reuses the existing
 GitHub artifacts and updates the same tap pull request. Published artifacts are
 not rebuilt or replaced.
 
@@ -54,17 +55,24 @@ checks before merge.
 
 ## Development installs
 
-Install the latest code directly from `main`, including unreleased changes:
+Install the latest `main` commit that passed CI, including unreleased changes:
 
 ```sh
-go install github.com/flexdinesh/diffx/cmd/diffx@main
+go install github.com/flexdinesh/diffx/cmd/diffx@edge
 ```
 
-No publishing workflow or release tag is required. Stable `@latest` installs
-remain on the highest stable version tag. Go resolves `@main` to the commit's
-pseudo-version, or its stable version if that commit is already tagged. Module
-proxies may briefly cache branch lookups; use `GOPROXY=direct` when an immediate
-refresh is needed.
+After the `checks` job passes on a push to `main`, CI's `edge` job builds the web
+assets, commits them on top of that `main` commit, and force-pushes the result to
+the `edge` branch with a lease. Runs are serialized and superseded runs are
+cancelled; a run whose commit `edge` already includes is skipped. When the latest
+release commit is not an ancestor, it becomes a second parent so Go derives
+`edge` pseudo-versions that sort after that release. Stable `@latest` installs
+remain on the highest stable version tag. Module proxies may briefly cache branch
+lookups; use `GOPROXY=direct` when an immediate refresh is needed.
+
+`@main`, `@<sha>` and feature branches do not build: they lack the embedded
+assets. Tags created before this policy point at `main` commits that still
+contain them and remain installable.
 
 ## Version series
 
@@ -80,10 +88,23 @@ series' patch number.
 
 ## Embedded assets
 
-Release-ready frontend assets are committed under `internal/webui/dist` so
-`go install github.com/flexdinesh/diffx/cmd/diffx@latest` produces a
-complete binary. CI rebuilds these assets and rejects drift. Frontend changes
-must include the regenerated assets:
+`go install` builds module source exactly as it is at the ref and runs no
+frontend build, so the binary embeds `internal/webui/dist` from that ref. The
+directory is ignored on `main`, which avoids recommitting the bundle on every UI
+change. CI commits it only on installable refs, each one commit on top of `main`
+created with `tools/asset-commit.sh`:
+
+| Ref      | Trigger                              | Commit                                        |
+| -------- | ------------------------------------ | --------------------------------------------- |
+| `vX.Y.Z` | Manual **Release** workflow          | `release: vX.Y.Z`: `main` tip plus assets     |
+| `edge`   | Push to `main` after `checks` passes | `edge: <sha>`: that `main` commit plus assets |
+
+Release archives are built from the release commit, so archives and source
+installs share commit identity. Version selection and reruns compare a tag's
+first parent (`<tag>^1`) with the `main` tip. The CI identity must be allowed to
+push the `edge` branch and version tags.
+
+Stage assets locally before Go builds and tests:
 
 ```sh
 mise run web:stage

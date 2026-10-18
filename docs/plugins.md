@@ -15,7 +15,7 @@ Install the diffx executable separately. For the current plugin contract,
 use the latest development version:
 
 ```sh
-go install github.com/flexdinesh/diffx/cmd/diffx@main
+go install github.com/flexdinesh/diffx/cmd/diffx@edge
 ```
 
 For CLI development, use `mise run install` instead. Ensure `diffx` is on

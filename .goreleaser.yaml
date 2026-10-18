@@ -5,11 +5,6 @@ release:
   prerelease: false
   make_latest: true
 
-before:
-  hooks:
-    - pnpm install --frozen-lockfile
-    - mise run web:stage
-
 builds:
   - id: diffx
     main: ./cmd/diffx

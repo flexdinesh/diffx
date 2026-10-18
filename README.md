@@ -23,10 +23,10 @@ Or install a specific stable version:
 go install github.com/flexdinesh/diffx/cmd/diffx@v0.2.0
 ```
 
-Or install the latest development changes from `main`:
+Or install the latest `main` changes that passed CI:
 
 ```sh
-go install github.com/flexdinesh/diffx/cmd/diffx@main
+go install github.com/flexdinesh/diffx/cmd/diffx@edge
 ```
 
 ## Usage
@@ -214,7 +214,7 @@ their leases expire. Back up the database while stopped.
 Build/install the remote server with Go:
 
 ```sh
-go install github.com/flexdinesh/diffx/cmd/diffx-server@main
+go install github.com/flexdinesh/diffx/cmd/diffx-server@edge
 DIFFX_SERVER_USERNAME=alice DIFFX_SERVER_PASSWORD=… \
   DIFFX_SERVER_INSECURE_COOKIES=true DIFFX_SERVER_STATE=./test-data/state.db diffx-server
 ```
