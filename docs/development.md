@@ -106,13 +106,14 @@ the triggering checkout. Use
 `--base HEAD` for working changes only, and `--branch` for explicit object-only
 recovery. `sync` submits to one configured destination and exits.
 Redirected stdin (`git diff | diffx`) starts a foreground local process with
-a fixed patch and ignores remote config. `diffx [PATH]` collects at startup,
-defaults to the current directory, and opens a fixed checkout snapshot; only an
-explicit `POST /api/v2/collections` collects that checkout again. Neither mode
-watches Git or automatically replaces the selected snapshot. Each process lists
-only its own checkout or capture from the shared database.
-A path argument or
-`--path` cannot be combined with redirected stdin.
+a fixed patch and ignores remote config. `diffx [PATH]` discovers and collects every
+checkout and linked worktree under its paths at startup (current directory by
+default; repeat `--path`, bound with `--scan-depth`), and opens fixed snapshots;
+only an explicit `POST /api/v2/collections` discovers and collects them again.
+Neither mode watches Git or automatically replaces the selected snapshot. Each
+process lists only its discovered checkouts or capture from the shared database.
+`sync` and `dev` reject several `--path` values and `--scan-depth`. A path
+argument or `--path` cannot be combined with redirected stdin.
 `CollectPatch` preserves the supplied patch without Git lookup;
 its absolute submission directory is provenance only, not repository identity.
 Use isolated
@@ -260,10 +261,13 @@ across scopes. Context selection uses the projects drawer, whose search filters
 loaded stream heads, and the popup picker (Cmd/Ctrl+K or the drawer's “Browse
 all reviews” action); the header shows the open review's identity without a
 picker. The selected context scopes every request. The session owner exposes
-local checkout collection when bootstrap reports `collect`; loading `/` or a
-live `/streams/{streamId}` URL, Refresh and Alt+R call `POST /api/v2/collections`
-and open the result's live URL. Load-time collection shows “Collecting latest
-changes” until it resolves. The “Switch review” picker first selects a repository
+local checkout sync when bootstrap reports `collect`; loading `/` or a live
+`/streams/{streamId}` URL, the header's “Sync all checkouts” icon and Alt+R call
+`POST /api/v2/collections`. Load-time sync opens the stream's synced head, or the
+newest changed one for `/`, and shows “Collecting latest changes” until it
+resolves. An explicit sync never replaces the open review: it reloads the heads,
+so the newer-head notice and drawer dots announce new snapshots, and feedback
+reports synced, updated and failed checkouts. The “Switch review” picker first selects a repository
 or Piped, then an immutable observation. Repository observations retain branch,
 worktree, source/run, comparison, and collection-time metadata. Submission/session
 associations remain separate from original snapshot metadata; catalog API filters

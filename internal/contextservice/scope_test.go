@@ -57,7 +57,8 @@ func TestScopeLimitsCatalogAndLookupsToSelectedCheckoutOrCapture(t *testing.T) {
 	}
 	selected := collect(root, "selected-1")
 	first := ingest(selected)
-	other := ingest(collect(linked, "linked"))
+	linkedInput := collect(linked, "linked")
+	other := ingest(linkedInput)
 	captured := pipe(testPatch, "piped-1")
 	capture := ingest(captured)
 	otherCapture := ingest(pipe(testPatch+"\n", "piped-2"))
@@ -80,6 +81,8 @@ func TestScopeLimitsCatalogAndLookupsToSelectedCheckoutOrCapture(t *testing.T) {
 		hidden  []string
 	}{
 		{"checkout", ScopeFor(selected), []string{first.ID, later.ID}, []string{other.ID, capture.ID, otherCapture.ID}},
+		{"checkouts", ScopeFor(selected, linkedInput), []string{first.ID, other.ID, later.ID}, []string{capture.ID, otherCapture.ID}},
+		{"no checkouts", Scope{SourceID: "source"}, nil, []string{first.ID, other.ID, later.ID, capture.ID, otherCapture.ID}},
 		{"capture", ScopeFor(repeated), []string{capture.ID}, []string{first.ID, other.ID, later.ID, otherCapture.ID}},
 		{"unscoped", Scope{}, []string{first.ID, other.ID, capture.ID, otherCapture.ID, later.ID}, nil},
 	} {
@@ -135,6 +138,18 @@ func TestScopeLimitsCatalogAndLookupsToSelectedCheckoutOrCapture(t *testing.T) {
 	}
 	scoped := NewScoped(t.Context(), store, user, ScopeFor(selected))
 	defer scoped.Close()
+	// Checkouts discovered after startup join the scope before ingestion.
+	assertStatus(t, func() error { _, err := scoped.Get(t.Context(), other.ID); return err }(), 404)
+	scoped.Select(linkedInput)
+	if _, err := scoped.Get(t.Context(), other.ID); err != nil {
+		t.Fatalf("selected checkout hidden: %v", err)
+	}
+	unscopedSelect := New(store, user)
+	defer unscopedSelect.Close()
+	unscopedSelect.Select(linkedInput)
+	if count, err := unscopedSelect.Count(t.Context()); err != nil || count != 5 {
+		t.Fatalf("select narrowed an unscoped service: %d %v", count, err)
+	}
 	if err := scoped.Delete(t.Context(), first.ID); err != nil {
 		t.Fatal(err)
 	}

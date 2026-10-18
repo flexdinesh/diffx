@@ -1739,7 +1739,7 @@ test("live stream URLs open the latest head on load and keep it until navigation
   ).toBeVisible();
 });
 
-test("local live URLs collect the checkout on every load", async ({ page }) => {
+test("local live URLs sync the checkouts on every load", async ({ page }) => {
   const state = await localWorkspace(page);
   await page.route("**/api/v2/bootstrap", (route) =>
     route.fulfill({
@@ -1779,9 +1779,16 @@ test("local live URLs collect the checkout on every load", async ({ page }) => {
     if (failNext)
       return route.fulfill({
         status: 422,
-        json: { detail: "Unable to collect checkout: git failed" },
+        json: { detail: "Unable to collect checkouts: git failed" },
       });
-    return route.fulfill({ json: snapshot(`collected-${collected}`) });
+    // The root opens the newest changed head; live URLs open their own stream.
+    const other = { ...snapshot(`other-${collected}`), streamId: "other" };
+    return route.fulfill({
+      json: {
+        contexts: [other, snapshot(`collected-${collected}`)],
+        failures: [],
+      },
+    });
   });
 
   await page.goto("/");
@@ -1817,7 +1824,7 @@ test("local live URLs collect the checkout on every load", async ({ page }) => {
   expect(collected).toBe(3);
 });
 
-test("local checkout refresh collects on request and opens the new snapshot", async ({
+test("local sync collects every checkout without replacing the open review", async ({
   page,
 }) => {
   const state = await localWorkspace(page);
@@ -1832,39 +1839,64 @@ test("local checkout refresh collects on request and opens the new snapshot", as
       },
     }),
   );
+  const snapshot = (id: string, streamId: string): ApiContext => ({
+    ...state.context,
+    id,
+    streamId,
+    latestContextId: id,
+  });
+  let heads = [snapshot("local-review", "local-stream")];
+  await page.route("**/api/v2/contexts?*", (route) =>
+    route.fulfill({ json: { contexts: heads, nextCursor: null } }),
+  );
   await page.route("**/api/v2/contexts/*", (route) => {
     const id = new URL(route.request().url()).pathname.split("/").at(-1) ?? "";
-    return route.fulfill({ json: { ...state.context, id } });
+    return route.fulfill({ json: snapshot(id, "local-stream") });
   });
   const collections: string[] = [];
-  let result = "refreshed";
+  let fail = false;
   await page.route("**/api/v2/collections", (route) => {
     collections.push(route.request().method());
-    return result === "fail"
-      ? route.fulfill({
-          status: 422,
-          json: { detail: "Unable to collect checkout: git failed" },
-        })
-      : route.fulfill({ json: { ...state.context, id: result } });
+    if (fail)
+      return route.fulfill({
+        status: 422,
+        json: { detail: "Unable to collect checkouts: git failed" },
+      });
+    heads = [
+      snapshot("synced", "local-stream"),
+      snapshot("worktree", "worktree-stream"),
+    ];
+    return route.fulfill({
+      json: {
+        contexts: heads,
+        failures: [{ path: "/work/broken", detail: "git failed" }],
+      },
+    });
   });
   await page.goto("/contexts/local-review");
   await ready(page);
-  const refresh = page.getByRole("button", { name: "Refresh changes" });
-  await expect(refresh).toHaveAttribute("title", /Collect the latest changes/);
-  await refresh.click();
-  await expect(page).toHaveURL(/\/contexts\/refreshed$/);
-  await ready(page);
+  await expect(page.locator("#refresh")).toHaveCount(0);
+  const sync = page.getByRole("button", { name: "Sync all checkouts" });
+  await expect(sync).toHaveAttribute("title", "Sync all checkouts (Alt+R)");
+  await sync.click();
+  await expect(page.locator("#comment-feedback")).toHaveText(
+    "Synced 3 checkouts · 2 updated · 1 failed: /work/broken (git failed)",
+  );
+  // Like distributed arrivals, the newer head is announced, never swapped in.
+  await expect(page.locator(".snapshot-notice")).toContainText(
+    "Newer snapshot",
+  );
+  await expect(page).toHaveURL(/\/contexts\/local-review$/);
   expect(collections).toEqual(["POST"]);
   await page.keyboard.press("Alt+r");
   await expect(page.locator("#comment-feedback")).toHaveText(
-    "No new changes since this snapshot.",
+    "Synced 3 checkouts · 0 updated · 1 failed: /work/broken (git failed)",
   );
-  await expect(page).toHaveURL(/\/contexts\/refreshed$/);
-  result = "fail";
-  await refresh.click();
+  fail = true;
+  await sync.click();
   await expect(
     page.getByRole("alert").filter({ hasText: "git failed" }),
   ).toBeVisible();
-  await expect(page).toHaveURL(/\/contexts\/refreshed$/);
+  await expect(page).toHaveURL(/\/contexts\/local-review$/);
   expect(collections).toHaveLength(3);
 });

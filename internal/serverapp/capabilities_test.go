@@ -57,7 +57,9 @@ func TestAdmissionCapabilitiesMatchHealthAndRoutes(t *testing.T) {
 				options.Queue = store.Queue()
 			}
 			if test.collect {
-				options.Collect = func(context.Context) (ingestion.Request, error) { return ingestion.Request{}, errors.New("unused") }
+				options.Collect = func(context.Context) (serverapp.Collection, error) {
+					return serverapp.Collection{}, errors.New("unused")
+				}
 			}
 			if got := options.Capabilities(); got != test.want {
 				t.Fatalf("capabilities: %+v, want %+v", got, test.want)
@@ -153,34 +155,46 @@ func TestLocalAndQueuedRemoteShareSnapshotContract(t *testing.T) {
 	}
 }
 
-func TestCollectionIngestsFreshObservationAndMovesMCPDefault(t *testing.T) {
-	root := t.TempDir()
-	git := func(args ...string) {
-		t.Helper()
-		if raw, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v %s", args, err, raw)
+func TestCollectionIngestsEveryCheckoutAndMovesMCPDefault(t *testing.T) {
+	repository := func() string {
+		root := t.TempDir()
+		for _, args := range [][]string{{"init", "-q"}, {"add", "."}, {"-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "initial"}} {
+			if args[0] == "add" {
+				if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("before\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if raw, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v %s", args, err, raw)
+			}
 		}
+		return root
 	}
-	git("init", "-q")
-	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("before\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	git("add", ".")
-	git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "initial")
+	root, discovered := repository(), repository()
 	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("first\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var mu sync.Mutex
 	collections := 0
+	roots := []string{root}
 	var failure error
-	collect := func(ctx context.Context) (ingestion.Request, error) {
+	var failed []serverapp.CollectionFailure
+	collect := func(ctx context.Context) (serverapp.Collection, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		if failure != nil {
-			return ingestion.Request{}, failure
+			return serverapp.Collection{}, failure
 		}
-		collections++
-		return collector.Collect(ctx, root, collector.Options{SourceID: "source", SubmissionID: fmt.Sprintf("collection-%d", collections)})
+		collection := serverapp.Collection{Failures: failed}
+		for _, path := range roots {
+			collections++
+			input, err := collector.Collect(ctx, path, collector.Options{SourceID: "source", SubmissionID: fmt.Sprintf("collection-%d", collections)})
+			if err != nil {
+				return serverapp.Collection{}, err
+			}
+			collection.Requests = append(collection.Requests, input)
+		}
+		return collection, nil
 	}
 	initial, err := collect(t.Context())
 	if err != nil {
@@ -195,11 +209,15 @@ func TestCollectionIngestsFreshObservationAndMovesMCPDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := contextservice.NewScoped(t.Context(), store, user, contextservice.ScopeFor(initial))
+	service := contextservice.NewScoped(t.Context(), store, user, contextservice.ScopeFor(initial.Requests...))
 	defer service.Close()
-	first, err := service.Ingest(t.Context(), initial)
+	published, err := serverapp.Publish(t.Context(), service, initial)
 	if err != nil {
 		t.Fatal(err)
+	}
+	first, ok := published.Newest()
+	if !ok {
+		t.Fatal("initial collection published nothing")
 	}
 	server := httptest.NewServer(serverapp.Handler(t.Context(), service, store, fstest.MapFS{}, first.Context.ID, serverapp.Options{Collect: collect}))
 	defer server.Close()
@@ -229,57 +247,86 @@ func TestCollectionIngestsFreshObservationAndMovesMCPDefault(t *testing.T) {
 	if mcpDiff().ID != first.Snapshot.ID {
 		t.Fatal("bare MCP did not open the initial collection")
 	}
-	events, unsubscribe := service.Subscribe()
-	defer unsubscribe()
-
+	type result struct {
+		Contexts []contextservice.Context      `json:"contexts"`
+		Failures []serverapp.CollectionFailure `json:"failures"`
+	}
+	// A checkout discovered after startup joins the scope; failures are reported
+	// beside the checkouts that did collect.
 	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("second\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	collected := decode[contextservice.Context](t, request(t, d, "POST", "/api/v2/collections", nil))
-	if collected.ID == first.Context.ID || collected.Observation == nil || collected.Observation.Root != initial.Metadata.Root {
-		t.Fatalf("collection did not create a fresh observation: %#v", collected)
+	if err := os.WriteFile(filepath.Join(discovered, "file.txt"), []byte("changed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	roots = []string{discovered, root}
+	failed = []serverapp.CollectionFailure{{Path: "/broken", Detail: "checkout changed during collection"}}
+	mu.Unlock()
+	events, unsubscribe := service.Subscribe()
+	defer unsubscribe()
+	collected := decode[result](t, request(t, d, "POST", "/api/v2/collections", nil))
+	if len(collected.Contexts) != 2 || collected.Contexts[0].Observation.Root != discovered || collected.Contexts[1].Observation.Root != root || collected.Contexts[1].ID == first.Context.ID {
+		t.Fatalf("collection did not ingest each checkout: %#v", collected)
+	}
+	if len(collected.Failures) != 1 || collected.Failures[0].Path != "/broken" {
+		t.Fatalf("collection failures: %#v", collected.Failures)
 	}
 	select {
-	case id := <-events:
-		if id != collected.ID {
-			t.Fatalf("event %s, want %s", id, collected.ID)
-		}
+	case <-events:
 	case <-time.After(2 * time.Second):
 		t.Fatal("collection published no event")
 	}
-	snapshot := decode[review.RepositoryDiff](t, request(t, d, "GET", "/api/v2/contexts/"+collected.ID+"/diffs/current?scope=all", nil))
+	newest := collected.Contexts[1]
+	snapshot := decode[review.RepositoryDiff](t, request(t, d, "GET", "/api/v2/contexts/"+newest.ID+"/diffs/current?scope=all", nil))
 	if snapshot.ID == first.Snapshot.ID || mcpDiff().ID != snapshot.ID {
-		t.Fatal("bare MCP default did not follow the collection")
+		t.Fatal("bare MCP default did not follow the newest changed collection")
 	}
 	page := decode[contextservice.Page](t, request(t, d, "GET", "/api/v2/contexts", nil))
-	if len(page.Contexts) != 2 {
+	if len(page.Contexts) != 3 {
 		t.Fatalf("catalog after collection: %#v", page)
 	}
 
+	problemFor := func(want string) {
+		t.Helper()
+		response := request(t, d, "POST", "/api/v2/collections", nil)
+		var problem struct {
+			Status int    `json:"status"`
+			Detail string `json:"detail"`
+		}
+		if err := json.NewDecoder(response.Body).Decode(&problem); err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusUnprocessableEntity || problem.Status != http.StatusUnprocessableEntity || !strings.Contains(problem.Detail, want) || !strings.HasPrefix(response.Header.Get("Content-Type"), "application/problem+json") {
+			t.Fatalf("collection failure: %d %#v", response.StatusCode, problem)
+		}
+		if count, err := service.Count(t.Context()); err != nil || count != 3 {
+			t.Fatalf("failed collection changed the catalog: %d %v", count, err)
+		}
+		select {
+		case id := <-events:
+			t.Fatalf("failed collection published %s", id)
+		default:
+		}
+		if mcpDiff().ID != snapshot.ID {
+			t.Fatal("failed collection moved the MCP default")
+		}
+	}
+	// Drain notifications from the successful collection before failing.
+	for drained := false; !drained; {
+		select {
+		case <-events:
+		default:
+			drained = true
+		}
+	}
 	mu.Lock()
-	failure = errors.New("not a git checkout")
+	roots = nil
 	mu.Unlock()
-	response := request(t, d, "POST", "/api/v2/collections", nil)
-	var problem struct {
-		Status int    `json:"status"`
-		Detail string `json:"detail"`
-	}
-	if err := json.NewDecoder(response.Body).Decode(&problem); err != nil {
-		t.Fatal(err)
-	}
-	response.Body.Close()
-	if response.StatusCode != http.StatusUnprocessableEntity || problem.Status != http.StatusUnprocessableEntity || !strings.Contains(problem.Detail, "not a git checkout") || !strings.HasPrefix(response.Header.Get("Content-Type"), "application/problem+json") {
-		t.Fatalf("collection failure: %d %#v", response.StatusCode, problem)
-	}
-	if count, err := service.Count(t.Context()); err != nil || count != 2 {
-		t.Fatalf("failed collection changed the catalog: %d %v", count, err)
-	}
-	select {
-	case id := <-events:
-		t.Fatalf("failed collection published %s", id)
-	default:
-	}
-	if mcpDiff().ID != snapshot.ID {
-		t.Fatal("failed collection moved the MCP default")
-	}
+	problemFor("/broken: checkout changed during collection")
+	mu.Lock()
+	failure = errors.New("no Git checkouts found")
+	mu.Unlock()
+	problemFor("no Git checkouts found")
 }

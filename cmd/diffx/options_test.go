@@ -57,3 +57,28 @@ func TestHelpDocumentsHarnessFlag(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkspaceOptionsParseAndStayLocal(t *testing.T) {
+	values, err := parseOptions([]string{"--path", "one", "--path", "two", "--scan-depth", "3"}, io.Discard)
+	if err != nil || len(values.paths) != 2 || values.directory != "one" || values.scanDepth != 3 || !values.scanDepthSet {
+		t.Fatalf("workspace options: %#v %v", values, err)
+	}
+	values, err = parseOptions([]string{"repo"}, io.Discard)
+	if err != nil || len(values.paths) != 1 || values.paths[0] != "repo" || values.scanDepth != 8 {
+		t.Fatalf("positional path: %#v %v", values, err)
+	}
+	for _, arguments := range [][]string{{"--scan-depth", "-1"}, {"--scan-depth", "33"}, {"--path", "one", "two"}} {
+		if _, err := parseOptions(arguments, io.Discard); err == nil {
+			t.Fatalf("accepted %v", arguments)
+		}
+	}
+	for _, arguments := range [][]string{
+		{"sync", "--path", "one", "--path", "two"},
+		{"sync", "--scan-depth", "2"},
+		{"dev", "--fixture", "patch.diff", "--scan-depth", "2"},
+	} {
+		if err := run(t.Context(), arguments, nil, io.Discard, io.Discard); err == nil || !strings.Contains(err.Error(), "only supported by local mode") {
+			t.Fatalf("%v: %v", arguments, err)
+		}
+	}
+}

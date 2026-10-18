@@ -2,84 +2,110 @@ package collector
 
 import (
 	"context"
-	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
 
-func TestDiscoveryFindsWorkspaceAndRemovedWorktreeBranch(t *testing.T) {
-	workspace := t.TempDir()
-	root := filepath.Join(workspace, "project")
-	if err := os.Mkdir(root, 0o700); err != nil {
+func committed(t *testing.T, root string) string {
+	t.Helper()
+	write(t, root, "file.txt", "before\n")
+	git(t, root, "add", ".")
+	git(t, root, "commit", "-m", "initial")
+	return root
+}
+
+func initialized(t *testing.T, root string) string {
+	t.Helper()
+	if err := os.MkdirAll(root, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	git(t, root, "init", "--initial-branch=main")
 	git(t, root, "config", "user.name", "Test")
 	git(t, root, "config", "user.email", "test@example.com")
-	write(t, root, "file.txt", "before\n")
-	git(t, root, "add", ".")
-	git(t, root, "commit", "-m", "initial")
-	linked := filepath.Join(workspace, "temporary")
-	git(t, root, "worktree", "add", "-b", "feature", linked)
-	write(t, linked, "file.txt", "after\n")
-	git(t, linked, "commit", "-am", "change")
-	git(t, root, "worktree", "remove", linked)
-	result, err := Discover(context.Background(), workspace, "machine", "auto")
-	if err != nil || len(result.Sources) != 2 {
-		t.Fatalf("sources %#v diagnostics %v err %v", result.Sources, result.Diagnostics, err)
+	return committed(t, root)
+}
+
+func discoveredPaths(result Discovery) []string {
+	paths := make([]string, 0, len(result.Sources))
+	for _, source := range result.Sources {
+		paths = append(paths, source.Path)
 	}
-	if result.Sources[0].Path != root || result.Sources[0].Base != "auto" || result.Sources[1].Branch != "feature" || result.Sources[1].Identity == result.Sources[0].Identity {
-		t.Fatalf("unexpected discovery: %#v", result.Sources)
+	return paths
+}
+
+func TestDiscoveryFindsRepositoriesAndAllTheirWorktrees(t *testing.T) {
+	workspace := t.TempDir()
+	root := initialized(t, filepath.Join(workspace, "group", "project"))
+	// Linked worktrees outside the scanned workspace still belong to the repository.
+	linked := filepath.Join(t.TempDir(), "linked")
+	git(t, root, "worktree", "add", "-b", "feature", linked)
+	result, err := DiscoverWorkspaces(t.Context(), []string{workspace}, 8, "machine", "auto")
+	if err != nil || !slices.Equal(discoveredPaths(result), []string{root, linked}) {
+		t.Fatalf("sources %v diagnostics %v err %v", discoveredPaths(result), result.Diagnostics, err)
+	}
+	if result.Sources[0].InputPath != workspace || result.Sources[0].Identity == result.Sources[1].Identity {
+		t.Fatalf("unexpected sources: %#v", result.Sources)
 	}
 	identity := result.Sources[1].Identity
-	git(t, root, "branch", "-m", "feature", "renamed")
-	moved := filepath.Join(workspace, "moved")
-	if err := os.Rename(root, moved); err != nil {
+	git(t, root, "branch", "-m", "main", "master")
+	result, err = DiscoverWorkspaces(t.Context(), []string{workspace}, 8, "machine", "auto")
+	if err != nil || len(result.Sources) != 2 || result.Sources[1].Identity != identity {
+		t.Fatalf("worktree identity changed: %#v %v %v", result.Sources, result.Diagnostics, err)
+	}
+}
+
+func TestDiscoveryStopsAtRepositoriesAndSkipsHiddenDirectories(t *testing.T) {
+	workspace := t.TempDir()
+	outer := initialized(t, filepath.Join(workspace, "outer"))
+	initialized(t, filepath.Join(outer, "nested"))
+	initialized(t, filepath.Join(workspace, ".hidden", "project"))
+	initialized(t, filepath.Join(workspace, "node_modules", "package"))
+	visible := initialized(t, filepath.Join(workspace, "visible"))
+	if err := os.Symlink(filepath.Join(workspace, ".hidden"), filepath.Join(workspace, "linked")); err != nil {
 		t.Fatal(err)
 	}
-	result, err = Discover(context.Background(), moved, "machine", "auto")
-	if err != nil || len(result.Sources) != 2 || result.Sources[1].Identity != identity {
-		t.Fatalf("renamed source lost identity: %#v %v %v", result.Sources, result.Diagnostics, err)
+	result, err := DiscoverWorkspaces(t.Context(), []string{workspace}, 8, "machine", "auto")
+	if err != nil || !slices.Equal(discoveredPaths(result), []string{outer, visible}) {
+		t.Fatalf("sources %v diagnostics %v err %v", discoveredPaths(result), result.Diagnostics, err)
 	}
-	liveIdentity := result.Sources[0].Identity
-	git(t, moved, "branch", "-m", "main", "master")
-	result, err = Discover(context.Background(), moved, "machine", "auto")
-	if err != nil || len(result.Sources) != 2 || result.Sources[0].Identity != liveIdentity || result.Sources[1].Identity != identity {
-		t.Fatalf("default branch rename changed source identity: %#v %v %v", result.Sources, result.Diagnostics, err)
+	hidden := filepath.Join(workspace, ".hidden")
+	result, err = DiscoverWorkspaces(t.Context(), []string{hidden}, 8, "machine", "auto")
+	if err != nil || !slices.Equal(discoveredPaths(result), []string{filepath.Join(hidden, "project")}) {
+		t.Fatalf("explicit hidden root skipped: %v %v %v", discoveredPaths(result), result.Diagnostics, err)
+	}
+}
+
+func TestDiscoveryResolvesNestedPathAndDeduplicatesOverlappingInputs(t *testing.T) {
+	workspace := t.TempDir()
+	root := initialized(t, filepath.Join(workspace, "project"))
+	nested := filepath.Join(root, "src")
+	if err := os.Mkdir(nested, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	result, err := DiscoverWorkspaces(t.Context(), []string{nested, workspace, root}, 8, "machine", "auto")
+	if err != nil || !slices.Equal(discoveredPaths(result), []string{root}) || result.Sources[0].InputPath != nested {
+		t.Fatalf("overlapping inputs: %#v %v %v", result.Sources, result.Diagnostics, err)
 	}
 }
 
 func TestDiscoveryIncludesIndependentClonesWithSameRemote(t *testing.T) {
-	original := repository(t)
-	write(t, original, "file.txt", "before\n")
-	git(t, original, "add", ".")
-	git(t, original, "commit", "-m", "initial")
+	original := committed(t, repository(t))
 	workspace := t.TempDir()
 	first, second := filepath.Join(workspace, "first"), filepath.Join(workspace, "second")
 	git(t, workspace, "clone", original, first)
 	git(t, workspace, "clone", original, second)
-	result, err := Discover(context.Background(), workspace, "machine", "auto")
-	if err != nil || len(result.Sources) != 2 {
-		t.Fatalf("independent clones skipped: %#v %v %v", result.Sources, result.Diagnostics, err)
-	}
-	paths := make(map[string]bool)
-	for _, source := range result.Sources {
-		paths[source.Path] = true
-	}
-	if !paths[first] || !paths[second] || result.Sources[0].Identity == result.Sources[1].Identity {
-		t.Fatalf("clones lost distinct checkout identities: %#v", result.Sources)
+	result, err := DiscoverWorkspaces(context.Background(), []string{workspace}, 8, "machine", "auto")
+	if err != nil || !slices.Equal(discoveredPaths(result), []string{first, second}) || result.Sources[0].Identity == result.Sources[1].Identity {
+		t.Fatalf("clones lost distinct checkout identities: %#v %v %v", result.Sources, result.Diagnostics, err)
 	}
 }
 
 func TestDiscoveryReportsCopiedGitIdentity(t *testing.T) {
 	workspace := t.TempDir()
-	original := repository(t)
-	write(t, original, "file.txt", "before\n")
-	git(t, original, "add", ".")
-	git(t, original, "commit", "-m", "initial")
+	original := committed(t, repository(t))
 	if _, err := SourceIdentity(t.Context(), original, "machine", "", "auto"); err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +116,7 @@ func TestDiscoveryReportsCopiedGitIdentity(t *testing.T) {
 	if err := os.CopyFS(second, os.DirFS(original)); err != nil {
 		t.Fatal(err)
 	}
-	result, err := Discover(t.Context(), workspace, "machine", "auto")
+	result, err := DiscoverWorkspaces(t.Context(), []string{workspace}, 8, "machine", "auto")
 	if err != nil || len(result.Sources) != 1 {
 		t.Fatalf("copied identity discovery: %#v %v %v", result.Sources, result.Diagnostics, err)
 	}
@@ -102,79 +128,78 @@ func TestDiscoveryReportsCopiedGitIdentity(t *testing.T) {
 	t.Fatalf("copied identities silently merged: %v", result.Diagnostics)
 }
 
-func TestDiscoveryLiveWorktreesSuppressObjectDuplicate(t *testing.T) {
-	root := repository(t)
-	write(t, root, "file.txt", "before\n")
-	git(t, root, "add", ".")
-	git(t, root, "commit", "-m", "initial")
+func TestDiscoveryReportsMissingWorktree(t *testing.T) {
+	root := committed(t, repository(t))
 	linked := filepath.Join(t.TempDir(), "linked")
 	git(t, root, "worktree", "add", "-b", "feature", linked)
-	write(t, linked, "file.txt", "after\n")
-	git(t, linked, "commit", "-am", "change")
-	result, err := Discover(context.Background(), root, "machine", "auto")
-	if err != nil || len(result.Sources) != 2 {
-		t.Fatalf("unexpected sources: %#v %v %v", result.Sources, result.Diagnostics, err)
+	if err := os.RemoveAll(linked); err != nil {
+		t.Fatal(err)
 	}
-	for _, source := range result.Sources {
-		if source.Branch != "" {
-			t.Fatalf("live branch duplicated as recovery: %#v", source)
-		}
+	result, err := DiscoverWorkspaces(t.Context(), []string{root}, 8, "machine", "auto")
+	if err != nil || !slices.Equal(discoveredPaths(result), []string{root}) || len(result.Diagnostics) != 1 || !strings.Contains(result.Diagnostics[0], "worktree unavailable") {
+		t.Fatalf("missing worktree: %v %v %v", discoveredPaths(result), result.Diagnostics, err)
 	}
 }
 
 func TestDiscoveryBoundsDepthAndReportsMissingInput(t *testing.T) {
 	workspace := t.TempDir()
-	deep := filepath.Join(workspace, "one", "two", "three")
-	if err := os.MkdirAll(deep, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	git(t, deep, "init", "--initial-branch=main")
-	result, err := Discover(context.Background(), workspace, "machine", "auto")
-	if err != nil || len(result.Sources) != 0 || len(result.Diagnostics) == 0 {
+	deep := initialized(t, filepath.Join(workspace, "one", "two", "three"))
+	result, err := DiscoverWorkspaces(context.Background(), []string{workspace}, 2, "machine", "auto")
+	if err != nil || len(result.Sources) != 0 {
 		t.Fatalf("deep checkout escaped discovery bound: %#v %v", result, err)
 	}
-	result, err = Discover(context.Background(), filepath.Join(workspace, "missing"), "machine", "auto")
+	result, err = DiscoverWorkspaces(context.Background(), []string{workspace}, 3, "machine", "auto")
+	if err != nil || !slices.Equal(discoveredPaths(result), []string{deep}) {
+		t.Fatalf("checkout within depth missed: %#v %v", result, err)
+	}
+	result, err = DiscoverWorkspaces(context.Background(), []string{filepath.Join(workspace, "missing")}, 8, "machine", "auto")
 	if err != nil || len(result.Sources) != 0 || len(result.Diagnostics) == 0 {
 		t.Fatalf("missing path lacks diagnostics: %#v %v", result, err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := Discover(ctx, workspace, "machine", "auto"); err == nil {
+	if _, err := DiscoverWorkspaces(ctx, []string{workspace}, 8, "machine", "auto"); err == nil {
 		t.Fatal("canceled discovery succeeded")
 	}
 }
 
-func TestDiscoveryBoundsTotalSourcesAcrossLiveAndRecoveredBranches(t *testing.T) {
-	root := repository(t)
-	write(t, root, "file.txt", "before\n")
-	git(t, root, "add", ".")
-	git(t, root, "commit", "-m", "initial")
-	git(t, root, "switch", "-c", "temporary")
-	write(t, root, "file.txt", "after\n")
-	git(t, root, "commit", "-am", "change")
-	head := git(t, root, "rev-parse", "HEAD")
-	git(t, root, "switch", "main")
-	git(t, root, "branch", "-D", "temporary")
-	var refs strings.Builder
-	for index := 0; index < discoveryLimit; index++ {
-		fmt.Fprintf(&refs, "create refs/heads/feature-%03d %s\n", index, head)
+func TestCollectWorkspacesCollectsEachCheckoutIndependently(t *testing.T) {
+	workspace := t.TempDir()
+	first := initialized(t, filepath.Join(workspace, "first"))
+	second := initialized(t, filepath.Join(workspace, "second"))
+	write(t, first, "file.txt", "after\n")
+	write(t, second, "file.txt", "after\n")
+	git(t, second, "add", ".")
+	batch, err := CollectWorkspaces(t.Context(), []string{workspace}, 8, Options{SourceID: "machine", Hostname: "host", SubmissionID: "shared"})
+	if err != nil || len(batch.Requests) != 2 || len(batch.Failures) != 0 {
+		t.Fatalf("batch %#v err %v", batch, err)
 	}
-	command := exec.Command("git", "update-ref", "--stdin")
-	command.Dir, command.Stdin = root, strings.NewReader(refs.String())
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("create branch refs: %s %v", output, err)
+	if batch.Requests[0].Metadata.Root != first || batch.Requests[1].Metadata.Root != second {
+		t.Fatalf("unexpected roots: %s %s", batch.Requests[0].Metadata.Root, batch.Requests[1].Metadata.Root)
 	}
-	result, err := Discover(context.Background(), root, "machine", "auto")
-	if err != nil || len(result.Sources) != discoveryLimit {
-		t.Fatalf("global discovery bound: %d %v %v", len(result.Sources), result.Diagnostics, err)
+	if batch.Requests[0].SubmissionID == batch.Requests[1].SubmissionID || batch.Requests[0].SubmissionID == "shared" {
+		t.Fatal("checkouts share a submission ID")
 	}
-	limits := 0
-	for _, diagnostic := range result.Diagnostics {
-		if strings.Contains(diagnostic, "global 128-source limit") {
-			limits++
-		}
+	if batch.Requests[0].Metadata.TriggerRoot != workspace {
+		t.Fatalf("trigger root %q", batch.Requests[0].Metadata.TriggerRoot)
 	}
-	if limits != 1 {
-		t.Fatalf("source limit lacks single diagnostic: %v", result.Diagnostics)
+	if _, err := CollectWorkspaces(t.Context(), []string{t.TempDir()}, 8, Options{SourceID: "machine", Hostname: "host"}); err == nil || !strings.Contains(err.Error(), "no Git checkouts found") {
+		t.Fatalf("empty workspace: %v", err)
+	}
+}
+
+func TestCollectWorkspacesReportsFailedCheckoutWithoutBlockingOthers(t *testing.T) {
+	workspace := t.TempDir()
+	healthy := initialized(t, filepath.Join(workspace, "healthy"))
+	broken := initialized(t, filepath.Join(workspace, "broken"))
+	write(t, healthy, "file.txt", "after\n")
+	// A base that cannot resolve fails only the checkout without that ref.
+	git(t, healthy, "branch", "baseline")
+	batch, err := CollectWorkspaces(t.Context(), []string{workspace}, 8, Options{SourceID: "machine", Hostname: "host", Base: "baseline"})
+	if err != nil || len(batch.Requests) != 1 || batch.Requests[0].Metadata.Root != healthy {
+		t.Fatalf("batch %#v err %v", batch, err)
+	}
+	if len(batch.Failures) != 1 || batch.Failures[0].Path != broken || batch.Failures[0].Detail == "" {
+		t.Fatalf("failures %#v", batch.Failures)
 	}
 }

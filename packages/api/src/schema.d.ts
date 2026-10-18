@@ -236,8 +236,8 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Local checkout mode only. Collects the process's selected checkout again and ingests it as a fresh observation. Absent when the process serves piped input, a fixture or remote storage. */
-    post: operations["collectCheckout"];
+    /** @description Local checkout mode only. Discovers the process's selected paths again and collects every checkout and linked worktree found, ingesting each as a fresh observation. Absent when the process serves piped input, a fixture or remote storage. */
+    post: operations["collectCheckouts"];
     delete?: never;
     options?: never;
     head?: never;
@@ -529,7 +529,7 @@ export interface components {
           signupEnabled: false;
           user: null;
           csrfToken: null;
-          /** @description Whether this process can collect its selected checkout again through POST /api/v2/collections. */
+          /** @description Whether this process can collect its selected checkouts again through POST /api/v2/collections. */
           collect: boolean;
         }
       | {
@@ -691,6 +691,15 @@ export interface components {
       observation?: components["schemas"]["ObservationMetadata"];
       /** @description Sessions that observed this snapshot, including collections deduplicated into the same review. Names reflect latest supplied session metadata; no authorship is implied. */
       sessions?: components["schemas"]["SessionAssociation"][];
+    };
+    CollectionResult: {
+      contexts: components["schemas"]["Context"][];
+      /** @description Discovered checkouts that could not be collected or ingested; their earlier snapshots remain unchanged. */
+      failures: components["schemas"]["CollectionFailure"][];
+    };
+    CollectionFailure: {
+      path: string;
+      detail: string;
     };
     ServerMetrics: {
       rssBytes: number;
@@ -1362,7 +1371,7 @@ export interface operations {
       default: components["responses"]["Problem"];
     };
   };
-  collectCheckout: {
+  collectCheckouts: {
     parameters: {
       query?: never;
       header?: never;
@@ -1371,16 +1380,17 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description The context holding the new collection; unchanged content reuses its existing review. */
+      /** @description The contexts holding the new collections, in ingestion order, and checkouts that could not be collected. Unchanged content reuses its existing review. */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["Context"];
+          "application/json": components["schemas"]["CollectionResult"];
         };
       };
       404: components["responses"]["Problem"];
+      422: components["responses"]["Problem"];
       default: components["responses"]["Problem"];
     };
   };

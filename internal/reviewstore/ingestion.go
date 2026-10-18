@@ -415,27 +415,34 @@ func (store *Store) ObservationContexts(ownerID string, limit int, beforeTime in
 	return result, rows.Err()
 }
 
-// selectionPredicate matches the selected checkout identity, or a capture by
-// any submission, including fresh submissions that reused its snapshot.
+// selectionPredicate matches any selected checkout identity, or a capture by
+// any submission, including fresh submissions that reused its snapshot. A scoped
+// selection without checkouts or a submission matches nothing.
 func selectionPredicate(selection ingestion.Selection) (string, []any) {
 	query := ""
 	arguments := []any{}
-	fields := []struct{ expression, value string }{
-		{"o.source_id", selection.SourceID},
-		{"json_extract(o.metadata,'$.repositoryKey')", selection.RepositoryKey},
-		{"json_extract(o.metadata,'$.checkoutKey')", selection.CheckoutKey},
-		{"c.id", selection.ContextID},
-	}
-	for _, field := range fields {
-		if field.value != "" {
-			query += ` AND ` + field.expression + `=?`
-			arguments = append(arguments, field.value)
+	if selection.Scoped {
+		query += ` AND o.source_id=?`
+		arguments = append(arguments, selection.SourceID)
+		switch {
+		case selection.SubmissionID != "":
+			query += ` AND EXISTS (SELECT 1 FROM observation_submissions selected WHERE selected.owner_id=c.owner_id AND selected.context_id=c.id
+			AND selected.source_id=o.source_id AND selected.submission_id=?)`
+			arguments = append(arguments, selection.SubmissionID)
+		case len(selection.Checkouts) == 0:
+			query += ` AND 0`
+		default:
+			rows := make([]string, 0, len(selection.Checkouts))
+			for _, checkout := range selection.Checkouts {
+				rows = append(rows, `(?,?)`)
+				arguments = append(arguments, checkout.RepositoryKey, checkout.CheckoutKey)
+			}
+			query += ` AND (json_extract(o.metadata,'$.repositoryKey'),json_extract(o.metadata,'$.checkoutKey')) IN (VALUES ` + strings.Join(rows, ",") + `)`
 		}
 	}
-	if selection.SubmissionID != "" {
-		query += ` AND EXISTS (SELECT 1 FROM observation_submissions selected WHERE selected.owner_id=c.owner_id AND selected.context_id=c.id
-			AND selected.source_id=o.source_id AND selected.submission_id=?)`
-		arguments = append(arguments, selection.SubmissionID)
+	if selection.ContextID != "" {
+		query += ` AND c.id=?`
+		arguments = append(arguments, selection.ContextID)
 	}
 	return query, arguments
 }

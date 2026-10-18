@@ -427,16 +427,18 @@ paths:
           $ref: "#/components/responses/Problem"
   /api/v2/collections:
     post:
-      operationId: collectCheckout
-      description: Local checkout mode only. Collects the process's selected checkout again and ingests it as a fresh observation. Absent when the process serves piped input, a fixture or remote storage.
+      operationId: collectCheckouts
+      description: Local checkout mode only. Discovers the process's selected paths again and collects every checkout and linked worktree found, ingesting each as a fresh observation. Absent when the process serves piped input, a fixture or remote storage.
       responses:
         "200":
-          description: The context holding the new collection; unchanged content reuses its existing review.
+          description: The contexts holding the new collections, in ingestion order, and checkouts that could not be collected. Unchanged content reuses its existing review.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Context"
+                $ref: "#/components/schemas/CollectionResult"
         "404":
+          $ref: "#/components/responses/Problem"
+        "422":
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
@@ -938,7 +940,7 @@ components:
               type: "null"
             collect:
               type: boolean
-              description: Whether this process can collect its selected checkout again through POST /api/v2/collections.
+              description: Whether this process can collect its selected checkouts again through POST /api/v2/collections.
         - type: object
           additionalProperties: false
           required: [mode, signupEnabled, user, csrfToken]
@@ -1256,6 +1258,29 @@ components:
           description: Sessions that observed this snapshot, including collections deduplicated into the same review. Names reflect latest supplied session metadata; no authorship is implied.
           items:
             $ref: "#/components/schemas/SessionAssociation"
+    CollectionResult:
+      type: object
+      additionalProperties: false
+      required: [contexts, failures]
+      properties:
+        contexts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Context"
+        failures:
+          type: array
+          description: Discovered checkouts that could not be collected or ingested; their earlier snapshots remain unchanged.
+          items:
+            $ref: "#/components/schemas/CollectionFailure"
+    CollectionFailure:
+      type: object
+      additionalProperties: false
+      required: [path, detail]
+      properties:
+        path:
+          type: string
+        detail:
+          type: string
     ServerMetrics:
       type: object
       additionalProperties: false
