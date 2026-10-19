@@ -101,8 +101,7 @@ kbd {
   display: flex;
   gap: var(--space-2);
   align-items: center;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel);
+  background: var(--shell-canvas);
   padding: 0 calc(var(--diff-gutter) + var(--diff-viewport-inset, 0px)) 0 0;
 }
 /* Centers the projects toggle over the activity bar so it never moves. */
@@ -195,6 +194,9 @@ kbd {
 .app-shell {
   display: flex;
   height: 100dvh;
+  gap: var(--shell-gutter);
+  padding: var(--shell-gutter);
+  background: var(--shell-canvas);
 }
 .app-main {
   flex: 1;
@@ -205,25 +207,33 @@ kbd {
 .workbench {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template: auto auto minmax(0, 1fr) / auto minmax(0, 1fr);
+  display: flex;
 }
-.workbench > * {
-  grid-area: 3 / 2;
-  min-width: 0;
-}
-.workbench > .snapshot-notice {
-  grid-row: 1;
-}
-.workbench > .outdated-notice {
-  grid-row: 2;
-}
+.navigation-island,
 .workbench > .activity-bar {
-  grid-area: 1 / 1 / -1;
+  flex-shrink: 0;
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  outline: 1px solid var(--border);
+}
+.navigation-island {
+  display: flex;
+  min-height: 0;
+}
+.workspace,
+.workbench > main {
+  flex: 1;
+  min-width: 0;
+  margin-left: var(--shell-gutter);
+  border-radius: var(--radius-lg);
+  overflow: clip;
+  background: var(--bg);
+  outline: 1px solid var(--border);
 }
 .workspace {
   min-height: 0;
   display: flex;
+  flex-direction: column;
 }
 .activity-bar {
   display: flex;
@@ -231,8 +241,7 @@ kbd {
   justify-content: space-between;
   width: var(--activity-width);
   padding: var(--space-1) 0;
-  background: var(--panel);
-  border-right: 1px solid var(--border);
+  background: transparent;
 }
 .activity-views,
 .activity-actions {
@@ -270,7 +279,8 @@ kbd {
   display: flex;
   flex-direction: column;
   background: var(--panel);
-  border-right: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  outline: 1px solid var(--border);
 }
 .projects-nav[hidden] {
   display: none;
@@ -453,7 +463,7 @@ kbd {
   display: flex;
   flex-direction: column;
   background: var(--panel);
-  border-right: 1px solid var(--border);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
 }
 .count {
   font: var(--text-sm) var(--font-mono);
@@ -664,6 +674,7 @@ kbd {
 main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -1000,8 +1011,9 @@ h2 {
     display: flex;
     position: fixed;
     z-index: var(--layer-sidebar);
-    inset: 0 auto 0 0;
+    inset: var(--shell-gutter) auto var(--shell-gutter) var(--shell-gutter);
     width: min(320px, 88vw);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-overlay);
   }
   .sidebar .mobile-only {
@@ -1013,12 +1025,19 @@ h2 {
   .projects-nav.open {
     position: fixed;
     z-index: var(--layer-sidebar);
-    inset: 0 auto 0 0;
+    inset: var(--shell-gutter) auto var(--shell-gutter) var(--shell-gutter);
     width: min(320px, 88vw);
     box-shadow: var(--shadow-overlay);
   }
 }
 @media (max-width: 767px) {
+  .navigation-island {
+    display: contents;
+  }
+  .workspace,
+  .workbench > main {
+    margin-left: 0;
+  }
   .main-footer .diff-comparison-summary {
     display: none;
   }

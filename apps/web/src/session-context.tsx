@@ -267,13 +267,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // root URL); otherwise the catalog's head opens. Later arrivals only raise
   // the newer-head notice. The route whose load-time sync started, and one
   // whose sync failed or synced no matching head.
-  const [collected, setCollected] = useState<Route | null>(null);
+  const collected = useRef<Route | null>(null);
   const [uncollected, setUncollected] = useState<Route | null>(null);
   const resolving = route.kind !== "pinned" && !selectedId && !missing;
   const collectOnLoad = resolving && collectEnabled && uncollected !== route;
   useEffect(() => {
-    if (!collectOnLoad || collected === route) return;
-    setCollected(route);
+    if (!collectOnLoad || collected.current === route) return;
+    // Effect replay must not treat the in-flight collection as a failed one.
+    collected.current = route;
     void collectLatest().then((result) => {
       const contexts = result?.contexts ?? [];
       const head =
@@ -283,7 +284,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (head) openStream(head, { replace: true, restoreFocus: false });
       else setUncollected(route);
     });
-  }, [collectOnLoad, collected, route, collectLatest, openStream]);
+  }, [collectOnLoad, route, collectLatest, openStream]);
   useEffect(() => {
     if (!resolving || !heads.loaded) return;
     if (collectEnabled && uncollected !== route) return;

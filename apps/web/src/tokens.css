@@ -2,6 +2,7 @@
   color-scheme: light;
   --bg: #fff;
   --panel: #f8f9fb;
+  --shell-canvas: #edeef2;
   --surface-raised: #fff;
   --fg: #24252a;
   --text-secondary: #50545e;
@@ -69,6 +70,7 @@
   );
   --page-gutter: var(--space-6);
   --diff-gutter: var(--space-3);
+  --shell-gutter: var(--space-1-5);
   --sidebar-width: 330px;
   --projects-width: 16rem;
   --activity-item: var(--control-large);
@@ -84,6 +86,7 @@
   color-scheme: dark;
   --bg: #151619;
   --panel: #1b1c20;
+  --shell-canvas: #292a30;
   --surface-raised: #222328;
   --fg: #e1e2e7;
   --text-secondary: #b9bbc4;

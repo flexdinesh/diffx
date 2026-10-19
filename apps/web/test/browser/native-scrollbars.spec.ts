@@ -100,18 +100,12 @@ test("diff tracks fill frames and headers align with their gutters", async ({
         .poll(() =>
           files.first().evaluate((element) => {
             const scroller = document.querySelector(".diff-code-view");
-            const sidebar = document.querySelector("#sidebar");
-            if (!scroller || !sidebar)
-              throw new Error("Missing workspace panes");
+            if (!scroller) throw new Error("Missing diff canvas");
             const file = element.getBoundingClientRect();
             const canvas = scroller.getBoundingClientRect();
-            const leftEdge =
-              sidebar.getBoundingClientRect().width > 0
-                ? sidebar.getBoundingClientRect().right
-                : canvas.left;
             return {
               top: file.top - canvas.top,
-              left: file.left - leftEdge,
+              left: file.left - canvas.left,
               right: canvas.left + scroller.clientWidth - file.right,
             };
           }),
