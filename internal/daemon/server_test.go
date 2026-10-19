@@ -5,15 +5,129 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
+	"net/http"
 	"net/url"
+	osuser "os/user"
+	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/diffx/internal/collector"
 	"github.com/flexdinesh/diffx/internal/contextservice"
+	"github.com/flexdinesh/diffx/internal/reviewstore"
 )
 
 const serverPatch = "diff --git a/value.txt b/value.txt\n--- a/value.txt\n+++ b/value.txt\n@@ -1 +1 @@\n-old\n+new\n"
+
+func TestCheckoutServerServesBeforeCollectionAndWaitsForCollectorShutdown(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state.db")
+	store, err := reviewstore.Open(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	processUser, err := osuser.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := store.User(processUser.Uid, processUser.Username)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err := collector.CollectPatch(t.Context(), serverPatch, t.TempDir(), collector.Options{SourceID: "prior-process", SubmissionID: "prior-capture"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := contextservice.New(store, user)
+	if _, err := service.Ingest(t.Context(), input); err != nil {
+		t.Fatal(err)
+	}
+	if err := errors.Join(service.Close(), store.Close()); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	ready := make(chan Status, 1)
+	collectionCanceled := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	done := make(chan error, 1)
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		done <- runServer(ctx, cancel, Settings{Host: "127.0.0.1", Port: 0, State: state}, "", "async-test", Collection{},
+			func(ctx context.Context) (Collection, error) {
+				<-ctx.Done()
+				close(collectionCanceled)
+				<-release
+				return Collection{}, ctx.Err()
+			}, func(status Status, published Published) {
+				if len(published.Submissions) != 0 {
+					t.Error("ready must not wait for checkout collection")
+				}
+				ready <- status
+			}, log.New(io.Discard, "", 0))
+	}()
+	t.Cleanup(func() {
+		cancel()
+		releaseOnce.Do(func() { close(release) })
+		select {
+		case <-stopped:
+		case <-time.After(5 * time.Second):
+			t.Error("server did not stop")
+		}
+	})
+	var status Status
+	select {
+	case status = <-ready:
+	case err := <-done:
+		t.Fatalf("startup: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("server readiness blocked on checkout collection")
+	}
+	client := &http.Client{Timeout: 2 * time.Second}
+	for _, expected := range []struct{ path, body string }{
+		{"/", "<html"},
+		{"/api/v2/bootstrap", `"collect":true`},
+		{"/api/v2/contexts", `"contexts":[]`},
+	} {
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, status.BrowserURL+expected.path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := client.Do(request)
+		if err != nil {
+			t.Fatalf("%s unavailable during collection: %v", expected.path, err)
+		}
+		raw, err := io.ReadAll(response.Body)
+		_ = response.Body.Close()
+		if err != nil || response.StatusCode != http.StatusOK || !strings.Contains(string(raw), expected.body) {
+			t.Fatalf("%s during collection: status %d, body %s, error %v", expected.path, response.StatusCode, raw, err)
+		}
+	}
+	cancel()
+	select {
+	case <-collectionCanceled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("shutdown did not cancel startup collection")
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("server returned before collector stopped: %v", err)
+	default:
+	}
+	releaseOnce.Do(func() { close(release) })
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("shutdown: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("server did not finish after collector stopped")
+	}
+}
 
 func TestRunForcesCloseWhenIdleConnectionExhaustsShutdownGrace(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())

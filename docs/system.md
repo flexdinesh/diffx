@@ -35,13 +35,15 @@ register paths for later server collection or maintain its own catalog.
 The application core has two compositions. See [architecture.md](architecture.md)
 for contracts, durability rules and migration details.
 
-`diffx [PATH]` is one foreground process: discover and collect the checkouts
-under its paths, ingest directly, and serve UI/REST/MCP. Omitted paths mean the
+`diffx [PATH]` is one foreground process: serve UI/REST/MCP immediately, then
+discover and collect the checkouts under its paths and ingest directly in a
+background task. The UI shows loading feedback while waiting for the first
+snapshots; failures remain visible with Retry. Omitted paths mean the
 current directory; `--path` repeats and `--scan-depth` (default 8) bounds the
 search. Captured snapshots remain fixed after edits and branch switches until the
 user requests collection by loading a live URL or pressing Sync, which discovers
 the paths again and ingests a new snapshot of every checkout; nothing watches Git.
-Piped input is collected once.
+Piped input is validated and collected once before serving.
 The home-directory database survives process termination, but each process
 serves only the checkouts it discovered (every branch and earlier run of them)
 or its own piped capture, so other checkouts' history reappears only when reopened.
@@ -112,9 +114,10 @@ opens the stream's latest head when loaded or navigated to, while
 live URLs; the picker opens pinned ones; piped snapshots have no stream and stay
 pinned. A live URL resolves once, so later arrivals raise the notice instead of
 swapping the open review. With local collection enabled, loading `/` or a live
-URL first syncs the checkouts, then opens the stream's synced head or, for `/`,
-the most recently active changed one; a failed sync opens the stored head and
-reports the error. Otherwise `/` opens the most recently active changed head's
+URL first syncs the checkouts, joining startup on the first load through
+`POST /api/v2/collections?initial=true`, then opens the stream's synced head or,
+for `/`, the most recently active changed one; a failed sync opens the stored
+head and reports the error. Otherwise `/` opens the most recently active changed head's
 live URL. Startup selection and the local default MCP context use the same
 activity ordering.
 The drawer's search filters those loaded heads by the picker's metadata terms;

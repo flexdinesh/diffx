@@ -10,7 +10,7 @@ canonical record of package boundaries and architectural decisions.
 | Concern    | Local `diffx [PATH]`                                                | Remote `diffx-server`                    |
 | ---------- | ------------------------------------------------------------------- | ---------------------------------------- |
 | Collection | Discovered checkouts at start, live page loads and sync; stdin once | Separate finite sync or hook producer    |
-| Admission  | Direct application call before serving                              | Authenticated durable queue and worker   |
+| Admission  | Direct application call; startup runs after serving                 | Authenticated durable queue and worker   |
 | Lifetime   | Foreground; authenticated singleton replacement                     | Foreground; graceful worker shutdown     |
 | Storage    | One owner of persistent SQLite                                      | One owner of persistent SQLite           |
 | Queries    | Discovered checkouts or capture via REST/MCP                        | Same application services via REST/MCP   |
@@ -31,16 +31,21 @@ observation independently; one failure is reported without blocking the others.
 Synced snapshots never replace the open review, matching remote arrivals. Piped
 and fixture processes have no collection route. Local queries are scoped to the
 discovered checkouts, or to the capture's submission, because the persistent
-home-directory database retains every earlier run. The entry point supplies that
-scope and widens it before ingesting a newly discovered checkout; `contextservice`
-applies it to listing, counting, resolution and deletion, and out-of-scope
+home-directory database retains every earlier run. The entry point supplies an
+initially empty selection and widens it before ingesting a newly discovered
+checkout; `contextservice` applies it to listing, counting, resolution and deletion, and out-of-scope
 contexts are not found. A scoped selection without checkouts matches nothing.
+Local listeners and the browser start before checkout discovery and collection. A server-owned task performs the
+initial collection; the first live-page collection request joins its result,
+including when the task finished before the browser opened. Explicit Sync always
+collects fresh snapshots. Collection failures leave the server running for retry,
+and shutdown cancels and joins collection before releasing database ownership.
 
 Activity metadata is collected by the shared producer pipeline, never by catalog
 reads. Both compositions project activity from the winning stream submission and
 use it for current-work navigation; collection time and acceptance sequence still
 choose the stream head. Workspace discovery and web-triggered collection remain
-local-only. There is no background sync, watcher or periodic collection.
+local-only. There is no watcher or periodic collection.
 
 Private local control supports authenticated status/shutdown only. Replacement
 uses lifecycle locking, a validated descriptor and graceful shutdown; a PID

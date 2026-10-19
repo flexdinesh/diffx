@@ -267,7 +267,12 @@ local checkout sync when bootstrap reports `collect`; loading `/` or a live
 `/streams/{streamId}` URL, the header's “Sync all checkouts” icon and Alt+R call
 `POST /api/v2/collections`. Load-time sync opens the stream's synced head, or the
 most recently active changed one for `/`, and shows “Collecting latest changes” until it
-resolves. An explicit sync never replaces the open review: it reloads the heads,
+resolves. The listener opens before background startup collection. Load-time
+requests send `initial=true` to join startup once without collecting twice;
+explicit Sync requests always collect fresh snapshots. While discovery is pending,
+the process scope matches no stored contexts. Startup failures keep the server
+available and show Retry when no stored review can open. An explicit sync never
+replaces the open review: it reloads the heads,
 so the newer-head notice, drawer dots and global unread action announce new
 snapshots, and feedback reports synced, updated and failed checkouts. The global
 action opens the most recently active unopened changed head. The drawer and
@@ -276,7 +281,7 @@ heads and unchanged submissions do not create unread prompts. Activity ordering
 uses catalog `lastChangedAt`, falling back to captured collection time, with
 stable stream/context identity ties. Repositories use their most active visible
 stream. Startup and root selection follow the same ordering. Collection triggers
-are unchanged; no background sync or Git watcher is scheduled.
+are unchanged; no periodic collection or Git watcher is scheduled.
 The “Switch review” picker first selects a repository
 or Piped, then an immutable observation. Repository observations retain branch,
 worktree, source/run, comparison, and collection-time metadata. Submission/session

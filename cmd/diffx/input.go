@@ -20,16 +20,15 @@ import (
 )
 
 type loadedInput struct {
-	directory string
-	mode      string
-	snapshot  review.RepositoryDiff
-	processed time.Duration
-	captureID string
-	contextID string
-	mcpURL    string
-	remote    bool
-	checkouts int
-	failed    int
+	directory  string
+	mode       string
+	snapshot   review.RepositoryDiff
+	processed  time.Duration
+	captureID  string
+	contextID  string
+	mcpURL     string
+	remote     bool
+	collecting bool
 }
 
 func acquireInput(values options, stdin *os.File) (initialInput, error) {

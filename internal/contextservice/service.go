@@ -64,6 +64,7 @@ type Service struct {
 // Scope limits a composition to its selected checkouts or one capture. The
 // zero value is unscoped. Contexts outside the scope behave as not found.
 type Scope struct {
+	selected     bool
 	SourceID     string
 	Checkouts    []ingestion.Checkout
 	SubmissionID string
@@ -71,9 +72,9 @@ type Scope struct {
 
 // ScopeFor selects the requests' checkouts, so later collections and branches
 // of those checkouts stay visible. Captures without checkout identity select
-// their own submission.
+// their own submission. An empty selection matches nothing until widened.
 func ScopeFor(inputs ...ingestion.Request) Scope {
-	var scope Scope
+	scope := Scope{selected: true}
 	for _, input := range inputs {
 		scope = scope.with(input)
 	}
@@ -95,7 +96,7 @@ func (scope Scope) with(input ingestion.Request) Scope {
 }
 
 func (scope Scope) IsZero() bool {
-	return scope.SourceID == "" && len(scope.Checkouts) == 0 && scope.SubmissionID == ""
+	return !scope.selected && scope.SourceID == "" && len(scope.Checkouts) == 0 && scope.SubmissionID == ""
 }
 
 func (scope Scope) selection(contextID string) ingestion.Selection {

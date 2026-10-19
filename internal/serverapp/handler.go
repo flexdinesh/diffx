@@ -24,9 +24,9 @@ import (
 
 type Options struct {
 	Queue ingestionqueue.Queue
-	// Collect collects the composition's selected checkouts again on explicit
-	// request. Piped captures, fixtures and remote storage have none.
-	Collect func(context.Context) (Collection, error)
+	// Collections coordinates local startup and explicit checkout collection.
+	// Piped captures, fixtures and remote storage have none.
+	Collections *Collections
 }
 
 // Capabilities are resolved once by the transport composition. Both admission
@@ -41,7 +41,7 @@ func (options Options) Capabilities() Capabilities {
 	return Capabilities{
 		IngestionEnabled: options.Queue != nil,
 		QueuedIngestion:  options.Queue != nil,
-		Collection:       options.Collect != nil,
+		Collection:       options.Collections != nil,
 	}
 }
 
@@ -54,6 +54,9 @@ func Handler(ctx context.Context, service *contextservice.Service, store httpapi
 
 	mux := http.NewServeMux()
 	current := &defaultContext{id: defaultID}
+	if configuration.Collections != nil {
+		current = configuration.Collections.current
+	}
 	mcp := contextMCP(service, store, current)
 	mux.Handle("/mcp", mcp)
 	mux.Handle("/mcp/", mcp)
@@ -76,7 +79,7 @@ func Handler(ctx context.Context, service *contextservice.Service, store httpapi
 		mux.HandleFunc("/api/v2/ingestion-jobs/", func(w http.ResponseWriter, r *http.Request) { getJob(service, configuration.Queue, w, r) })
 	}
 	if capabilities.Collection {
-		mux.Handle("/api/v2/collections", &collection{service: service, collect: configuration.Collect, current: current})
+		mux.Handle("/api/v2/collections", configuration.Collections)
 	}
 	mux.HandleFunc("/api/v2/events", func(w http.ResponseWriter, r *http.Request) { stream(ctx, service, w, r) })
 	mux.Handle("/", httpapi.NewMulti(service, store, assets))

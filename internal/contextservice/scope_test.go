@@ -83,6 +83,7 @@ func TestScopeLimitsCatalogAndLookupsToSelectedCheckoutOrCapture(t *testing.T) {
 		{"checkout", ScopeFor(selected), []string{first.ID, later.ID}, []string{other.ID, capture.ID, otherCapture.ID}},
 		{"checkouts", ScopeFor(selected, linkedInput), []string{first.ID, other.ID, later.ID}, []string{capture.ID, otherCapture.ID}},
 		{"no checkouts", Scope{SourceID: "source"}, nil, []string{first.ID, other.ID, later.ID, capture.ID, otherCapture.ID}},
+		{"awaiting discovery", ScopeFor(), nil, []string{first.ID, other.ID, later.ID, capture.ID, otherCapture.ID}},
 		{"capture", ScopeFor(repeated), []string{capture.ID}, []string{first.ID, other.ID, later.ID, otherCapture.ID}},
 		{"unscoped", Scope{}, []string{first.ID, other.ID, capture.ID, otherCapture.ID, later.ID}, nil},
 	} {

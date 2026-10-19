@@ -1783,7 +1783,7 @@ for (const mode of ["local", "remote"]) {
       }),
     );
     let collections = 0;
-    await page.route("**/api/v2/collections", (route) => {
+    await page.route("**/api/v2/collections*", (route) => {
       collections++;
       return route.fulfill({ json: { contexts: heads, failures: [] } });
     });
@@ -1896,6 +1896,142 @@ for (const mode of ["local", "remote"]) {
   });
 }
 
+test("local first launch waits for collection with an empty catalog", async ({
+  page,
+}) => {
+  const state = await localWorkspace(page);
+  await page.route("**/api/v2/bootstrap", (route) =>
+    route.fulfill({
+      json: {
+        mode: "local",
+        signupEnabled: false,
+        user: null,
+        csrfToken: null,
+        collect: true,
+      },
+    }),
+  );
+  const snapshot = {
+    ...state.context,
+    streamId: "local-stream",
+    latestContextId: state.context.id,
+  };
+  let heads: ApiContext[] = [];
+  await page.route("**/api/v2/contexts?*", (route) =>
+    route.fulfill({ json: { contexts: heads, nextCursor: null } }),
+  );
+  let collections = 0;
+  let pending: Route | undefined;
+  await page.route("**/api/v2/collections*", (route) => {
+    collections++;
+    expect(new URL(route.request().url()).searchParams.get("initial")).toBe(
+      "true",
+    );
+    pending = route;
+  });
+
+  await page.goto("/");
+  const status = page.locator("main.session-status");
+  await expect(status).toContainText("Collecting latest changes");
+  await expect(status).toHaveAttribute("aria-busy", "true");
+  const projects = page.getByRole("navigation", { name: "Projects" });
+  await expect(projects).toContainText("Collecting projects…");
+  await expect(projects).not.toContainText("No current changes");
+  await expect(projects).not.toContainText("Agent hooks and diffx sync");
+  await expect(
+    page.getByRole("heading", { name: "No review contexts yet" }),
+  ).toHaveCount(0);
+  await expect(page.locator("#viewer")).toHaveCount(0);
+  await expect.poll(() => collections).toBe(1);
+  if (!pending) throw new Error("Missing startup collection");
+  heads = [snapshot];
+  await pending.fulfill({ json: { contexts: heads, failures: [] } });
+  await ready(page);
+  await expect(page).toHaveURL(/\/streams\/local-stream$/);
+  expect(collections).toBe(1);
+});
+
+for (const path of ["/", "/streams/local-stream"]) {
+  test(`local startup collection failure retries from ${path} without stored reviews`, async ({
+    page,
+  }) => {
+    const state = await localWorkspace(page);
+    await page.route("**/api/v2/bootstrap", (route) =>
+      route.fulfill({
+        json: {
+          mode: "local",
+          signupEnabled: false,
+          user: null,
+          csrfToken: null,
+          collect: true,
+        },
+      }),
+    );
+    let heads: ApiContext[] = [];
+    await page.route("**/api/v2/contexts?*", (route) =>
+      route.fulfill({ json: { contexts: heads, nextCursor: null } }),
+    );
+    let collections = 0;
+    let pending: Route | undefined;
+    await page.route("**/api/v2/collections*", (route) => {
+      collections++;
+      if (collections === 1)
+        return route.fulfill({
+          status: 422,
+          json: { detail: "Unable to collect checkouts: git failed" },
+        });
+      pending = route;
+    });
+    await page.goto(path);
+    const status = page.locator("main.session-status");
+    await expect(status).toContainText("Cannot sync changes");
+    await expect(status).toContainText("git failed");
+    await expect(status).toHaveAttribute("aria-busy", "false");
+    await status.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(status).toContainText("Collecting latest changes");
+    await expect(status).toHaveAttribute("aria-busy", "true");
+    await expect.poll(() => collections).toBe(2);
+    if (!pending) throw new Error("Missing retried collection");
+    heads = [{ ...state.context, streamId: "local-stream" }];
+    await pending.fulfill({ json: { contexts: heads, failures: [] } });
+    await ready(page);
+    await expect(page).toHaveURL(/\/streams\/local-stream$/);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    expect(collections).toBe(2);
+  });
+}
+
+test("local startup reports failed checkouts while opening collected changes", async ({
+  page,
+}) => {
+  const state = await localWorkspace(page);
+  await page.route("**/api/v2/bootstrap", (route) =>
+    route.fulfill({
+      json: {
+        mode: "local",
+        signupEnabled: false,
+        user: null,
+        csrfToken: null,
+        collect: true,
+      },
+    }),
+  );
+  await page.route("**/api/v2/collections*", (route) =>
+    route.fulfill({
+      json: {
+        contexts: [{ ...state.context, streamId: "local-stream" }],
+        failures: [{ path: "/workspace/broken", detail: "git failed" }],
+      },
+    }),
+  );
+  await page.goto("/");
+  await ready(page);
+  await expect(page).toHaveURL(/\/streams\/local-stream$/);
+  await expect(page.getByRole("alert")).toContainText(
+    "Unable to sync 1 checkout: /workspace/broken (git failed)",
+  );
+});
+
 test("local live URLs sync the checkouts on every load", async ({ page }) => {
   const state = await localWorkspace(page);
   await page.route("**/api/v2/bootstrap", (route) =>
@@ -1930,7 +2066,7 @@ test("local live URLs sync the checkouts on every load", async ({ page }) => {
     release = resolve;
   });
   let failNext = false;
-  await page.route("**/api/v2/collections", async (route) => {
+  await page.route("**/api/v2/collections*", async (route) => {
     collected++;
     if (collected === 1) await held;
     if (failNext)
@@ -2020,8 +2156,11 @@ test("local sync collects every checkout without replacing the open review", asy
   });
   const collections: string[] = [];
   let fail = false;
-  await page.route("**/api/v2/collections", (route) => {
+  await page.route("**/api/v2/collections*", (route) => {
     collections.push(route.request().method());
+    expect(new URL(route.request().url()).searchParams.get("initial")).toBe(
+      "false",
+    );
     if (fail)
       return route.fulfill({
         status: 422,

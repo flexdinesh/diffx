@@ -49,11 +49,7 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 		collect := func(ctx context.Context) (daemon.Collection, error) {
 			return collectWorkspaces(ctx, values, input.Paths, stderr)
 		}
-		initial, err := collect(ctx)
-		if err != nil {
-			return err
-		}
-		selected = daemon.Input{Collection: initial, Collect: collect}
+		selected = daemon.Input{Collect: collect}
 	} else {
 		request, err := collectInitialInput(ctx, values, input)
 		if err != nil {
@@ -88,22 +84,19 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 			return strings.EqualFold(strings.TrimSpace(reply.answer), "y") || strings.EqualFold(strings.TrimSpace(reply.answer), "yes"), nil
 		}
 	}, func(status daemon.Status, published daemon.Published) {
+		if input.Kind == "worktree" {
+			address := status.BrowserURL + "/"
+			writeStartup(stdout, loadedInput{mode: "git", directory: label, collecting: true, processed: time.Since(started), mcpURL: status.BrowserURL + "/mcp"}, address)
+			openBrowser(values, address, stderr)
+			return
+		}
 		submitted, ok := published.Newest()
 		if !ok {
 			return
 		}
 		address := status.BrowserURL + "/contexts/" + url.PathEscape(submitted.Context.ID)
 		loaded := submissionInput(submitted, time.Since(started))
-		if input.Kind == "capture" {
-			loaded.mode, loaded.directory = "pipe", ""
-		} else {
-			loaded.directory = label
-			loaded.checkouts, loaded.failed = len(published.Submissions), len(published.Failures)
-			loaded.snapshot.Files = nil
-			for _, value := range published.Submissions {
-				loaded.snapshot.Files = append(loaded.snapshot.Files, value.Snapshot.Files...)
-			}
-		}
+		loaded.mode, loaded.directory = "pipe", ""
 		for _, failure := range published.Failures {
 			fmt.Fprintf(stderr, "  diffx: %s: %s\n", failure.Path, failure.Detail)
 		}
