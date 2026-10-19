@@ -227,7 +227,8 @@ such detail into a token. New layout spacing must use the scale.
 - Activity bar: a fixed `--activity-width` column (48px; 52px for coarse
   pointers) between the projects drawer and file sidebar, spanning the header's
   bottom edge to the shell's bottom inset on the navigation island's `--panel`.
-  Keep the rail and file tree joined without a separator. Views
+  Keep the rail and file tree in one rounded island, separated by the file
+  sidebar's 1px `--border-muted` leading edge. Views
   (Diff now; Files and Git later) are `--activity-item` square ghost icon
   buttons with 20px icons, `--radius-md`, hover `--hover`, and the current view
   in accent text on `--accent-bg` with `aria-current="page"`. Theme and account
