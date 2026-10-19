@@ -1810,6 +1810,177 @@ test("local first launch waits for collection with an empty catalog", async ({
   expect(reviewBounds.width).toBeCloseTo(loadingBounds.width, 0);
 });
 
+for (const initialHeads of ["stored", "arriving"]) {
+  test(`local ${initialHeads} snapshots open during collection and preserve later navigation`, async ({
+    page,
+  }) => {
+    const state = await localWorkspace(page);
+    await page.addInitScript(() => {
+      class IngestionEvents extends EventTarget {
+        notify = () =>
+          this.dispatchEvent(new MessageEvent("ingestion", { data: "{}" }));
+        constructor() {
+          super();
+          window.addEventListener("test-ingestion", this.notify);
+        }
+        close() {
+          window.removeEventListener("test-ingestion", this.notify);
+        }
+      }
+      Object.defineProperty(window, "EventSource", { value: IngestionEvents });
+    });
+    await page.route("**/api/v2/bootstrap", (route) =>
+      route.fulfill({
+        json: {
+          mode: "local",
+          signupEnabled: false,
+          user: null,
+          csrfToken: null,
+          collect: true,
+        },
+      }),
+    );
+    const snapshot = {
+      ...state.context,
+      streamId: "local-stream",
+      latestContextId: state.context.id,
+    };
+    const pinned = { ...state.context, id: "pinned", name: "Pinned review" };
+    let heads = initialHeads === "stored" ? [snapshot] : [];
+    await page.route("**/api/v2/contexts?*", (route) =>
+      route.fulfill({ json: { contexts: heads, nextCursor: null } }),
+    );
+    const opened: string[] = [];
+    await page.route("**/api/v2/contexts/*", (route) => {
+      const id =
+        new URL(route.request().url()).pathname.split("/").at(-1) ?? "";
+      opened.push(id);
+      return route.fulfill({ json: id === "pinned" ? pinned : snapshot });
+    });
+    let pending: Route | undefined;
+    await page.route("**/api/v2/collections*", (route) => {
+      pending = route;
+    });
+    await page.goto("/streams/local-stream");
+    await expect.poll(() => pending !== undefined).toBe(true);
+    if (initialHeads === "arriving") {
+      await expect(page.locator("main.session-status")).toHaveAttribute(
+        "aria-busy",
+        "true",
+      );
+      heads = [snapshot];
+      await page.evaluate(() =>
+        window.dispatchEvent(new Event("test-ingestion")),
+      );
+    }
+    await ready(page);
+    await expect(page.locator("#sync")).toHaveAttribute("aria-busy", "true");
+    await expect(page.locator(".session-status")).toHaveCount(0);
+    // Same-document navigation must survive the earlier collection completing.
+    await page.evaluate(() => {
+      window.history.pushState(null, "", "/contexts/pinned");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await expect(page.locator(".context-identity-name")).toHaveText(
+      "Pinned review",
+    );
+    await ready(page);
+    if (!pending) throw new Error("Missing initial collection");
+    await pending.fulfill({
+      json: {
+        contexts: [{ ...snapshot, id: "newer", latestContextId: "newer" }],
+        failures: [],
+      },
+    });
+    await expect(page.locator("#sync")).toHaveAttribute("aria-busy", "false");
+    await expect(page).toHaveURL(/\/contexts\/pinned$/);
+    expect(opened).toEqual(["local-review", "pinned"]);
+    await ready(page);
+  });
+}
+
+test("unresolved navigation joins collection without reporting a missing stream", async ({
+  page,
+}) => {
+  const state = await localWorkspace(page);
+  await page.route("**/api/v2/bootstrap", (route) =>
+    route.fulfill({
+      json: {
+        mode: "local",
+        signupEnabled: false,
+        user: null,
+        csrfToken: null,
+        collect: true,
+      },
+    }),
+  );
+  await page.route("**/api/v2/contexts?*", (route) =>
+    route.fulfill({ json: { contexts: [], nextCursor: null } }),
+  );
+  const snapshot = {
+    ...state.context,
+    streamId: "local-stream",
+    latestContextId: state.context.id,
+  };
+  await page.route("**/api/v2/contexts/*", (route) =>
+    route.fulfill({ json: snapshot }),
+  );
+  let collections = 0;
+  let pending: Route | undefined;
+  await page.route("**/api/v2/collections*", (route) => {
+    collections++;
+    pending = route;
+  });
+  await page.goto("/");
+  await expect.poll(() => collections).toBe(1);
+  await page.evaluate(() => {
+    window.history.pushState(null, "", "/streams/local-stream");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  const status = page.locator("main.session-status");
+  await expect(status).toHaveAttribute("aria-busy", "true");
+  await expect(status).toContainText("Collecting latest changes");
+  if (!pending) throw new Error("Missing initial collection");
+  await pending.fulfill({ json: { contexts: [snapshot], failures: [] } });
+  await ready(page);
+  await expect(page).toHaveURL(/\/streams\/local-stream$/);
+  await expect(page.locator("#sync")).toHaveAttribute("aria-busy", "false");
+  expect(collections).toBe(1);
+});
+
+test("file previews render independently while other previews are pending", async ({
+  page,
+}) => {
+  const state = await localWorkspace(page);
+  await page.route("**/api/v2/contexts/*/diffs/current?*", (route) => {
+    const repository = state.repository("all");
+    const file = repository.files[0];
+    if (!file) throw new Error("Missing fixture file");
+    return route.fulfill({
+      json: {
+        ...repository,
+        files: [file, { ...file, id: "slow-file", path: "src/slow.ts" }],
+      },
+    });
+  });
+  let pending: Route | undefined;
+  await page.route("**/files/slow-file/patch?*", (route) => {
+    pending = route;
+  });
+  await page.goto("/contexts/local-review");
+  await ready(page);
+  await expect.poll(() => pending !== undefined).toBe(true);
+  await expect(page.locator("#refresh")).toHaveAttribute("aria-busy", "true");
+  await expect(page.getByText("Loading diff…", { exact: true })).toBeVisible();
+  if (!pending) throw new Error("Missing held preview");
+  await pending.fulfill({ json: { patch: "", message: "Slow preview ready" } });
+  await expect(
+    page.getByText("Slow preview ready", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator("#refresh")).toHaveAttribute("aria-busy", "false");
+  await ready(page);
+});
+
 test("stored manifest loading keeps the diff surface mounted until content arrives", async ({
   page,
 }) => {
@@ -1894,6 +2065,9 @@ test("local startup reports failed checkouts while opening collected changes", a
       },
     }),
   );
+  await page.route("**/api/v2/contexts?*", (route) =>
+    route.fulfill({ json: { contexts: [], nextCursor: null } }),
+  );
   await page.route("**/api/v2/collections*", (route) =>
     route.fulfill({
       json: {
@@ -1929,13 +2103,14 @@ test("local live URLs sync the checkouts on every load", async ({ page }) => {
     streamId: "local-stream",
     latestContextId: id,
   });
+  let heads = [snapshot("stored")];
+  const opened: string[] = [];
   await page.route("**/api/v2/contexts?*", (route) =>
-    route.fulfill({
-      json: { contexts: [snapshot("stored")], nextCursor: null },
-    }),
+    route.fulfill({ json: { contexts: heads, nextCursor: null } }),
   );
   await page.route("**/api/v2/contexts/*", (route) => {
     const id = new URL(route.request().url()).pathname.split("/").at(-1) ?? "";
+    opened.push(id);
     return route.fulfill({ json: snapshot(id) });
   });
   let collected = 0;
@@ -1959,24 +2134,29 @@ test("local live URLs sync the checkouts on every load", async ({ page }) => {
       lastChangedAt: 100,
       lastSubmittedAt: 900,
     };
-    return route.fulfill({
-      json: {
-        contexts: [
-          { ...snapshot(`collected-${collected}`), lastChangedAt: 200 },
-          other,
-        ],
-        failures: [],
-      },
-    });
+    heads = [
+      { ...snapshot(`collected-${collected}`), lastChangedAt: 200 },
+      other,
+    ];
+    return route.fulfill({ json: { contexts: heads, failures: [] } });
   });
 
   await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "Collecting latest changes" }),
-  ).toBeVisible();
-  release();
   await ready(page);
+  await expect(page.locator("#sync")).toHaveAttribute("aria-busy", "true");
+  await expect(page.locator(".session-status")).toHaveCount(0);
+  await expect.poll(() => state.scopes.length).toBe(1);
+  release();
+  await expect(page.locator("#sync")).toHaveAttribute("aria-busy", "false");
   await expect(page).toHaveURL(/\/streams\/local-stream$/);
+  expect(collected).toBe(1);
+  expect(opened).toEqual(["stored"]);
+  await expect(page.locator(".snapshot-notice")).toContainText(
+    "Newer snapshot",
+  );
+  await page.getByRole("button", { name: "View latest" }).click();
+  await expect.poll(() => opened.at(-1)).toBe("collected-1");
+  await ready(page);
   expect(collected).toBe(1);
 
   // Collapse state belongs to the stream, so it survives the new snapshot.

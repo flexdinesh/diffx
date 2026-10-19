@@ -17,6 +17,7 @@ import (
 type (
 	Collection        = serverapp.Collection
 	CollectionFailure = serverapp.CollectionFailure
+	Collect           = serverapp.Collect
 	Published         = serverapp.Published
 )
 
@@ -24,7 +25,7 @@ type (
 // background at startup and again on explicit user request.
 type Input struct {
 	Collection Collection
-	Collect    func(context.Context) (Collection, error)
+	Collect    Collect
 }
 
 // RunForeground serializes discovery, replacement and publication. Shutdown

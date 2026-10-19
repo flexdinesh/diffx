@@ -6,13 +6,19 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/fstest"
 	"time"
 
+	"github.com/flexdinesh/diffx/internal/collector"
 	"github.com/flexdinesh/diffx/internal/contextservice"
+	"github.com/flexdinesh/diffx/internal/diffsource"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/serverapp"
@@ -94,14 +100,14 @@ func TestInitialCollectionJoinsFirstRequestAndLaterRequestsCollectAgain(t *testi
 			service, _ := collectionService(t)
 			started, release := make(chan struct{}), make(chan struct{})
 			var calls atomic.Int32
-			collections := serverapp.NewCollections(service, func(ctx context.Context) (serverapp.Collection, error) {
+			collections := serverapp.NewCollections(service, func(ctx context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
 				call := calls.Add(1)
 				if call == 1 {
 					close(started)
 					select {
 					case <-release:
 					case <-ctx.Done():
-						return serverapp.Collection{}, ctx.Err()
+						return nil, ctx.Err()
 					}
 				}
 				fresh := input
@@ -109,7 +115,7 @@ func TestInitialCollectionJoinsFirstRequestAndLaterRequestsCollectAgain(t *testi
 					fresh.SubmissionID = "explicit-sync"
 					fresh.Metadata.CollectedAt++
 				}
-				return serverapp.Collection{Requests: []ingestion.Request{fresh}}, nil
+				return nil, publish(fresh)
 			}, "")
 			completed := runInitialCollection(t, collections)
 			select {
@@ -161,11 +167,11 @@ func TestInitialCollectionFailureIsReportedThenRetryCollectsAgain(t *testing.T) 
 	input := collectGit(t)
 	service, _ := collectionService(t)
 	var calls atomic.Int32
-	collections := serverapp.NewCollections(service, func(context.Context) (serverapp.Collection, error) {
+	collections := serverapp.NewCollections(service, func(_ context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
 		if calls.Add(1) == 1 {
-			return serverapp.Collection{}, errors.New("checkout unavailable")
+			return nil, errors.New("checkout unavailable")
 		}
-		return serverapp.Collection{Requests: []ingestion.Request{input}}, nil
+		return nil, publish(input)
 	}, "")
 	completed := runInitialCollection(t, collections)
 	if err := awaitCollection(t, completed); err == nil || !strings.Contains(err.Error(), "checkout unavailable") {
@@ -191,13 +197,13 @@ func TestExplicitSyncCollectsFreshBeforeAnyBrowserInitialRequest(t *testing.T) {
 	input := collectGit(t)
 	service, _ := collectionService(t)
 	var calls atomic.Int32
-	collections := serverapp.NewCollections(service, func(context.Context) (serverapp.Collection, error) {
+	collections := serverapp.NewCollections(service, func(_ context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
 		fresh := input
 		if calls.Add(1) > 1 {
 			fresh.SubmissionID = "explicit-sync"
 			fresh.Metadata.CollectedAt++
 		}
-		return serverapp.Collection{Requests: []ingestion.Request{fresh}}, nil
+		return nil, publish(fresh)
 	}, "")
 	completed := runInitialCollection(t, collections)
 	if err := awaitCollection(t, completed); err != nil {
@@ -216,16 +222,16 @@ func TestBrowserCancellationDoesNotCancelInitialCollection(t *testing.T) {
 	service, _ := collectionService(t)
 	started, release := make(chan struct{}), make(chan struct{})
 	var calls atomic.Int32
-	collections := serverapp.NewCollections(service, func(ctx context.Context) (serverapp.Collection, error) {
+	collections := serverapp.NewCollections(service, func(ctx context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
 		if calls.Add(1) > 1 {
-			return serverapp.Collection{Requests: []ingestion.Request{input}}, nil
+			return nil, publish(input)
 		}
 		close(started)
 		select {
 		case <-release:
-			return serverapp.Collection{Requests: []ingestion.Request{input}}, nil
+			return nil, publish(input)
 		case <-ctx.Done():
-			return serverapp.Collection{}, ctx.Err()
+			return nil, ctx.Err()
 		}
 	}, "")
 	completed := runInitialCollection(t, collections)
@@ -261,8 +267,8 @@ func TestCollectionScopeStartsEmptyAndPublishesOnlySelectedCheckouts(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	collections := serverapp.NewCollections(service, func(context.Context) (serverapp.Collection, error) {
-		return serverapp.Collection{Requests: []ingestion.Request{input}}, nil
+	collections := serverapp.NewCollections(service, func(_ context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
+		return nil, publish(input)
 	}, "")
 	assets := fstest.MapFS{"index.html": {Data: []byte("review UI")}}
 	handler := serverapp.Handler(t.Context(), service, store, assets, "", serverapp.Options{Collections: collections})
@@ -293,5 +299,99 @@ func TestCollectionScopeStartsEmptyAndPublishesOnlySelectedCheckouts(t *testing.
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v2/contexts/"+stored.Context.ID, nil))
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("unrelated review resolved: %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestInitialCollectionMakesReadyCheckoutReadableWhileAnotherIsCollecting(t *testing.T) {
+	repository := func() string {
+		root := t.TempDir()
+		if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("before\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		for _, args := range [][]string{{"init", "-q"}, {"add", "."}, {"-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "initial"}} {
+			if raw, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v %s", args, err, raw)
+			}
+		}
+		if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("after\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return root
+	}
+	first, second := repository(), repository()
+	service, store := collectionService(t)
+	blocked, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+	var observed int
+	collections := serverapp.NewCollections(service, func(ctx context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
+		options := collector.Options{SourceID: "streaming-startup", OnSource: func(ingestion.Metadata, diffsource.Comparison) {
+			observed++
+			if observed == 2 {
+				close(blocked)
+				select {
+				case <-release:
+				case <-ctx.Done():
+				}
+			}
+		}}
+		batch, err := collector.CollectWorkspaces(ctx, []string{first, second}, 8, options, publish)
+		failures := make([]serverapp.CollectionFailure, 0, len(batch.Failures))
+		for _, failure := range batch.Failures {
+			failures = append(failures, serverapp.CollectionFailure{Path: failure.Path, Detail: failure.Detail})
+		}
+		return failures, err
+	}, "")
+	server := httptest.NewServer(serverapp.Handler(t.Context(), service, store, fstest.MapFS{}, "", serverapp.Options{Collections: collections}))
+	defer server.Close()
+	deployment := deployment{server: server}
+	events, unsubscribe := service.Subscribe()
+	defer unsubscribe()
+	completed := runInitialCollection(t, collections)
+	select {
+	case <-blocked:
+	case <-time.After(5 * time.Second):
+		t.Fatal("second checkout did not block")
+	}
+	select {
+	case <-events:
+	case <-time.After(5 * time.Second):
+		t.Fatal("ready checkout did not publish")
+	}
+	page := decode[contextservice.Page](t, request(t, deployment, http.MethodGet, "/api/v2/contexts", nil))
+	if len(page.Contexts) != 1 {
+		t.Fatalf("partial catalog: %#v", page.Contexts)
+	}
+	id := page.Contexts[0].ID
+	for _, path := range []string{"/api/v2/contexts/" + id, "/api/v2/contexts/" + id + "/diffs/current?scope=all"} {
+		response := request(t, deployment, http.MethodGet, path, nil)
+		response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("ready checkout %s: status %d", path, response.StatusCode)
+		}
+	}
+	select {
+	case err := <-completed:
+		t.Fatalf("collection completed before held checkout: %v", err)
+	default:
+	}
+	releaseOnce.Do(func() { close(release) })
+	if err := awaitCollection(t, completed); err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	collections.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v2/collections?initial=true", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("complete response: %d %s", response.Code, response.Body.String())
+	}
+	var result struct {
+		Contexts []contextservice.Context      `json:"contexts"`
+		Failures []serverapp.CollectionFailure `json:"failures"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Contexts) != 2 || len(result.Failures) != 0 {
+		t.Fatalf("aggregate result: %#v", result)
 	}
 }

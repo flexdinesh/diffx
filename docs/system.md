@@ -37,9 +37,12 @@ for contracts, durability rules and migration details.
 
 `diffx [PATH]` is one foreground process: serve UI/REST/MCP immediately, then
 discover and collect the checkouts under its paths and ingest directly in a
-background task. The UI shows loading feedback while waiting for the first
-snapshots; failures remain visible with Retry. Omitted paths mean the
-current directory; `--path` repeats and `--scan-depth` (default 8) bounds the
+background task. Discovery feeds four workers as checkouts are found; a serial
+publisher ingests each completed checkout immediately, so its snapshot becomes queryable
+while slower checkouts continue. Publication commits and emits the existing
+ingestion event for each observation. The UI opens available snapshots and shows
+loading feedback only for missing data; failures remain visible with Retry.
+Omitted paths mean the current directory; `--path` repeats and `--scan-depth` (default 8) bounds the
 search. Captured snapshots remain fixed after edits and branch switches until the
 user requests collection by loading a live URL or pressing Sync, which discovers
 the paths again and ingests a new snapshot of every checkout; nothing watches Git.
@@ -83,8 +86,14 @@ scan depth, stopping at repositories and skipping hidden, `node_modules` and
 found, at most 256 checkouts from 4096 directories. Each checkout gets its own
 submission ID. Explicit `--branch` recovery remains available for remote collection.
 
-Local composition calls `contextservice.Ingest` directly. Remote collectors
-POST to `/api/v2/ingestion-jobs`, receiving 202 with a durable job/status URL.
+Local composition calls `contextservice.Ingest` directly as each checkout finishes
+collection. Discovery feeds up to four concurrent Git reads, while one serial
+publisher commits their completed requests. A slow checkout does not hold already
+collected snapshots; a failed checkout never publishes an empty result. Cancellation or a fatal publication
+failure cancels and joins the workers. The collection HTTP response still reports
+the complete batch and its checkout failures after every worker finishes.
+Remote collectors POST to `/api/v2/ingestion-jobs`, receiving 202 with a durable
+job/status URL.
 Acceptance records owner, payload hash, submission identity and arrival sequence
 atomically. A leased worker calls the same ingestion operation. The observation,
 scopes, session associations, retry identity and stream head commit atomically.
@@ -114,10 +123,13 @@ opens the stream's latest head when loaded or navigated to, while
 live URLs; the picker opens pinned ones; piped snapshots have no stream and stay
 pinned. A live URL resolves once, so later arrivals raise the notice instead of
 swapping the open review. With local collection enabled, loading `/` or a live
-URL first syncs the checkouts, joining startup on the first load through
-`POST /api/v2/collections?initial=true`, then opens the stream's synced head or,
-for `/`, the most recently active changed one; a failed sync opens the stored
-head and reports the error. Otherwise `/` opens the most recently active changed head's
+URL syncs the checkouts in the background, joining startup on the first load
+through `POST /api/v2/collections?initial=true`. The first available catalog
+head opens immediately: the requested stream's head or, for `/`, the most
+recently active changed one. The open snapshot stays selected when collection
+finishes; a newer head raises the “Newer snapshot” notice with “View latest”.
+Without an available head, the UI waits for collection; failures remain visible
+and offer Retry. Otherwise `/` opens the most recently active changed head's
 live URL. Startup selection and the local default MCP context use the same
 activity ordering.
 Repos and Diff share one navigation panel beside the activity rail, aligned

@@ -26,14 +26,18 @@ stopping at repositories, skipping hidden directories) and collects all of their
 registered worktrees, because one review process serves a developer's whole
 workspace. Stored observations cannot refresh from Git. A local checkout process
 discovers and collects again only on user request (`POST /api/v2/collections`):
-opening a live URL or pressing Sync. Each checkout's collection creates a new
-observation independently; one failure is reported without blocking the others.
+opening a live URL or pressing Sync. Discovery feeds checkouts directly to four
+collection workers through a bounded pipeline. Each finished checkout publishes
+immediately through one serial publication owner, while slower Git reads continue.
+Each observation commits independently; one checkout failure is reported without
+blocking the others. Cancellation stops Git work and joins every worker before
+collection returns.
 Synced snapshots never replace the open review, matching remote arrivals. Piped
 and fixture processes have no collection route. Local queries are scoped to the
 discovered checkouts, or to the capture's submission, because the persistent
 home-directory database retains every earlier run. The entry point supplies an
-initially empty selection and widens it before ingesting a newly discovered
-checkout; `contextservice` applies it to listing, counting, resolution and deletion, and out-of-scope
+initially empty selection and widens it immediately before publishing each
+collected checkout; `contextservice` applies it to listing, counting, resolution and deletion, and out-of-scope
 contexts are not found. A scoped selection without checkouts matches nothing.
 Local listeners and the browser start before checkout discovery and collection. A server-owned task performs the
 initial collection; the first live-page collection request joins its result,

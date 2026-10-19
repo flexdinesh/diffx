@@ -46,8 +46,8 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 	var selected daemon.Input
 	if input.Kind == "worktree" {
 		label = strings.Join(input.Paths, ", ")
-		collect := func(ctx context.Context) (daemon.Collection, error) {
-			return collectWorkspaces(ctx, values, input.Paths, stderr)
+		collect := func(ctx context.Context, publish func(ingestion.Request) error) ([]daemon.CollectionFailure, error) {
+			return collectWorkspaces(ctx, values, input.Paths, stderr, publish)
 		}
 		selected = daemon.Input{Collect: collect}
 	} else {
@@ -108,23 +108,23 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 
 // collectWorkspaces collects every checkout discovered under the selected
 // paths. Discovery diagnostics go to stderr; failures stay in the collection.
-func collectWorkspaces(ctx context.Context, values options, paths []string, stderr io.Writer) (daemon.Collection, error) {
+func collectWorkspaces(ctx context.Context, values options, paths []string, stderr io.Writer, publish func(ingestion.Request) error) ([]daemon.CollectionFailure, error) {
 	settings, err := collectionOptions(values)
 	if err != nil {
-		return daemon.Collection{}, err
+		return nil, err
 	}
-	batch, err := collector.CollectWorkspaces(ctx, paths, values.scanDepth, settings)
+	batch, err := collector.CollectWorkspaces(ctx, paths, values.scanDepth, settings, publish)
 	for _, diagnostic := range batch.Diagnostics {
 		fmt.Fprintf(stderr, "  diffx: %s\n", diagnostic)
 	}
 	if err != nil {
-		return daemon.Collection{}, err
+		return nil, err
 	}
-	collection := daemon.Collection{Requests: batch.Requests}
+	failures := make([]daemon.CollectionFailure, 0, len(batch.Failures))
 	for _, failure := range batch.Failures {
-		collection.Failures = append(collection.Failures, daemon.CollectionFailure{Path: failure.Path, Detail: failure.Detail})
+		failures = append(failures, daemon.CollectionFailure{Path: failure.Path, Detail: failure.Detail})
 	}
-	return collection, nil
+	return failures, nil
 }
 
 func acquireLocalInput(values options, stdin *os.File) (initialInput, error) {

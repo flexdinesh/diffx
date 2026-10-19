@@ -21,7 +21,6 @@ type Failure struct {
 
 // Batch is one collection of every checkout discovered under the workspaces.
 type Batch struct {
-	Requests    []ingestion.Request
 	Failures    []Failure
 	Diagnostics []string
 }
@@ -29,22 +28,13 @@ type Batch struct {
 // CollectWorkspaces discovers the workspaces again and collects each checkout
 // independently with its own submission ID. A failed checkout never blocks the
 // others or becomes an empty observation. Finding no checkout is an error.
-func CollectWorkspaces(ctx context.Context, paths []string, depth int, options Options) (Batch, error) {
+// publish runs serially as requests finish. Its failure cancels and joins all
+// remaining collection before returning. Four workers and a bounded result
+// buffer limit completed requests waiting to publish.
+func CollectWorkspaces(ctx context.Context, paths []string, depth int, options Options, publish func(ingestion.Request) error) (Batch, error) {
 	options, err := defaults(options)
 	if err != nil {
 		return Batch{}, err
-	}
-	discovery, err := DiscoverWorkspaces(ctx, paths, depth, options.SourceID, options.Base)
-	if err != nil {
-		return Batch{}, err
-	}
-	batch := Batch{Diagnostics: discovery.Diagnostics}
-	if len(discovery.Sources) == 0 {
-		detail := "no Git checkouts found in " + strings.Join(paths, ", ")
-		if len(discovery.Diagnostics) > 0 {
-			detail += ": " + strings.Join(discovery.Diagnostics, "; ")
-		}
-		return batch, errors.New(detail)
 	}
 	// Collection runs concurrently; callbacks observe one source at a time.
 	var observed sync.Mutex
@@ -56,34 +46,87 @@ func CollectWorkspaces(ctx context.Context, paths []string, depth int, options O
 		}
 	}
 	type outcome struct {
+		path    string
 		request ingestion.Request
 		err     error
 	}
-	outcomes := make([]outcome, len(discovery.Sources))
-	slots := make(chan struct{}, collectionWorkers)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	jobs := make(chan DiscoverySource)
+	outcomes := make(chan outcome, collectionWorkers)
+	type discovered struct {
+		value Discovery
+		err   error
+	}
+	discoveryDone := make(chan discovered, 1)
+	go func() {
+		value, err := discoverWorkspaces(ctx, paths, depth, options.SourceID, options.Base, func(source DiscoverySource) error {
+			select {
+			case jobs <- source:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
+		close(jobs)
+		discoveryDone <- discovered{value, err}
+	}()
 	var workers sync.WaitGroup
-	for index, source := range discovery.Sources {
+	for range collectionWorkers {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
-			slots <- struct{}{}
-			defer func() { <-slots }()
-			settings := options
-			settings.SubmissionID, settings.TriggerRoot = uuid.NewString(), source.InputPath
-			request, err := Collect(ctx, source.Path, settings)
-			outcomes[index] = outcome{request, err}
+			for source := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				settings := options
+				settings.SubmissionID, settings.TriggerRoot = uuid.NewString(), source.InputPath
+				request, err := Collect(ctx, source.Path, settings)
+				select {
+				case outcomes <- outcome{source.Path, request, err}:
+				case <-ctx.Done():
+					return
+				}
+			}
 		}()
 	}
-	workers.Wait()
-	if err := ctx.Err(); err != nil {
-		return Batch{}, err
-	}
-	for index, result := range outcomes {
-		if result.err != nil {
-			batch.Failures = append(batch.Failures, Failure{Path: discovery.Sources[index].Path, Detail: result.err.Error()})
+	go func() {
+		workers.Wait()
+		close(outcomes)
+	}()
+	batch := Batch{}
+	var publishError error
+	for result := range outcomes {
+		if ctx.Err() != nil {
 			continue
 		}
-		batch.Requests = append(batch.Requests, result.request)
+		if result.err != nil {
+			batch.Failures = append(batch.Failures, Failure{Path: result.path, Detail: result.err.Error()})
+			continue
+		}
+		if err := publish(result.request); err != nil {
+			publishError = err
+			cancel()
+		}
+	}
+	discovery := <-discoveryDone
+	batch.Diagnostics = discovery.value.Diagnostics
+	if publishError != nil {
+		return batch, publishError
+	}
+	if err := ctx.Err(); err != nil {
+		return batch, err
+	}
+	if discovery.err != nil {
+		return batch, discovery.err
+	}
+	if len(discovery.value.Sources) == 0 {
+		detail := "no Git checkouts found in " + strings.Join(paths, ", ")
+		if len(batch.Diagnostics) > 0 {
+			detail += ": " + strings.Join(batch.Diagnostics, "; ")
+		}
+		return batch, errors.New(detail)
 	}
 	return batch, nil
 }

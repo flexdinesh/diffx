@@ -93,19 +93,24 @@ export function useDiff(contextId: string, mode: DiffMode) {
             pending.push(file);
           }
         }
-        setState({
-          repository: {
-            ...data,
-            files: data.files.map((file) => ({ ...file })),
-          },
-          items: new Map(items),
-          busy: true,
-          notice: "",
-          connected: true,
-        });
         let next = 0;
         let failed = 0;
         let loadedBytes = 0;
+        function publish(busy: boolean) {
+          setState({
+            repository: {
+              ...data,
+              files: data.files.map((file) => ({ ...file })),
+            },
+            items: new Map(items),
+            busy,
+            notice: failed
+              ? `${failed} file previews could not load. Refresh to retry.`
+              : "",
+            connected: true,
+          });
+        }
+        publish(true);
         async function loadNext() {
           while (next < pending.length && !signal.aborted) {
             const file = pending[next++];
@@ -218,19 +223,12 @@ export function useDiff(contextId: string, mode: DiffMode) {
                 ),
               );
             }
+            publish(true);
           }
         }
         await Promise.all(Array.from({ length: 4 }, loadNext));
         if (signal.aborted || disposed) return;
-        setState({
-          repository: data,
-          items,
-          busy: false,
-          connected: true,
-          notice: failed
-            ? `${failed} file previews could not load. Refresh to retry.`
-            : "",
-        });
+        publish(false);
       } catch (error) {
         if (signal.aborted || disposed) return;
         setState((previous) => ({

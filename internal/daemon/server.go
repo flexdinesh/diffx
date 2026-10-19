@@ -67,7 +67,7 @@ func Run(ctx context.Context, settings Settings, runtimeDir string, initial *ing
 
 // runServer scopes reads to the capture or discovered checkouts. Checkout
 // discovery and collection start after serving, with an initially empty scope.
-func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings, runtimeDir, instanceID string, initial Collection, collect func(context.Context) (Collection, error), ready func(Status, Published), logger *log.Logger) error {
+func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings, runtimeDir, instanceID string, initial Collection, collect Collect, ready func(Status, Published), logger *log.Logger) error {
 	settings = normalizeSettings(settings)
 	if settings.RetentionDays < 1 || settings.RetentionDays > 106751 {
 		return errors.New("retention-days must be between 1 and 106751")

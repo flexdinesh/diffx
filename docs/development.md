@@ -269,15 +269,25 @@ controls remain available when the rail is hidden; the header shows the open
 review's identity. The selected context scopes every request. The session owner exposes
 local checkout sync when bootstrap reports `collect`; loading `/` or a live
 `/streams/{streamId}` URL, the header's “Sync all checkouts” icon and Alt+R call
-`POST /api/v2/collections`. Load-time sync opens the stream's synced head, or the
-most recently active changed one for `/`, and shows a workspace skeleton with
-“Collecting latest changes” in its status bar until it resolves. Skeletons retain
-shell geometry and display preferences, hide decorative placeholders from assistive
+`POST /api/v2/collections`. Load-time sync runs in the background while the
+first available stored head opens: the requested stream's head, or the most
+recently active changed one for `/`. Collection completion never replaces an
+open review; the newer-head notice offers “View latest”. A workspace skeleton
+with “Collecting latest changes” appears only while no review is available.
+Skeletons retain shell geometry and display preferences, hide decorative placeholders from assistive
 technology, and respect reduced motion. Stored manifest loading uses the same diff
-skeleton while keeping Pierre mounted. The listener opens before background startup collection. Load-time
-requests send `initial=true` to join startup once without collecting twice;
-explicit Sync requests always collect fresh snapshots. While discovery is pending,
-the process scope matches no stored contexts. Startup failures keep the server
+skeleton while keeping Pierre mounted. File previews replace their placeholders
+individually as they arrive; loaded previews remain usable while others load.
+The header busy indicator stays active through collection and preview loading.
+The listener opens before background startup collection. Collection uses four
+Git workers fed directly by discovery and publishes each completed checkout
+immediately through one serial publisher. Discovery, Git reads and publication
+overlap through bounded channels. Ingestion events refresh the catalog while
+other checkouts continue; the batch response waits for every worker. Cancellation
+and fatal publication errors cancel and join the workers before returning.
+Load-time requests send `initial=true` to join startup once without collecting
+twice; explicit Sync requests always collect fresh snapshots. The process scope
+starts empty and widens with each published checkout, while discovery may continue. Startup failures keep the server
 available and show Retry when no stored review can open. An explicit sync never
 replaces the open review: it reloads the heads,
 so the newer-head notice, drawer dots and global unread action announce new

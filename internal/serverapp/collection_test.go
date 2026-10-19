@@ -71,9 +71,16 @@ func TestOlderCollectionRemainsSuccessfulWithoutRegressingStreamHead(t *testing.
 	if !ok || fallback.Context.ID != published.Submissions[0].Context.ID {
 		t.Fatalf("successful older collection lost its default: %+v, %v", fallback, ok)
 	}
-	handler := NewCollections(service, func(ctx context.Context) (Collection, error) {
+	var handler *Collections
+	handler = NewCollections(service, func(_ context.Context, publish func(ingestion.Request) error) ([]CollectionFailure, error) {
 		request.SubmissionID = "earlier-clock-again"
-		return Collection{Requests: []ingestion.Request{request}}, nil
+		if err := publish(request); err != nil {
+			return nil, err
+		}
+		if handler.current.get() != fallback.Context.ID {
+			t.Error("MCP default waited for collection completion")
+		}
+		return nil, nil
 	}, later.Context.ID)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v2/collections", nil))

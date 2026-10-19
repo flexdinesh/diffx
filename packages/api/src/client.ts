@@ -20,6 +20,7 @@ export type ApiFilePatch = components["schemas"]["FilePatch"];
 export type ApiFileContents = components["schemas"]["FileContents"];
 export type ApiReviewComment = components["schemas"]["ReviewComment"];
 export type ApiReviewMark = components["schemas"]["ReviewMark"];
+export type ApiCollectionResult = components["schemas"]["CollectionResult"];
 export type ApiCollectionFailure = components["schemas"]["CollectionFailure"];
 
 export function errorDetail(error: unknown, fallback: string) {

@@ -86,12 +86,80 @@ func DiscoverCheckout(ctx context.Context, input, sourceID, base string) (Discov
 // including those outside the paths. It never fetches, switches branches,
 // creates worktrees or follows symbolic links.
 func DiscoverWorkspaces(ctx context.Context, inputs []string, depth int, sourceID, base string) (Discovery, error) {
+	return discoverWorkspaces(ctx, inputs, depth, sourceID, base, nil)
+}
+
+func discoverWorkspaces(ctx context.Context, inputs []string, depth int, sourceID, base string, visit func(DiscoverySource) error) (Discovery, error) {
 	var result Discovery
 	if base == "" {
 		base = "auto"
 	}
-	type repository struct{ input, root string }
-	roots := make([]repository, 0)
+	seenRepositories, seenSources := make(map[string]bool), make(map[string]string)
+	sourceLimitReported := false
+	limitReached := func() bool {
+		if len(result.Sources) < checkoutLimit {
+			return false
+		}
+		if !sourceLimitReported {
+			result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("checkout discovery reached %d-checkout limit; narrow --path or --scan-depth", checkoutLimit))
+			sourceLimitReported = true
+		}
+		return true
+	}
+	discoverRepository := func(input, root string) error {
+		if limitReached() {
+			return nil
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		facts, err := diffsource.Metadata(ctx, root)
+		if err != nil {
+			result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("identify repository %s: %v", root, err))
+			return nil
+		}
+		// Enumeration deduplicates physical Git stores only. Independent clones
+		// can share a repository key while retaining distinct checkout identities.
+		if seenRepositories[facts.CommonDir] {
+			return nil
+		}
+		seenRepositories[facts.CommonDir] = true
+		_, worktrees, err := diffsource.RepositoryWorktrees(ctx, root)
+		if err != nil {
+			result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("list worktrees %s: %v", root, err))
+			return nil
+		}
+		for _, worktree := range worktrees {
+			if limitReached() {
+				break
+			}
+			if _, err := os.Stat(worktree.Root); err != nil {
+				result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("worktree unavailable %s: %v", worktree.Root, err))
+				continue
+			}
+			identity, err := SourceIdentity(ctx, worktree.Root, sourceID, "", base)
+			if err != nil {
+				result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("identify %s: %v", worktree.Root, err))
+				continue
+			}
+			if previous, exists := seenSources[identity]; exists {
+				if previous != worktree.Root {
+					result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("collector identity copied across %s and %s; duplicate source skipped, use separate source IDs", previous, worktree.Root))
+				}
+				continue
+			}
+			seenSources[identity] = worktree.Root
+			source := DiscoverySource{InputPath: input, Path: worktree.Root, Base: base, Identity: identity}
+			result.Sources = append(result.Sources, source)
+			if visit != nil {
+				if err := visit(source); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
 	visited := 0
 	visitLimitReported := false
 	var scan func(input, path string, remaining int) error
@@ -119,8 +187,7 @@ func DiscoverWorkspaces(ctx context.Context, inputs []string, depth int, sourceI
 			// Only a .git entry can start a repository below a non-repository parent.
 			source, err := diffsource.OpenRepository(ctx, path)
 			if err == nil {
-				roots = append(roots, repository{input, source.Root()})
-				return nil
+				return discoverRepository(input, source.Root())
 			}
 			if !errors.Is(err, diffsource.ErrNotRepository) {
 				result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("inspect %s: %v", path, err))
@@ -152,7 +219,9 @@ func DiscoverWorkspaces(ctx context.Context, inputs []string, depth int, sourceI
 		// An explicit path may sit anywhere inside a repository.
 		source, err := diffsource.OpenRepository(ctx, input)
 		if err == nil {
-			roots = append(roots, repository{input, source.Root()})
+			if err := discoverRepository(input, source.Root()); err != nil {
+				return result, err
+			}
 			continue
 		}
 		if !errors.Is(err, diffsource.ErrNotRepository) {
@@ -161,64 +230,6 @@ func DiscoverWorkspaces(ctx context.Context, inputs []string, depth int, sourceI
 		}
 		if err := scan(input, input, depth); err != nil {
 			return result, err
-		}
-	}
-	seenRepositories, seenSources := make(map[string]bool), make(map[string]string)
-	sourceLimitReported := false
-	limitReached := func() bool {
-		if len(result.Sources) < checkoutLimit {
-			return false
-		}
-		if !sourceLimitReported {
-			result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("checkout discovery reached %d-checkout limit; narrow --path or --scan-depth", checkoutLimit))
-			sourceLimitReported = true
-		}
-		return true
-	}
-	for _, found := range roots {
-		if limitReached() {
-			break
-		}
-		if err := ctx.Err(); err != nil {
-			return result, err
-		}
-		facts, err := diffsource.Metadata(ctx, found.root)
-		if err != nil {
-			result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("identify repository %s: %v", found.root, err))
-			continue
-		}
-		// Enumeration deduplicates physical Git stores only. Independent clones
-		// can share a repository key while retaining distinct checkout identities.
-		if seenRepositories[facts.CommonDir] {
-			continue
-		}
-		seenRepositories[facts.CommonDir] = true
-		_, worktrees, err := diffsource.RepositoryWorktrees(ctx, found.root)
-		if err != nil {
-			result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("list worktrees %s: %v", found.root, err))
-			continue
-		}
-		for _, worktree := range worktrees {
-			if limitReached() {
-				break
-			}
-			if _, err := os.Stat(worktree.Root); err != nil {
-				result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("worktree unavailable %s: %v", worktree.Root, err))
-				continue
-			}
-			identity, err := SourceIdentity(ctx, worktree.Root, sourceID, "", base)
-			if err != nil {
-				result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("identify %s: %v", worktree.Root, err))
-				continue
-			}
-			if previous, exists := seenSources[identity]; exists {
-				if previous != worktree.Root {
-					result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("collector identity copied across %s and %s; duplicate source skipped, use separate source IDs", previous, worktree.Root))
-				}
-				continue
-			}
-			seenSources[identity] = worktree.Root
-			result.Sources = append(result.Sources, DiscoverySource{InputPath: found.input, Path: worktree.Root, Base: base, Identity: identity})
 		}
 	}
 	return result, ctx.Err()
