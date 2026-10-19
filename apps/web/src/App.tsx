@@ -1,10 +1,10 @@
-import { ActivityBar } from "./ActivityBar.tsx";
 import { useReviewState } from "./app-state.tsx";
 import { OutdatedCommentsNotice } from "./CommentsPanel.tsx";
 import { DiffWorkspace } from "./DiffWorkspace.tsx";
-import { FileExplorerNav, SidebarResizer } from "./FileExplorerNav.tsx";
+import { FileExplorerNav } from "./FileExplorerNav.tsx";
 import { Header } from "./Header.tsx";
-import { NewerSnapshotNotice, ProjectsNav } from "./ProjectsNav.tsx";
+import { Navigation } from "./Navigation.tsx";
+import { NewerSnapshotNotice } from "./ProjectsNav.tsx";
 import { CopyDialog } from "./review.tsx";
 import { capabilityEnabled, useSession } from "./session-context.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
@@ -17,12 +17,9 @@ export function App() {
       <Header />
       <SidebarBackdrop />
       <div className="workbench">
-        <div className="navigation-island">
-          <ActivityBar />
-          <ProjectsNav />
+        <Navigation>
           <FileExplorerNav />
-        </div>
-        <SidebarResizer />
+        </Navigation>
         <div className="workspace">
           <NewerSnapshotNotice />
           <OutdatedCommentsNotice />

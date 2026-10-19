@@ -1369,6 +1369,21 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
   const view = page.getByRole("button", { name: "Diff", exact: true });
   await expect(page.locator("#file-count")).not.toHaveText("0");
   await expect(brand).toHaveText("diffx");
+  await expect(page.locator(".activity-views button")).toHaveCount(2);
+  expect(
+    await page
+      .locator(".activity-views button")
+      .evaluateAll((buttons) =>
+        buttons.map((button) => button.getAttribute("aria-label")),
+      ),
+  ).toEqual(["Diff", "Repos"]);
+  await expect(
+    page.locator(".topbar .header-actions > :last-child"),
+  ).toHaveAttribute("id", "theme");
+  await expect(page.locator(".activity-bar #theme")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Delete snapshot", exact: true }),
+  ).toHaveCount(0);
   await expect(view).toBeVisible();
   await expect(
     page.locator(".topbar #projects-toggle, .topbar #sidebar-toggle"),
@@ -1376,7 +1391,7 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
   const filter = page.getByRole("searchbox", { name: "Filter files" });
   await filter.fill("value");
   const before = await brand.boundingBox();
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page.getByRole("button", { name: "Repos", exact: true }).click();
   await expect(page.locator("#projects-nav")).toBeVisible();
   await expect(page.locator("#sidebar")).toBeHidden();
   const after = await brand.boundingBox();
@@ -1448,12 +1463,12 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
 
   expect(styles).toMatchObject({
     refresh: "16px",
-    theme: "20px",
+    theme: "16px",
     view: "20px",
     tabBorderWidth: "1px",
     indicatorOpacity: "1",
     dividerHeight: 16,
-    headerHeight: 40,
+    headerHeight: 36,
   });
   expect(styles.identity).toBe(styles.viewOptions);
   expect(styles.chromeStrokes.every((stroke) => stroke === "1.7px")).toBe(true);
@@ -1461,44 +1476,122 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
   expect(styles.indicatorColor).toBe(styles.accent);
 });
 
-test("sidebar resizer preserves drag distance across shell offsets", async ({
+test("header text stays centered and Theme reaches the shell edge", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.locator("#file-count")).not.toHaveText("0");
+  for (const width of [1627, 800, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    // A native diff scrollbar must not pull shell actions inward.
+    await page
+      .locator("html")
+      .evaluate((element) =>
+        element.style.setProperty("--diff-viewport-inset", "17px"),
+      );
+    const geometry = await page.locator(".topbar").evaluate((header) => {
+      const box = header.getBoundingClientRect();
+      const theme = header.querySelector("#theme");
+      if (!theme) throw new Error("Missing Theme action");
+      const themeBox = theme.getBoundingClientRect();
+      const labels = Array.from(
+        header.querySelectorAll(
+          ".brand > span, .context-identity-name, .context-identity-branch, .context-identity-separator, .context-identity-worktree-name, #repo-path",
+        ),
+      )
+        .filter((element) => element.getBoundingClientRect().width > 0)
+        .map((element) => {
+          const label = element.getBoundingClientRect();
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const text = range.getBoundingClientRect();
+          return {
+            boxOffset: Math.abs(
+              label.y + label.height / 2 - (box.y + box.height / 2),
+            ),
+            textOffset: Math.abs(
+              text.y + text.height / 2 - (box.y + box.height / 2),
+            ),
+            topClearance: text.top - label.top,
+            bottomClearance: label.bottom - text.bottom,
+          };
+        });
+      return {
+        rightInset: box.right - themeBox.right,
+        iconOffset: Math.abs(
+          themeBox.y + themeBox.height / 2 - (box.y + box.height / 2),
+        ),
+        labels,
+      };
+    });
+    expect(geometry.rightInset).toBe(0);
+    expect(geometry.iconOffset).toBe(0);
+    expect(geometry.labels.length).toBeGreaterThan(0);
+    for (const label of geometry.labels) {
+      expect(label.boxOffset).toBeLessThanOrEqual(0.5);
+      expect(label.textOffset).toBeLessThanOrEqual(1);
+      expect(label.topClearance).toBeGreaterThanOrEqual(0);
+      expect(label.bottomClearance).toBeGreaterThanOrEqual(0);
+    }
+  }
+});
+
+test("shared navigation resizer preserves width across Diff and Repos", async ({
   page,
 }) => {
   await page.goto("/");
   const resizer = page.getByRole("separator", {
-    name: "Resize file sidebar",
+    name: "Resize navigation panel",
   });
+  const panel = page.locator(".navigation-panel");
   await expect(resizer).toBeVisible();
   const paneGap = () =>
-    page.locator("main").evaluate((element) => {
-      const sidebar = document.querySelector("#sidebar");
-      if (!sidebar) throw new Error("Missing sidebar");
+    page.locator(".workspace").evaluate((element) => {
+      const navigation = document.querySelector(".navigation-island");
+      if (!navigation) throw new Error("Missing shared navigation");
       return (
         element.getBoundingClientRect().left -
-        sidebar.getBoundingClientRect().right
+        navigation.getBoundingClientRect().right
       );
     });
-  expect(await paneGap()).toBe(6);
-  for (const switchViews of [false, true]) {
-    if (switchViews) {
-      await page.getByRole("button", { name: "Projects", exact: true }).click();
-      await expect(resizer).toBeHidden();
-      await page.getByRole("button", { name: "Diff", exact: true }).click();
-    }
-    const box = await resizer.boundingBox();
-    expect(box?.height ?? 0).toBeGreaterThan(100);
+  const initialWidth = Number(await resizer.getAttribute("aria-valuenow"));
+  for (const view of ["Diff", "Repos"]) {
+    if (view === "Repos")
+      await page.getByRole("button", { name: view, exact: true }).click();
+    await expect(resizer).toBeVisible();
     const before = Number(await resizer.getAttribute("aria-valuenow"));
-    if (!box) throw new Error("Missing sidebar resizer bounds");
+    await expect(panel).toHaveCSS("width", `${before}px`);
+    const box = await resizer.boundingBox();
+    if (!box) throw new Error("Missing navigation resizer bounds");
+    const island = await page.locator(".navigation-island").boundingBox();
+    if (!island) throw new Error("Missing navigation bounds");
+    expect(box.height).toBe(island.height);
+    expect(box.x + 3).toBe(island.x + island.width);
     await page.mouse.move(box.x + box.width / 2, box.y + 20);
     await page.mouse.down();
     await page.mouse.move(box.x + box.width / 2 + 40, box.y + 20);
     await page.mouse.up();
     await expect(resizer).toHaveAttribute("aria-valuenow", String(before + 40));
+    await expect(panel).toHaveCSS("width", `${before + 40}px`);
     expect(await paneGap()).toBe(6);
     await resizer.focus();
     await page.keyboard.press("ArrowLeft");
-    await expect(resizer).toHaveAttribute("aria-valuenow", String(before + 20));
+    await expect(panel).toHaveCSS("width", `${before + 20}px`);
   }
+  const resizedWidth = initialWidth + 40;
+  await page.getByRole("button", { name: "Diff", exact: true }).click();
+  await expect(panel).toHaveCSS("width", `${resizedWidth}px`);
+  await page.reload();
+  await expect(resizer).toHaveAttribute("aria-valuenow", String(resizedWidth));
+  await expect(panel).toHaveCSS("width", `${resizedWidth}px`);
+  await page.getByRole("button", { name: "Repos", exact: true }).click();
+  await expect(panel).toHaveCSS("width", `${resizedWidth}px`);
+  await page.getByRole("button", { name: "Repos", exact: true }).click();
+  await expect(resizer).toBeHidden();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Show repos" }).click();
+  await expect(page.getByRole("dialog", { name: "Repos" })).toBeVisible();
+  await expect(resizer).toBeHidden();
 });
 
 test("copy dialog reports clipboard status and restores focus", async ({
@@ -1815,9 +1908,6 @@ test("drawer aligns its header and retains desktop navigation density", async ({
       const toolbar = await page.locator(".toolbar").boundingBox();
       const theme = await page.locator("#theme").boundingBox();
       const options = await page.locator("#view-options").boundingBox();
-      const remove = await page
-        .getByRole("button", { name: "Delete snapshot", exact: true })
-        .boundingBox();
       const collapse = await page.locator("#toggle-all-files").boundingBox();
       expect(header.height).toBe(44);
       expect(toolbar?.height).toBe(header.height);
@@ -1825,8 +1915,8 @@ test("drawer aligns its header and retains desktop navigation density", async ({
       expect(theme?.height).toBe(44);
       expect(options?.width).toBe(theme?.width);
       expect(options?.height).toBe(theme?.height);
-      expect(options?.x).toBe(remove?.x);
-      expect(collapse?.x).toBe(theme?.x);
+      expect(theme && theme.x + theme.width).toBe(header.x + header.width);
+      expect(collapse?.width).toBe(theme?.width);
     }
     await page
       .locator("#sidebar")

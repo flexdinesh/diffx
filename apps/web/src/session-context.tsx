@@ -14,15 +14,16 @@ import {
   useRef,
   useState,
 } from "react";
-import { ActivityBar, ShellActions } from "./ActivityBar.tsx";
+import { AccountButton } from "./account.tsx";
+import { ThemeButton } from "./ThemeButton.tsx";
 import { useIdentity, navigate } from "./identity-context.tsx";
 import { Button } from "@/components/ui/button";
 import { ContextIdentity } from "./ContextIdentity.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
+import { Navigation } from "./Navigation.tsx";
 import {
   HeaderBrand,
   NewChangesButton,
-  ProjectsNav,
   ProjectsToggle,
 } from "./ProjectsNav.tsx";
 import { latestChangedContext } from "./context-activity.ts";
@@ -457,14 +458,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 <CurrentContext />
                 <div className="header-actions">
                   <NewChangesButton />
-                  {compact && <ShellActions side="bottom" />}
+                  {compact && <AccountButton />}
+                  <ThemeButton />
                 </div>
               </header>
               <div className="workbench">
-                <div className="navigation-island">
-                  <ActivityBar diffReady={false} />
-                  <ProjectsNav />
-                </div>
+                <Navigation />
                 <main
                   className="session-status"
                   role="status"
@@ -490,7 +489,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                   <p>
                     {statusError ||
                       (missing
-                        ? "This stream's snapshots expired or were deleted. Pick current work from Projects."
+                        ? "This stream's snapshots expired or were deleted. Pick current work from Repos."
                         : empty
                           ? remote
                             ? "Create a collector token in settings, then run diffx sync to publish your changes."

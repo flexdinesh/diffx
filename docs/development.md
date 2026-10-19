@@ -259,11 +259,12 @@ navigation, draft, review, reviewed files, and collapse state. Collapsed diff
 files (per stream and scope) and closed tree folders (per stream) persist in
 `sessionStorage`, so reloads and newer snapshots keep them within a tab; piped
 snapshots key by context. One draft persists
-across scopes. Context selection uses the Projects view and the popup picker (Cmd/Ctrl+K
-or the Projects “Search reviews” magnifier). Projects and Diff share the panel
+across scopes. Context selection uses the Repos view and the popup picker (Cmd/Ctrl+K
+or the Repos “Search reviews” magnifier). Repos and Diff share the panel
 beside the activity rail; selecting a stream loads its diff and switches to the
 file tree. Clicking the active view toggles the panel. `use-sidebar.ts` owns
-view selection, visibility, width and mobile drawer focus. Compact header
+view selection, visibility, shared width and mobile drawer focus.
+`Navigation.tsx` owns the common frame and resize handle for both views. Compact header
 controls remain available when the rail is hidden; the header shows the open
 review's identity. The selected context scopes every request. The session owner exposes
 local checkout sync when bootstrap reports `collect`; loading `/` or a live
@@ -315,8 +316,9 @@ repository grouping. Unavailable entries are disabled and skipped during keyboar
 navigation. Filter selections persist while navigating and reopening the picker.
 Switching disposes the previous workspace's request ownership and resets transient
 state.
-The header's delete action removes the selected snapshot, all
-its stored diff scopes, comments, and reviewed-file marks after confirmation.
+The compact header keeps Theme at its trailing edge and exposes no snapshot
+delete action. Snapshot deletion through the API removes its stored diff scopes,
+comments, and reviewed-file marks.
 Deletion preserves stream freshness history; older snapshots remain stale.
 It leaves Git files untouched, and a new collection can create a review again.
 The footer shows the selected scope's actual baseline. Its Diff comparison popover

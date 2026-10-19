@@ -32,7 +32,7 @@ const shortcut = navigator.platform.includes("Mac") ? "⌘K" : "Ctrl K";
 export function ProjectsToggle() {
   const sidebar = useSidebarState();
   const expanded = sidebar.view === "projects" && sidebar.expanded;
-  const action = expanded ? "Hide projects" : "Show projects";
+  const action = expanded ? "Hide repos" : "Show repos";
   return (
     <div className="topbar-lead">
       <Button
@@ -56,7 +56,7 @@ export function HeaderBrand() {
   return (
     <>
       <a className="brand" href="/" aria-label="diffx home">
-        diffx
+        <span>diffx</span>
       </a>
       <Separator className="header-divider" orientation="vertical" />
     </>
@@ -115,25 +115,25 @@ export function ProjectsNav() {
         <button
           type="button"
           className="sidebar-backdrop"
-          aria-label="Close projects"
+          aria-label="Close repos"
           tabIndex={-1}
           onClick={sidebar.closeMobile}
         />
       )}
-      <nav
+      <div
         id="projects-nav"
         className={
           sidebar.open && sidebar.view === "projects"
             ? "projects-nav open"
             : "projects-nav"
         }
-        aria-label="Projects"
-        role={sidebar.mobile && expanded ? "dialog" : undefined}
+        aria-label="Repos"
+        role={sidebar.mobile && expanded ? "dialog" : "navigation"}
         aria-modal={sidebar.mobile && expanded ? "true" : undefined}
         hidden={!expanded}
       >
         <div className="projects-nav-header">
-          <h2 className="projects-heading">Projects</h2>
+          <h2 className="projects-heading">Repos</h2>
           <Button
             type="button"
             id="projects-browse"
@@ -153,7 +153,7 @@ export function ProjectsNav() {
             className="mobile-only"
             variant="ghost"
             size="icon"
-            aria-label="Close projects"
+            aria-label="Close repos"
             onClick={sidebar.closeMobile}
           >
             <XIcon aria-hidden="true" />
@@ -183,7 +183,7 @@ export function ProjectsNav() {
             />
           )}
         </div>
-      </nav>
+      </div>
     </>
   );
 }
@@ -302,10 +302,10 @@ function ProjectsEmpty({
     >
       <p>
         {collecting
-          ? "Collecting projects…"
+          ? "Collecting repos…"
           : loaded
             ? "No current changes"
-            : "Loading projects…"}
+            : "Loading repos…"}
       </p>
       {loaded && !collecting && (
         <p className="projects-empty-hint">

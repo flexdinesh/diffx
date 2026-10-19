@@ -97,7 +97,7 @@ freshness follows collection time and acceptance sequence.
 
 ### Browse and review
 
-Navigation is project-driven. The Projects drawer queries
+Navigation is project-driven. The Repos drawer queries
 `/api/v2/contexts?latest=true`, which omits stale snapshots, and groups stream
 heads by repository. A stream is one owner, source, repository, checkout, branch
 and comparison policy; every context carries its opaque `streamId` and the
@@ -110,7 +110,7 @@ existing heads as seen; opening a head clears its mark. Ingestion events reload
 the heads; when the viewed context's stream has a newer head, a notice offers it
 without replacing the open review. URLs are live or pinned: `/streams/{streamId}`
 opens the stream's latest head when loaded or navigated to, while
-`/contexts/{contextId}` pins one snapshot. Projects rows and “View latest” open
+`/contexts/{contextId}` pins one snapshot. Repos rows and “View latest” open
 live URLs; the picker opens pinned ones; piped snapshots have no stream and stay
 pinned. A live URL resolves once, so later arrivals raise the notice instead of
 swapping the open review. With local collection enabled, loading `/` or a live
@@ -120,10 +120,11 @@ for `/`, the most recently active changed one; a failed sync opens the stored
 head and reports the error. Otherwise `/` opens the most recently active changed head's
 live URL. Startup selection and the local default MCP context use the same
 activity ordering.
-Projects and Diff share one navigation panel beside the activity rail, aligned
+Repos and Diff share one navigation panel beside the activity rail, aligned
 with the diff below the header. Selecting a stream loads its diff and opens the
-Diff file tree; clicking the active rail icon collapses its panel. Compact
-layouts keep drawer controls in the header. The Projects magnifier opens the
+Diff file tree; clicking the active rail icon collapses its panel. Diff appears
+first, then Repos; both views share one saved width and parent resize handle. Compact
+layouts keep drawer controls in the header. The Repos magnifier opens the
 review picker; the header names the open review. An explicit local sync, like an arrival,
 raises the notice instead of replacing the open review.
 
@@ -148,7 +149,7 @@ head selection. Unchanged submissions can update ordering without producing an
 unread-content indicator. Piped history and the full catalog retain their
 existing collection/submission chronology.
 
-The review picker, opened by Cmd/Ctrl+K or the Projects “Search reviews”
+The review picker, opened by Cmd/Ctrl+K or the Repos “Search reviews”
 action, loads the full catalog only while open. It selects a
 repository, then an observation identified by worktree, branch, source, run and time. Distinct
 content from the same worktree remains independently selectable; unchanged

@@ -1,27 +1,12 @@
-import {
-  FileDiffIcon,
-  FolderGit2Icon,
-  MonitorIcon,
-  MoonIcon,
-  SunIcon,
-} from "lucide-react";
+import { FileDiffIcon, FolderGit2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { AccountButton } from "./account.tsx";
-import { useAppearance } from "./appearance-context.tsx";
-import { readThemePreference, type ThemePreference } from "./theme.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
 import { useCompactChrome } from "./use-compact-chrome.ts";
 
 const views = [
-  { id: "projects", label: "Projects", Icon: FolderGit2Icon },
   { id: "diff", label: "Diff", Icon: FileDiffIcon },
+  { id: "projects", label: "Repos", Icon: FolderGit2Icon },
 ] satisfies {
   id: "projects" | "diff";
   label: string;
@@ -71,70 +56,8 @@ export function ActivityBar({ diffReady = true }: { diffReady?: boolean }) {
         ))}
       </ul>
       <div className="activity-actions">
-        <ShellActions side="right" />
+        <AccountButton />
       </div>
     </nav>
-  );
-}
-
-/** Theme and account actions: activity bar bottom, or header when compact. */
-export function ShellActions({ side }: { side: "right" | "bottom" }) {
-  return (
-    <>
-      <ThemeMenu side={side} />
-      <AccountButton />
-    </>
-  );
-}
-
-function themeLabel(theme: ThemePreference) {
-  if (theme === "light") return "Light";
-  if (theme === "dark") return "Dark";
-  return "System";
-}
-
-function ThemeMenu({ side }: { side: "right" | "bottom" }) {
-  const { themePreference, setThemePreference } = useAppearance();
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            type="button"
-            id="theme"
-            variant="ghost"
-            size="icon"
-            aria-label={`Theme: ${themeLabel(themePreference)}`}
-            title={`Theme: ${themeLabel(themePreference)}`}
-          />
-        }
-      >
-        {themePreference === "system" ? (
-          <MonitorIcon aria-hidden="true" />
-        ) : themePreference === "dark" ? (
-          <MoonIcon aria-hidden="true" />
-        ) : (
-          <SunIcon aria-hidden="true" />
-        )}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side={side} align="end" aria-label="Theme">
-        <DropdownMenuRadioGroup
-          value={themePreference}
-          onValueChange={(value: unknown) =>
-            setThemePreference(readThemePreference(value))
-          }
-        >
-          <DropdownMenuRadioItem value="light" closeOnClick>
-            <SunIcon aria-hidden="true" /> Light
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="dark" closeOnClick>
-            <MoonIcon aria-hidden="true" /> Dark
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="system" closeOnClick>
-            <MonitorIcon aria-hidden="true" /> System
-          </DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }

@@ -99,11 +99,24 @@ kbd {
 .topbar {
   height: var(--topbar-height);
   display: flex;
-  gap: var(--space-2);
+  gap: var(--space-1-5);
   align-items: center;
   background: var(--shell-canvas);
-  padding: 0 calc(var(--diff-gutter) + var(--diff-viewport-inset, 0px)) 0
-    var(--diff-gutter);
+  padding: 0 0 0 var(--diff-gutter);
+}
+/* Center mixed UI/mono text by cap height; padding preserves clipped descenders. */
+.topbar
+  :is(
+    .brand > span,
+    .context-identity-name,
+    .context-identity-branch,
+    .context-identity-separator,
+    .context-identity-worktree-name,
+    .header-heading h1:not(.sr-only),
+    #repo-path
+  ) {
+  text-box: trim-both cap alphabetic;
+  padding-block: var(--space-2);
 }
 /* Compact entry point when the activity rail is hidden. */
 .topbar-lead {
@@ -220,6 +233,16 @@ kbd {
 .navigation-island {
   display: flex;
   min-height: 0;
+  position: relative;
+}
+.navigation-panel {
+  display: flex;
+  flex: 0 0 var(--sidebar-width);
+  width: var(--sidebar-width);
+  min-height: 0;
+}
+.navigation-panel[hidden] {
+  display: none;
 }
 .workspace,
 .workbench > main {
@@ -274,8 +297,8 @@ kbd {
   color: var(--accent);
 }
 .projects-nav {
-  flex: 0 0 var(--projects-width);
-  width: var(--projects-width);
+  flex: 1;
+  width: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -455,8 +478,8 @@ kbd {
   white-space: nowrap;
 }
 .sidebar {
-  flex: 0 0 var(--sidebar-width);
-  width: var(--sidebar-width);
+  flex: 1;
+  width: 100%;
   min-height: 0;
   overflow: auto;
   display: flex;
@@ -997,6 +1020,9 @@ h2 {
   background: var(--backdrop);
 }
 @media (max-width: 1011px) {
+  .navigation-panel:not([hidden]) {
+    display: contents;
+  }
   .mobile-review-progress {
     display: inline;
     flex-shrink: 0;

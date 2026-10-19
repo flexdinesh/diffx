@@ -1,7 +1,7 @@
 import { FolderSyncIcon, ListTreeIcon, RefreshCwIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ShellActions } from "./ActivityBar.tsx";
-import { DeleteContextButton } from "./DeleteContextButton.tsx";
+import { AccountButton } from "./account.tsx";
+import { ThemeButton } from "./ThemeButton.tsx";
 import {
   HeaderBrand,
   NewChangesButton,
@@ -66,7 +66,6 @@ export function Header() {
       </div>
       <div className="header-actions">
         <NewChangesButton />
-        <DeleteContextButton />
         {collect ? (
           <Button
             type="button"
@@ -103,7 +102,8 @@ export function Header() {
             </span>
           </Button>
         )}
-        {compact && <ShellActions side="bottom" />}
+        {compact && <AccountButton />}
+        <ThemeButton />
       </div>
     </header>
   );

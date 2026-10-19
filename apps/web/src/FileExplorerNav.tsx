@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -231,49 +231,5 @@ export function FileExplorerNav() {
         <span className="read-only">Git unchanged</span>
       </div>
     </aside>
-  );
-}
-
-export function SidebarResizer() {
-  const sidebar = useSidebarState();
-  const drag = useRef({ x: 0, width: sidebar.width });
-  return (
-    <hr
-      id="sidebar-resizer"
-      aria-label="Resize file sidebar"
-      aria-orientation="vertical"
-      aria-valuemin={200}
-      aria-valuemax={520}
-      aria-valuenow={sidebar.width}
-      tabIndex={0}
-      hidden={sidebar.view !== "diff" || sidebar.collapsed || sidebar.mobile}
-      onPointerDown={(event) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        drag.current = { x: event.clientX, width: sidebar.width };
-        event.currentTarget.setPointerCapture(event.pointerId);
-        document.body.classList.add("resizing-sidebar");
-      }}
-      onPointerMove={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-          sidebar.setWidth(drag.current.width + event.clientX - drag.current.x);
-        }
-      }}
-      onPointerUp={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId))
-          event.currentTarget.releasePointerCapture(event.pointerId);
-      }}
-      onLostPointerCapture={() =>
-        document.body.classList.remove("resizing-sidebar")
-      }
-      onKeyDown={(event) => {
-        if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-          event.preventDefault();
-          sidebar.setWidth(
-            sidebar.width + (event.key === "ArrowRight" ? 20 : -20),
-          );
-        }
-      }}
-    />
   );
 }

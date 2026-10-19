@@ -366,183 +366,6 @@ test("snapshot stays selected after newer captures and branch transitions", asyn
   await expect(page).toHaveURL(/\/contexts\/clean-other-branch\?watch=/);
 });
 
-async function deletableWorkspace(
-  page: Page,
-  snapshot = false,
-  single = false,
-) {
-  const state = await localWorkspace(page);
-  if (snapshot) state.context.source = "stdin";
-  const contexts = [
-    state.context,
-    { ...state.context, id: "other", name: "Other review" },
-  ];
-  if (single) contexts.splice(1);
-  const deletion = {
-    requests: new Array<string>(),
-    fail: false,
-    hold: false,
-    pending: new Array<Route>(),
-  };
-  await page.route("**/api/v2/contexts?*", (route) =>
-    route.fulfill({ json: { contexts, nextCursor: null } }),
-  );
-  await page.route("**/api/v2/contexts/*", (route) => {
-    const id = new URL(route.request().url()).pathname.split("/").at(-1);
-    if (route.request().method() === "DELETE") {
-      if (!id) throw new Error("Missing deletion ID");
-      deletion.requests.push(id);
-      if (deletion.fail)
-        return route.fulfill({
-          status: 500,
-          json: { detail: "Storage unavailable. Try again." },
-        });
-      const index = contexts.findIndex((context) => context.id === id);
-      if (index >= 0) contexts.splice(index, 1);
-      if (deletion.hold) {
-        deletion.pending.push(route);
-        return;
-      }
-      return route.fulfill({ status: 204 });
-    }
-    const context = contexts.find((context) => context.id === id);
-    return context
-      ? route.fulfill({ json: context })
-      : route.fulfill({ status: 404, json: { detail: "Context not found" } });
-  });
-  await page.goto("/");
-  await ready(page);
-  return { ...deletion, contexts, state, deletion };
-}
-
-test("snapshot deletion confirms its scope and cancel restores focus without deleting", async ({
-  page,
-}) => {
-  const state = await deletableWorkspace(page);
-  const trigger = page.getByRole("button", {
-    name: "Delete snapshot",
-    exact: true,
-  });
-  await trigger.click();
-  const dialog = page.getByRole("dialog", {
-    name: "Delete snapshot?",
-    exact: true,
-  });
-  await expect(dialog).toContainText("this snapshot");
-  await expect(dialog).toContainText("comments and reviewed-file marks");
-  await expect(dialog).toContainText("Local review");
-  await expect(
-    dialog.getByRole("button", { name: "Cancel", exact: true }),
-  ).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(dialog).toBeHidden();
-  await expect(trigger).toBeFocused();
-  expect(state.requests).toHaveLength(0);
-  await expect(page).toHaveURL(/\/contexts\/local-review$/);
-});
-
-test("snapshot deletion navigates to another review and removes the snapshot from the picker", async ({
-  page,
-}) => {
-  const state = await deletableWorkspace(page, true);
-  await page
-    .getByRole("button", { name: "Delete snapshot", exact: true })
-    .click();
-  const dialog = page.getByRole("dialog", {
-    name: "Delete snapshot?",
-    exact: true,
-  });
-  await dialog
-    .getByRole("button", { name: "Delete snapshot", exact: true })
-    .click();
-  await expect(page).toHaveURL(/\/contexts\/other$/);
-  await ready(page);
-  await expect(dialog).toBeHidden();
-  expect(state.requests).toEqual(["local-review"]);
-  await expect(
-    page.getByRole("button", { name: "Diff", exact: true }),
-  ).toBeFocused();
-  await openReviewPicker(page);
-  await expect(page.getByRole("option")).toHaveCount(1);
-  await expect(page.getByRole("option")).toContainText("Piped");
-  await page.getByRole("option").click();
-  await expect(page.getByRole("option")).toHaveCount(1);
-  await expect(page.getByRole("option")).toHaveAttribute(
-    "title",
-    /Context: other/,
-  );
-});
-
-test("deletion failure stays retryable and pending deletion blocks dismissal and duplicate writes", async ({
-  page,
-}) => {
-  const { deletion } = await deletableWorkspace(page);
-  deletion.fail = true;
-  await page
-    .getByRole("button", { name: "Delete snapshot", exact: true })
-    .click();
-  const dialog = page.getByRole("dialog", {
-    name: "Delete snapshot?",
-    exact: true,
-  });
-  await dialog
-    .getByRole("button", { name: "Delete snapshot", exact: true })
-    .click();
-  await expect(dialog.getByRole("alert")).toHaveText(
-    "Storage unavailable. Try again.",
-  );
-  await expect(page).toHaveURL(/\/contexts\/local-review$/);
-  deletion.fail = false;
-  deletion.hold = true;
-  await dialog
-    .getByRole("button", { name: "Delete snapshot", exact: true })
-    .click();
-  await expect(
-    dialog.getByRole("button", { name: "Deleting…", exact: true }),
-  ).toBeDisabled();
-  await expect(
-    dialog.getByRole("button", { name: "Cancel", exact: true }),
-  ).toBeDisabled();
-  await page.keyboard.press("Escape");
-  await expect(dialog).toBeVisible();
-  expect(deletion.requests).toEqual(["local-review", "local-review"]);
-  const pending = deletion.pending.shift();
-  if (!pending) throw new Error("Missing deletion request");
-  await pending.fulfill({ status: 204 });
-  await expect(page).toHaveURL(/\/contexts\/other$/);
-});
-
-test("deleting the last context shows a focused empty state on mobile", async ({
-  page,
-}) => {
-  await deletableWorkspace(page, false, true);
-  await page.setViewportSize({ width: 360, height: 640 });
-  await page
-    .getByRole("button", { name: "Delete snapshot", exact: true })
-    .click();
-  const dialog = page.getByRole("dialog", {
-    name: "Delete snapshot?",
-    exact: true,
-  });
-  const bounds = await dialog.boundingBox();
-  if (!bounds) throw new Error("Missing deletion dialog bounds");
-  expect(bounds.x).toBeGreaterThanOrEqual(0);
-  expect(bounds.x + bounds.width).toBeLessThanOrEqual(360);
-  expect(bounds.y + bounds.height).toBeLessThanOrEqual(640);
-  await dialog
-    .getByRole("button", { name: "Delete snapshot", exact: true })
-    .click();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(
-    page.getByRole("heading", { name: "No review contexts yet" }),
-  ).toBeVisible();
-  await expect(page.locator("main.session-status")).toBeFocused();
-  await page.reload();
-  await expect(
-    page.getByRole("heading", { name: "No review contexts yet" }),
-  ).toBeVisible();
-});
-
 test("rapid scopes ignore old diff responses and reviewed-file failures", async ({
   page,
 }) => {
@@ -1189,38 +1012,6 @@ test("empty contexts remain accessible through the picker and direct URLs", asyn
   await expect(page).toHaveURL(/\/contexts\/local-review$/);
 });
 
-test("deleting the last diff returns to landing when empty contexts remain", async ({
-  page,
-}) => {
-  const state = await deletableWorkspace(page, false, true);
-  state.contexts.push({
-    ...state.state.context,
-    id: "empty",
-    changedFileCount: 0,
-  });
-  await page.evaluate(() =>
-    document.dispatchEvent(new Event("visibilitychange")),
-  );
-  await openReviewPicker(page);
-  const picker = page.getByRole("dialog", { name: "Switch review" });
-  await picker.getByRole("button", { name: "Filters", exact: true }).click();
-  await picker.getByRole("checkbox", { name: "All", exact: true }).check();
-  await expect(picker.getByRole("option")).toContainText("2 snapshots");
-  await page.keyboard.press("Escape");
-  await page
-    .getByRole("button", { name: "Delete snapshot", exact: true })
-    .click();
-  await page
-    .getByRole("dialog", { name: "Delete snapshot?", exact: true })
-    .getByRole("button", { name: "Delete snapshot", exact: true })
-    .click();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(
-    page.getByRole("heading", { name: "No changes to review" }),
-  ).toBeVisible();
-  await expect(page.locator("main.session-status")).toBeFocused();
-});
-
 test("unavailable context keeps the switcher usable", async ({ page }) => {
   const state = await localWorkspace(page);
   const unavailable: ApiContext = {
@@ -1559,7 +1350,7 @@ test("picker combines filters before grouping and preserves them across navigati
   await expect(unavailable).toHaveAttribute("aria-selected", "false");
 });
 
-test("projects drawer lists current changed streams and announces newer snapshots", async ({
+test("repos drawer lists current changed streams and announces newer snapshots", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -1618,7 +1409,7 @@ test("projects drawer lists current changed streams and announces newer snapshot
   await page.goto("/contexts/rate-1");
   await ready(page);
   expect(latestRequests).toContain("true");
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page.getByRole("button", { name: "Repos", exact: true }).click();
   const nav = page.locator("#projects-nav");
   await expect(
     nav.getByRole("button", { name: /^(web-app|acme-api)/ }),
@@ -1646,7 +1437,7 @@ test("projects drawer lists current changed streams and announces newer snapshot
   await notice.getByRole("button", { name: "View latest" }).click();
   await expect(page).toHaveURL(/\/streams\/stream-feat%2Frate-limit$/);
   await expect(notice).toBeHidden();
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page.getByRole("button", { name: "Repos", exact: true }).click();
 
   await nav.getByRole("link", { name: /^main/ }).click();
   await expect(page).toHaveURL(/\/streams\/stream-main$/);
@@ -1656,7 +1447,7 @@ test("projects drawer lists current changed streams and announces newer snapshot
     page.getByRole("button", { name: "Diff", exact: true }),
   ).toBeFocused();
   const projectsView = page.getByRole("button", {
-    name: "Projects",
+    name: "Repos",
     exact: true,
   });
   await projectsView.click();
@@ -1680,14 +1471,12 @@ test("projects drawer lists current changed streams and announces newer snapshot
   await page.reload();
   await ready(page);
   await expect(page.locator("#sidebar")).toBeHidden();
-  await expect(page.getByRole("navigation", { name: "Projects" })).toBeHidden();
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await expect(
-    page.getByRole("navigation", { name: "Projects" }),
-  ).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Repos" })).toBeHidden();
+  await page.getByRole("button", { name: "Repos", exact: true }).click();
+  await expect(page.getByRole("navigation", { name: "Repos" })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
-  const mobileTrigger = page.getByRole("button", { name: "Show projects" });
+  const mobileTrigger = page.getByRole("button", { name: "Show repos" });
   await mobileTrigger.click();
   await expect(nav).toBeVisible();
   await expect(nav).toHaveAttribute("role", "dialog");
@@ -1858,8 +1647,8 @@ for (const mode of ["local", "remote"]) {
       name: /^Open latest new changes/,
     });
     await expect(global).toHaveCount(0);
-    await page.getByRole("button", { name: "Projects", exact: true }).click();
-    const nav = page.getByRole("navigation", { name: "Projects" });
+    await page.getByRole("button", { name: "Repos", exact: true }).click();
+    const nav = page.getByRole("navigation", { name: "Repos" });
     await expect(nav.locator(".project-name")).toHaveText(["api", "web"]);
 
     const newerApi = snapshot("api-new", "api", 200, 900);
@@ -1920,7 +1709,7 @@ for (const mode of ["local", "remote"]) {
     );
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.emulateMedia({ colorScheme: "light" });
-    await page.getByRole("button", { name: "Projects", exact: true }).click();
+    await page.getByRole("button", { name: "Repos", exact: true }).click();
     await expect(nav.locator(".project-name")).toHaveText(["api", "web"]);
     await expect(global).toHaveCount(0);
     expect(collections).toBe(0);
@@ -1975,9 +1764,12 @@ test("local first launch waits for collection with an empty catalog", async ({
   const diffView = page.getByRole("button", { name: "Diff", exact: true });
   await expect(diffView).toBeDisabled();
   await expect(diffView).not.toHaveAttribute("aria-controls");
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  const projects = page.getByRole("navigation", { name: "Projects" });
-  await expect(projects).toContainText("Collecting projects…");
+  await page.getByRole("button", { name: "Repos", exact: true }).click();
+  const projects = page.getByRole("navigation", { name: "Repos" });
+  await expect(projects).toContainText("Collecting repos…");
+  await expect(
+    page.getByRole("separator", { name: "Resize navigation panel" }),
+  ).toBeVisible();
   await expect(projects).not.toContainText("No current changes");
   await expect(projects).not.toContainText("Agent hooks and diffx sync");
   await expect(
