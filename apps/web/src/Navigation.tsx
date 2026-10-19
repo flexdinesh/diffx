@@ -1,18 +1,27 @@
 import { useRef, type ReactNode } from "react";
+import { FileTreeSkeleton } from "./WorkspaceLoading.tsx";
 import { ActivityBar } from "./ActivityBar.tsx";
 import { ProjectsNav } from "./ProjectsNav.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
 
 /** The shared navigation frame owns panel width and its resize boundary. */
-export function Navigation({ children }: { children?: ReactNode }) {
+export function Navigation({
+  children,
+  loading = false,
+}: {
+  children?: ReactNode;
+  loading?: boolean;
+}) {
   const sidebar = useSidebarState();
   const diffReady = Boolean(children);
-  const expanded = sidebar.expanded && (sidebar.view !== "diff" || diffReady);
+  const expanded =
+    sidebar.expanded && (sidebar.view !== "diff" || diffReady || loading);
   return (
     <div className="navigation-island">
       <ActivityBar diffReady={diffReady} />
       <div className="navigation-panel" hidden={!expanded}>
         <ProjectsNav />
+        {loading && <FileTreeSkeleton />}
         {children}
       </div>
       <NavigationResizer hidden={!expanded || sidebar.mobile} />

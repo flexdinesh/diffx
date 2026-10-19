@@ -270,8 +270,11 @@ review's identity. The selected context scopes every request. The session owner 
 local checkout sync when bootstrap reports `collect`; loading `/` or a live
 `/streams/{streamId}` URL, the header's “Sync all checkouts” icon and Alt+R call
 `POST /api/v2/collections`. Load-time sync opens the stream's synced head, or the
-most recently active changed one for `/`, and shows “Collecting latest changes” until it
-resolves. The listener opens before background startup collection. Load-time
+most recently active changed one for `/`, and shows a workspace skeleton with
+“Collecting latest changes” in its status bar until it resolves. Skeletons retain
+shell geometry and display preferences, hide decorative placeholders from assistive
+technology, and respect reduced motion. Stored manifest loading uses the same diff
+skeleton while keeping Pierre mounted. The listener opens before background startup collection. Load-time
 requests send `initial=true` to join startup once without collecting twice;
 explicit Sync requests always collect fresh snapshots. While discovery is pending,
 the process scope matches no stored contexts. Startup failures keep the server
