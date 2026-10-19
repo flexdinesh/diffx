@@ -3,9 +3,7 @@ import { compareContextActivity, contextActivity } from "./context-activity.ts";
 import {
   contextHasChanges,
   contextIsPiped,
-  contextMatches,
   contextTimestamp,
-  searchWords,
 } from "./project-picker.ts";
 
 // The projects drawer shows only current work: each stream's head with changes.
@@ -89,20 +87,6 @@ export function projectGroups(heads: ApiContext[], seen: SeenStreams | null) {
       left.id.localeCompare(right.id)
     );
   });
-}
-
-/** Keeps streams whose metadata matches every search word, preserving order. */
-export function searchProjectGroups(groups: ProjectGroup[], query: string) {
-  const words = searchWords(query);
-  if (!words.length) return groups;
-  return groups
-    .map((group) => ({
-      ...group,
-      streams: group.streams.filter((stream) =>
-        contextMatches(stream.context, words).every((score) => score > 0),
-      ),
-    }))
-    .filter((group) => group.streams.length);
 }
 
 function streamHost(context: ApiContext) {

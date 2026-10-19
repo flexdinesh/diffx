@@ -181,8 +181,10 @@ component internals; layout remains aligned to the 4px rhythm.
 | Large conceptual separation            | 32 or 48, rarely needed in review chrome  |
 
 Use `--page-gutter` for notices and footer: 24 desktop, 16 below
-1012px, 12 below 768px. Header, toolbar, and file frames share `--diff-gutter`
-(12px). Their trailing actions account for the viewport's native scrollbar inset.
+1012px, 12 below 768px. Toolbar and file frames share `--diff-gutter`
+(12px), accounting for the viewport's native scrollbar inset. Header leading
+content uses the same gutter; its rightmost Theme action anchors directly to
+the shell's right edge, independently of diff scrolling.
 Use explicit margins instead of relying on browser-default paragraph spacing.
 
 Custom values are acceptable only for documented optical or renderer geometry:
@@ -198,61 +200,63 @@ such detail into a token. New layout spacing must use the scale.
   islands, `--radius-lg` outer corners, and a 1px neutral outline without
   elevation. The activity rail and file sidebar form one continuous navigation
   island; notices, toolbar, viewer, and status bar form the review island.
-  The optional Projects column remains independently placed and rounded.
+  Repos and Diff share the navigation panel beside the activity rail.
   Keep these frames outside Pierre's measured file geometry. At compact widths,
   remove the empty navigation island and retain the inset review surface;
   modal drawers use the same inset and corners without clipping focus or menus.
-- Header: `--topbar-height` (40 desktop, 44 narrow or coarse pointer). Keep
+- Header: `--topbar-height` (36 desktop, 44 narrow or coarse pointer). Keep
   desktop controls at 32px, header icons at 16px, the divider at 16px, and group
-  spacing at 8px so the header recedes into the editor chrome. Toolbar and sidebar tabs: `--toolbar-height`
-  (44) as the desktop baseline. The narrow toolbar matches the 44px page header;
+  spacing at 6px so the header recedes into the editor chrome. Toolbar and sidebar
+  tabs share the compact 36px desktop rhythm (`--control-small` plus two
+  `--space-1` insets). The narrow toolbar matches the 44px page header;
   its icon buttons match the header's 44px touch targets and 16px icons. Scope
   controls fill the row without adding border/padding height; abbreviate the
   visible “All changes” label to “All”, retaining its full accessible name.
 - Header and display-toolbar icon actions share borderless ghost buttons,
   16px icons, and 1.7px strokes, including menu and dialog triggers. Hover and
   expanded states use the same neutral surface feedback. On mobile, both rows
-  use 8px action gaps and the same trailing inset so icon columns align.
+  use 8px action gaps; the toolbar retains its diff gutter while Theme reaches
+  the header's right edge.
 - Header uses `--shell-canvas`, a quiet brand, and the review identity as its primary
   context. Keep the secondary scope heading and muted monospace path inline;
   hide the path at 768–1011px and both below 768px. Group ghost Refresh and
-  delete actions at the trailing edge; share `--hover` feedback with the trigger.
+  sync actions at the trailing edge; share `--hover` feedback with the trigger.
+  Theme is the rightmost header action in every layout, with the same ghost
+  styling, 32px desktop hit area and 16px icon. Keep its outer edge flush with
+  the shell; never apply the diff scrollbar inset to header actions. Snapshot deletion is absent
+  from the header.
   A local checkout process replaces Refresh with an icon-only “Sync all
   checkouts” action (folder-sync icon) that never swaps the open review.
-- Header lead: the “Show/Hide projects” toggle (panel-left open/close icon),
-  brand and divider always start the header, in that order. The toggle sits in
-  an `--activity-width` box so it centers over the activity bar's icons. The
-  drawer pushes the header right; the lead never moves into the drawer or
-  reorders. Below 768px the lead uses the normal header gutter.
+- Header text uses cap-height trimming with token padding to center UI and
+  monospace labels without clipping ascenders or descenders.
+- Header lead: brand and divider identify the app. Desktop navigation controls
+  live in the activity rail. Below 768px, Repos and file-sidebar controls
+  remain in the header because the rail is hidden.
 - Activity bar: a fixed `--activity-width` column (48px; 52px for coarse
-  pointers) between the projects drawer and file sidebar, spanning the header's
-  bottom edge to the shell's bottom inset on the navigation island's `--panel`.
-  Keep the rail and file tree in one rounded island, separated by the file
-  sidebar's 1px `--border-muted` leading edge. Views
-  (Diff now; Files and Git later) are `--activity-item` square ghost icon
-  buttons with 20px icons, `--radius-md`, hover `--hover`, and the current view
-  in accent text on `--accent-bg` with `aria-current="page"`. Theme and account
-  actions sit at its bottom, as in an editor's activity bar. Below 768px the bar
-  hides and those actions return to the header's trailing edge.
-- Projects drawer: the outermost full-height column, `--projects-width` (16rem)
-  on `--panel` with the shell's rounded outline. Its header matches `--topbar-height` and
-  holds the “Projects” panel title (UI label size, medium, secondary text), a
-  ghost “Browse all reviews” icon action that opens the review picker, and a
-  close action in the modal drawer only. Below it: a “Search projects” field
-  styled like the file filter that filters current streams in place (Escape
-  clears it; matching repositories expand), then repositories ordered by their
-  most active visible stream. Streams sort by estimated code activity, with
-  captured collection time as the fallback and stable identity ties. Repository
-  and stream ages describe this activity; snapshot history retains its chronology.
-  Repository rows match tree-row height with a chevron, repository icon, medium
-  name and muted monospace age. Stream rows indent under them: branch icon, name,
-  trailing monospace changed-file count, and a muted metadata line (worktree,
-  harness, host only when a repository has several, age). Show only current
-  heads with changes. The current stream uses `--accent-bg`, accent text and
-  `aria-current="page"`. Unopened arrivals show a small accent dot labeled “New
-  changes”; a collapsed repository carries its streams' dot. The file
-  sidebar toggle uses a list-tree icon so the two panel controls stay distinct.
-  Collapse state persists per browser.
+  pointers), spanning the workbench below the header to the shell's bottom inset.
+  Diff (file-diff icon) followed by Repos (repository icon) select one shared panel.
+  Clicking the active view toggles its panel; clicking another view opens it.
+  Keep the rail and selected panel in one rounded island, separated by a 1px
+  `--border-muted` edge. Views use `--activity-item` square ghost buttons,
+  20px icons and `--radius-md`; selection uses accent text on `--accent-bg`
+  with `aria-current="page"`, while `aria-expanded` describes panel visibility.
+  Account actions sit at the bottom. Below 768px account actions move
+  into the header before the rightmost theme control. Below 1012px navigation panels become modal drawers.
+- Repos panel: shared navigation width on `--panel`, sharing the file tree
+  and diff's top and bottom edges below the header. Its header matches
+  the compact sidebar tabs and display toolbar and holds the “Repos” title (UI label size, medium,
+  secondary text), a ghost magnifier labeled “Search reviews” that opens the
+  existing picker, and a close action in the modal drawer only. Search is
+  available through that popup or Cmd/Ctrl+K. Selecting a stream loads its diff
+  and switches the shared panel to Diff; mobile closes the drawer.
+  Repositories sort by their most active visible stream. Streams sort by
+  estimated code activity, with captured collection time as fallback and stable
+  identity ties. Rows retain compact tree density, truncation, ages and metadata.
+  Show only current heads with changes. The current stream uses `--accent-bg`,
+  accent text and `aria-current="page"`. Unopened arrivals show a small accent
+  dot labeled “New changes”; collapsed repositories carry their streams' dots.
+  Repository collapse state persists per browser. Switching views preserves
+  the open diff and review state; both views share one user-controlled width.
 - A newer head for the viewed stream shows a one-line `--accent-bg` notice below
   the header with an outline-muted “View latest” action. Never swap the open review.
 - A compact header action counts unopened changed heads across projects and
@@ -263,7 +267,8 @@ such detail into a token. New layout spacing must use the scale.
   labels; preserve the header's review identity and compact-layout controls.
 - Status bar: `--statusbar-height` (28), with shortcuts shed before server metrics.
 - The diff display toolbar uses `--panel`, matching the header and status bar.
-- Desktop sidebar: `--sidebar-width` defaults to 330px. `use-sidebar.ts` owns
+- Desktop navigation panel: `--sidebar-width` defaults to 330px. `Navigation.tsx` owns
+  the shared frame and resize handle for Diff and Repos; `use-sidebar.ts` owns
   the user's pixel width, bounded to 200–520px and available viewport space.
   Do not add competing CSS defaults or override a saved width at tablet sizes.
 - Sidebar interiors share a 16px inset. Tree rows use 8px base padding plus
@@ -278,8 +283,8 @@ such detail into a token. New layout spacing must use the scale.
 - Keep overlays anchored to their owning region. Sidebar/resizer layering uses
   `--layer-sidebar` / `--layer-resizer`; modal dialogs use the native top layer.
   The resize handle overlaps the navigation island's trailing edge and adds no
-  layout width. Drag distance changes only the file sidebar width, regardless of
-  the Projects column or shell insets. The shell gutter separates navigation from
+  layout width. Drag distance changes the shared navigation panel width, regardless of
+  view switches or shell insets. The shell gutter separates navigation from
   the review island; the measured 12px diff gutter remains inside that island.
 
 ### Pierre boundary
@@ -415,7 +420,7 @@ such detail into a token. New layout spacing must use the scale.
   branch, and repository icon. Give the repository name priority when long context labels truncate.
   Piped reviews use a terminal icon, “Piped”, and collection time; omit repository,
   branch, worktree, and directory identity.
-  Switching lives in the projects drawer; never add a dropdown chevron.
+  Switching lives in the repos drawer; never add a dropdown chevron.
   Cmd/Ctrl+K and the drawer's browse action open the searchable “Switch review”
   dialog. Position it at
   `--topbar-height` plus `--space-6` on desktop (64px default), `--space-4` on
@@ -487,7 +492,7 @@ Do not add motion for decoration. New animation must honor
   Keep the linked-worktree icon visible when its text label is hidden.
 - Collapse navigation to the toggle-controlled modal drawer; its width is
   `min(320px, 88vw)`. Keep file selection, comments, and export reachable there.
-  The projects drawer follows the same modal pattern from its own toggle; opening
+  The repos drawer follows the same modal pattern from its own toggle; opening
   it closes the file drawer, and choosing a stream closes it.
   Its tab strip matches `--topbar-height`, including the tablet header height.
   File/folder rows, filter, summary toggle, and review progress retain desktop

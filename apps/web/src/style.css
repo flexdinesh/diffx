@@ -99,12 +99,26 @@ kbd {
 .topbar {
   height: var(--topbar-height);
   display: flex;
-  gap: var(--space-2);
+  gap: var(--space-1-5);
   align-items: center;
   background: var(--shell-canvas);
-  padding: 0 calc(var(--diff-gutter) + var(--diff-viewport-inset, 0px)) 0 0;
+  padding: 0 0 0 var(--diff-gutter);
 }
-/* Centers the projects toggle over the activity bar so it never moves. */
+/* Center mixed UI/mono text by cap height; padding preserves clipped descenders. */
+.topbar
+  :is(
+    .brand > span,
+    .context-identity-name,
+    .context-identity-branch,
+    .context-identity-separator,
+    .context-identity-worktree-name,
+    .header-heading h1:not(.sr-only),
+    #repo-path
+  ) {
+  text-box: trim-both cap alphabetic;
+  padding-block: var(--space-2);
+}
+/* Compact entry point when the activity rail is hidden. */
 .topbar-lead {
   display: flex;
   justify-content: center;
@@ -219,6 +233,16 @@ kbd {
 .navigation-island {
   display: flex;
   min-height: 0;
+  position: relative;
+}
+.navigation-panel {
+  display: flex;
+  flex: 0 0 var(--sidebar-width);
+  width: var(--sidebar-width);
+  min-height: 0;
+}
+.navigation-panel[hidden] {
+  display: none;
 }
 .workspace,
 .workbench > main {
@@ -273,20 +297,21 @@ kbd {
   color: var(--accent);
 }
 .projects-nav {
-  flex: 0 0 var(--projects-width);
-  width: var(--projects-width);
+  flex: 1;
+  width: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--panel);
-  border-radius: var(--radius-lg);
-  outline: 1px solid var(--border);
+  border-left: 1px solid var(--border-muted);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
 }
+.sidebar[hidden],
 .projects-nav[hidden] {
   display: none;
 }
 .projects-nav-header {
-  height: var(--topbar-height);
+  height: calc(var(--control-small) + 2 * var(--space-1));
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -297,9 +322,6 @@ kbd {
 }
 .projects-nav-header button svg {
   stroke-width: 1.7;
-}
-.projects-search.search-box {
-  margin-top: var(--space-3);
 }
 .projects-heading {
   flex: 1;
@@ -314,7 +336,7 @@ kbd {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 0 var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-2) var(--space-4);
 }
 .projects-list,
 .stream-list {
@@ -456,8 +478,8 @@ kbd {
   white-space: nowrap;
 }
 .sidebar {
-  flex: 0 0 var(--sidebar-width);
-  width: var(--sidebar-width);
+  flex: 1;
+  width: 100%;
   min-height: 0;
   overflow: auto;
   display: flex;
@@ -998,6 +1020,9 @@ h2 {
   background: var(--backdrop);
 }
 @media (max-width: 1011px) {
+  .navigation-panel:not([hidden]) {
+    display: contents;
+  }
   .mobile-review-progress {
     display: inline;
     flex-shrink: 0;
@@ -1020,6 +1045,9 @@ h2 {
   .sidebar .mobile-only {
     display: inline-flex;
   }
+  .projects-nav-header {
+    height: var(--topbar-height);
+  }
   .projects-nav .mobile-only {
     display: inline-flex;
   }
@@ -1028,6 +1056,8 @@ h2 {
     z-index: var(--layer-sidebar);
     inset: var(--shell-gutter) auto var(--shell-gutter) var(--shell-gutter);
     width: min(320px, 88vw);
+    border-radius: var(--radius-lg);
+    outline: 1px solid var(--border);
     box-shadow: var(--shadow-overlay);
   }
 }
@@ -1056,7 +1086,6 @@ h2 {
   }
   .topbar-lead {
     width: auto;
-    padding-left: var(--diff-gutter);
   }
   .topbar .header-divider,
   .topbar .brand,

@@ -1,9 +1,9 @@
-import { ActivityBar } from "./ActivityBar.tsx";
 import { useReviewState } from "./app-state.tsx";
 import { OutdatedCommentsNotice } from "./CommentsPanel.tsx";
 import { DiffWorkspace } from "./DiffWorkspace.tsx";
-import { FileExplorerNav, SidebarResizer } from "./FileExplorerNav.tsx";
+import { FileExplorerNav } from "./FileExplorerNav.tsx";
 import { Header } from "./Header.tsx";
+import { Navigation } from "./Navigation.tsx";
 import { NewerSnapshotNotice } from "./ProjectsNav.tsx";
 import { CopyDialog } from "./review.tsx";
 import { capabilityEnabled, useSession } from "./session-context.tsx";
@@ -17,11 +17,9 @@ export function App() {
       <Header />
       <SidebarBackdrop />
       <div className="workbench">
-        <div className="navigation-island">
-          <ActivityBar />
+        <Navigation>
           <FileExplorerNav />
-        </div>
-        <SidebarResizer />
+        </Navigation>
         <div className="workspace">
           <NewerSnapshotNotice />
           <OutdatedCommentsNotice />
@@ -35,7 +33,7 @@ export function App() {
 
 function SidebarBackdrop() {
   const sidebar = useSidebarState();
-  return sidebar.mobile && sidebar.open ? (
+  return sidebar.mobile && sidebar.open && sidebar.view === "diff" ? (
     <button
       type="button"
       className="sidebar-backdrop"

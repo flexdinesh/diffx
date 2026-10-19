@@ -4,16 +4,12 @@ import {
   FolderGit2Icon,
   GitBranchIcon,
   HistoryIcon,
-  ListIcon,
-  PanelLeftCloseIcon,
-  PanelLeftOpenIcon,
   SearchIcon,
   SquareTerminalIcon,
   XIcon,
 } from "lucide-react";
 import { useEffect, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { save, saved } from "./preferences.ts";
 import { contextChangeLabel, contextIsPiped } from "./project-picker.ts";
@@ -22,42 +18,45 @@ import {
   newerHead,
   projectGroups,
   relativeAge,
-  searchProjectGroups,
   streamKey,
   streamMeta,
   streamTitle,
   type ProjectGroup,
 } from "./project-nav.ts";
-import { useProjectsNavState } from "./projects-nav-context.tsx";
 import { streamPath, useCatalog, useSession } from "./session-context.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
 
 const shortcut = navigator.platform.includes("Mac") ? "⌘K" : "Ctrl K";
 
-/** Topbar start: projects toggle above the activity bar, brand and divider. */
+/** Compact entry point; desktop view controls live in the activity rail. */
 export function ProjectsToggle() {
-  const projects = useProjectsNavState();
-  const action = projects.expanded ? "Hide projects" : "Show projects";
-  const Icon = projects.expanded ? PanelLeftCloseIcon : PanelLeftOpenIcon;
+  const sidebar = useSidebarState();
+  const expanded = sidebar.view === "projects" && sidebar.expanded;
+  const action = expanded ? "Hide repos" : "Show repos";
+  return (
+    <div className="topbar-lead">
+      <Button
+        type="button"
+        id="projects-toggle"
+        variant="ghost"
+        size="icon"
+        aria-controls="projects-nav"
+        aria-expanded={expanded}
+        aria-label={action}
+        title={action}
+        onClick={() => sidebar.selectView("projects")}
+      >
+        <FolderGit2Icon className="size-(--icon-base)" />
+      </Button>
+    </div>
+  );
+}
+
+export function HeaderBrand() {
   return (
     <>
-      <div className="topbar-lead">
-        <Button
-          type="button"
-          id="projects-toggle"
-          variant="ghost"
-          size="icon"
-          aria-controls="projects-nav"
-          aria-expanded={projects.expanded}
-          aria-label={action}
-          title={action}
-          onClick={projects.toggle}
-        >
-          <Icon className="size-(--icon-base)" />
-        </Button>
-      </div>
       <a className="brand" href="/" aria-label="diffx home">
-        diffx
+        <span>diffx</span>
       </a>
       <Separator className="header-divider" orientation="vertical" />
     </>
@@ -87,21 +86,14 @@ function readCollapsedGroups() {
 }
 
 export function ProjectsNav() {
-  const projects = useProjectsNavState();
   const sidebar = useSidebarState();
   const { heads, current, openStream, openPicker, seen, collecting } =
     useCatalog();
   const [closed, setClosed] = useState(readCollapsedGroups);
-  const [query, setQuery] = useState("");
   const now = useNow();
-  const searching = query.trim() !== "";
-  const allGroups = projectGroups(heads.contexts, seen);
-  const groups = searchProjectGroups(allGroups, query);
+  const groups = projectGroups(heads.contexts, seen);
   const currentStream = current ? streamKey(current) : "";
-  const { closeMobile: closeFiles } = sidebar;
-  useEffect(() => {
-    if (projects.open) closeFiles();
-  }, [projects.open, closeFiles]);
+  const expanded = sidebar.view === "projects" && sidebar.expanded;
   useEffect(() => {
     save("projects-closed-groups", JSON.stringify([...closed]));
   }, [closed]);
@@ -115,74 +107,58 @@ export function ProjectsNav() {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)
       return;
     event.preventDefault();
-    openStream(head, { restoreFocus: false });
-    projects.closeMobile();
+    openStream(head);
   };
   return (
     <>
-      {projects.mobile && projects.open && (
+      {sidebar.mobile && sidebar.open && sidebar.view === "projects" && (
         <button
           type="button"
           className="sidebar-backdrop"
-          aria-label="Close projects"
+          aria-label="Close repos"
           tabIndex={-1}
-          onClick={projects.closeMobile}
+          onClick={sidebar.closeMobile}
         />
       )}
-      <nav
+      <div
         id="projects-nav"
-        className={projects.open ? "projects-nav open" : "projects-nav"}
-        aria-label="Projects"
-        hidden={!projects.expanded}
+        className={
+          sidebar.open && sidebar.view === "projects"
+            ? "projects-nav open"
+            : "projects-nav"
+        }
+        aria-label="Repos"
+        role={sidebar.mobile && expanded ? "dialog" : "navigation"}
+        aria-modal={sidebar.mobile && expanded ? "true" : undefined}
+        hidden={!expanded}
       >
         <div className="projects-nav-header">
-          <h2 className="projects-heading">Projects</h2>
+          <h2 className="projects-heading">Repos</h2>
           <Button
             type="button"
             id="projects-browse"
             variant="ghost"
             size="icon"
-            aria-label="Browse all reviews"
-            title={`Browse all reviews (${shortcut})`}
+            aria-label="Search reviews"
+            title={`Search reviews (${shortcut})`}
             onClick={() => {
-              projects.closeMobile();
+              sidebar.closeMobile();
               openPicker();
             }}
           >
-            <ListIcon aria-hidden="true" />
+            <SearchIcon aria-hidden="true" />
           </Button>
           <Button
             type="button"
             className="mobile-only"
             variant="ghost"
             size="icon"
-            aria-label="Close projects"
-            onClick={projects.closeMobile}
+            aria-label="Close repos"
+            onClick={sidebar.closeMobile}
           >
             <XIcon aria-hidden="true" />
           </Button>
         </div>
-        <div className="search-box projects-search">
-          <SearchIcon className="size-(--icon-sm)" aria-hidden="true" />
-          <Input
-            id="projects-search"
-            type="search"
-            placeholder="Search projects…"
-            aria-label="Search projects"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== "Escape" || !query) return;
-              event.stopPropagation();
-              setQuery("");
-            }}
-          />
-        </div>
-        <p className="visually-hidden" role="status" aria-live="polite">
-          {searching
-            ? `${groups.reduce((sum, group) => sum + group.streams.length, 0)} matching streams`
-            : ""}
-        </p>
         <div className="projects-scroll">
           {groups.length ? (
             <ul className="projects-list">
@@ -190,7 +166,7 @@ export function ProjectsNav() {
                 <ProjectItem
                   key={group.id}
                   group={group}
-                  expanded={searching || !closed.has(group.id)}
+                  expanded={!closed.has(group.id)}
                   onToggle={() => toggleGroup(group.id)}
                   currentStream={currentStream}
                   now={now}
@@ -198,10 +174,6 @@ export function ProjectsNav() {
                 />
               ))}
             </ul>
-          ) : searching && allGroups.length ? (
-            <div className="projects-empty" role="status">
-              <p>No matching projects</p>
-            </div>
           ) : (
             <ProjectsEmpty
               loaded={heads.loaded}
@@ -211,7 +183,7 @@ export function ProjectsNav() {
             />
           )}
         </div>
-      </nav>
+      </div>
     </>
   );
 }
@@ -330,10 +302,10 @@ function ProjectsEmpty({
     >
       <p>
         {collecting
-          ? "Collecting projects…"
+          ? "Collecting repos…"
           : loaded
             ? "No current changes"
-            : "Loading projects…"}
+            : "Loading repos…"}
       </p>
       {loaded && !collecting && (
         <p className="projects-empty-hint">

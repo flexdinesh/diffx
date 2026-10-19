@@ -237,15 +237,15 @@
 }
 #sidebar-resizer {
   /* Overlap the pane divider without shifting the viewer's alignment. */
-  margin: 0 -2px 0 -3px;
+  margin: 0;
   width: 5px;
   height: auto;
   align-self: stretch;
   border: 0;
-  flex: 0 0 5px;
   cursor: col-resize;
   z-index: var(--layer-resizer);
-  position: relative;
+  position: absolute;
+  inset: 0 -2px 0 auto;
   background: transparent;
   touch-action: none;
 }

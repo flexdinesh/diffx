@@ -2,11 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import { save, saved } from "./preferences.ts";
 import { useModalDrawer } from "./use-modal-drawer.ts";
 
-// React owns both the desktop preferences and the temporary mobile overlay.
+export type WorkspaceView = "projects" | "diff";
+
+// One owner for workspace views, desktop preferences and mobile overlays.
 export function useSidebar() {
   const [mobile, setMobile] = useState(
     () => matchMedia("(max-width: 1011px)").matches,
   );
+  const [view, setView] = useState<WorkspaceView>("diff");
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(
     () => saved("sidebar-collapsed") === "true",
@@ -31,7 +34,13 @@ export function useSidebar() {
       document.removeEventListener("keydown", onEscape);
     };
   }, []);
-  useModalDrawer(mobile && open, "#sidebar", "#sidebar-toggle");
+  useModalDrawer(
+    mobile && open,
+    view === "projects" ? "#projects-nav" : "#sidebar",
+    view === "projects"
+      ? "#projects-toggle, #projects-view"
+      : "#sidebar-toggle, #diff-view",
+  );
   useEffect(() => {
     save("sidebar-collapsed", String(collapsed));
   }, [collapsed]);
@@ -46,22 +55,31 @@ export function useSidebar() {
     [],
   );
   const show = useCallback(() => {
+    setView("diff");
     if (mobile) setOpen(true);
     else setCollapsed(false);
   }, [mobile]);
+  const openDiff = useCallback(() => {
+    setView("diff");
+    setOpen(false);
+    setCollapsed(false);
+  }, []);
   const closeMobile = useCallback(() => setOpen(false), []);
   return {
     mobile,
+    view,
     open,
     collapsed,
     width,
     show,
     closeMobile,
     expanded: mobile ? open : !collapsed,
-    toggle: () => {
-      if (mobile) setOpen((value) => !value);
-      else setCollapsed((value) => !value);
+    selectView: (next: WorkspaceView) => {
+      setView(next);
+      if (mobile) setOpen(view === next ? !open : true);
+      else setCollapsed(view === next ? !collapsed : false);
     },
+    openDiff,
     setWidth: (next: number) =>
       setWidthState(
         Math.max(200, Math.min(520, window.innerWidth - 320, next)),
