@@ -51,18 +51,31 @@ type Published struct {
 	Failures    []CollectionFailure
 }
 
-// Newest is the last published context with changes, else the last one. It
-// matches the catalog's newest changed head because ingestion is serial.
+// Newest prefers current contexts with changes, then current clean contexts.
+// A successful collection of older observations still has an available default.
 func (published Published) Newest() (contextservice.Submission, bool) {
-	for index := len(published.Submissions) - 1; index >= 0; index-- {
-		if count := published.Submissions[index].Context.ChangedFileCount; count != nil && *count > 0 {
-			return published.Submissions[index], true
+	var newest, fallback contextservice.Submission
+	found, available := false, false
+	changed := false
+	for _, submitted := range published.Submissions {
+		if submitted.Context.Availability != "available" {
+			continue
+		}
+		if !available || contextservice.CompareActivity(submitted.Context, fallback.Context) < 0 {
+			fallback, available = submitted, true
+		}
+		if submitted.Context.Stale {
+			continue
+		}
+		hasChanges := submitted.Context.ChangedFileCount != nil && *submitted.Context.ChangedFileCount > 0
+		if !found || hasChanges && !changed || hasChanges == changed && contextservice.CompareActivity(submitted.Context, newest.Context) < 0 {
+			newest, found, changed = submitted, true, hasChanges
 		}
 	}
-	if len(published.Submissions) == 0 {
-		return contextservice.Submission{}, false
+	if found {
+		return newest, true
 	}
-	return published.Submissions[len(published.Submissions)-1], true
+	return fallback, available
 }
 
 // Publish selects each collected checkout into the composition's scope, then

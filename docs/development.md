@@ -266,10 +266,18 @@ picker. The selected context scopes every request. The session owner exposes
 local checkout sync when bootstrap reports `collect`; loading `/` or a live
 `/streams/{streamId}` URL, the header's “Sync all checkouts” icon and Alt+R call
 `POST /api/v2/collections`. Load-time sync opens the stream's synced head, or the
-newest changed one for `/`, and shows “Collecting latest changes” until it
+most recently active changed one for `/`, and shows “Collecting latest changes” until it
 resolves. An explicit sync never replaces the open review: it reloads the heads,
-so the newer-head notice and drawer dots announce new snapshots, and feedback
-reports synced, updated and failed checkouts. The “Switch review” picker first selects a repository
+so the newer-head notice, drawer dots and global unread action announce new
+snapshots, and feedback reports synced, updated and failed checkouts. The global
+action opens the most recently active unopened changed head. The drawer and
+header share one per-browser seen-state owner; first visits baseline existing
+heads and unchanged submissions do not create unread prompts. Activity ordering
+uses catalog `lastChangedAt`, falling back to captured collection time, with
+stable stream/context identity ties. Repositories use their most active visible
+stream. Startup and root selection follow the same ordering. Collection triggers
+are unchanged; no background sync or Git watcher is scheduled.
+The “Switch review” picker first selects a repository
 or Piped, then an immutable observation. Repository observations retain branch,
 worktree, source/run, comparison, and collection-time metadata. Submission/session
 associations remain separate from original snapshot metadata; catalog API filters
@@ -293,7 +301,7 @@ ties. Freshness uses a durable stream head, including deduplicated collections a
 observations outside the current search or page. Expiry and pruning leave that head
 intact, so older retained snapshots stay stale. A newer collection of previous
 content makes its existing review latest again; its original snapshot metadata stays fixed.
-Changed observations come first, ordered by last submission time; counts
+In the historical picker, changed observations come first, ordered by last submission time; counts
 describe their fixed snapshots. Host, Branch, and Worktree filters apply before
 repository grouping. Unavailable entries are disabled and skipped during keyboard
 navigation. Filter selections persist while navigating and reopening the picker.

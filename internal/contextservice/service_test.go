@@ -95,7 +95,7 @@ func TestObservationStoredOnlyAfterCheckoutChangesAndRemoval(t *testing.T) {
 			t.Fatalf("stored preview: %#v, %v", preview, err)
 		}
 		item, err := service.Get(t.Context(), submitted.Context.ID)
-		if err != nil || item.Availability != "available" || item.LastChangedAt != collected.Metadata.CollectedAt {
+		if err != nil || item.Availability != "available" || item.LastChangedAt != collected.Metadata.ActivityAt {
 			t.Fatalf("stored metadata: %#v, %v", item, err)
 		}
 		if !reflect.DeepEqual(item.Capabilities, active.Capabilities) {

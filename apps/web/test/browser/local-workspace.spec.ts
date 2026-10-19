@@ -1102,16 +1102,25 @@ for (const kind of ["observation"] satisfies ApiContext["kind"][]) {
   });
 }
 
-test("landing redirects to the first usable diff across catalog pages", async ({
+test("landing selects the most active usable diff across catalog pages", async ({
   page,
 }) => {
   const state = await localWorkspace(page);
+  state.context.lastChangedAt = 30;
   await page.route("**/api/v2/contexts?*", (route) => {
     const cursor = new URL(route.request().url()).searchParams.get("cursor");
     return route.fulfill({
       json: cursor
         ? {
-            contexts: [state.context, { ...state.context, id: "later" }],
+            contexts: [
+              {
+                ...state.context,
+                id: "later",
+                lastChangedAt: 20,
+                lastSubmittedAt: 900,
+              },
+              state.context,
+            ],
             nextCursor: null,
           }
         : {
@@ -1338,8 +1347,9 @@ test("observation picker drills into repositories and searches independent sourc
   await expect(page.locator("#repo-path")).not.toContainText("Collected");
   await expect(page.locator("#repo-path")).toHaveAttribute(
     "title",
-    /Context: first/,
+    /Context: third/,
   );
+  await expect(page).toHaveURL(/\/contexts\/third$/);
   await expect(page.locator(".context-identity-worktree")).toHaveCount(0);
   const requests = state.scopes.length;
   const catalogReads = catalogRequests;
@@ -1582,6 +1592,7 @@ test("projects drawer lists current changed streams and announces newer snapshot
     streamId: `stream-${branch}`,
     latestContextId: id,
     lastSubmittedAt,
+    lastChangedAt: lastSubmittedAt,
     changedFileCount,
   });
   const viewed = stream("rate-1", "acme-api", "feat/rate-limit", 10);
@@ -1739,6 +1750,152 @@ test("live stream URLs open the latest head on load and keep it until navigation
   ).toBeVisible();
 });
 
+for (const mode of ["local", "remote"]) {
+  test(`${mode} global new changes opens the most active unread stream explicitly`, async ({
+    page,
+  }) => {
+    await page.clock.install();
+    await page.addInitScript(() => {
+      class IngestionEvents extends EventTarget {
+        notify = () =>
+          this.dispatchEvent(new MessageEvent("ingestion", { data: "{}" }));
+        constructor() {
+          super();
+          window.addEventListener("test-ingestion", this.notify);
+        }
+        close() {
+          window.removeEventListener("test-ingestion", this.notify);
+        }
+      }
+      Object.defineProperty(window, "EventSource", { value: IngestionEvents });
+    });
+    const state = await localWorkspace(page);
+    await page.route("**/api/v2/bootstrap", (route) =>
+      route.fulfill({
+        json: {
+          mode,
+          signupEnabled: false,
+          user:
+            mode === "remote" ? { id: "account-a", username: "alice" } : null,
+          csrfToken: mode === "remote" ? "csrf" : null,
+          collect: mode === "local",
+        },
+      }),
+    );
+    let collections = 0;
+    await page.route("**/api/v2/collections", (route) => {
+      collections++;
+      return route.fulfill({ json: { contexts: heads, failures: [] } });
+    });
+    const snapshot = (
+      id: string,
+      repository: string,
+      activity: number,
+      arrival: number,
+    ): ApiContext => ({
+      ...state.context,
+      id,
+      repositoryId: repository,
+      name: repository,
+      streamId: `stream-${repository}`,
+      latestContextId: id,
+      lastChangedAt: activity,
+      lastSubmittedAt: arrival,
+    });
+    const viewed = snapshot("viewed", "api", 100, 1);
+    const olderWeb = snapshot("web-old", "web", 50, 2);
+    const contexts = new Map(
+      [viewed, olderWeb].map((context) => [context.id, context]),
+    );
+    let heads = [olderWeb, viewed];
+    await page.route("**/api/v2/contexts?*", (route) =>
+      route.fulfill({ json: { contexts: heads, nextCursor: null } }),
+    );
+    await page.route("**/api/v2/contexts/*", (route) =>
+      route.fulfill({
+        json: contexts.get(
+          new URL(route.request().url()).pathname.split("/").at(-1) ?? "",
+        ),
+      }),
+    );
+    await page.goto("/contexts/viewed");
+    await ready(page);
+    const global = page.getByRole("button", {
+      name: /^Open latest new changes/,
+    });
+    await expect(global).toHaveCount(0);
+    const nav = page.getByRole("navigation", { name: "Projects" });
+    await expect(nav.locator(".project-name")).toHaveText(["api", "web"]);
+
+    const newerApi = snapshot("api-new", "api", 200, 900);
+    const newerWeb = snapshot("web-new", "web", 400, 10);
+    contexts.set(newerApi.id, newerApi);
+    contexts.set(newerWeb.id, newerWeb);
+    heads = [newerApi, newerWeb];
+    await page.evaluate(() =>
+      window.dispatchEvent(new Event("test-ingestion")),
+    );
+    await expect(global).toHaveAccessibleName(
+      "Open latest new changes (2 streams)",
+    );
+    await expect(global).toHaveText("2 new");
+    await expect(nav.locator(".project-name")).toHaveText(["web", "api"]);
+    await expect(page.locator(".snapshot-notice")).toContainText(
+      "Newer snapshot",
+    );
+    await expect(page).toHaveURL(/\/contexts\/viewed$/);
+    await page.clock.fastForward(5 * 60_000);
+    expect(collections).toBe(0);
+
+    await global.focus();
+    await page.keyboard.press("Enter");
+    await ready(page);
+    await expect(page).toHaveURL(/\/streams\/stream-web$/);
+    await expect(global).toHaveAccessibleName(
+      "Open latest new changes (1 stream)",
+    );
+    await expect(page.locator(".snapshot-notice")).toBeHidden();
+    await expect(nav.locator('[aria-current="page"]')).toBeFocused();
+
+    // Compact chrome preserves the action and restores focus to the closed drawer's toggle.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect(global).toBeVisible();
+    const bounds = await global.boundingBox();
+    expect(bounds && bounds.x >= 0 && bounds.x + bounds.width <= 390).toBe(
+      true,
+    );
+    await global.focus();
+    await page.keyboard.press("Enter");
+    await ready(page);
+    await expect(page).toHaveURL(/\/streams\/stream-api$/);
+    await expect(global).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Show projects" }),
+    ).toBeFocused();
+    // A new submission of the same head may reorder projects, but adds no unread content.
+    heads = [
+      { ...newerApi, lastSubmittedAt: 1000, lastChangedAt: 500 },
+      newerWeb,
+    ];
+    await page.evaluate(() =>
+      window.dispatchEvent(new Event("test-ingestion")),
+    );
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.emulateMedia({ colorScheme: "light" });
+    await expect(nav.locator(".project-name")).toHaveText(["api", "web"]);
+    await expect(global).toHaveCount(0);
+    expect(collections).toBe(0);
+
+    // Root selection shares activity ordering for stored and collected heads.
+    heads = [newerWeb, { ...newerApi, lastChangedAt: 500 }];
+    await page.goto("/");
+    await ready(page);
+    await expect(page).toHaveURL(/\/streams\/stream-api$/);
+    expect(collections).toBe(mode === "local" ? 1 : 0);
+  });
+}
+
 test("local live URLs sync the checkouts on every load", async ({ page }) => {
   const state = await localWorkspace(page);
   await page.route("**/api/v2/bootstrap", (route) =>
@@ -1782,10 +1939,18 @@ test("local live URLs sync the checkouts on every load", async ({ page }) => {
         json: { detail: "Unable to collect checkouts: git failed" },
       });
     // The root opens the newest changed head; live URLs open their own stream.
-    const other = { ...snapshot(`other-${collected}`), streamId: "other" };
+    const other = {
+      ...snapshot(`other-${collected}`),
+      streamId: "other",
+      lastChangedAt: 100,
+      lastSubmittedAt: 900,
+    };
     return route.fulfill({
       json: {
-        contexts: [other, snapshot(`collected-${collected}`)],
+        contexts: [
+          { ...snapshot(`collected-${collected}`), lastChangedAt: 200 },
+          other,
+        ],
         failures: [],
       },
     });

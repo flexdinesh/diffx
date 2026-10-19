@@ -261,6 +261,14 @@ func TestCollectionIngestsEveryCheckoutAndMovesMCPDefault(t *testing.T) {
 	}
 	mu.Lock()
 	roots = []string{discovered, root}
+	// The first ingested checkout is more active than the last. Defaults must
+	// follow activity, regardless of collection or publication ordering.
+	latestActivity := time.Now().Add(time.Hour)
+	for path, timestamp := range map[string]time.Time{root: latestActivity.Add(-time.Minute), discovered: latestActivity} {
+		if err := os.Chtimes(filepath.Join(path, "file.txt"), timestamp, timestamp); err != nil {
+			t.Fatal(err)
+		}
+	}
 	failed = []serverapp.CollectionFailure{{Path: "/broken", Detail: "checkout changed during collection"}}
 	mu.Unlock()
 	events, unsubscribe := service.Subscribe()
@@ -277,10 +285,10 @@ func TestCollectionIngestsEveryCheckoutAndMovesMCPDefault(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("collection published no event")
 	}
-	newest := collected.Contexts[1]
+	newest := collected.Contexts[0]
 	snapshot := decode[review.RepositoryDiff](t, request(t, d, "GET", "/api/v2/contexts/"+newest.ID+"/diffs/current?scope=all", nil))
 	if snapshot.ID == first.Snapshot.ID || mcpDiff().ID != snapshot.ID {
-		t.Fatal("bare MCP default did not follow the newest changed collection")
+		t.Fatal("bare MCP default did not follow the most active changed checkout")
 	}
 	page := decode[contextservice.Page](t, request(t, d, "GET", "/api/v2/contexts", nil))
 	if len(page.Contexts) != 3 {

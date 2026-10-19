@@ -122,7 +122,7 @@ func isGitExitFailure(err error) bool {
 }
 
 func gitDiffArgs(mode review.DiffMode, base string) []string {
-	args := []string{"diff", "--no-ext-diff", "--no-textconv", "--ignore-submodules=none", "--find-renames"}
+	args := []string{"-c", "diff.autoRefreshIndex=false", "diff", "--no-ext-diff", "--no-textconv", "--ignore-submodules=none", "--find-renames"}
 	args = append(args, patchFormat...)
 	if mode == review.DiffStaged {
 		args = append(args, "--cached", base)
@@ -176,6 +176,7 @@ func parseRaw(raw string) (map[string]*review.ChangedFile, error) {
 
 func applyStats(files map[string]*review.ChangedFile, output string) {
 	entries := strings.Split(output, "\x00")
+	changed := make(map[string]bool)
 	for index := 0; index < len(entries); index++ {
 		record := entries[index]
 		if record == "" {
@@ -200,9 +201,18 @@ func applyStats(files map[string]*review.ChangedFile, output string) {
 		if file == nil {
 			continue
 		}
+		changed[path] = true
 		file.Binary = additions == "-"
 		file.Additions, _ = strconv.Atoi(additions)
 		file.Deletions, _ = strconv.Atoi(deletions)
+	}
+	// Raw records can describe stat-only changes when index refresh is disabled.
+	// Numstat compares contents and includes real changes, including zero-line
+	// mode changes, empty files, renames, binaries and dirty submodules.
+	for path, file := range files {
+		if !changed[path] && file.Status != "U" {
+			delete(files, path)
+		}
 	}
 }
 

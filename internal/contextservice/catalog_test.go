@@ -182,7 +182,7 @@ func TestCatalogCountsAndBranchRemainCapturedUntilNewIngestion(t *testing.T) {
 	restarted := New(service.store, service.user)
 	t.Cleanup(func() { _ = restarted.Close() })
 	old, err := restarted.Get(t.Context(), before.Context.ID)
-	if err != nil || old.Stale || old.Branch == nil || *old.Branch != input.Metadata.Branch || old.ChangedFileCount == nil || *old.ChangedFileCount != 1 || old.LastChangedAt != input.Metadata.CollectedAt {
+	if err != nil || old.Stale || old.Branch == nil || *old.Branch != input.Metadata.Branch || old.ChangedFileCount == nil || *old.ChangedFileCount != 1 || old.LastChangedAt != input.Metadata.ActivityAt {
 		t.Fatalf("old observation mutated: %#v, %v", old, err)
 	}
 	latest, err := restarted.Get(t.Context(), after.Context.ID)
@@ -266,7 +266,7 @@ func TestCatalogStaleStatusSurvivesRestartAndFilteredPages(t *testing.T) {
 	fresh.SubmissionID = "before-fresh"
 	fresh.Metadata.CollectedAt = afterInput.Metadata.CollectedAt + 1
 	reused, err := restarted.Ingest(t.Context(), fresh)
-	if err != nil || reused.Context.ID != before.Context.ID || reused.Context.Stale || reused.Context.LastChangedAt != input.Metadata.CollectedAt {
+	if err != nil || reused.Context.ID != before.Context.ID || reused.Context.Stale || reused.Context.LastChangedAt != input.Metadata.ActivityAt {
 		t.Fatalf("deduplicated latest observation: %#v, %v", reused, err)
 	}
 	late := afterInput

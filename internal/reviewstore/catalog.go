@@ -45,6 +45,8 @@ func putObservationContext(transaction *sql.Tx, ownerID, id, submittedFrom strin
 
 var contextSelect = `SELECT c.id,c.kind,json_extract(o.metadata,'$.root'),NULL,o.repository_id,NULL,json_extract(o.metadata,'$.checkoutKey'),c.submitted_from,
 	c.created_at,c.last_submitted_at,d.expires_at,
+	CASE WHEN head.context_id=c.id THEN COALESCE(NULLIF(json_extract(head_submission.metadata,'$.activityAt'),0),json_extract(o.metadata,'$.collectedAt'),c.created_at)
+	ELSE COALESCE(NULLIF(json_extract(o.metadata,'$.activityAt'),0),json_extract(o.metadata,'$.collectedAt'),c.created_at) END,
 	(SELECT json_array_length(v.manifest, '$.files') FROM diff_versions v WHERE v.diff_id=c.anchor_diff_id LIMIT 1),
 	(SELECT json_extract(v.manifest, '$.source') FROM diff_versions v WHERE v.diff_id=c.anchor_diff_id LIMIT 1),o.metadata,
 	COALESCE(head.context_id<>c.id,0),
@@ -58,7 +60,10 @@ var contextSelect = `SELECT c.id,c.kind,json_extract(o.metadata,'$.root'),NULL,o
 	LEFT JOIN observation_stream_heads head ON head.owner_id=o.owner_id AND head.source_id=o.source_id
 		AND head.repository_key=json_extract(o.metadata,'$.repositoryKey') AND head.checkout_key=json_extract(o.metadata,'$.checkoutKey')
 		AND head.comparison_policy=` + comparisonPolicySQL("o.metadata") + `
-		AND head.branch=COALESCE(NULLIF(json_extract(o.metadata,'$.branchId'),''),json_extract(o.metadata,'$.branch'))`
+		AND head.branch=COALESCE(NULLIF(json_extract(o.metadata,'$.branchId'),''),json_extract(o.metadata,'$.branch'))
+	LEFT JOIN ingestion_records head_record ON head_record.sequence=head.arrival_sequence AND head_record.owner_id=head.owner_id
+	LEFT JOIN observation_submissions head_submission ON head_submission.owner_id=head_record.owner_id AND head_submission.source_id=head_record.source_id
+		AND head_submission.submission_id=head_record.submission_id AND head_submission.context_id=head.context_id`
 
 type scanner interface{ Scan(...any) error }
 
@@ -74,7 +79,7 @@ func scanContext(row scanner) (ContextInfo, error) {
 	var sessions string
 	var head [5]sql.NullString
 	err := row.Scan(&item.ID, &item.Kind, &item.Root, &item.LocationID, &item.RepositoryID, &item.CommonDir, &item.WorktreeKey,
-		&item.SubmittedFrom, &item.CreatedAt, &item.LastSubmittedAt, &item.ExpiresAt, &item.ChangedFileCount, &item.Source, &metadata, &item.Stale, &sessions,
+		&item.SubmittedFrom, &item.CreatedAt, &item.LastSubmittedAt, &item.ExpiresAt, &item.ActivityAt, &item.ChangedFileCount, &item.Source, &metadata, &item.Stale, &sessions,
 		&head[0], &head[1], &head[2], &head[3], &head[4], &item.LatestContextID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ContextInfo{}, ErrNotFound

@@ -19,8 +19,14 @@ import { useIdentity, navigate } from "./identity-context.tsx";
 import { Button } from "@/components/ui/button";
 import { ContextIdentity } from "./ContextIdentity.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
-import { ProjectsNav, ProjectsToggle } from "./ProjectsNav.tsx";
-import { contextHasChanges } from "./project-picker.ts";
+import {
+  NewChangesButton,
+  ProjectsNav,
+  ProjectsToggle,
+} from "./ProjectsNav.tsx";
+import { latestChangedContext } from "./context-activity.ts";
+import { unseenChangedHeads, type SeenStreams } from "./project-nav.ts";
+import { useSeenStreams } from "./use-seen-streams.ts";
 import { useCompactChrome } from "./use-compact-chrome.ts";
 import {
   useContextCatalog,
@@ -37,6 +43,8 @@ interface Catalog {
   heads: ContextCatalog;
   /** The selected review once loaded, otherwise its catalog entry if known. */
   current: ApiContext | undefined;
+  seen: SeenStreams | null;
+  unreadHeads: ApiContext[];
   selectedId: string;
   /** Pins one snapshot. */
   select: (id: string, options?: { restoreFocus?: boolean }) => void;
@@ -235,8 +243,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       removeHead(id);
       removeHistory(id);
       if (selectedRef.current === id) {
-        const next = heads.contexts.find(
-          (context) => context.id !== id && contextHasChanges(context),
+        const next = latestChangedContext(
+          heads.contexts.filter((context) => context.id !== id),
         );
         if (next) openStream(next, { replace: true });
         else {
@@ -280,7 +288,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const head =
         route.kind === "live"
           ? contexts.find((context) => context.streamId === route.stream)
-          : contexts.findLast(contextHasChanges);
+          : latestChangedContext(contexts);
       if (head) openStream(head, { replace: true, restoreFocus: false });
       else setUncollected(route);
     });
@@ -291,7 +299,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const head =
       route.kind === "live"
         ? heads.contexts.find((context) => context.streamId === route.stream)
-        : heads.contexts.find(contextHasChanges);
+        : latestChangedContext(heads.contexts);
     if (head) openStream(head, { replace: true, restoreFocus: false });
     else if (route.kind === "live") setMissing(true);
   }, [
@@ -334,10 +342,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const current = ready
     ? state.session
     : heads.contexts.find((context) => context.id === selectedId);
+  const seen = useSeenStreams(
+    heads.contexts,
+    heads.loaded,
+    ready ? current : undefined,
+  );
+  const unreadHeads = useMemo(
+    () => unseenChangedHeads(heads.contexts, seen),
+    [heads.contexts, seen],
+  );
   const catalog = useMemo(
     () => ({
       heads,
       current,
+      seen,
+      unreadHeads,
       selectedId,
       select,
       openStream,
@@ -351,6 +370,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [
       heads,
       current,
+      seen,
+      unreadHeads,
       selectedId,
       select,
       openStream,
@@ -370,10 +391,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return;
     restorePickerFocus.current = false;
     if (empty) statusRef.current?.focus();
-    else
-      document
-        .querySelector<HTMLElement>('#projects-nav [aria-current="page"]')
-        ?.focus();
+    else {
+      const selected = document.querySelector<HTMLElement>(
+        '#projects-nav [aria-current="page"]',
+      );
+      const target = selected?.getClientRects().length
+        ? selected
+        : document.querySelector<HTMLElement>("#projects-toggle");
+      target?.focus();
+    }
   }, [state, empty]);
   return (
     <CatalogContext value={catalog}>
@@ -388,6 +414,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 <ProjectsToggle />
                 <CurrentContext />
                 <div className="header-actions">
+                  <NewChangesButton />
                   {compact && <ShellActions side="bottom" />}
                 </div>
               </header>

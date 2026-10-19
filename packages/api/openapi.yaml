@@ -1095,6 +1095,11 @@ components:
           type: integer
           format: int64
           description: Producer collection time in Unix milliseconds.
+        activityAt:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Approximate code activity time in Unix milliseconds; omitted when unavailable. Advisory and independent of snapshot freshness.
         collectorVersion:
           type: string
         comparison:
@@ -1233,7 +1238,7 @@ components:
         lastChangedAt:
           type: integer
           format: int64
-          description: Latest commit or working-tree change time in Unix milliseconds. Submission time for captures; zero when worktree change metadata is unknown.
+          description: Approximate code activity in Unix milliseconds. Current heads use the winning submission activity; historical snapshots retain captured activity. Missing activity falls back to the original collection time.
         changedFileCount:
           type: [integer, "null"]
           minimum: 0

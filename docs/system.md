@@ -100,8 +100,11 @@ Navigation is project-driven. The Projects drawer queries
 heads by repository. A stream is one owner, source, repository, checkout, branch
 and comparison policy; every context carries its opaque `streamId` and the
 stream's current `latestContextId`. The drawer hides clean, unavailable and
-unknown-status heads, orders repositories and streams by latest arrival, and
-marks streams whose head this browser has not opened. Ingestion events reload
+unknown-status heads, orders streams by recent code activity and repositories by
+their most active visible stream, and marks heads this browser has not opened.
+Equal activity uses stable stream and context identities. A global header action
+counts unopened changed heads and opens the most active one. First visits mark
+existing heads as seen; opening a head clears its mark. Ingestion events reload
 the heads; when the viewed context's stream has a newer head, a notice offers it
 without replacing the open review. URLs are live or pinned: `/streams/{streamId}`
 opens the stream's latest head when loaded or navigated to, while
@@ -110,11 +113,34 @@ live URLs; the picker opens pinned ones; piped snapshots have no stream and stay
 pinned. A live URL resolves once, so later arrivals raise the notice instead of
 swapping the open review. With local collection enabled, loading `/` or a live
 URL first syncs the checkouts, then opens the stream's synced head or, for `/`,
-the newest changed one; a failed sync opens the stored head and reports the
-error. Otherwise `/` opens the newest changed head's live URL.
+the most recently active changed one; a failed sync opens the stored head and
+reports the error. Otherwise `/` opens the most recently active changed head's
+live URL. Startup selection and the local default MCP context use the same
+activity ordering.
 The drawer's search filters those loaded heads by the picker's metadata terms;
 the header only names the open review. An explicit local sync, like an arrival,
 raises the notice instead of replacing the open review.
+
+Activity is a producer estimate, separate from collection freshness and unread
+state. Checkout collection takes the maximum of HEAD's committer time, changed
+paths' modification times and the index modification time when staged changes
+exist. Deleted paths use the nearest surviving directory's modification time.
+Collection Git reads disable optional locks and diff's automatic index refresh
+so they do not manufacture activity by updating the index timestamp during Sync.
+Merge-base checkout comparisons include these local-change signals; objects-only
+branch collection uses the captured target commit's committer time and ignores
+the checkout. Missing activity falls back to captured collection time. Touches,
+index rewrites and producer clocks can affect this heuristic. Activity failures
+do not discard an otherwise valid diff; cancellation still stops collection.
+
+The optional submission `activityAt` timestamp is projected as catalog
+`lastChangedAt`. Current heads use their winning submission, including a fresh
+submission that reuses an existing observation. Historical snapshots retain
+their original activity; captured observation metadata never changes. Activity
+does not participate in content identity, unchanged-upload suppression or stream
+head selection. Unchanged submissions can update ordering without producing an
+unread-content indicator. Piped history and the full catalog retain their
+existing collection/submission chronology.
 
 The review picker, opened by Cmd/Ctrl+K or the drawer's “Browse all reviews”
 action, loads the full catalog only while open. It selects a

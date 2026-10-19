@@ -2,7 +2,7 @@ import { FolderSyncIcon, ListTreeIcon, RefreshCwIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ShellActions } from "./ActivityBar.tsx";
 import { DeleteContextButton } from "./DeleteContextButton.tsx";
-import { ProjectsToggle } from "./ProjectsNav.tsx";
+import { NewChangesButton, ProjectsToggle } from "./ProjectsNav.tsx";
 import { useDiffSource } from "./app-state.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
 import { CurrentContext, useCatalog, useSession } from "./session-context.tsx";
@@ -58,6 +58,7 @@ export function Header() {
         </p>
       </div>
       <div className="header-actions">
+        <NewChangesButton />
         <DeleteContextButton />
         {collect ? (
           <Button

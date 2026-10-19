@@ -28,6 +28,7 @@ func TestQueueRestartReplayAndLeaseFencing(t *testing.T) {
 	}
 	owner := testUser(t, store, "queue")
 	request := queuedRequest("first")
+	request.Metadata.ActivityAt = 98
 	job, err := store.Queue().Accept(t.Context(), owner.ID, request)
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +66,7 @@ func TestQueueRestartReplayAndLeaseFencing(t *testing.T) {
 		t.Fatalf("commit replay: %+v %v", replay, err)
 	}
 	after, err := store.Context(owner.ID, binding.ContextID, time.Now())
-	if err != nil || *after.ExpiresAt != *before.ExpiresAt || after.LastSubmittedAt != before.LastSubmittedAt {
+	if err != nil || *after.ExpiresAt != *before.ExpiresAt || after.LastSubmittedAt != before.LastSubmittedAt || after.ActivityAt != 98 || recovered.Request.Metadata.ActivityAt != 98 {
 		t.Fatalf("retry extended retention: %v", err)
 	}
 	if err := store.Queue().Complete(t.Context(), original, binding.ContextID); !errors.Is(err, ingestionqueue.ErrLeaseLost) {

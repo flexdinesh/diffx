@@ -24,6 +24,7 @@ func TestValidateObservationContracts(t *testing.T) {
 		{"uppercase content hash", func(r *Request) { r.ContentHash = strings.Repeat("A", 64) }},
 		{"blank source", func(r *Request) { r.Metadata.SourceID = " " }},
 		{"oversized source", func(r *Request) { r.Metadata.SourceID = strings.Repeat("x", 257) }},
+		{"negative activity time", func(r *Request) { r.Metadata.ActivityAt = -1 }},
 		{"missing collection time", func(r *Request) { r.Metadata.CollectedAt = 0 }},
 		{"unknown trigger", func(r *Request) { r.Metadata.Trigger = "watcher" }},
 		{"working-tree non-HEAD baseline", func(r *Request) {

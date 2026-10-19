@@ -22,6 +22,32 @@ func testGit(t *testing.T, root string, arguments ...string) string {
 	return string(output)
 }
 
+func TestDiffStatsExcludeStatOnlyRecordsAndKeepMeaningfulZeroLineChanges(t *testing.T) {
+	files, err := parseRaw(":100644 100644 aaaa 0000 M\x00stat-only\x00" +
+		":100644 100755 aaaa 0000 M\x00mode\x00" +
+		":000000 100644 0000 aaaa A\x00empty\x00" +
+		":100644 100644 aaaa bbbb R100\x00old\x00renamed\x00" +
+		":100644 100644 aaaa bbbb C100\x00original\x00copied\x00" +
+		":100644 100644 aaaa 0000 M\x00binary\x00" +
+		":160000 160000 aaaa aaaa M\x00module\x00" +
+		":000000 100644 0000 0000 U\x00conflict\x00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyStats(files, "0\t0\tmode\x000\t0\tempty\x000\t0\t\x00old\x00renamed\x000\t0\t\x00original\x00copied\x00-\t-\tbinary\x000\t0\tmodule\x00")
+	if len(files) != 7 || files["stat-only"] != nil {
+		t.Fatalf("stat-only path remained reviewable: %+v", files)
+	}
+	for _, path := range []string{"mode", "empty", "renamed", "copied", "binary", "module", "conflict"} {
+		if files[path] == nil {
+			t.Fatalf("meaningful change %q was discarded", path)
+		}
+	}
+	if !files["binary"].Binary || files["renamed"].Status != "R" || files["copied"].Status != "C" || files["conflict"].Status != "U" {
+		t.Fatalf("change semantics lost: %+v", files)
+	}
+}
+
 func TestRepositoryIdentityGroupsWorktrees(t *testing.T) {
 	root := t.TempDir()
 	testGit(t, root, "init", "-q")

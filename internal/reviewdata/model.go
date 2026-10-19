@@ -51,6 +51,9 @@ type ContextInfo struct {
 	LastSubmittedAt  int64
 	ExpiresAt        *int64
 	ChangedFileCount *int
+
+	// ActivityAt is the winning submission activity for heads; captured activity otherwise.
+	ActivityAt int64
 	// StreamID names the source/repository/checkout/branch/comparison stream;
 	// LatestContextID is that stream's current head.
 	StreamID        *string

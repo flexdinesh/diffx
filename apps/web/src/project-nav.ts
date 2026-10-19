@@ -1,8 +1,10 @@
 import type { ApiContext } from "@diffx/api";
+import { compareContextActivity, contextActivity } from "./context-activity.ts";
 import {
   contextHasChanges,
   contextIsPiped,
   contextMatches,
+  contextTimestamp,
   searchWords,
 } from "./project-picker.ts";
 
@@ -59,15 +61,16 @@ export function projectGroups(heads: ApiContext[], seen: SeenStreams | null) {
       context,
       unseen: seen !== null && seen[stream] !== context.id,
     });
-    group.lastActivity = Math.max(group.lastActivity, context.lastSubmittedAt);
+    group.lastActivity = Math.max(group.lastActivity, contextActivity(context));
     groups.set(id, group);
   }
   const result = [...groups.values()];
   for (const group of result) {
-    group.streams.sort(
-      (left, right) =>
-        right.context.lastSubmittedAt - left.context.lastSubmittedAt ||
-        left.id.localeCompare(right.id),
+    group.streams.sort((left, right) =>
+      group.kind === "piped"
+        ? contextTimestamp(right.context) - contextTimestamp(left.context) ||
+          left.id.localeCompare(right.id)
+        : compareContextActivity(left.context, right.context),
     );
     if (group.kind === "piped")
       group.streams = group.streams.slice(0, pipedLimit);
@@ -75,12 +78,17 @@ export function projectGroups(heads: ApiContext[], seen: SeenStreams | null) {
       new Set(group.streams.map((stream) => streamHost(stream.context))).size >
       1;
   }
-  return result.sort(
-    (left, right) =>
+  return result.sort((left, right) => {
+    const leftHead = left.streams[0]?.context;
+    const rightHead = right.streams[0]?.context;
+    return (
       Number(left.kind === "piped") - Number(right.kind === "piped") ||
-      right.lastActivity - left.lastActivity ||
-      left.name.localeCompare(right.name),
-  );
+      (leftHead && rightHead
+        ? compareContextActivity(leftHead, rightHead)
+        : 0) ||
+      left.id.localeCompare(right.id)
+    );
+  });
 }
 
 /** Keeps streams whose metadata matches every search word, preserving order. */
@@ -124,7 +132,7 @@ export function streamMeta(
     worktree,
     harness,
     multipleHosts ? streamHost(context) : "",
-    relativeAge(context.lastSubmittedAt, now),
+    relativeAge(contextActivity(context), now),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -144,6 +152,22 @@ export function baselineSeen(heads: ApiContext[]): SeenStreams {
   return Object.fromEntries(
     heads.map((context) => [streamKey(context), context.id]),
   );
+}
+
+/** Unread content heads, independent of ingestion order and submission touches. */
+export function unseenChangedHeads(
+  heads: ApiContext[],
+  seen: SeenStreams | null,
+) {
+  if (seen === null) return [];
+  return heads
+    .filter(
+      (context) =>
+        !context.stale &&
+        contextHasChanges(context) &&
+        seen[streamKey(context)] !== context.id,
+    )
+    .sort(compareContextActivity);
 }
 
 export function readSeen(raw: string | null): SeenStreams | null {

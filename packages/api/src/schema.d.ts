@@ -609,6 +609,11 @@ export interface components {
        * @description Producer collection time in Unix milliseconds.
        */
       collectedAt: number;
+      /**
+       * Format: int64
+       * @description Approximate code activity time in Unix milliseconds; omitted when unavailable. Advisory and independent of snapshot freshness.
+       */
+      activityAt?: number;
       collectorVersion: string;
       comparison?: components["schemas"]["Comparison"];
       agentSession?: components["schemas"]["AgentSession"];
@@ -675,7 +680,7 @@ export interface components {
       lastSubmittedAt: number;
       /**
        * Format: int64
-       * @description Latest commit or working-tree change time in Unix milliseconds. Submission time for captures; zero when worktree change metadata is unknown.
+       * @description Approximate code activity in Unix milliseconds. Current heads use the winning submission activity; historical snapshots retain captured activity. Missing activity falls back to the original collection time.
        */
       lastChangedAt: number;
       /** @description Unique files with staged, unstaged, or untracked changes, independent of the selected scope. Captures use their snapshot file count. Null when change metadata is unknown. */

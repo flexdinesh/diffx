@@ -43,7 +43,10 @@ Stop running binaries before upgrading. Current schema 11 state survives
 subsequent starts; older, future or unrecognized schemas are refused without
 resetting data. Back up the state directory and explicitly choose a fresh
 database path if discarding incompatible state. Upgrade server and collectors
-together for ingestion protocol 4. In-memory state lasts only for one process.
+together for ingestion protocol 4, deploying the server first: new producers send
+optional activity metadata that older servers reject. Existing protocol 4
+submissions without that metadata still replay unchanged; schema 11 needs no
+reset for activity ordering. In-memory state lasts only for one process.
 
 The tap branch is deterministic per version, such as `diffx-v0.2.0`.
 Rerunning a release whose tag's first parent is still current `main` reuses the existing
