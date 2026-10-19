@@ -57,8 +57,8 @@ func TestAdmissionCapabilitiesMatchHealthAndRoutes(t *testing.T) {
 				options.Queue = store.Queue()
 			}
 			if test.collect {
-				options.Collections = serverapp.NewCollections(service, func(context.Context) (serverapp.Collection, error) {
-					return serverapp.Collection{}, errors.New("unused")
+				options.Collections = serverapp.NewCollections(service, func(context.Context, func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
+					return nil, errors.New("unused")
 				}, "")
 			}
 			if got := options.Capabilities(); got != test.want {
@@ -179,7 +179,7 @@ func TestCollectionIngestsEveryCheckoutAndMovesMCPDefault(t *testing.T) {
 	roots := []string{root}
 	var failure error
 	var failed []serverapp.CollectionFailure
-	collect := func(ctx context.Context) (serverapp.Collection, error) {
+	collectBatch := func(ctx context.Context) (serverapp.Collection, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		if failure != nil {
@@ -196,7 +196,7 @@ func TestCollectionIngestsEveryCheckoutAndMovesMCPDefault(t *testing.T) {
 		}
 		return collection, nil
 	}
-	initial, err := collect(t.Context())
+	initial, err := collectBatch(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,6 +218,18 @@ func TestCollectionIngestsEveryCheckoutAndMovesMCPDefault(t *testing.T) {
 	first, ok := published.Newest()
 	if !ok {
 		t.Fatal("initial collection published nothing")
+	}
+	collect := func(ctx context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
+		collection, err := collectBatch(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, input := range collection.Requests {
+			if err := publish(input); err != nil {
+				return nil, err
+			}
+		}
+		return collection.Failures, nil
 	}
 	server := httptest.NewServer(serverapp.Handler(t.Context(), service, store, fstest.MapFS{}, first.Context.ID, serverapp.Options{Collections: serverapp.NewCollections(service, collect, first.Context.ID)}))
 	defer server.Close()

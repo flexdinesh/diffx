@@ -494,7 +494,11 @@ Do not add motion for decoration. New animation must honor
   names, counts, progress percentages or addition/deletion colors.
 - Replace skeletons as data arrives, without a minimum display delay. Stored
   manifest loading uses the same diff-frame skeleton without unmounting Pierre.
-  Background Sync preserves the existing review and usable controls. Errors and
+  Open available stored snapshots while load-time Sync continues; use skeletons
+  only for unavailable data. Replace each file preview independently as it arrives.
+  Keep the header busy indicator active through collection and preview loading.
+  Background Sync preserves the existing review and usable controls; newer heads
+  use the existing “Newer snapshot” notice and explicit “View latest” action. Errors and
   empty results replace placeholders with their existing explanation and actions.
 
 ## Responsive design

@@ -52,7 +52,8 @@ button[aria-busy="true"] {
   opacity: 0.7;
 }
 @media (prefers-reduced-motion: no-preference) {
-  #refresh[aria-busy="true"] svg {
+  #refresh[aria-busy="true"] svg,
+  #sync[aria-busy="true"] svg {
     animation: refresh-spin 800ms linear infinite;
   }
 }

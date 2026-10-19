@@ -1,4 +1,9 @@
-import { FolderSyncIcon, ListTreeIcon, RefreshCwIcon } from "lucide-react";
+import {
+  FolderSyncIcon,
+  ListTreeIcon,
+  LoaderCircleIcon,
+  RefreshCwIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AccountButton } from "./account.tsx";
 import { ThemeButton } from "./ThemeButton.tsx";
@@ -74,10 +79,20 @@ export function Header() {
             size="icon"
             aria-label="Sync all checkouts"
             title="Sync all checkouts (Alt+R)"
-            aria-busy={collecting}
+            aria-busy={collecting || diff.busy}
             onClick={refresh}
           >
-            <FolderSyncIcon className="size-(--icon-base)" aria-hidden="true" />
+            {collecting || diff.busy ? (
+              <LoaderCircleIcon
+                className="size-(--icon-base)"
+                aria-hidden="true"
+              />
+            ) : (
+              <FolderSyncIcon
+                className="size-(--icon-base)"
+                aria-hidden="true"
+              />
+            )}
           </Button>
         ) : (
           <Button

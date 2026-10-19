@@ -2,6 +2,7 @@ import {
   api,
   errorDetail,
   type ApiCollectionFailure,
+  type ApiCollectionResult,
   type ApiContext,
 } from "@diffx/api";
 import {
@@ -14,6 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { LoaderCircleIcon } from "lucide-react";
 import { AccountButton } from "./account.tsx";
 import { ThemeButton } from "./ThemeButton.tsx";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -146,7 +148,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const history = useContextCatalog(false, pickerOpen);
   const [collecting, setCollecting] = useState(false);
   const [collectError, setCollectError] = useState("");
-  const collectingRef = useRef(false);
+  const collectionRequest = useRef<Promise<ApiCollectionResult | null> | null>(
+    null,
+  );
   const selectedRef = useRef(selectedId);
   useEffect(() => {
     selectedRef.current = selectedId;
@@ -213,28 +217,33 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [show],
   );
   const { remove: removeHead, retry: reloadHeads } = heads;
-  // Syncs the local checkouts; null when it fails or one is running.
+  // Load-time navigation joins an active collection. Explicit Sync ignores
+  // duplicate requests while the current collection is running.
   const collectLatest = useCallback(
-    async (initial = false) => {
-      if (collectingRef.current) return null;
-      collectingRef.current = true;
+    (initial = false) => {
+      if (collectionRequest.current)
+        return initial ? collectionRequest.current : Promise.resolve(null);
       setCollecting(true);
       setCollectError("");
-      try {
-        const { data, error } = await api.POST("/api/v2/collections", {
-          params: { query: { initial } },
-        });
-        if (!data)
-          throw new Error(errorDetail(error, "Unable to sync changes"));
-        reloadHeads();
-        return data;
-      } catch (error) {
-        setCollectError(errorDetail(error, "Unable to sync changes"));
-        return null;
-      } finally {
-        collectingRef.current = false;
-        setCollecting(false);
-      }
+      const request = (async () => {
+        try {
+          const { data, error } = await api.POST("/api/v2/collections", {
+            params: { query: { initial } },
+          });
+          if (!data)
+            throw new Error(errorDetail(error, "Unable to sync changes"));
+          reloadHeads();
+          return data;
+        } catch (error) {
+          setCollectError(errorDetail(error, "Unable to sync changes"));
+          return null;
+        } finally {
+          collectionRequest.current = null;
+          setCollecting(false);
+        }
+      })();
+      collectionRequest.current = request;
+      return request;
     },
     [reloadHeads],
   );
@@ -299,58 +308,53 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     window.addEventListener("popstate", handleNavigation);
     return () => window.removeEventListener("popstate", handleNavigation);
   }, []);
-  // Live routes resolve once per load or navigation. Local checkouts sync
-  // first and open the stream's synced head (or the newest changed one for the
-  // root URL); otherwise the catalog's head opens. Later arrivals only raise
-  // the newer-head notice. The route whose load-time sync started, and one
-  // whose sync failed or synced no matching head.
+  // Open available catalog data while local collection continues. Once selected,
+  // a snapshot stays open; collection only announces newer heads.
   const collected = useRef<Route | null>(null);
-  const [uncollected, setUncollected] = useState<Route | null>(null);
+  const [collectionResult, setCollectionResult] = useState<{
+    route: Route;
+    contexts: ApiContext[];
+  } | null>(null);
   const resolving = route.kind !== "pinned" && !selectedId && !missing;
-  const collectOnLoad = resolving && collectEnabled && uncollected !== route;
+  const collectionFinished = collectionResult?.route === route;
+  const collectOnLoad = resolving && collectEnabled && !collectionFinished;
   useEffect(() => {
     if (!collectOnLoad || collected.current === route) return;
-    // Effect replay must not treat the in-flight collection as a failed one.
+    // Effect replay must not start another collection. Completion only publishes
+    // a result; route resolution below cannot replace a user-selected review.
     collected.current = route;
     void collectLatest(true).then((result) => {
       if (result?.failures.length)
         setCollectError(
           `Unable to sync ${result.failures.length} ${result.failures.length === 1 ? "checkout" : "checkouts"}: ${result.failures.map((failure) => `${failure.path} (${failure.detail})`).join(", ")}`,
         );
-      const contexts = result?.contexts ?? [];
-      const head =
-        route.kind === "live"
-          ? contexts.find((context) => context.streamId === route.stream)
-          : latestChangedContext(contexts);
-      if (head)
-        openStream(head, {
-          replace: true,
-          restoreFocus: false,
-          preserveNavigation: true,
-        });
-      else setUncollected(route);
+      setCollectionResult({ route, contexts: result?.contexts ?? [] });
     });
-  }, [collectOnLoad, route, collectLatest, openStream]);
+  }, [collectOnLoad, route, collectLatest]);
   useEffect(() => {
-    if (!resolving || !heads.loaded) return;
-    if (collectEnabled && uncollected !== route) return;
-    const head =
+    if (!resolving) return;
+    const findHead = (contexts: ApiContext[]) =>
       route.kind === "live"
-        ? heads.contexts.find((context) => context.streamId === route.stream)
-        : latestChangedContext(heads.contexts);
+        ? contexts.find((context) => context.streamId === route.stream)
+        : latestChangedContext(contexts);
+    const head =
+      (collectionResult?.route === route
+        ? findHead(collectionResult.contexts)
+        : undefined) ?? findHead(heads.contexts);
     if (head)
       openStream(head, {
         replace: true,
         restoreFocus: false,
         preserveNavigation: true,
       });
-    else if (route.kind === "live") setMissing(true);
+    else if (route.kind === "live" && heads.loaded && !collectOnLoad)
+      setMissing(true);
   }, [
     resolving,
     heads.loaded,
     heads.contexts,
-    collectEnabled,
-    uncollected,
+    collectOnLoad,
+    collectionResult,
     route,
     openStream,
   ]);
@@ -464,6 +468,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 )}
                 <div className="header-actions">
                   <NewChangesButton />
+                  {collecting && (
+                    <Button
+                      type="button"
+                      id="sync"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Sync all checkouts"
+                      title="Syncing checkouts"
+                      aria-busy="true"
+                      disabled
+                    >
+                      <LoaderCircleIcon
+                        className="size-(--icon-base)"
+                        aria-hidden="true"
+                      />
+                    </Button>
+                  )}
                   {compact && <AccountButton />}
                   <ThemeButton />
                 </div>
@@ -522,7 +543,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                               collected.current = null;
                               setCollectError("");
                               setMissing(false);
-                              setUncollected(null);
+                              setCollectionResult(null);
                             }
                             reloadHeads();
                             setAttempt((current) => current + 1);

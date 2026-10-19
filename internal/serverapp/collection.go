@@ -45,6 +45,11 @@ type CollectionFailure struct {
 	Detail string `json:"detail"`
 }
 
+// Collect publishes completed checkout requests serially before returning the
+// remaining checkout failures. It joins its workers before returning, including
+// after cancellation or a publication error.
+type Collect func(context.Context, func(ingestion.Request) error) ([]CollectionFailure, error)
+
 // Published is the outcome of ingesting one collection.
 type Published struct {
 	Submissions []contextservice.Submission
@@ -84,19 +89,26 @@ func (published Published) Newest() (contextservice.Submission, bool) {
 func Publish(ctx context.Context, service *contextservice.Service, collection Collection) (Published, error) {
 	published := Published{Failures: slices.Clone(collection.Failures)}
 	for _, input := range collection.Requests {
-		service.Select(input)
-		submitted, err := service.Ingest(ctx, input)
-		var rejected *review.RequestError
-		if errors.As(err, &rejected) {
-			published.Failures = append(published.Failures, CollectionFailure{Path: input.Metadata.Root, Detail: rejected.Detail})
-			continue
-		}
-		if err != nil {
+		if err := published.ingest(ctx, service, input); err != nil {
 			return published, err
 		}
-		published.Submissions = append(published.Submissions, submitted)
 	}
 	return published, nil
+}
+
+func (published *Published) ingest(ctx context.Context, service *contextservice.Service, input ingestion.Request) error {
+	service.Select(input)
+	submitted, err := service.Ingest(ctx, input)
+	var rejected *review.RequestError
+	if errors.As(err, &rejected) {
+		published.Failures = append(published.Failures, CollectionFailure{Path: input.Metadata.Root, Detail: rejected.Detail})
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	published.Submissions = append(published.Submissions, submitted)
+	return nil
 }
 
 // FailureSummary joins failures for a single diagnostic.
@@ -117,7 +129,7 @@ type Collections struct {
 	pending *collectionResult
 	gate    chan struct{}
 	service *contextservice.Service
-	collect func(context.Context) (Collection, error)
+	collect Collect
 	current *defaultContext
 }
 
@@ -127,7 +139,7 @@ type collectionResult struct {
 	err       error
 }
 
-func NewCollections(service *contextservice.Service, collect func(context.Context) (Collection, error), defaultID string) *Collections {
+func NewCollections(service *contextservice.Service, collect Collect, defaultID string) *Collections {
 	return &Collections{service: service, collect: collect, current: &defaultContext{id: defaultID}, gate: make(chan struct{}, 1)}
 }
 
@@ -158,13 +170,26 @@ func (handler *Collections) run(ctx context.Context) (Published, error) {
 	if err := ctx.Err(); err != nil {
 		return Published{}, err
 	}
-	collected, err := handler.collect(ctx)
-	if err != nil {
-		return Published{}, &review.RequestError{Status: http.StatusUnprocessableEntity, Detail: "Unable to collect checkouts: " + err.Error()}
+	published := Published{}
+	var publishError error
+	failures, err := handler.collect(ctx, func(input ingestion.Request) error {
+		if publishError = published.ingest(ctx, handler.service, input); publishError != nil {
+			return publishError
+		}
+		if newest, ok := published.Newest(); ok {
+			handler.current.set(newest.Context.ID)
+		}
+		return nil
+	})
+	published.Failures = append(published.Failures, failures...)
+	if publishError != nil {
+		return published, publishError
 	}
-	published, err := Publish(ctx, handler.service, collected)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return published, err
+	}
+	if err != nil {
+		return published, &review.RequestError{Status: http.StatusUnprocessableEntity, Detail: "Unable to collect checkouts: " + err.Error()}
 	}
 	newest, ok := published.Newest()
 	if !ok {

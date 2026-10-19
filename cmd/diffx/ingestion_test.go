@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/flexdinesh/diffx/internal/ingestion"
 )
 
 func cliRepository(t *testing.T) string {
@@ -36,24 +38,36 @@ func cliRepository(t *testing.T) string {
 	return root
 }
 
-func TestBareInvocationRejectsNonRepositoryWithoutConsumingStdin(t *testing.T) {
-	t.Chdir(t.TempDir())
-	t.Setenv("DIFFX_CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
+func TestNonRepositoryWorkspaceFailsCollectionWithoutConsumingStdin(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
 	stdin, err := os.Open(os.DevNull)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stdin.Close()
-	var output bytes.Buffer
-	if err := run(t.Context(), nil, stdin, &output, io.Discard); err == nil {
-		t.Fatal("accepted non-Git current directory")
+	values := options{directory: ".", sourceID: "test-source", trigger: "manual"}
+	input, err := acquireLocalInput(values, stdin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if input.Kind != "worktree" || len(input.Paths) != 1 || input.Paths[0] != root || len(input.Raw) != 0 {
+		t.Fatalf("workspace input: %#v", input)
+	}
+	publications := 0
+	_, err = collectWorkspaces(t.Context(), values, input.Paths, io.Discard, func(ingestion.Request) error {
+		publications++
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "no Git checkouts found") {
+		t.Fatalf("empty workspace collection: %v", err)
+	}
+	if publications != 0 {
+		t.Fatalf("empty workspace published %d observations", publications)
 	}
 	position, err := stdin.Seek(0, io.SeekCurrent)
 	if err != nil || position != 0 {
 		t.Fatalf("stdin consumed: %d %v", position, err)
-	}
-	if output.Len() != 0 {
-		t.Fatalf("unexpected startup: %s", output.String())
 	}
 }
 

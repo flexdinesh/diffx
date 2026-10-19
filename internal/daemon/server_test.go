@@ -18,6 +18,7 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/collector"
 	"github.com/flexdinesh/diffx/internal/contextservice"
+	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
 )
 
@@ -58,11 +59,11 @@ func TestCheckoutServerServesBeforeCollectionAndWaitsForCollectorShutdown(t *tes
 	go func() {
 		defer close(stopped)
 		done <- runServer(ctx, cancel, Settings{Host: "127.0.0.1", Port: 0, State: state}, "", "async-test", Collection{},
-			func(ctx context.Context) (Collection, error) {
+			func(ctx context.Context, _ func(ingestion.Request) error) ([]CollectionFailure, error) {
 				<-ctx.Done()
 				close(collectionCanceled)
 				<-release
-				return Collection{}, ctx.Err()
+				return nil, ctx.Err()
 			}, func(status Status, published Published) {
 				if len(published.Submissions) != 0 {
 					t.Error("ready must not wait for checkout collection")
