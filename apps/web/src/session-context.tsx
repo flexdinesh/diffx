@@ -16,6 +16,8 @@ import {
 } from "react";
 import { AccountButton } from "./account.tsx";
 import { ThemeButton } from "./ThemeButton.tsx";
+import { Skeleton } from "@/components/ui/skeleton";
+import { WorkspaceLoading } from "./WorkspaceLoading.tsx";
 import { useIdentity, navigate } from "./identity-context.tsx";
 import { Button } from "@/components/ui/button";
 import { ContextIdentity } from "./ContextIdentity.tsx";
@@ -429,6 +431,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     heads.loaded && !selectedId && route.kind === "root" && !collectOnLoad;
   const statusError =
     state.status === "error" ? state.detail : heads.error || collectError;
+  const loading = !statusError && !empty && !missing;
   useEffect(() => {
     if (!restorePickerFocus.current || (!empty && state.status === "loading"))
       return;
@@ -456,6 +459,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 {compact && <ProjectsToggle />}
                 <HeaderBrand />
                 <CurrentContext />
+                {loading && !current && (
+                  <Skeleton className="loading-identity" />
+                )}
                 <div className="header-actions">
                   <NewChangesButton />
                   {compact && <AccountButton />}
@@ -463,67 +469,69 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 </div>
               </header>
               <div className="workbench">
-                <Navigation />
+                <Navigation loading={loading} />
                 <main
-                  className="session-status"
+                  className={`session-status${loading ? " is-loading" : ""}`}
                   role="status"
-                  aria-busy={!statusError && !empty && !missing}
+                  aria-busy={loading}
                   ref={statusRef}
                   tabIndex={-1}
                 >
-                  <h1>
-                    {statusError
-                      ? collectError
-                        ? "Cannot sync changes"
-                        : "Cannot load diffx"
-                      : missing
-                        ? "No current snapshot"
-                        : empty
-                          ? heads.contexts.length
-                            ? "No changes to review"
-                            : "No review contexts yet"
-                          : collectOnLoad
-                            ? "Collecting latest changes"
-                            : "Loading diffx"}
-                  </h1>
-                  <p>
-                    {statusError ||
-                      (missing
-                        ? "This stream's snapshots expired or were deleted. Pick current work from Repos."
-                        : empty
-                          ? remote
-                            ? "Create a collector token in settings, then run diffx sync to publish your changes."
-                            : "Run diffx to review a checkout, or diffx sync to publish remotely."
-                          : collectOnLoad
-                            ? "Reading checkouts for new changes…"
-                            : "Reading review context…")}
-                  </p>
-                  {empty && remote && (
-                    <Button
-                      variant="outline"
-                      onClick={() => navigate("/settings")}
-                    >
-                      Create a collector token
-                    </Button>
-                  )}
-                  {statusError && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setState({ status: "loading" });
-                        if (collectError) {
-                          collected.current = null;
-                          setCollectError("");
-                          setMissing(false);
-                          setUncollected(null);
-                        }
-                        reloadHeads();
-                        setAttempt((current) => current + 1);
-                      }}
-                    >
-                      Retry
-                    </Button>
+                  {loading ? (
+                    <WorkspaceLoading collecting={collectOnLoad} />
+                  ) : (
+                    <>
+                      <h1>
+                        {statusError
+                          ? collectError
+                            ? "Cannot sync changes"
+                            : "Cannot load diffx"
+                          : missing
+                            ? "No current snapshot"
+                            : empty
+                              ? heads.contexts.length
+                                ? "No changes to review"
+                                : "No review contexts yet"
+                              : "Loading diffx"}
+                      </h1>
+                      <p>
+                        {statusError ||
+                          (missing
+                            ? "This stream's snapshots expired or were deleted. Pick current work from Repos."
+                            : empty
+                              ? remote
+                                ? "Create a collector token in settings, then run diffx sync to publish your changes."
+                                : "Run diffx to review a checkout, or diffx sync to publish remotely."
+                              : "Reading review context…")}
+                      </p>
+                      {empty && remote && (
+                        <Button
+                          variant="outline"
+                          onClick={() => navigate("/settings")}
+                        >
+                          Create a collector token
+                        </Button>
+                      )}
+                      {statusError && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setState({ status: "loading" });
+                            if (collectError) {
+                              collected.current = null;
+                              setCollectError("");
+                              setMissing(false);
+                              setUncollected(null);
+                            }
+                            reloadHeads();
+                            setAttempt((current) => current + 1);
+                          }}
+                        >
+                          Retry
+                        </Button>
+                      )}
+                    </>
                   )}
                 </main>
               </div>

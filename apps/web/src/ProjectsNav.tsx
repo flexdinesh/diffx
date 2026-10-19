@@ -1,3 +1,4 @@
+import { ProjectsSkeleton } from "./WorkspaceLoading.tsx";
 import type { ApiContext } from "@diffx/api";
 import {
   ChevronRightIcon,
@@ -294,24 +295,21 @@ function ProjectsEmpty({
         </Button>
       </div>
     );
-  return (
-    <div
-      className="projects-empty"
-      role="status"
-      aria-busy={collecting || !loaded}
-    >
-      <p>
-        {collecting
-          ? "Collecting repos…"
-          : loaded
-            ? "No current changes"
-            : "Loading repos…"}
-      </p>
-      {loaded && !collecting && (
-        <p className="projects-empty-hint">
-          Agent hooks and diffx sync publish changed checkouts here.
+  if (collecting || !loaded)
+    return (
+      <div className="projects-loading" role="status" aria-busy="true">
+        <ProjectsSkeleton />
+        <p className="visually-hidden">
+          {collecting ? "Collecting repos…" : "Loading repos…"}
         </p>
-      )}
+      </div>
+    );
+  return (
+    <div className="projects-empty" role="status" aria-busy={false}>
+      <p>No current changes</p>
+      <p className="projects-empty-hint">
+        Agent hooks and diffx sync publish changed checkouts here.
+      </p>
     </div>
   );
 }

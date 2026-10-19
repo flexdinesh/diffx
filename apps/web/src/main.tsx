@@ -11,6 +11,7 @@ import "@fontsource-variable/jetbrains-mono/wght.css";
 import "./typography.css";
 import "./tokens.css";
 import "./style.css";
+import "./loading.css";
 import "./review.css";
 import "./account.css";
 import {

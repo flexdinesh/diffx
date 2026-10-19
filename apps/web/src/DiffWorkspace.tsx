@@ -1,3 +1,4 @@
+import { DiffSkeleton } from "./WorkspaceLoading.tsx";
 import type {
   CodeViewItem,
   DiffLineAnnotation,
@@ -627,10 +628,9 @@ export function DiffWorkspace() {
     ],
   );
 
+  const loadingChanges = !repository && !diff.notice;
   const emptyTitle = !repository
-    ? diff.notice
-      ? "Cannot load changes"
-      : "Loading changes"
+    ? "Cannot load changes"
     : filter
       ? "No matching files"
       : piped
@@ -639,9 +639,7 @@ export function DiffWorkspace() {
           ? "Nothing staged"
           : "No changes in this snapshot";
   const emptyDescription = !repository
-    ? diff.notice
-      ? "Check that the server is running, then refresh."
-      : "Reading stored changes…"
+    ? "Check that the server is running, then refresh."
     : filter
       ? "Try a different filename or clear the filter."
       : piped
@@ -795,17 +793,32 @@ export function DiffWorkspace() {
             }
           />
         </section>
-        <div id="empty" role="status" hidden={files.length > 0}>
-          <h2>{emptyTitle}</h2>
-          <p>{emptyDescription}</p>
-          {!!filter && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setFilter("")}
-            >
-              Clear filter
-            </Button>
+        <div
+          id="empty"
+          role="status"
+          hidden={files.length > 0}
+          className={loadingChanges ? "is-loading" : undefined}
+          aria-busy={loadingChanges}
+        >
+          {loadingChanges ? (
+            <>
+              <DiffSkeleton />
+              <p className="visually-hidden">Loading changes</p>
+            </>
+          ) : (
+            <>
+              <h2>{emptyTitle}</h2>
+              <p>{emptyDescription}</p>
+              {!!filter && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setFilter("")}
+                >
+                  Clear filter
+                </Button>
+              )}
+            </>
           )}
         </div>
       </div>

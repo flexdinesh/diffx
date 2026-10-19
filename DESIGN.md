@@ -479,6 +479,24 @@ such detail into a token. New layout spacing must use the scale.
 Do not add motion for decoration. New animation must honor
 `prefers-reduced-motion`; feedback must still work without animation.
 
+### Loading
+
+- Keep the real shell, Repos navigation and theme actions available while review
+  data loads. Reserve the shared navigation panel width and split/unified layout
+  with neutral skeletons for repo rows, file rows, the toolbar and diff frames.
+  Keep Diff disabled until a review is ready; switching to Repos replaces the file
+  placeholders within the same panel.
+  Narrow screens hide the placeholder file sidebar and follow the narrow layout.
+- Skeletons use `--border-muted`, existing spacing and radius tokens, and a gentle
+  shared opacity pulse. Disable animation under `prefers-reduced-motion`. Keep
+  placeholders out of the accessibility tree and tab order; label the busy region
+  with a concise status at the bottom of the review surface. Do not invent file
+  names, counts, progress percentages or addition/deletion colors.
+- Replace skeletons as data arrives, without a minimum display delay. Stored
+  manifest loading uses the same diff-frame skeleton without unmounting Pierre.
+  Background Sync preserves the existing review and usable controls. Errors and
+  empty results replace placeholders with their existing explanation and actions.
+
 ## Responsive design
 
 - Use 1012px for drawer navigation/tighter gutters and 768px for compact mobile

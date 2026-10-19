@@ -1761,12 +1761,32 @@ test("local first launch waits for collection with an empty catalog", async ({
   const status = page.locator("main.session-status");
   await expect(status).toContainText("Collecting latest changes");
   await expect(status).toHaveAttribute("aria-busy", "true");
+  await expect(status.locator(".diff-skeleton")).toBeVisible();
+  const loadingBounds = await status.boundingBox();
+  if (!loadingBounds) throw new Error("Missing loading workspace");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  expect(
+    await status
+      .locator('[data-slot="skeleton"]')
+      .first()
+      .evaluate((element) => getComputedStyle(element).animationName),
+  ).toBe("none");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".loading-sidebar")).toBeHidden();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
   const diffView = page.getByRole("button", { name: "Diff", exact: true });
   await expect(diffView).toBeDisabled();
   await expect(diffView).not.toHaveAttribute("aria-controls");
   await page.getByRole("button", { name: "Repos", exact: true }).click();
   const projects = page.getByRole("navigation", { name: "Repos" });
   await expect(projects).toContainText("Collecting repos…");
+  await expect(projects.locator(".projects-skeleton")).toBeVisible();
+  await expect(page.locator(".loading-sidebar")).toBeHidden();
   await expect(
     page.getByRole("separator", { name: "Resize navigation panel" }),
   ).toBeVisible();
@@ -1783,6 +1803,29 @@ test("local first launch waits for collection with an empty catalog", async ({
   await ready(page);
   await expect(page).toHaveURL(/\/streams\/local-stream$/);
   expect(collections).toBe(1);
+  await expect(page.locator(".session-status")).toHaveCount(0);
+  const reviewBounds = await page.locator(".workspace").boundingBox();
+  if (!reviewBounds) throw new Error("Missing loaded workspace");
+  expect(reviewBounds.x).toBeCloseTo(loadingBounds.x, 0);
+  expect(reviewBounds.width).toBeCloseTo(loadingBounds.width, 0);
+});
+
+test("stored manifest loading keeps the diff surface mounted until content arrives", async ({
+  page,
+}) => {
+  const state = await localWorkspace(page);
+  state.holdScopes.add("all");
+  await page.goto("/contexts/local-review");
+  const loading = page.locator('#empty[aria-busy="true"]');
+  await expect(loading.locator(".diff-skeleton")).toBeVisible();
+  await expect(page.locator("#viewer")).toHaveCount(1);
+  await expect.poll(() => state.pendingScopes.length).toBe(1);
+  const held = state.pendingScopes.shift();
+  if (!held) throw new Error("Missing held manifest request");
+  await held.route.fulfill({ json: held.repository });
+  await ready(page);
+  await expect(page.locator("#empty")).toBeHidden();
+  await expect(page.locator("#viewer")).toHaveCount(1);
 });
 
 for (const path of ["/", "/streams/local-stream"]) {
@@ -1821,6 +1864,7 @@ for (const path of ["/", "/streams/local-stream"]) {
     await expect(status).toContainText("Cannot sync changes");
     await expect(status).toContainText("git failed");
     await expect(status).toHaveAttribute("aria-busy", "false");
+    await expect(status.locator(".diff-skeleton")).toHaveCount(0);
     await status.getByRole("button", { name: "Retry", exact: true }).click();
     await expect(status).toContainText("Collecting latest changes");
     await expect(status).toHaveAttribute("aria-busy", "true");
