@@ -392,7 +392,9 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 	if !found[entry.ID] || !found[refreshed.ID] || !found[linkedEntry.ID] {
 		t.Fatalf("reopened checkout lost history: %+v", history)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	// The server may use its five-second shutdown grace before forcing a
+	// connection closed; leave time for descriptor and ownership cleanup too.
+	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
 	defer cancel()
 	if err := client.Stop(ctx); err != nil {
 		t.Fatal(err)

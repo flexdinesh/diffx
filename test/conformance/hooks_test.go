@@ -274,7 +274,11 @@ func TestHookReturnsBeforeRemoteIngestionAndSkipsUnchangedUploads(t *testing.T) 
 	case <-time.After(5 * time.Second):
 		t.Fatal("new session did not submit unchanged content")
 	}
-
+	// Receiving the request precedes the detached worker's durable acknowledgement
+	// and status writes. Wait for delivery before removing its runtime directory.
+	waitCollectorStatus(t, harness, func(activity hooks.Activity) bool {
+		return activity.Agent == "opencode" && activity.RunID == "second-session" && activity.Stage == "ingestion" && activity.Status == "complete"
+	})
 }
 
 func isolatedCollectorHarness(t *testing.T) serviceHarness {
