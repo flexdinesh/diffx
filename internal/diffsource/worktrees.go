@@ -39,25 +39,53 @@ type WorktreeChangeSummary struct {
 	ChangedFileCount int
 }
 
-// WorktreeChanges reads local change counts and times without loading diffs.
-func WorktreeChanges(ctx context.Context, root, gitDir string) (WorktreeChangeSummary, error) {
-	status, err := runGit(ctx, root, 16*1024*1024, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none", "--renames")
-	if err != nil {
-		return WorktreeChangeSummary{}, err
+// ActivityTime estimates code activity for the captured target. Objects-only
+// comparisons never consult the unrelated checkout's files or index.
+func ActivityTime(ctx context.Context, source Source, head *string, gitDir string) (int64, error) {
+	git, ok := source.(*gitSource)
+	if !ok {
+		return 0, nil
 	}
 	var latest int64
-	commit, err := runGit(ctx, root, 1024, "log", "-1", "--format=%ct")
-	if err == nil {
-		seconds, parseErr := strconv.ParseInt(strings.TrimSpace(commit), 10, 64)
-		if parseErr != nil {
-			return WorktreeChangeSummary{}, parseErr
+	if head != nil {
+		var err error
+		latest, err = commitTime(ctx, git.root, *head)
+		if err != nil {
+			return 0, err
 		}
-		latest = seconds * 1000
-	} else {
+	}
+	if git.objectsOnly() {
+		return latest, ctx.Err()
+	}
+	changes, err := worktreeChanges(ctx, git.root, gitDir, latest)
+	return changes.LastChangedAt, err
+}
+
+func commitTime(ctx context.Context, root, revision string) (int64, error) {
+	raw, err := runGit(ctx, root, 1024, "show", "-s", "--format=%ct", revision, "--")
+	if err != nil {
+		return 0, err
+	}
+	seconds, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	return max(0, seconds*1000), err
+}
+
+// WorktreeChanges reads local change counts and times without loading diffs.
+func WorktreeChanges(ctx context.Context, root, gitDir string) (WorktreeChangeSummary, error) {
+	latest, err := commitTime(ctx, root, "HEAD")
+	if err != nil {
 		var failure *gitFailure
 		if !errors.As(err, &failure) {
 			return WorktreeChangeSummary{}, err
 		}
+	}
+	return worktreeChanges(ctx, root, gitDir, latest)
+}
+
+func worktreeChanges(ctx context.Context, root, gitDir string, latest int64) (WorktreeChangeSummary, error) {
+	status, err := runGit(ctx, root, 16*1024*1024, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none", "--renames")
+	if err != nil {
+		return WorktreeChangeSummary{}, err
 	}
 	staged := false
 	for name, state := range parseStatus(status) {

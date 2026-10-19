@@ -118,6 +118,13 @@ func collectRepositoryChanged(ctx context.Context, source diffsource.Source, opt
 		metadata.WorktreeName = "branch: " + metadata.Branch
 		metadata.LinkedWorktree = nil
 	}
+	activity, err := diffsource.ActivityTime(ctx, source, metadata.Head, facts.GitDir)
+	if err != nil && (ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
+		return ingestion.Request{}, "", err
+	}
+	if err == nil {
+		metadata.ActivityAt = activity
+	}
 	if options.OnSource != nil {
 		if !compared {
 			comparison.BaseRef = "HEAD"
@@ -191,7 +198,7 @@ func Fingerprint(request ingestion.Request) string {
 	metadata := request.Metadata
 	metadata.RunID, metadata.Agent, metadata.Trigger, metadata.CollectorVersion = "", "", "", ""
 	metadata.AgentSession, metadata.TriggerRoot = nil, ""
-	metadata.CollectedAt = 0
+	metadata.CollectedAt, metadata.ActivityAt = 0, 0
 	if metadata.SourceID != "" {
 		metadata.Hostname = ""
 	}

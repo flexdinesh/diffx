@@ -38,6 +38,7 @@ func ContentHash(ctx context.Context, source Source, snapshots []review.Reposito
 			return "", err
 		}
 	}
+	indexed := stageZeroObjects(index)
 	hash := sha256.New()
 	encoder := json.NewEncoder(hash)
 	if err := encoder.Encode([]string{"git-content-v1", index}); err != nil {
@@ -73,6 +74,13 @@ func ContentHash(ctx context.Context, source Source, snapshots []review.Reposito
 				if len(fields) < 5 || !git.objectsOnly() && (fields[0] == ":160000" || fields[1] == "160000") {
 					return "", nil
 				}
+				// Without index refresh, a stat-dirty working path can have an
+				// unknown raw target OID even when status proved it matches the
+				// index. Restore the known OID to preserve existing content hashes.
+				if target, ok := indexed[file.Path]; ok && snapshot.Mode != review.DiffStaged && file.WorktreeStatus == " " && !file.Recreated && fields[1] == target.mode && strings.Trim(fields[3], "0") == "" {
+					fields[3] = target.oid
+					header = strings.Join(fields, " ")
+				}
 			}
 			var content []string
 			if !git.objectsOnly() && snapshot.Mode != review.DiffStaged && (file.Status != "D" || file.Recreated) {
@@ -101,6 +109,20 @@ func ContentHash(ctx context.Context, source Source, snapshots []review.Reposito
 		return "", err
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+type indexObject struct{ mode, oid string }
+
+func stageZeroObjects(index string) map[string]indexObject {
+	objects := make(map[string]indexObject)
+	for _, record := range strings.Split(index, "\x00") {
+		header, path, ok := strings.Cut(record, "\t")
+		fields := strings.Fields(header)
+		if ok && len(fields) == 3 && fields[2] == "0" {
+			objects[path] = indexObject{mode: fields[0], oid: fields[1]}
+		}
+	}
+	return objects
 }
 
 func worktreeContent(ctx context.Context, path string) ([]string, error) {

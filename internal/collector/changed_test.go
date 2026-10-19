@@ -137,6 +137,106 @@ func TestCollectChangedTracksUntrackedAndDeletedFiles(t *testing.T) {
 	unchanged(t, root, removed)
 }
 
+func TestCollectChangedRestoredContentsAreCleanWithoutRefreshingIndex(t *testing.T) {
+	root := repository(t)
+	write(t, root, "tracked", "original\n")
+	git(t, root, "add", ".")
+	git(t, root, "commit", "-m", "initial")
+	_, initial := changed(t, root, "")
+	write(t, root, "tracked", "changed\n")
+	_, dirty := changed(t, root, initial)
+	write(t, root, "tracked", "original\n")
+	// A non-racy mtime makes raw Git diff report a changed stat even though the
+	// bytes match the index. Collection must neither publish that false change
+	// nor refresh the index to hide it.
+	stamp := time.Now().Add(time.Hour)
+	if err := os.Chtimes(filepath.Join(root, "tracked"), stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	index := filepath.Join(root, ".git", "index")
+	before, err := os.Stat(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, fingerprint := changed(t, root, dirty)
+	if fingerprint != initial {
+		t.Fatal("restoring original bytes did not restore the clean content identity")
+	}
+	for _, scope := range restored.Scopes {
+		if len(scope.Snapshot.Files) != 0 || len(scope.Patches) != 0 {
+			t.Fatalf("stat-only changes published in %s: %+v", scope.Snapshot.Mode, scope)
+		}
+	}
+	unchanged(t, root, fingerprint)
+	after, err := os.Stat(index)
+	if err != nil || !after.ModTime().Equal(before.ModTime()) {
+		t.Fatalf("clean collection refreshed index activity: %v", err)
+	}
+}
+
+func TestMergeBaseContentIdentitySurvivesWorkingEditsAndRestoration(t *testing.T) {
+	for _, staged := range []bool{false, true} {
+		t.Run(map[bool]string{false: "committed", true: "staged"}[staged], func(t *testing.T) {
+			root := branchRepository(t)
+			contents := "committed\n"
+			if staged {
+				contents = "staged\n"
+				write(t, root, "tracked", contents)
+				git(t, root, "add", "tracked")
+			}
+			original, originalFingerprint := changed(t, root, "")
+			if len(original.Scopes[0].Snapshot.Files) != 1 {
+				t.Fatal("merge-base collection must retain committed branch changes")
+			}
+			write(t, root, "tracked", "working\n")
+			_, dirty := changed(t, root, originalFingerprint)
+			write(t, root, "tracked", contents)
+			stamp := time.Now().Add(time.Hour)
+			if err := os.Chtimes(filepath.Join(root, "tracked"), stamp, stamp); err != nil {
+				t.Fatal(err)
+			}
+			index := filepath.Join(root, ".git", "index")
+			before, err := os.Stat(index)
+			if err != nil {
+				t.Fatal(err)
+			}
+			restored, fingerprint := changed(t, root, dirty)
+			if restored.ContentHash != original.ContentHash || fingerprint != originalFingerprint {
+				t.Fatalf("restored merge-base content changed identity: hash %s/%s, fingerprint %s/%s", restored.ContentHash, original.ContentHash, fingerprint, originalFingerprint)
+			}
+			unchanged(t, root, fingerprint)
+			after, err := os.Stat(index)
+			if err != nil || !after.ModTime().Equal(before.ModTime()) {
+				t.Fatalf("restored merge-base collection refreshed index activity: %v", err)
+			}
+		})
+	}
+}
+
+func TestModeOnlyContentIdentityIgnoresFileTimes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("executable mode changes require POSIX file modes")
+	}
+	root := repository(t)
+	write(t, root, "tracked", "original\n")
+	git(t, root, "add", ".")
+	git(t, root, "commit", "-m", "initial")
+	_, clean := changed(t, root, "")
+	path := filepath.Join(root, "tracked")
+	if err := os.Chmod(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	request, mode := changed(t, root, clean)
+	if len(request.Scopes[0].Snapshot.Files) != 1 || request.Scopes[0].Snapshot.Files[0].Additions != 0 || request.Scopes[0].Snapshot.Files[0].Deletions != 0 {
+		t.Fatal("mode-only change must remain reviewable without line changes")
+	}
+	stamp := time.Now().Add(time.Hour)
+	if err := os.Chtimes(path, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	unchanged(t, root, mode)
+}
+
 func TestCollectChangedNeverSkipsUnknownIdentity(t *testing.T) {
 	root := repository(t)
 	write(t, root, "tracked", "original\n")
@@ -222,6 +322,7 @@ func TestFingerprintUsesStableProvenance(t *testing.T) {
 	request.Metadata.RunID, request.Metadata.Agent, request.Metadata.Trigger = "another", "another", "another"
 	request.Metadata.CollectorVersion = "another"
 	request.Metadata.CollectedAt++
+	request.Metadata.ActivityAt++
 	request.Metadata.Hostname, request.Metadata.Root, request.Metadata.WorktreeName = "another", "another", "another"
 	request.Metadata.RepositoryName, request.Metadata.RemoteURL = "another", "another"
 	request.Metadata.Branch = "another"

@@ -42,6 +42,7 @@ type Metadata struct {
 	BranchID         string        `json:"branchId,omitempty"`
 	Head             *string       `json:"head"`
 	CollectedAt      int64         `json:"collectedAt"`
+	ActivityAt       int64         `json:"activityAt,omitempty"`
 	CollectorVersion string        `json:"collectorVersion"`
 	Comparison       *Comparison   `json:"comparison,omitempty"`
 	AgentSession     *AgentSession `json:"agentSession,omitempty"`

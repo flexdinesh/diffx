@@ -9,7 +9,13 @@ import {
   relativeAge,
   searchProjectGroups,
   streamMeta,
+  unseenChangedHeads,
 } from "../src/project-nav.ts";
+import {
+  compareContextActivity,
+  contextActivity,
+  latestChangedContext,
+} from "../src/context-activity.ts";
 
 function head(
   id: string,
@@ -103,6 +109,160 @@ test("project search keeps matching streams in order and drops empty projects", 
   assert.deepEqual(ids("api main"), [["api", ["main"]]]);
   assert.deepEqual(ids("WEB"), [["web", ["web"]]]);
   assert.deepEqual(ids("missing"), []);
+});
+
+test("activity orders streams and repositories independently of submission time", () => {
+  const active = head("active", "api", 10, { lastChangedAt: 300 });
+  const submitted = head("submitted", "web", 500, { lastChangedAt: 100 });
+  const groups = projectGroups(
+    [submitted, head("old", "api", 900, { lastChangedAt: 50 }), active],
+    null,
+  );
+  assert.deepEqual(
+    groups.map((group) => [
+      group.name,
+      group.streams.map((stream) => stream.context.id),
+    ]),
+    [
+      ["api", ["active", "old"]],
+      ["web", ["submitted"]],
+    ],
+  );
+  assert.equal(latestChangedContext([submitted, active]), active);
+  assert.equal(latestChangedContext([active, submitted]), active);
+  assert.equal(
+    latestChangedContext([
+      { ...active, stale: true },
+      { ...submitted, changedFileCount: 0 },
+    ]),
+    undefined,
+  );
+  assert.equal(
+    streamMeta({ ...active, lastChangedAt: 60_000 }, false, 360_000),
+    "5m",
+  );
+});
+
+test("missing activity uses captured time, never submission arrival", () => {
+  const context = head("saved", "api", 900, {
+    lastChangedAt: 0,
+    createdAt: 20,
+  });
+  assert.equal(contextActivity(context), 20);
+  const observed = head("observed", "api", 1, {
+    worktreeName: "wt",
+    observation: {
+      sourceId: "source",
+      hostname: "host",
+      runId: "",
+      agent: "",
+      remoteUrl: "",
+      head: null,
+      repositoryKey: "repo",
+      repositoryName: "api",
+      checkoutKey: "checkout",
+      linkedWorktree: false,
+      root: "/repo",
+      worktreeName: "wt",
+      branch: "main",
+      collectedAt: 40,
+      collectorVersion: "test",
+      trigger: "manual",
+    },
+    lastChangedAt: 0,
+  });
+  assert.equal(contextActivity(observed), 40);
+  assert.equal(latestChangedContext([context, observed]), observed);
+});
+
+test("activity ties use stream then context identity, including same-name projects", () => {
+  const contexts = [
+    head("b", "repo-b", 10, { name: "same", streamId: "stream-a" }),
+    head("a", "repo-b", 20, {
+      name: "same",
+      lastChangedAt: 10,
+      streamId: "stream-a",
+    }),
+    head("c", "repo-a", 10, { name: "same", streamId: "stream-z" }),
+  ];
+  assert.deepEqual(
+    [...contexts].sort(compareContextActivity).map((context) => context.id),
+    ["a", "b", "c"],
+  );
+  for (const heads of [contexts, [...contexts].reverse()]) {
+    assert.equal(latestChangedContext(heads)?.id, "a");
+    assert.deepEqual(
+      projectGroups(heads, null).map((group) => group.id),
+      ["repo-b", "repo-a"],
+    );
+  }
+});
+
+test("equal-activity repository order aligns initial and unread targets over names", () => {
+  const contexts = [
+    head("first", "repo-z", 50, { name: "Zebra", streamId: "stream-a" }),
+    head("last", "repo-a", 50, { name: "Alpha", streamId: "stream-z" }),
+  ];
+  for (const heads of [contexts, [...contexts].reverse()]) {
+    const top = projectGroups(heads, {}).at(0)?.streams.at(0)?.context;
+    assert.equal(top?.id, "first");
+    assert.equal(top, latestChangedContext(heads));
+    assert.equal(top, unseenChangedHeads(heads, {}).at(0));
+  }
+});
+
+test("Piped stays last and preserves captured chronology despite activity or arrival", () => {
+  const contexts = [
+    head("older", "", 900, {
+      source: "stdin",
+      streamId: null,
+      createdAt: 10,
+      lastChangedAt: 500,
+    }),
+    head("newer", "", 100, {
+      source: "stdin",
+      streamId: null,
+      createdAt: 20,
+      lastChangedAt: 50,
+    }),
+    head("repository", "api", 1),
+  ];
+  for (const heads of [contexts, [...contexts].reverse()]) {
+    const groups = projectGroups(heads, null);
+    assert.equal(groups.at(0)?.id, "api");
+    assert.deepEqual(
+      groups.at(-1)?.streams.map((stream) => stream.context.id),
+      ["newer", "older"],
+    );
+  }
+});
+
+test("global unread heads count changed streams and open by activity", () => {
+  const viewed = head("viewed", "api", 1);
+  const seen = baselineSeen([viewed]);
+  const unchanged = { ...viewed, lastSubmittedAt: 999, lastChangedAt: 500 };
+  const recent = head("recent", "web", 10, { lastChangedAt: 300 });
+  const arrival = head("arrival", "api", 200, { lastChangedAt: 100 });
+  const heads = [
+    unchanged,
+    arrival,
+    recent,
+    head("clean", "api", 400, { changedFileCount: 0 }),
+    head("stale", "api", 500, { stale: true }),
+  ];
+  assert.deepEqual(unseenChangedHeads(heads, null), []);
+  assert.deepEqual(
+    unseenChangedHeads(heads, seen).map((context) => context.id),
+    ["recent", "arrival"],
+  );
+  assert.deepEqual(unseenChangedHeads(heads, baselineSeen(heads)), []);
+  assert.deepEqual(
+    unseenChangedHeads(heads, {
+      ...seen,
+      [recent.streamId ?? recent.id]: recent.id,
+    }).map((context) => context.id),
+    ["arrival"],
+  );
 });
 
 test("unseen marks follow the newest opened snapshot per stream", () => {

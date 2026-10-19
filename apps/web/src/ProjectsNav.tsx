@@ -17,18 +17,16 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { save, saved } from "./preferences.ts";
 import { contextChangeLabel, contextIsPiped } from "./project-picker.ts";
+import { contextActivity } from "./context-activity.ts";
 import {
-  baselineSeen,
   newerHead,
   projectGroups,
-  readSeen,
   relativeAge,
   searchProjectGroups,
   streamKey,
   streamMeta,
   streamTitle,
   type ProjectGroup,
-  type SeenStreams,
 } from "./project-nav.ts";
 import { useProjectsNavState } from "./projects-nav-context.tsx";
 import { streamPath, useCatalog, useSession } from "./session-context.tsx";
@@ -88,40 +86,10 @@ function readCollapsedGroups() {
   }
 }
 
-// Seen state is per browser: the first visit marks existing work as seen, and
-// opening a stream's newest snapshot clears its new-changes mark.
-function useSeenStreams(heads: ApiContext[], loaded: boolean) {
-  const { current } = useCatalog();
-  const [seen, setSeen] = useState<SeenStreams | null>(() =>
-    readSeen(saved("projects-seen")),
-  );
-  useEffect(() => {
-    if (seen === null && loaded) setSeen(baselineSeen(heads));
-  }, [seen, loaded, heads]);
-  const currentHead =
-    current && heads.some((context) => context.id === current.id)
-      ? current
-      : undefined;
-  useEffect(() => {
-    if (!currentHead) return;
-    const stream = streamKey(currentHead);
-    setSeen((value) =>
-      !value || value[stream] === currentHead.id
-        ? value
-        : { ...value, [stream]: currentHead.id },
-    );
-  }, [currentHead]);
-  useEffect(() => {
-    if (seen) save("projects-seen", JSON.stringify(seen));
-  }, [seen]);
-  return seen;
-}
-
 export function ProjectsNav() {
   const projects = useProjectsNavState();
   const sidebar = useSidebarState();
-  const { heads, current, openStream, openPicker } = useCatalog();
-  const seen = useSeenStreams(heads.contexts, heads.loaded);
+  const { heads, current, openStream, openPicker, seen } = useCatalog();
   const [closed, setClosed] = useState(readCollapsedGroups);
   const [query, setQuery] = useState("");
   const now = useNow();
@@ -362,6 +330,31 @@ function ProjectsEmpty({
   );
 }
 
+/** Opens the most active unread head without interrupting the open review. */
+export function NewChangesButton() {
+  const { unreadHeads, openStream } = useCatalog();
+  const latest = unreadHeads[0];
+  if (!latest) return null;
+  const count = unreadHeads.length;
+  return (
+    <Button
+      type="button"
+      id="new-changes"
+      variant="ghost"
+      size="sm"
+      aria-label={`Open latest new changes (${count} ${count === 1 ? "stream" : "streams"})`}
+      title={`Open ${latest.name} · ${streamTitle(latest)}`}
+      onClick={() => openStream(latest)}
+    >
+      <HistoryIcon aria-hidden="true" />
+      <span>
+        {count}
+        <span className="max-md:hidden"> new</span>
+      </span>
+    </Button>
+  );
+}
+
 /** Announces a newer head for the viewed stream without replacing the review. */
 export function NewerSnapshotNotice() {
   const session = useSession();
@@ -375,7 +368,7 @@ export function NewerSnapshotNotice() {
           <HistoryIcon className="size-(--icon-sm)" aria-hidden="true" />
           <p>
             Newer snapshot of {streamTitle(newer)} · {contextChangeLabel(newer)}{" "}
-            · {relativeAge(newer.lastSubmittedAt, now)}
+            · {relativeAge(contextActivity(newer), now)}
           </p>
           <Button
             type="button"

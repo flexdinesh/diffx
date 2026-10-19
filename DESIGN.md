@@ -240,8 +240,10 @@ such detail into a token. New layout spacing must use the scale.
   ghost “Browse all reviews” icon action that opens the review picker, and a
   close action in the modal drawer only. Below it: a “Search projects” field
   styled like the file filter that filters current streams in place (Escape
-  clears it; matching repositories expand), then repositories ordered by latest
-  arrival.
+  clears it; matching repositories expand), then repositories ordered by their
+  most active visible stream. Streams sort by estimated code activity, with
+  captured collection time as the fallback and stable identity ties. Repository
+  and stream ages describe this activity; snapshot history retains its chronology.
   Repository rows match tree-row height with a chevron, repository icon, medium
   name and muted monospace age. Stream rows indent under them: branch icon, name,
   trailing monospace changed-file count, and a muted metadata line (worktree,
@@ -253,6 +255,12 @@ such detail into a token. New layout spacing must use the scale.
   Collapse state persists per browser.
 - A newer head for the viewed stream shows a one-line `--accent-bg` notice below
   the header with an outline-muted “View latest” action. Never swap the open review.
+- A compact header action counts unopened changed heads across projects and
+  opens the most recently active one. Share the drawer's per-browser seen state,
+  baseline existing heads on first visit, and clear a head's mark when opened.
+  Keep the same-stream notice available. Unchanged submissions must not create
+  unread prompts. Use existing ghost-button typography, icons and accessible
+  labels; preserve the header's review identity and compact-layout controls.
 - Status bar: `--statusbar-height` (28), with shortcuts shed before server metrics.
 - The diff display toolbar uses `--panel`, matching the header and status bar.
 - Desktop sidebar: `--sidebar-width` defaults to 330px. `use-sidebar.ts` owns

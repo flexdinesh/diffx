@@ -26,6 +26,9 @@ func Validate(input Request) error {
 	if strings.TrimSpace(input.Metadata.SourceID) == "" || len(input.Metadata.SourceID) > 256 || input.Metadata.CollectedAt <= 0 {
 		return fmt.Errorf("sourceId and positive collectedAt required")
 	}
+	if input.Metadata.ActivityAt < 0 {
+		return fmt.Errorf("activityAt must be nonnegative")
+	}
 	if input.Metadata.Trigger != "manual" && input.Metadata.Trigger != "agent-hook" && input.Metadata.Trigger != "pipe" {
 		return fmt.Errorf("trigger must be manual, agent-hook, or pipe")
 	}

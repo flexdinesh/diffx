@@ -36,6 +36,12 @@ scope and widens it before ingesting a newly discovered checkout; `contextservic
 applies it to listing, counting, resolution and deletion, and out-of-scope
 contexts are not found. A scoped selection without checkouts matches nothing.
 
+Activity metadata is collected by the shared producer pipeline, never by catalog
+reads. Both compositions project activity from the winning stream submission and
+use it for current-work navigation; collection time and acceptance sequence still
+choose the stream head. Workspace discovery and web-triggered collection remain
+local-only. There is no background sync, watcher or periodic collection.
+
 Private local control supports authenticated status/shutdown only. Replacement
 uses lifecycle locking, a validated descriptor and graceful shutdown; a PID
 alone is never authority. `diffx dev --fixture FILE` is isolated from
@@ -168,6 +174,9 @@ State errors identify the database and backup directory, name the compatible
 schema, and show the `--state` override for explicitly selecting fresh state.
 Fresh state has no saved reviews or server accounts.
 Upgrade server and collectors together.
+Install the server first when adding optional protocol 4 metadata: older servers
+reject unknown request fields. Activity metadata is optional, so existing saved
+submissions remain replayable and schema 11 state needs no reset.
 Versioned producer directories ignore old manual/hook pending payloads.
 Stop old binaries before upgrading.
 
