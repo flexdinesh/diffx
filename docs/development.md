@@ -259,10 +259,13 @@ navigation, draft, review, reviewed files, and collapse state. Collapsed diff
 files (per stream and scope) and closed tree folders (per stream) persist in
 `sessionStorage`, so reloads and newer snapshots keep them within a tab; piped
 snapshots key by context. One draft persists
-across scopes. Context selection uses the projects drawer, whose search filters
-loaded stream heads, and the popup picker (Cmd/Ctrl+K or the drawer's “Browse
-all reviews” action); the header shows the open review's identity without a
-picker. The selected context scopes every request. The session owner exposes
+across scopes. Context selection uses the Projects view and the popup picker (Cmd/Ctrl+K
+or the Projects “Search reviews” magnifier). Projects and Diff share the panel
+beside the activity rail; selecting a stream loads its diff and switches to the
+file tree. Clicking the active view toggles the panel. `use-sidebar.ts` owns
+view selection, visibility, width and mobile drawer focus. Compact header
+controls remain available when the rail is hidden; the header shows the open
+review's identity. The selected context scopes every request. The session owner exposes
 local checkout sync when bootstrap reports `collect`; loading `/` or a live
 `/streams/{streamId}` URL, the header's “Sync all checkouts” icon and Alt+R call
 `POST /api/v2/collections`. Load-time sync opens the stream's synced head, or the

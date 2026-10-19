@@ -80,10 +80,19 @@ export function FileExplorerNav() {
   return (
     <aside
       id="sidebar"
-      className={`sidebar${sidebar.collapsed ? " is-collapsed" : ""}${sidebar.open ? " open" : ""}`}
-      role={sidebar.mobile && sidebar.open ? "dialog" : undefined}
+      className={`sidebar${sidebar.collapsed ? " is-collapsed" : ""}${sidebar.open && sidebar.view === "diff" ? " open" : ""}`}
+      role={
+        sidebar.mobile && sidebar.open && sidebar.view === "diff"
+          ? "dialog"
+          : undefined
+      }
+      hidden={sidebar.view !== "diff"}
       aria-label="Review navigation"
-      aria-modal={sidebar.mobile && sidebar.open ? "true" : undefined}
+      aria-modal={
+        sidebar.mobile && sidebar.open && sidebar.view === "diff"
+          ? "true"
+          : undefined
+      }
     >
       <Tabs
         value={tab}
@@ -237,7 +246,7 @@ export function SidebarResizer() {
       aria-valuemax={520}
       aria-valuenow={sidebar.width}
       tabIndex={0}
-      hidden={sidebar.collapsed || sidebar.mobile}
+      hidden={sidebar.view !== "diff" || sidebar.collapsed || sidebar.mobile}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();

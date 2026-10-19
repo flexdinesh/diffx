@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { ContextIdentity } from "./ContextIdentity.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import {
+  HeaderBrand,
   NewChangesButton,
   ProjectsNav,
   ProjectsToggle,
@@ -27,6 +28,7 @@ import {
 import { latestChangedContext } from "./context-activity.ts";
 import { unseenChangedHeads, type SeenStreams } from "./project-nav.ts";
 import { useSeenStreams } from "./use-seen-streams.ts";
+import { useSidebarState } from "./sidebar-context.tsx";
 import { useCompactChrome } from "./use-compact-chrome.ts";
 import {
   useContextCatalog,
@@ -149,25 +151,39 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const statusRef = useRef<HTMLElement>(null);
   const restorePickerFocus = useRef(false);
   const compact = useCompactChrome();
+  const { openDiff } = useSidebarState();
   const openPicker = useCallback(() => setPickerOpen(true), []);
   const show = useCallback(
     (
       next: Route,
       path: string,
       id: string,
-      options?: { restoreFocus?: boolean; replace?: boolean },
+      options?: {
+        restoreFocus?: boolean;
+        replace?: boolean;
+        preserveNavigation?: boolean;
+      },
     ) => {
+      if (!options?.preserveNavigation) openDiff();
       if (options?.replace || path === window.location.pathname)
         window.history.replaceState(null, "", path);
       else window.history.pushState(null, "", path);
       setRoute(next);
       setMissing(false);
-      if (id === selectedRef.current) return;
+      if (id === selectedRef.current) {
+        if (options?.restoreFocus !== false)
+          requestAnimationFrame(() =>
+            document
+              .querySelector<HTMLElement>("#diff-view, #sidebar-toggle")
+              ?.focus(),
+          );
+        return;
+      }
       restorePickerFocus.current = options?.restoreFocus ?? true;
       setSelectedId(id);
       setState({ status: "loading" });
     },
-    [],
+    [openDiff],
   );
   const select = useCallback(
     (id: string, options?: { restoreFocus?: boolean }) =>
@@ -177,7 +193,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const openStream = useCallback(
     (
       head: ApiContext,
-      options?: { restoreFocus?: boolean; replace?: boolean },
+      options?: {
+        restoreFocus?: boolean;
+        replace?: boolean;
+        preserveNavigation?: boolean;
+      },
     ) =>
       show(
         head.streamId
@@ -299,7 +319,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         route.kind === "live"
           ? contexts.find((context) => context.streamId === route.stream)
           : latestChangedContext(contexts);
-      if (head) openStream(head, { replace: true, restoreFocus: false });
+      if (head)
+        openStream(head, {
+          replace: true,
+          restoreFocus: false,
+          preserveNavigation: true,
+        });
       else setUncollected(route);
     });
   }, [collectOnLoad, route, collectLatest, openStream]);
@@ -310,7 +335,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       route.kind === "live"
         ? heads.contexts.find((context) => context.streamId === route.stream)
         : latestChangedContext(heads.contexts);
-    if (head) openStream(head, { replace: true, restoreFocus: false });
+    if (head)
+      openStream(head, {
+        replace: true,
+        restoreFocus: false,
+        preserveNavigation: true,
+      });
     else if (route.kind === "live") setMissing(true);
   }, [
     resolving,
@@ -409,21 +439,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       );
       const target = selected?.getClientRects().length
         ? selected
-        : document.querySelector<HTMLElement>("#projects-toggle");
+        : document.querySelector<HTMLElement>("#diff-view, #sidebar-toggle");
       target?.focus();
     }
   }, [state, empty]);
   return (
     <CatalogContext value={catalog}>
       <div className="app-shell">
-        <ProjectsNav />
         <div className="app-main">
           {ready ? (
             <SessionContext value={state.session}>{children}</SessionContext>
           ) : (
             <>
               <header className="topbar">
-                <ProjectsToggle />
+                {compact && <ProjectsToggle />}
+                <HeaderBrand />
                 <CurrentContext />
                 <div className="header-actions">
                   <NewChangesButton />
@@ -431,7 +461,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 </div>
               </header>
               <div className="workbench">
-                <ActivityBar />
+                <div className="navigation-island">
+                  <ActivityBar diffReady={false} />
+                  <ProjectsNav />
+                </div>
                 <main
                   className="session-status"
                   role="status"

@@ -2,7 +2,11 @@ import { FolderSyncIcon, ListTreeIcon, RefreshCwIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ShellActions } from "./ActivityBar.tsx";
 import { DeleteContextButton } from "./DeleteContextButton.tsx";
-import { NewChangesButton, ProjectsToggle } from "./ProjectsNav.tsx";
+import {
+  HeaderBrand,
+  NewChangesButton,
+  ProjectsToggle,
+} from "./ProjectsNav.tsx";
 import { useDiffSource } from "./app-state.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
 import { CurrentContext, useCatalog, useSession } from "./session-context.tsx";
@@ -18,20 +22,23 @@ export function Header() {
   const sidebar = useSidebarState();
   return (
     <header className="topbar">
-      <ProjectsToggle />
-      <Button
-        type="button"
-        id="sidebar-toggle"
-        variant="ghost"
-        size="icon"
-        aria-controls="sidebar"
-        aria-expanded={sidebar.expanded}
-        aria-label={`${sidebar.expanded ? "Hide" : "Show"} file sidebar`}
-        title={`${sidebar.expanded ? "Hide" : "Show"} file sidebar`}
-        onClick={sidebar.toggle}
-      >
-        <ListTreeIcon className="size-(--icon-base)" />
-      </Button>
+      {compact && <ProjectsToggle />}
+      <HeaderBrand />
+      {compact && (
+        <Button
+          type="button"
+          id="sidebar-toggle"
+          variant="ghost"
+          size="icon"
+          aria-controls="sidebar"
+          aria-expanded={sidebar.view === "diff" && sidebar.expanded}
+          aria-label={`${sidebar.view === "diff" && sidebar.expanded ? "Hide" : "Show"} file sidebar`}
+          title={`${sidebar.view === "diff" && sidebar.expanded ? "Hide" : "Show"} file sidebar`}
+          onClick={() => sidebar.selectView("diff")}
+        >
+          <ListTreeIcon className="size-(--icon-base)" />
+        </Button>
+      )}
       <CurrentContext />
       <div className="header-heading">
         <h1

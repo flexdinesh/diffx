@@ -102,9 +102,10 @@ kbd {
   gap: var(--space-2);
   align-items: center;
   background: var(--shell-canvas);
-  padding: 0 calc(var(--diff-gutter) + var(--diff-viewport-inset, 0px)) 0 0;
+  padding: 0 calc(var(--diff-gutter) + var(--diff-viewport-inset, 0px)) 0
+    var(--diff-gutter);
 }
-/* Centers the projects toggle over the activity bar so it never moves. */
+/* Compact entry point when the activity rail is hidden. */
 .topbar-lead {
   display: flex;
   justify-content: center;
@@ -279,14 +280,15 @@ kbd {
   display: flex;
   flex-direction: column;
   background: var(--panel);
-  border-radius: var(--radius-lg);
-  outline: 1px solid var(--border);
+  border-left: 1px solid var(--border-muted);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
 }
+.sidebar[hidden],
 .projects-nav[hidden] {
   display: none;
 }
 .projects-nav-header {
-  height: var(--topbar-height);
+  height: calc(var(--control-small) + 2 * var(--space-1));
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -297,9 +299,6 @@ kbd {
 }
 .projects-nav-header button svg {
   stroke-width: 1.7;
-}
-.projects-search.search-box {
-  margin-top: var(--space-3);
 }
 .projects-heading {
   flex: 1;
@@ -314,7 +313,7 @@ kbd {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 0 var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-2) var(--space-4);
 }
 .projects-list,
 .stream-list {
@@ -1020,6 +1019,9 @@ h2 {
   .sidebar .mobile-only {
     display: inline-flex;
   }
+  .projects-nav-header {
+    height: var(--topbar-height);
+  }
   .projects-nav .mobile-only {
     display: inline-flex;
   }
@@ -1028,6 +1030,8 @@ h2 {
     z-index: var(--layer-sidebar);
     inset: var(--shell-gutter) auto var(--shell-gutter) var(--shell-gutter);
     width: min(320px, 88vw);
+    border-radius: var(--radius-lg);
+    outline: 1px solid var(--border);
     box-shadow: var(--shadow-overlay);
   }
 }
@@ -1056,7 +1060,6 @@ h2 {
   }
   .topbar-lead {
     width: auto;
-    padding-left: var(--diff-gutter);
   }
   .topbar .header-divider,
   .topbar .brand,

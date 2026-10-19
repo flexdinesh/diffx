@@ -120,8 +120,11 @@ for `/`, the most recently active changed one; a failed sync opens the stored
 head and reports the error. Otherwise `/` opens the most recently active changed head's
 live URL. Startup selection and the local default MCP context use the same
 activity ordering.
-The drawer's search filters those loaded heads by the picker's metadata terms;
-the header only names the open review. An explicit local sync, like an arrival,
+Projects and Diff share one navigation panel beside the activity rail, aligned
+with the diff below the header. Selecting a stream loads its diff and opens the
+Diff file tree; clicking the active rail icon collapses its panel. Compact
+layouts keep drawer controls in the header. The Projects magnifier opens the
+review picker; the header names the open review. An explicit local sync, like an arrival,
 raises the notice instead of replacing the open review.
 
 Activity is a producer estimate, separate from collection freshness and unread
@@ -145,7 +148,7 @@ head selection. Unchanged submissions can update ordering without producing an
 unread-content indicator. Piped history and the full catalog retain their
 existing collection/submission chronology.
 
-The review picker, opened by Cmd/Ctrl+K or the drawer's “Browse all reviews”
+The review picker, opened by Cmd/Ctrl+K or the Projects “Search reviews”
 action, loads the full catalog only while open. It selects a
 repository, then an observation identified by worktree, branch, source, run and time. Distinct
 content from the same worktree remains independently selectable; unchanged

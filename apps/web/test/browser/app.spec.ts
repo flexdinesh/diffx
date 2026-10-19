@@ -309,7 +309,7 @@ test("scrolling selects the top file only when the previous diff leaves", async 
   await expect(firstDiff.locator("[data-diffs-header]")).toBeVisible();
   await first.click();
   const boundary = await firstDiff.evaluate((element) => {
-    const scroller = document.querySelector(".diff-code-view");
+    const scroller = document.querySelector<HTMLElement>(".diff-code-view");
     if (!scroller) throw new Error("Missing diff scroller");
     return (
       element.getBoundingClientRect().bottom -
@@ -425,14 +425,17 @@ test("file frames preserve measured gutters, gaps, and virtual geometry", async 
       )
       .toEqual(Array.from({ length: 11 }, () => spacing));
     const gutters = await containers.first().evaluate((element) => {
-      const scroller = document.querySelector(".diff-code-view");
+      const scroller = document.querySelector<HTMLElement>(".diff-code-view");
       if (!scroller) throw new Error("Missing diff scroller");
       const file = element.getBoundingClientRect();
       const viewport = scroller.getBoundingClientRect();
       return {
         top: file.top - viewport.top,
         left: file.left - viewport.left,
-        right: viewport.left + scroller.clientWidth - file.right,
+        right:
+          viewport.right -
+          (scroller.offsetWidth - scroller.clientWidth) -
+          file.right,
       };
     });
     expect(gutters).toEqual({ top: spacing, left: spacing, right: spacing });
@@ -1362,34 +1365,40 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
   page,
 }) => {
   await page.goto("/");
-  // The projects toggle and brand keep their header order; opening the drawer
-  // shifts them right with the header instead of moving them into the drawer.
-  const toggle = page.locator("#projects-toggle");
   const brand = page.locator(".topbar .brand");
-  const view = page.locator(".activity-bar [aria-current='page']");
-  // The loading shell's header is replaced once the review is ready.
-  await expect(page.locator("#sidebar-toggle")).toBeVisible();
+  const view = page.getByRole("button", { name: "Diff", exact: true });
+  await expect(page.locator("#file-count")).not.toHaveText("0");
   await expect(brand).toHaveText("diffx");
   await expect(view).toBeVisible();
-  const lead = async () => {
-    const [toggleBox, brandBox, viewBox] = await Promise.all([
-      toggle.boundingBox(),
-      brand.boundingBox(),
-      view.boundingBox(),
-    ]);
-    if (!toggleBox || !brandBox || !viewBox) throw new Error("Missing lead");
-    return { toggle: toggleBox, brand: brandBox, view: viewBox };
-  };
-  const open = await lead();
-  await page.getByRole("button", { name: "Hide projects" }).click();
+  await expect(
+    page.locator(".topbar #projects-toggle, .topbar #sidebar-toggle"),
+  ).toHaveCount(0);
+  const filter = page.getByRole("searchbox", { name: "Filter files" });
+  await filter.fill("value");
+  const before = await brand.boundingBox();
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await expect(page.locator("#projects-nav")).toBeVisible();
+  await expect(page.locator("#sidebar")).toBeHidden();
+  const after = await brand.boundingBox();
+  expect(after).toEqual(before);
+  const projects = await page.locator("#projects-nav").boundingBox();
+  const workspace = await page.locator(".workspace").boundingBox();
+  if (!projects || !workspace) throw new Error("Missing workspace panels");
+  expect(projects.y).toBe(workspace.y);
+  expect(projects.height).toBe(workspace.height);
+  await view.click();
+  await expect(page.locator("#sidebar")).toBeVisible();
   await expect(page.locator("#projects-nav")).toBeHidden();
-  const closed = await lead();
-  expect(closed.brand.x - closed.toggle.x).toBe(open.brand.x - open.toggle.x);
-  expect(closed.toggle.y).toBe(open.toggle.y);
-  for (const { toggle, view } of [open, closed])
-    expect(
-      Math.abs(toggle.x + toggle.width / 2 - (view.x + view.width / 2)),
-    ).toBeLessThanOrEqual(0.5);
+  await expect(filter).toHaveValue("value");
+  await expect(view).toHaveAttribute("aria-expanded", "true");
+  await view.click();
+  await expect(page.locator("#sidebar")).toBeHidden();
+  await expect(view).toHaveAttribute("aria-expanded", "false");
+  await view.click();
+  const files = await page.locator("#sidebar").boundingBox();
+  if (!files) throw new Error("Missing file panel");
+  expect(files.y).toBe(workspace.y);
+  expect(files.height).toBe(workspace.height);
   await expect(page.locator('img[src="/logo.png"]')).toHaveCount(0);
 
   const styles = await page.evaluate(() => {
@@ -1412,7 +1421,6 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
     const accent = getComputedStyle(colorProbe).color;
     colorProbe.remove();
     return {
-      sidebar: size("#sidebar-toggle svg"),
       identity: size(".context-identity > svg"),
       viewOptions: size("#view-options svg"),
       refresh: size("#refresh svg"),
@@ -1439,7 +1447,6 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
   });
 
   expect(styles).toMatchObject({
-    sidebar: "16px",
     refresh: "16px",
     theme: "20px",
     view: "20px",
@@ -1472,9 +1479,12 @@ test("sidebar resizer preserves drag distance across shell offsets", async ({
       );
     });
   expect(await paneGap()).toBe(6);
-  for (const projectsOpen of [true, false]) {
-    if (!projectsOpen)
-      await page.getByRole("button", { name: "Hide projects" }).click();
+  for (const switchViews of [false, true]) {
+    if (switchViews) {
+      await page.getByRole("button", { name: "Projects", exact: true }).click();
+      await expect(resizer).toBeHidden();
+      await page.getByRole("button", { name: "Diff", exact: true }).click();
+    }
     const box = await resizer.boundingBox();
     expect(box?.height ?? 0).toBeGreaterThan(100);
     const before = Number(await resizer.getAttribute("aria-valuenow"));
@@ -1789,7 +1799,10 @@ test("drawer aligns its header and retains desktop navigation density", async ({
   const desktop = await density();
   for (const width of [800, 390]) {
     await page.setViewportSize({ width, height: 844 });
-    const toggle = page.getByRole("button", { name: "Show file sidebar" });
+    const toggle = page.getByRole("button", {
+      name: width >= 768 ? "Diff" : "Show file sidebar",
+      exact: true,
+    });
     await toggle.click();
     await expect(page.locator("#sidebar")).toBeVisible();
     await expect.poll(density).toEqual(desktop);

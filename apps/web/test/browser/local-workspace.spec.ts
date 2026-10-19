@@ -460,7 +460,7 @@ test("snapshot deletion navigates to another review and removes the snapshot fro
   await expect(dialog).toBeHidden();
   expect(state.requests).toEqual(["local-review"]);
   await expect(
-    page.locator('#projects-nav [aria-current="page"]'),
+    page.getByRole("button", { name: "Diff", exact: true }),
   ).toBeFocused();
   await openReviewPicker(page);
   await expect(page.getByRole("option")).toHaveCount(1);
@@ -1379,7 +1379,7 @@ test("observation picker drills into repositories and searches independent sourc
   await search.press("Enter");
   await expect(page).toHaveURL(/\/contexts\/second$/);
   await expect(
-    page.locator('#projects-nav [aria-current="page"]'),
+    page.getByRole("button", { name: "Diff", exact: true }),
   ).toBeFocused();
   await expect(page.locator(".context-identity-worktree")).toHaveAccessibleName(
     "Linked worktree: main-checkout",
@@ -1618,7 +1618,8 @@ test("projects drawer lists current changed streams and announces newer snapshot
   await page.goto("/contexts/rate-1");
   await ready(page);
   expect(latestRequests).toContain("true");
-  const nav = page.getByRole("navigation", { name: "Projects" });
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  const nav = page.locator("#projects-nav");
   await expect(
     nav.getByRole("button", { name: /^(web-app|acme-api)/ }),
   ).toHaveText([/web-app/, /acme-api/]);
@@ -1645,32 +1646,65 @@ test("projects drawer lists current changed streams and announces newer snapshot
   await notice.getByRole("button", { name: "View latest" }).click();
   await expect(page).toHaveURL(/\/streams\/stream-feat%2Frate-limit$/);
   await expect(notice).toBeHidden();
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
 
   await nav.getByRole("link", { name: /^main/ }).click();
   await expect(page).toHaveURL(/\/streams\/stream-main$/);
-  const search = nav.getByRole("searchbox", { name: "Search projects" });
-  await search.fill("acme rate-limit");
-  await expect(nav.locator(".stream-row")).toHaveCount(1);
-  await expect(nav.locator(".stream-row")).toContainText("feat/rate-limit");
-  await search.fill("missing");
-  await expect(nav).toContainText("No matching projects");
-  await search.press("Escape");
-  await expect(search).toHaveValue("");
-  await expect(nav.locator(".stream-row")).toHaveCount(2);
-  await nav.getByRole("button", { name: "Browse all reviews" }).click();
+  await expect(nav).toBeHidden();
+  await expect(page.locator("#sidebar")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Diff", exact: true }),
+  ).toBeFocused();
+  const projectsView = page.getByRole("button", {
+    name: "Projects",
+    exact: true,
+  });
+  await projectsView.click();
+  await expect(nav.getByRole("searchbox")).toHaveCount(0);
+  await nav.getByRole("button", { name: "Search reviews" }).click();
   const picker = page.getByRole("dialog", { name: "Switch review" });
   await expect(picker).toBeVisible();
+  await picker
+    .getByRole("combobox", { name: "Search reviews" })
+    .fill("acme rate-limit");
+  await expect(picker.getByRole("option")).toHaveCount(1);
+  await expect(picker.getByRole("option")).toContainText("acme-api");
   await page.keyboard.press("Escape");
   await expect(picker).toBeHidden();
-  await page.getByRole("button", { name: "Hide projects" }).click();
+  await expect(
+    nav.getByRole("button", { name: "Search reviews" }),
+  ).toBeFocused();
+  await projectsView.click();
   await expect(nav).toBeHidden();
+  await expect(projectsView).toHaveAttribute("aria-expanded", "false");
   await page.reload();
   await ready(page);
+  await expect(page.locator("#sidebar")).toBeHidden();
   await expect(page.getByRole("navigation", { name: "Projects" })).toBeHidden();
-  await page.getByRole("button", { name: "Show projects" }).click();
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
   await expect(
     page.getByRole("navigation", { name: "Projects" }),
   ).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileTrigger = page.getByRole("button", { name: "Show projects" });
+  await mobileTrigger.click();
+  await expect(nav).toBeVisible();
+  await expect(nav).toHaveAttribute("role", "dialog");
+  await expect(nav).toHaveAttribute("aria-modal", "true");
+  await expect(page.locator("main")).toHaveAttribute("inert", "");
+  await expect(page.locator("#sidebar")).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(nav).toBeHidden();
+  await expect(mobileTrigger).toBeFocused();
+  await mobileTrigger.click();
+  await nav.getByRole("link", { name: /^feat\/rate-limit/ }).click();
+  await expect(page).toHaveURL(/\/streams\/stream-feat%2Frate-limit$/);
+  await expect(nav).toBeHidden();
+  await expect(page.locator("main")).not.toHaveAttribute("inert", "");
+  await expect(
+    page.getByRole("button", { name: "Show file sidebar" }),
+  ).toBeFocused();
 });
 
 test("live stream URLs open the latest head on load and keep it until navigation", async ({
@@ -1824,6 +1858,7 @@ for (const mode of ["local", "remote"]) {
       name: /^Open latest new changes/,
     });
     await expect(global).toHaveCount(0);
+    await page.getByRole("button", { name: "Projects", exact: true }).click();
     const nav = page.getByRole("navigation", { name: "Projects" });
     await expect(nav.locator(".project-name")).toHaveText(["api", "web"]);
 
@@ -1855,7 +1890,9 @@ for (const mode of ["local", "remote"]) {
       "Open latest new changes (1 stream)",
     );
     await expect(page.locator(".snapshot-notice")).toBeHidden();
-    await expect(nav.locator('[aria-current="page"]')).toBeFocused();
+    await expect(
+      page.getByRole("button", { name: "Diff", exact: true }),
+    ).toBeFocused();
 
     // Compact chrome preserves the action and restores focus to the closed drawer's toggle.
     await page.setViewportSize({ width: 390, height: 844 });
@@ -1871,7 +1908,7 @@ for (const mode of ["local", "remote"]) {
     await expect(page).toHaveURL(/\/streams\/stream-api$/);
     await expect(global).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: "Show projects" }),
+      page.getByRole("button", { name: "Show file sidebar" }),
     ).toBeFocused();
     // A new submission of the same head may reorder projects, but adds no unread content.
     heads = [
@@ -1883,6 +1920,7 @@ for (const mode of ["local", "remote"]) {
     );
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.emulateMedia({ colorScheme: "light" });
+    await page.getByRole("button", { name: "Projects", exact: true }).click();
     await expect(nav.locator(".project-name")).toHaveText(["api", "web"]);
     await expect(global).toHaveCount(0);
     expect(collections).toBe(0);
@@ -1934,6 +1972,10 @@ test("local first launch waits for collection with an empty catalog", async ({
   const status = page.locator("main.session-status");
   await expect(status).toContainText("Collecting latest changes");
   await expect(status).toHaveAttribute("aria-busy", "true");
+  const diffView = page.getByRole("button", { name: "Diff", exact: true });
+  await expect(diffView).toBeDisabled();
+  await expect(diffView).not.toHaveAttribute("aria-controls");
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
   const projects = page.getByRole("navigation", { name: "Projects" });
   await expect(projects).toContainText("Collecting projects…");
   await expect(projects).not.toContainText("No current changes");

@@ -1,4 +1,10 @@
-import { FileDiffIcon, MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
+import {
+  FileDiffIcon,
+  FolderGit2Icon,
+  MonitorIcon,
+  MoonIcon,
+  SunIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,14 +16,22 @@ import {
 import { AccountButton } from "./account.tsx";
 import { useAppearance } from "./appearance-context.tsx";
 import { readThemePreference, type ThemePreference } from "./theme.ts";
+import { useSidebarState } from "./sidebar-context.tsx";
 import { useCompactChrome } from "./use-compact-chrome.ts";
 
-// Workspace views; file and Git views join the diff view here.
-const views = [{ id: "diff", label: "Diff", Icon: FileDiffIcon }];
+const views = [
+  { id: "projects", label: "Projects", Icon: FolderGit2Icon },
+  { id: "diff", label: "Diff", Icon: FileDiffIcon },
+] satisfies {
+  id: "projects" | "diff";
+  label: string;
+  Icon: typeof FileDiffIcon;
+}[];
 
 /** Fixed view switcher left of the file sidebar, hidden in compact chrome. */
-export function ActivityBar() {
+export function ActivityBar({ diffReady = true }: { diffReady?: boolean }) {
   const compact = useCompactChrome();
+  const sidebar = useSidebarState();
   if (compact) return null;
   return (
     <nav className="activity-bar" aria-label="Views">
@@ -28,7 +42,26 @@ export function ActivityBar() {
               type="button"
               variant="ghost"
               size="icon"
-              aria-current="page"
+              id={`${id}-view`}
+              disabled={id === "diff" && !diffReady}
+              aria-current={
+                sidebar.view === id && (id !== "diff" || diffReady)
+                  ? "page"
+                  : undefined
+              }
+              aria-controls={
+                id === "projects"
+                  ? "projects-nav"
+                  : diffReady
+                    ? "sidebar"
+                    : undefined
+              }
+              aria-expanded={
+                (id !== "diff" || diffReady) &&
+                sidebar.view === id &&
+                sidebar.expanded
+              }
+              onClick={() => sidebar.selectView(id)}
               aria-label={label}
               title={label}
             >

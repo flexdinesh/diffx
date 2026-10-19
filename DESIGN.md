@@ -198,7 +198,7 @@ such detail into a token. New layout spacing must use the scale.
   islands, `--radius-lg` outer corners, and a 1px neutral outline without
   elevation. The activity rail and file sidebar form one continuous navigation
   island; notices, toolbar, viewer, and status bar form the review island.
-  The optional Projects column remains independently placed and rounded.
+  Projects and Diff share the navigation panel beside the activity rail.
   Keep these frames outside Pierre's measured file geometry. At compact widths,
   remove the empty navigation island and retain the inset review surface;
   modal drawers use the same inset and corners without clipping focus or menus.
@@ -219,40 +219,34 @@ such detail into a token. New layout spacing must use the scale.
   delete actions at the trailing edge; share `--hover` feedback with the trigger.
   A local checkout process replaces Refresh with an icon-only “Sync all
   checkouts” action (folder-sync icon) that never swaps the open review.
-- Header lead: the “Show/Hide projects” toggle (panel-left open/close icon),
-  brand and divider always start the header, in that order. The toggle sits in
-  an `--activity-width` box so it centers over the activity bar's icons. The
-  drawer pushes the header right; the lead never moves into the drawer or
-  reorders. Below 768px the lead uses the normal header gutter.
+- Header lead: brand and divider identify the app. Desktop navigation controls
+  live in the activity rail. Below 768px, Projects and file-sidebar controls
+  remain in the header because the rail is hidden.
 - Activity bar: a fixed `--activity-width` column (48px; 52px for coarse
-  pointers) between the projects drawer and file sidebar, spanning the header's
-  bottom edge to the shell's bottom inset on the navigation island's `--panel`.
-  Keep the rail and file tree in one rounded island, separated by the file
-  sidebar's 1px `--border-muted` leading edge. Views
-  (Diff now; Files and Git later) are `--activity-item` square ghost icon
-  buttons with 20px icons, `--radius-md`, hover `--hover`, and the current view
-  in accent text on `--accent-bg` with `aria-current="page"`. Theme and account
-  actions sit at its bottom, as in an editor's activity bar. Below 768px the bar
-  hides and those actions return to the header's trailing edge.
-- Projects drawer: the outermost full-height column, `--projects-width` (16rem)
-  on `--panel` with the shell's rounded outline. Its header matches `--topbar-height` and
-  holds the “Projects” panel title (UI label size, medium, secondary text), a
-  ghost “Browse all reviews” icon action that opens the review picker, and a
-  close action in the modal drawer only. Below it: a “Search projects” field
-  styled like the file filter that filters current streams in place (Escape
-  clears it; matching repositories expand), then repositories ordered by their
-  most active visible stream. Streams sort by estimated code activity, with
-  captured collection time as the fallback and stable identity ties. Repository
-  and stream ages describe this activity; snapshot history retains its chronology.
-  Repository rows match tree-row height with a chevron, repository icon, medium
-  name and muted monospace age. Stream rows indent under them: branch icon, name,
-  trailing monospace changed-file count, and a muted metadata line (worktree,
-  harness, host only when a repository has several, age). Show only current
-  heads with changes. The current stream uses `--accent-bg`, accent text and
-  `aria-current="page"`. Unopened arrivals show a small accent dot labeled “New
-  changes”; a collapsed repository carries its streams' dot. The file
-  sidebar toggle uses a list-tree icon so the two panel controls stay distinct.
-  Collapse state persists per browser.
+  pointers), spanning the workbench below the header to the shell's bottom inset.
+  Projects (repository icon) and Diff (file-diff icon) select one shared panel.
+  Clicking the active view toggles its panel; clicking another view opens it.
+  Keep the rail and selected panel in one rounded island, separated by a 1px
+  `--border-muted` edge. Views use `--activity-item` square ghost buttons,
+  20px icons and `--radius-md`; selection uses accent text on `--accent-bg`
+  with `aria-current="page"`, while `aria-expanded` describes panel visibility.
+  Theme and account actions sit at the bottom. Below 768px those actions move
+  into the header. Below 1012px navigation panels become modal drawers.
+- Projects panel: `--projects-width` (16rem) on `--panel`, sharing the file tree
+  and diff's top and bottom edges below the header. Its header matches
+  the compact sidebar tabs and display toolbar and holds the “Projects” title (UI label size, medium,
+  secondary text), a ghost magnifier labeled “Search reviews” that opens the
+  existing picker, and a close action in the modal drawer only. Search is
+  available through that popup or Cmd/Ctrl+K. Selecting a stream loads its diff
+  and switches the shared panel to Diff; mobile closes the drawer.
+  Repositories sort by their most active visible stream. Streams sort by
+  estimated code activity, with captured collection time as fallback and stable
+  identity ties. Rows retain compact tree density, truncation, ages and metadata.
+  Show only current heads with changes. The current stream uses `--accent-bg`,
+  accent text and `aria-current="page"`. Unopened arrivals show a small accent
+  dot labeled “New changes”; collapsed repositories carry their streams' dots.
+  Repository collapse state persists per browser. Switching views preserves
+  the open diff and review state; file-panel width remains user controlled.
 - A newer head for the viewed stream shows a one-line `--accent-bg` notice below
   the header with an outline-muted “View latest” action. Never swap the open review.
 - A compact header action counts unopened changed heads across projects and
@@ -279,7 +273,7 @@ such detail into a token. New layout spacing must use the scale.
   `--layer-sidebar` / `--layer-resizer`; modal dialogs use the native top layer.
   The resize handle overlaps the navigation island's trailing edge and adds no
   layout width. Drag distance changes only the file sidebar width, regardless of
-  the Projects column or shell insets. The shell gutter separates navigation from
+  view switches or shell insets. The shell gutter separates navigation from
   the review island; the measured 12px diff gutter remains inside that island.
 
 ### Pierre boundary

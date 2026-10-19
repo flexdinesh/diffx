@@ -3,7 +3,6 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import { AppearanceProvider } from "./appearance-context.tsx";
-import { ProjectsNavProvider } from "./projects-nav-context.tsx";
 import { SidebarProvider } from "./sidebar-context.tsx";
 import { AppProvider } from "./app-state.tsx";
 import { highlighterOptions, poolOptions } from "./diff-workers.ts";
@@ -46,18 +45,16 @@ function ApplicationRoutes() {
   if (path === "/settings" && state.bootstrap.mode === "remote")
     return <AccountSettings />;
   return (
-    <ProjectsNavProvider key={state.bootstrap.user?.id ?? "local"}>
-      <SessionProvider>
-        <WorkerPoolContextProvider
-          poolOptions={poolOptions}
-          highlighterOptions={highlighterOptions}
-        >
-          <AppProvider>
-            <App />
-          </AppProvider>
-        </WorkerPoolContextProvider>
-      </SessionProvider>
-    </ProjectsNavProvider>
+    <SessionProvider key={state.bootstrap.user?.id ?? "local"}>
+      <WorkerPoolContextProvider
+        poolOptions={poolOptions}
+        highlighterOptions={highlighterOptions}
+      >
+        <AppProvider>
+          <App />
+        </AppProvider>
+      </WorkerPoolContextProvider>
+    </SessionProvider>
   );
 }
 
