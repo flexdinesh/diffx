@@ -93,6 +93,7 @@ measured elements or replace the application tokens with framework defaults.
 | Diff canvas                   | `--diff-canvas`     | Quiet neutral surround behind opaque file diffs                    |
 | Diff canvas dots              | `--diff-canvas-dot` | Faint dotted texture visible only between file diffs               |
 | Secondary surface             | `--panel`           | Sidebar, grouped controls, inline review annotations               |
+| Shell canvas                  | `--shell-canvas`    | Neutral background around workspace islands and behind the header  |
 | Elevated surface              | `--surface-raised`  | Dialogs and future actual overlays                                 |
 | Primary text                  | `--fg`              | File names, headings, review content                               |
 | Secondary text                | `--text-secondary`  | Supporting prose and available secondary actions                   |
@@ -193,6 +194,14 @@ such detail into a token. New layout spacing must use the scale.
 
 - Use a full-width application shell, not a centered marketing container.
   The diff receives all width remaining after navigation.
+- Inset the shell by `--shell-gutter` (6px). Use the same gutter between
+  islands, `--radius-lg` outer corners, and a 1px neutral outline without
+  elevation. The activity rail and file sidebar form one continuous navigation
+  island; notices, toolbar, viewer, and status bar form the review island.
+  The optional Projects column remains independently placed and rounded.
+  Keep these frames outside Pierre's measured file geometry. At compact widths,
+  remove the empty navigation island and retain the inset review surface;
+  modal drawers use the same inset and corners without clipping focus or menus.
 - Header: `--topbar-height` (40 desktop, 44 narrow or coarse pointer). Keep
   desktop controls at 32px, header icons at 16px, the divider at 16px, and group
   spacing at 8px so the header recedes into the editor chrome. Toolbar and sidebar tabs: `--toolbar-height`
@@ -204,7 +213,7 @@ such detail into a token. New layout spacing must use the scale.
   16px icons, and 1.7px strokes, including menu and dialog triggers. Hover and
   expanded states use the same neutral surface feedback. On mobile, both rows
   use 8px action gaps and the same trailing inset so icon columns align.
-- Header uses `--panel`, a quiet brand, and the review identity as its primary
+- Header uses `--shell-canvas`, a quiet brand, and the review identity as its primary
   context. Keep the secondary scope heading and muted monospace path inline;
   hide the path at 768–1011px and both below 768px. Group ghost Refresh and
   delete actions at the trailing edge; share `--hover` feedback with the trigger.
@@ -217,14 +226,15 @@ such detail into a token. New layout spacing must use the scale.
   reorders. Below 768px the lead uses the normal header gutter.
 - Activity bar: a fixed `--activity-width` column (48px; 52px for coarse
   pointers) between the projects drawer and file sidebar, spanning the header's
-  bottom edge to the viewport bottom on `--panel` with a separator edge. Views
+  bottom edge to the shell's bottom inset on the navigation island's `--panel`.
+  Keep the rail and file tree joined without a separator. Views
   (Diff now; Files and Git later) are `--activity-item` square ghost icon
   buttons with 20px icons, `--radius-md`, hover `--hover`, and the current view
   in accent text on `--accent-bg` with `aria-current="page"`. Theme and account
   actions sit at its bottom, as in an editor's activity bar. Below 768px the bar
   hides and those actions return to the header's trailing edge.
 - Projects drawer: the outermost full-height column, `--projects-width` (16rem)
-  on `--panel` with a separator edge. Its header matches `--topbar-height` and
+  on `--panel` with the shell's rounded outline. Its header matches `--topbar-height` and
   holds the “Projects” panel title (UI label size, medium, secondary text), a
   ghost “Browse all reviews” icon action that opens the review picker, and a
   close action in the modal drawer only. Below it: a “Search projects” field
@@ -258,8 +268,10 @@ such detail into a token. New layout spacing must use the scale.
   Column gaps use the spacing scale. Do not turn every grouping into a card.
 - Keep overlays anchored to their owning region. Sidebar/resizer layering uses
   `--layer-sidebar` / `--layer-resizer`; modal dialogs use the native top layer.
-  The resize handle overlaps the divider fully and adds no layout width, so the
-  canvas's shared 12px gutter starts at the sidebar edge.
+  The resize handle overlaps the navigation island's trailing edge and adds no
+  layout width. Drag distance changes only the file sidebar width, regardless of
+  the Projects column or shell insets. The shell gutter separates navigation from
+  the review island; the measured 12px diff gutter remains inside that island.
 
 ### Pierre boundary
 

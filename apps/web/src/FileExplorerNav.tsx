@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -227,6 +227,7 @@ export function FileExplorerNav() {
 
 export function SidebarResizer() {
   const sidebar = useSidebarState();
+  const drag = useRef({ x: 0, width: sidebar.width });
   return (
     <hr
       id="sidebar-resizer"
@@ -240,12 +241,14 @@ export function SidebarResizer() {
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
+        drag.current = { x: event.clientX, width: sidebar.width };
         event.currentTarget.setPointerCapture(event.pointerId);
         document.body.classList.add("resizing-sidebar");
       }}
       onPointerMove={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId))
-          sidebar.setWidth(event.clientX);
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          sidebar.setWidth(drag.current.width + event.clientX - drag.current.x);
+        }
       }}
       onPointerUp={(event) => {
         if (event.currentTarget.hasPointerCapture(event.pointerId))

@@ -1454,7 +1454,9 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
   expect(styles.indicatorColor).toBe(styles.accent);
 });
 
-test("sidebar resizer supports pointer dragging", async ({ page }) => {
+test("sidebar resizer preserves drag distance across shell offsets", async ({
+  page,
+}) => {
   await page.goto("/");
   const resizer = page.getByRole("separator", {
     name: "Resize file sidebar",
@@ -1469,19 +1471,24 @@ test("sidebar resizer supports pointer dragging", async ({ page }) => {
         sidebar.getBoundingClientRect().right
       );
     });
-  expect(await paneGap()).toBe(0);
-  const box = await resizer.boundingBox();
-  expect(box?.height ?? 0).toBeGreaterThan(100);
-  const before = Number(await resizer.getAttribute("aria-valuenow"));
-  if (!box) throw new Error("Missing sidebar resizer bounds");
-  await page.mouse.move(box.x + box.width / 2, box.y + 20);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2 + 40, box.y + 20);
-  await page.mouse.up();
-  await expect
-    .poll(async () => Number(await resizer.getAttribute("aria-valuenow")))
-    .toBeGreaterThan(before);
-  expect(await paneGap()).toBe(0);
+  expect(await paneGap()).toBe(6);
+  for (const projectsOpen of [true, false]) {
+    if (!projectsOpen)
+      await page.getByRole("button", { name: "Hide projects" }).click();
+    const box = await resizer.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThan(100);
+    const before = Number(await resizer.getAttribute("aria-valuenow"));
+    if (!box) throw new Error("Missing sidebar resizer bounds");
+    await page.mouse.move(box.x + box.width / 2, box.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 40, box.y + 20);
+    await page.mouse.up();
+    await expect(resizer).toHaveAttribute("aria-valuenow", String(before + 40));
+    expect(await paneGap()).toBe(6);
+    await resizer.focus();
+    await page.keyboard.press("ArrowLeft");
+    await expect(resizer).toHaveAttribute("aria-valuenow", String(before + 20));
+  }
 });
 
 test("copy dialog reports clipboard status and restores focus", async ({

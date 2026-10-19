@@ -17,12 +17,14 @@ export function App() {
       <Header />
       <SidebarBackdrop />
       <div className="workbench">
-        <ActivityBar />
-        <NewerSnapshotNotice />
-        <OutdatedCommentsNotice />
-        <div className="workspace">
+        <div className="navigation-island">
+          <ActivityBar />
           <FileExplorerNav />
-          <SidebarResizer />
+        </div>
+        <SidebarResizer />
+        <div className="workspace">
+          <NewerSnapshotNotice />
+          <OutdatedCommentsNotice />
           <DiffWorkspace />
         </div>
       </div>
