@@ -57,9 +57,9 @@ func TestAdmissionCapabilitiesMatchHealthAndRoutes(t *testing.T) {
 				options.Queue = store.Queue()
 			}
 			if test.collect {
-				options.Collect = func(context.Context) (serverapp.Collection, error) {
+				options.Collections = serverapp.NewCollections(service, func(context.Context) (serverapp.Collection, error) {
 					return serverapp.Collection{}, errors.New("unused")
-				}
+				}, "")
 			}
 			if got := options.Capabilities(); got != test.want {
 				t.Fatalf("capabilities: %+v, want %+v", got, test.want)
@@ -219,7 +219,7 @@ func TestCollectionIngestsEveryCheckoutAndMovesMCPDefault(t *testing.T) {
 	if !ok {
 		t.Fatal("initial collection published nothing")
 	}
-	server := httptest.NewServer(serverapp.Handler(t.Context(), service, store, fstest.MapFS{}, first.Context.ID, serverapp.Options{Collect: collect}))
+	server := httptest.NewServer(serverapp.Handler(t.Context(), service, store, fstest.MapFS{}, first.Context.ID, serverapp.Options{Collections: serverapp.NewCollections(service, collect, first.Context.ID)}))
 	defer server.Close()
 	d := deployment{server: server}
 	mcpDiff := func() review.RepositoryDiff {

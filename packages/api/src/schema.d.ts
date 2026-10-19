@@ -1378,7 +1378,10 @@ export interface operations {
   };
   collectCheckouts: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Join the background startup collection on the first live page load instead of collecting twice. Once consumed, later loads collect fresh snapshots. Explicit Sync requests omit this parameter to always collect fresh snapshots. */
+        initial?: boolean;
+      };
       header?: never;
       path?: never;
       cookie?: never;

@@ -65,8 +65,8 @@ func Run(ctx context.Context, settings Settings, runtimeDir string, initial *ing
 	return runServer(ctx, cancel, settings, "", instanceID, collection, nil, published, log.New(os.Stderr, "diffx: ", log.LstdFlags))
 }
 
-// runServer scopes queries to the initially collected checkouts or capture;
-// collect, when present, lets the user collect the checkouts again.
+// runServer scopes reads to the capture or discovered checkouts. Checkout
+// discovery and collection start after serving, with an initially empty scope.
 func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings, runtimeDir, instanceID string, initial Collection, collect func(context.Context) (Collection, error), ready func(Status, Published), logger *log.Logger) error {
 	settings = normalizeSettings(settings)
 	if settings.RetentionDays < 1 || settings.RetentionDays > 106751 {
@@ -153,7 +153,22 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 		value.Observations, err = service.Count(ctx)
 		return value, err
 	}
-	configuration := serverapp.Options{Collect: collect}
+	configuration := serverapp.Options{}
+	tasks := []serverapp.Task{serverapp.Prune(store.PruneExpired)}
+	if collect != nil {
+		collections := serverapp.NewCollections(service, collect, defaultContextID)
+		configuration.Collections = collections
+		tasks = append(tasks, collections.Initial(func(published Published, err error) {
+			if err != nil {
+				logger.Printf("initial collection: %v", err)
+				return
+			}
+			logger.Printf("collected %d checkouts (%d failed)", len(published.Submissions), len(published.Failures))
+			for _, failure := range published.Failures {
+				logger.Printf("%s: %s", failure.Path, failure.Detail)
+			}
+		}))
+	}
 	mux := serverapp.Handler(ctx, service, store, assets, defaultContextID, configuration)
 	webServer := &http.Server{Handler: publicRequests(mux, settings), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, ErrorLog: logger}
 	endpoints := []serverapp.Endpoint{{Server: webServer, Listener: listener}}
@@ -182,7 +197,6 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 			return err
 		}
 	}
-	tasks := []serverapp.Task{serverapp.Prune(store.PruneExpired)}
 	return serverapp.Run(ctx, endpoints, tasks, func() {
 		if ready != nil {
 			ready(status, published)

@@ -89,7 +89,8 @@ function readCollapsedGroups() {
 export function ProjectsNav() {
   const projects = useProjectsNavState();
   const sidebar = useSidebarState();
-  const { heads, current, openStream, openPicker, seen } = useCatalog();
+  const { heads, current, openStream, openPicker, seen, collecting } =
+    useCatalog();
   const [closed, setClosed] = useState(readCollapsedGroups);
   const [query, setQuery] = useState("");
   const now = useNow();
@@ -204,6 +205,7 @@ export function ProjectsNav() {
           ) : (
             <ProjectsEmpty
               loaded={heads.loaded}
+              collecting={collecting}
               error={heads.error}
               onRetry={heads.retry}
             />
@@ -302,10 +304,12 @@ function NewMark() {
 
 function ProjectsEmpty({
   loaded,
+  collecting,
   error,
   onRetry,
 }: {
   loaded: boolean;
+  collecting: boolean;
   error: string;
   onRetry: () => void;
 }) {
@@ -319,9 +323,19 @@ function ProjectsEmpty({
       </div>
     );
   return (
-    <div className="projects-empty" role="status">
-      <p>{loaded ? "No current changes" : "Loading projects…"}</p>
-      {loaded && (
+    <div
+      className="projects-empty"
+      role="status"
+      aria-busy={collecting || !loaded}
+    >
+      <p>
+        {collecting
+          ? "Collecting projects…"
+          : loaded
+            ? "No current changes"
+            : "Loading projects…"}
+      </p>
+      {loaded && !collecting && (
         <p className="projects-empty-hint">
           Agent hooks and diffx sync publish changed checkouts here.
         </p>

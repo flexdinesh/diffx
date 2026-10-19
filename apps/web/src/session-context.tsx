@@ -191,24 +191,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
   const { remove: removeHead, retry: reloadHeads } = heads;
   // Syncs the local checkouts; null when it fails or one is running.
-  const collectLatest = useCallback(async () => {
-    if (collectingRef.current) return null;
-    collectingRef.current = true;
-    setCollecting(true);
-    setCollectError("");
-    try {
-      const { data, error } = await api.POST("/api/v2/collections");
-      if (!data) throw new Error(errorDetail(error, "Unable to sync changes"));
-      reloadHeads();
-      return data;
-    } catch (error) {
-      setCollectError(errorDetail(error, "Unable to sync changes"));
-      return null;
-    } finally {
-      collectingRef.current = false;
-      setCollecting(false);
-    }
-  }, [reloadHeads]);
+  const collectLatest = useCallback(
+    async (initial = false) => {
+      if (collectingRef.current) return null;
+      collectingRef.current = true;
+      setCollecting(true);
+      setCollectError("");
+      try {
+        const { data, error } = await api.POST("/api/v2/collections", {
+          params: { query: { initial } },
+        });
+        if (!data)
+          throw new Error(errorDetail(error, "Unable to sync changes"));
+        reloadHeads();
+        return data;
+      } catch (error) {
+        setCollectError(errorDetail(error, "Unable to sync changes"));
+        return null;
+      } finally {
+        collectingRef.current = false;
+        setCollecting(false);
+      }
+    },
+    [reloadHeads],
+  );
   const headsRef = useRef(heads.contexts);
   useEffect(() => {
     headsRef.current = heads.contexts;
@@ -283,7 +289,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (!collectOnLoad || collected.current === route) return;
     // Effect replay must not treat the in-flight collection as a failed one.
     collected.current = route;
-    void collectLatest().then((result) => {
+    void collectLatest(true).then((result) => {
+      if (result?.failures.length)
+        setCollectError(
+          `Unable to sync ${result.failures.length} ${result.failures.length === 1 ? "checkout" : "checkouts"}: ${result.failures.map((failure) => `${failure.path} (${failure.detail})`).join(", ")}`,
+        );
       const contexts = result?.contexts ?? [];
       const head =
         route.kind === "live"
@@ -386,6 +396,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // The root URL keeps waiting for changed work while showing the empty state.
   const empty =
     heads.loaded && !selectedId && route.kind === "root" && !collectOnLoad;
+  const statusError =
+    state.status === "error" ? state.detail : heads.error || collectError;
   useEffect(() => {
     if (!restorePickerFocus.current || (!empty && state.status === "loading"))
       return;
@@ -423,36 +435,36 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 <main
                   className="session-status"
                   role="status"
+                  aria-busy={!statusError && !empty && !missing}
                   ref={statusRef}
                   tabIndex={-1}
                 >
                   <h1>
-                    {missing
-                      ? "No current snapshot"
-                      : empty
-                        ? heads.contexts.length
-                          ? "No changes to review"
-                          : "No review contexts yet"
-                        : state.status === "error" || heads.error
-                          ? "Cannot load diffx"
+                    {statusError
+                      ? collectError
+                        ? "Cannot sync changes"
+                        : "Cannot load diffx"
+                      : missing
+                        ? "No current snapshot"
+                        : empty
+                          ? heads.contexts.length
+                            ? "No changes to review"
+                            : "No review contexts yet"
                           : collectOnLoad
                             ? "Collecting latest changes"
                             : "Loading diffx"}
                   </h1>
                   <p>
-                    {missing
-                      ? collectError ||
-                        "This stream's snapshots expired or were deleted. Pick current work from Projects."
-                      : empty
-                        ? remote
-                          ? "Create a collector token in settings, then run diffx sync to publish your changes."
-                          : "Run diffx to review a checkout, or diffx sync to publish remotely."
-                        : state.status === "error"
-                          ? state.detail
-                          : heads.error ||
-                            (collectOnLoad
-                              ? "Reading checkouts for new changes…"
-                              : "Reading review context…")}
+                    {statusError ||
+                      (missing
+                        ? "This stream's snapshots expired or were deleted. Pick current work from Projects."
+                        : empty
+                          ? remote
+                            ? "Create a collector token in settings, then run diffx sync to publish your changes."
+                            : "Run diffx to review a checkout, or diffx sync to publish remotely."
+                          : collectOnLoad
+                            ? "Reading checkouts for new changes…"
+                            : "Reading review context…")}
                   </p>
                   {empty && remote && (
                     <Button
@@ -462,12 +474,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                       Create a collector token
                     </Button>
                   )}
-                  {(state.status === "error" || heads.error) && (
+                  {statusError && (
                     <Button
                       type="button"
                       variant="outline"
                       onClick={() => {
                         setState({ status: "loading" });
+                        if (collectError) {
+                          collected.current = null;
+                          setCollectError("");
+                          setMissing(false);
+                          setUncollected(null);
+                        }
                         reloadHeads();
                         setAttempt((current) => current + 1);
                       }}

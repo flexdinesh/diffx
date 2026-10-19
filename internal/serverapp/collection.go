@@ -108,39 +108,106 @@ func FailureSummary(failures []CollectionFailure) string {
 	return strings.Join(details, "; ")
 }
 
-// collection serializes user-requested collections of the selected checkouts.
-// Failed collection never ingests; each successful checkout ingests a fresh
-// observation, which may reuse an unchanged review.
-type collection struct {
+// Collections serializes checkout collection and publication. The first UI
+// load request joins startup, including when startup finished before the browser opened.
+// Later requests collect fresh snapshots. A disconnected browser does not cancel
+// startup, whose lifetime belongs to the foreground process.
+type Collections struct {
 	mu      sync.Mutex
+	pending *collectionResult
+	gate    chan struct{}
 	service *contextservice.Service
 	collect func(context.Context) (Collection, error)
 	current *defaultContext
 }
 
-func (handler *collection) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+type collectionResult struct {
+	done      chan struct{}
+	published Published
+	err       error
+}
+
+func NewCollections(service *contextservice.Service, collect func(context.Context) (Collection, error), defaultID string) *Collections {
+	return &Collections{service: service, collect: collect, current: &defaultContext{id: defaultID}, gate: make(chan struct{}, 1)}
+}
+
+// Initial reserves the startup result before serving requests and returns the
+// task that collects it. Call once, before Run. Collection errors are reported
+// to the UI and callback; the server stays available for retry.
+func (handler *Collections) Initial(completed func(Published, error)) Task {
+	initial := &collectionResult{done: make(chan struct{})}
+	handler.pending = initial
+	return func(ctx context.Context) error {
+		initial.published, initial.err = handler.run(ctx)
+		close(initial.done)
+		if completed != nil && ctx.Err() == nil {
+			completed(initial.published, initial.err)
+		}
+		<-ctx.Done()
+		return nil
+	}
+}
+
+func (handler *Collections) run(ctx context.Context) (Published, error) {
+	select {
+	case handler.gate <- struct{}{}:
+		defer func() { <-handler.gate }()
+	case <-ctx.Done():
+		return Published{}, ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return Published{}, err
+	}
+	collected, err := handler.collect(ctx)
+	if err != nil {
+		return Published{}, &review.RequestError{Status: http.StatusUnprocessableEntity, Detail: "Unable to collect checkouts: " + err.Error()}
+	}
+	published, err := Publish(ctx, handler.service, collected)
+	if err != nil {
+		return published, err
+	}
+	newest, ok := published.Newest()
+	if !ok {
+		return published, &review.RequestError{Status: http.StatusUnprocessableEntity, Detail: "Unable to collect checkouts: " + FailureSummary(published.Failures)}
+	}
+	handler.current.set(newest.Context.ID)
+	return published, nil
+}
+
+func (handler *Collections) result(ctx context.Context, joinInitial bool) (Published, error) {
+	handler.mu.Lock()
+	initial := handler.pending
+	if !joinInitial {
+		handler.pending = nil
+		initial = nil
+	}
+	handler.mu.Unlock()
+	if initial == nil {
+		return handler.run(ctx)
+	}
+	select {
+	case <-ctx.Done():
+		return Published{}, ctx.Err()
+	case <-initial.done:
+		handler.mu.Lock()
+		if handler.pending == initial {
+			handler.pending = nil
+		}
+		handler.mu.Unlock()
+		return initial.published, initial.err
+	}
+}
+
+func (handler *Collections) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		problem(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
-	handler.mu.Lock()
-	defer handler.mu.Unlock()
-	collected, err := handler.collect(r.Context())
-	if err != nil {
-		problem(w, http.StatusUnprocessableEntity, "Unable to collect checkouts: "+err.Error())
-		return
-	}
-	published, err := Publish(r.Context(), handler.service, collected)
+	published, err := handler.result(r.Context(), r.URL.Query().Get("initial") == "true")
 	if err != nil {
 		applicationError(w, err)
 		return
 	}
-	newest, ok := published.Newest()
-	if !ok {
-		problem(w, http.StatusUnprocessableEntity, "Unable to collect checkouts: "+FailureSummary(published.Failures))
-		return
-	}
-	handler.current.set(newest.Context.ID)
 	result := struct {
 		Contexts []contextservice.Context `json:"contexts"`
 		Failures []CollectionFailure      `json:"failures"`

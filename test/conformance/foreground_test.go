@@ -212,6 +212,16 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 		for time.Now().Before(deadline) {
 			status, err := client.Status(t.Context())
 			if err == nil && status.State == "running" && status.InstanceID != previous {
+				// Readiness precedes collection. Join the initial live-page request
+				// before asserting snapshots or making a later explicit Sync.
+				response, err := http.Post(status.BrowserURL+"/api/v2/collections?initial=true", "application/json", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				response.Body.Close()
+				if response.StatusCode != http.StatusOK {
+					t.Fatalf("initial collection: %d", response.StatusCode)
+				}
 				return status
 			}
 			time.Sleep(20 * time.Millisecond)

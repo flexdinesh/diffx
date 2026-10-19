@@ -20,8 +20,8 @@ type (
 	Published         = serverapp.Published
 )
 
-// Input is the initial collection and, for checkouts, how to collect them
-// again on explicit user request.
+// Input supplies a fixed capture or checkout collection to run in the
+// background at startup and again on explicit user request.
 type Input struct {
 	Collection Collection
 	Collect    func(context.Context) (Collection, error)

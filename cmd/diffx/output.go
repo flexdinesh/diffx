@@ -61,16 +61,13 @@ func writeStartup(writer io.Writer, input loadedInput, urls ...string) {
 	}
 	fmt.Fprintf(writer, "  %s\n", color.paint(color.bold+color.cyan, "diffx "+displayVersion()))
 	if input.directory != "" {
-		fmt.Fprintf(writer, "  %s  %s\n", color.paint(color.dim, "collected from:  "), input.directory)
+		label := "collected from:  "
+		if input.collecting {
+			label = "collecting from: "
+		}
+		fmt.Fprintf(writer, "  %s  %s\n", color.paint(color.dim, label), input.directory)
 	}
 	fmt.Fprintf(writer, "  %s               %s\n", color.paint(color.dim, "mode:"), input.mode)
-	if input.checkouts > 0 {
-		summary := plural(input.checkouts, "checkout", "checkouts")
-		if input.failed > 0 {
-			summary += " · " + color.paint(color.yellow, fmt.Sprintf("%d failed", input.failed))
-		}
-		fmt.Fprintf(writer, "  %s          %s\n", color.paint(color.dim, "checkouts:"), summary)
-	}
 	for _, url := range urls {
 		fmt.Fprintf(writer, "  %s                %s\n", color.paint(color.dim, "url:"), color.paint(color.green, url))
 	}
@@ -84,15 +81,19 @@ func writeStartup(writer io.Writer, input loadedInput, urls ...string) {
 		fmt.Fprintf(writer, "  MCP:                %s\n", input.mcpURL)
 	}
 	fmt.Fprintln(writer, "  ")
-	elapsed := max(input.processed.Round(time.Millisecond).Milliseconds(), 1)
-	fmt.Fprintf(writer, "  %s %s\n", color.paint(color.dim, "diff statistics"), color.paint(color.magenta, fmt.Sprintf("%dms", elapsed)))
-	fmt.Fprintf(writer, "    %s\n", plural(files, "file changed", "files changed"))
-	fmt.Fprintf(writer, "    %s\n", color.paint(color.green, plural(additions, "addition", "additions")))
-	fmt.Fprintf(writer, "    %s\n", color.paint(color.red, plural(deletions, "deletion", "deletions")))
-	if binaries > 0 {
-		fmt.Fprintf(writer, "    %s\n", plural(binaries, "binary file", "binary files"))
+	if input.collecting {
+		fmt.Fprintln(writer, "  Collecting checkout snapshots in the background…")
+	} else {
+		elapsed := max(input.processed.Round(time.Millisecond).Milliseconds(), 1)
+		fmt.Fprintf(writer, "  %s %s\n", color.paint(color.dim, "diff statistics"), color.paint(color.magenta, fmt.Sprintf("%dms", elapsed)))
+		fmt.Fprintf(writer, "    %s\n", plural(files, "file changed", "files changed"))
+		fmt.Fprintf(writer, "    %s\n", color.paint(color.green, plural(additions, "addition", "additions")))
+		fmt.Fprintf(writer, "    %s\n", color.paint(color.red, plural(deletions, "deletion", "deletions")))
+		if binaries > 0 {
+			fmt.Fprintf(writer, "    %s\n", plural(binaries, "binary file", "binary files"))
+		}
+		fmt.Fprintln(writer, "  ")
 	}
-	fmt.Fprintln(writer, "  ")
 	guidance := "ctrl-c to stop."
 	if input.remote {
 		guidance = "snapshot submitted to remote server."

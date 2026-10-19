@@ -429,6 +429,13 @@ paths:
     post:
       operationId: collectCheckouts
       description: Local checkout mode only. Discovers the process's selected paths again and collects every checkout and linked worktree found, ingesting each as a fresh observation. Absent when the process serves piped input, a fixture or remote storage.
+      parameters:
+        - name: initial
+          in: query
+          description: Join the background startup collection on the first live page load instead of collecting twice. Once consumed, later loads collect fresh snapshots. Explicit Sync requests omit this parameter to always collect fresh snapshots.
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
           description: The contexts holding the new collections, in ingestion order, and checkouts that could not be collected. Unchanged content reuses its existing review.
