@@ -1,9 +1,17 @@
 {
   "name": "@diffx/docs",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "mise run docs:dev",
-    "build": "mise run docs:build",
-    "check": "mise run docs:check"
+    "dev": "vocs dev",
+    "build": "vocs build",
+    "preview": "vocs preview"
+  },
+  "dependencies": {
+    "react": "~19.3.1",
+    "react-dom": "~19.3.1",
+    "vite": "catalog:",
+    "vocs": "^2.10.3",
+    "waku": "1.0.0-rc.3"
   }
 }

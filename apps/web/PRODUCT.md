@@ -25,7 +25,7 @@ A local review workspace that combines a browser-based Git diff with comments th
 - Comments can be copied as agent-ready XML. The same review comments are available to compatible coding agents through MCP and, in supported browsers, WebMCP.
 - The CLI can also display a piped Git patch as a fixed review.
 - A remote diffx server can collect from many agent sessions across many repositories. The Repos drawer keeps that work navigable: each repository lists only its current changed branches, newest first, and new arrivals are marked without replacing the review in progress.
-- Review data is stored by the local diffx server, as documented in the README.
+- Review data is stored by the local diffx server, as documented in `../../docs-website/src/pages/api.md`.
 
 ## Capabilities and Constraints
 
@@ -33,7 +33,7 @@ A local review workspace that combines a browser-based Git diff with comments th
 
 ## Evidence on Hand
 
-- Product usage and behavior: `../../README.md`.
+- Product usage and behavior: `../../docs-website/src/pages/`.
 - Architecture and frontend ownership: `../../docs/architecture.md` and `../../docs/development.md`.
 - Agent integration: `../../docs/mcp.md` and `../../docs/webmcp.md`.
 - Existing visual system and Pierre integration rules: `../../DESIGN.md` and `src/DiffWorkspace.tsx`.

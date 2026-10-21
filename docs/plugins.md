@@ -1,5 +1,8 @@
 # Agent plugins
 
+User-facing usage lives in [the docs site](../docs-website/src/pages/plugins.md); update it
+alongside this document.
+
 Plugins target the remote server only. Configure `diffx config set remote.url URL`
 and `diffx config set remote.token -` before enabling hooks, then confirm with
 `diffx remote status`. Without remote config, hooks log one line and exit before

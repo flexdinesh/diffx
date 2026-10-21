@@ -7,7 +7,7 @@ ask a producer to inspect a checkout.
 
 This document records the implemented design and its decisions. See
 [architecture.md](architecture.md) for package boundaries,
-[the README](../README.md) for commands and [the OpenAPI contract](../packages/api/openapi.yaml)
+[the user docs](../docs-website/src/pages/usage.md) for commands and [the OpenAPI contract](../packages/api/openapi.yaml)
 for transport details.
 
 ## Terminology and ownership
