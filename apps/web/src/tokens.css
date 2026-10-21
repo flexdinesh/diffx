@@ -73,8 +73,9 @@
   --diff-gutter: var(--space-3);
   --shell-gutter: var(--space-1-5);
   --sidebar-width: 330px;
-  --activity-item: var(--control-large);
-  --activity-width: calc(var(--activity-item) + 2 * var(--space-1));
+  /* Rail mirrors the header: its width is the header height, items are header buttons. */
+  --activity-item: var(--control-height);
+  --activity-width: var(--topbar-height);
   --reading-width: 42.5rem;
   --layer-sidebar: 10;
   --layer-backdrop: 9;

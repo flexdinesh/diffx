@@ -1485,6 +1485,16 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
     if (!topbar || !divider) throw new Error("Missing header divider");
     const topbarBox = topbar.getBoundingClientRect();
     const dividerBox = divider.getBoundingClientRect();
+    const find = (selector: string) => {
+      const element = document.querySelector<HTMLElement>(selector);
+      if (!element) throw new Error(`Missing ${selector}`);
+      return element;
+    };
+    const railViewButton = find(".activity-bar [aria-current='page']");
+    const themeElement = find("#theme");
+    const rail = find(".activity-bar").getBoundingClientRect();
+    const railView = railViewButton.getBoundingClientRect();
+    const themeButton = themeElement.getBoundingClientRect();
     const indicator = getComputedStyle(tab, "::after");
     const colorProbe = document.createElement("span");
     colorProbe.style.color = "var(--accent)";
@@ -1513,6 +1523,13 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
       ),
       dividerHeight: dividerBox.height,
       headerHeight: topbarBox.height,
+      railWidth: rail.width,
+      railViewSize: [railView.width, railView.height],
+      railViewInset: railView.left - rail.left,
+      headerButtonSize: [themeButton.width, themeButton.height],
+      headerButtonInset: themeButton.top - topbarBox.top,
+      railViewRadius: getComputedStyle(railViewButton).borderRadius,
+      headerButtonRadius: getComputedStyle(themeElement).borderRadius,
       accent,
     };
   });
@@ -1520,13 +1537,18 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
   expect(styles).toMatchObject({
     refresh: "16px",
     theme: "16px",
-    view: "20px",
+    view: "16px",
     tabBorderWidth: "1px",
     indicatorOpacity: "1",
     dividerHeight: 16,
     headerHeight: 36,
   });
   expect(styles.identity).toBe(styles.viewOptions);
+  // The rail mirrors the header: width equals header height, items match header buttons.
+  expect(styles.railWidth).toBe(styles.headerHeight);
+  expect(styles.railViewSize).toEqual(styles.headerButtonSize);
+  expect(styles.railViewInset).toBe(styles.headerButtonInset);
+  expect(styles.railViewRadius).toBe(styles.headerButtonRadius);
   expect(styles.chromeStrokes.every((stroke) => stroke === "1.7px")).toBe(true);
   expect(styles.dividerCenterOffset).toBeLessThanOrEqual(0.5);
   expect(styles.indicatorColor).toBe(styles.accent);

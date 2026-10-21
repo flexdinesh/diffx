@@ -268,7 +268,8 @@ kbd {
   flex-direction: column;
   justify-content: space-between;
   width: var(--activity-width);
-  padding: var(--space-1) 0;
+  /* Match the header's inset around its buttons on every edge. */
+  padding: calc((var(--activity-width) - var(--activity-item)) / 2);
   background: transparent;
 }
 .activity-views,
@@ -284,11 +285,10 @@ kbd {
 .activity-bar button {
   width: var(--activity-item);
   height: var(--activity-item);
-  border-radius: var(--radius-md);
 }
 .activity-bar button svg {
-  width: var(--icon-lg);
-  height: var(--icon-lg);
+  width: var(--icon-base);
+  height: var(--icon-base);
   stroke-width: 1.7;
 }
 .activity-bar button:hover,
@@ -1603,5 +1603,9 @@ h2 {
 @media (pointer: coarse) {
   .project-picker-option {
     min-height: var(--touch-target);
+  }
+  /* Flush touch targets stay inside the island's rounded corners. */
+  .activity-bar {
+    padding-block: var(--space-1);
   }
 }
