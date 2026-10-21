@@ -236,15 +236,19 @@ such detail into a token. New layout spacing must use the scale.
 - Header lead: brand and divider identify the app. Desktop navigation controls
   live in the activity rail. Below 768px, Repos and file-sidebar controls
   remain in the header because the rail is hidden.
-- Activity bar: a fixed `--activity-width` column (48px; 52px for coarse
-  pointers), spanning the workbench below the header to the shell's bottom inset.
+- Activity bar: a fixed `--activity-width` column equal to `--topbar-height`
+  (36px; 44px for coarse pointers), spanning the workbench below the header to
+  the shell's bottom inset. The rail mirrors the header rotated: items match
+  header icon buttons (32px desktop, 44px touch) with the header's inset (2px
+  desktop, flush touch); coarse pointers add a 4px block inset so flush items
+  clear the island corners.
   Repos (repository icon) followed by Diff (file-diff icon) select one shared panel.
   Repos is the initial view.
   Clicking the active view toggles its panel; clicking another view opens it.
   Keep the rail and selected panel in one rounded island, separated by a 1px
   `--border-muted` edge. Views use `--activity-item` square ghost buttons,
-  20px icons and `--radius-md`; selection uses accent text on `--accent-bg`
-  with `aria-current="page"`, while `aria-expanded` describes panel visibility.
+  16px icons, 1.7px strokes and `--radius-control`, like header actions;
+  selection uses accent text on `--accent-bg` with `aria-current="page"`, while `aria-expanded` describes panel visibility.
   Account actions sit at the bottom. Below 768px account actions move
   into the header before the rightmost theme control. Below 1012px navigation panels become modal drawers.
 - Repos panel: shared navigation width on `--panel`, sharing the file tree
