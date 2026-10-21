@@ -234,7 +234,8 @@ such detail into a token. New layout spacing must use the scale.
   remain in the header because the rail is hidden.
 - Activity bar: a fixed `--activity-width` column (48px; 52px for coarse
   pointers), spanning the workbench below the header to the shell's bottom inset.
-  Diff (file-diff icon) followed by Repos (repository icon) select one shared panel.
+  Repos (repository icon) followed by Diff (file-diff icon) select one shared panel.
+  Repos is the initial view.
   Clicking the active view toggles its panel; clicking another view opens it.
   Keep the rail and selected panel in one rounded island, separated by a 1px
   `--border-muted` edge. Views use `--activity-item` square ghost buttons,
@@ -248,7 +249,8 @@ such detail into a token. New layout spacing must use the scale.
   secondary text), a ghost magnifier labeled “Search reviews” that opens the
   existing picker, and a close action in the modal drawer only. Search is
   available through that popup or Cmd/Ctrl+K. Selecting a stream loads its diff
-  and switches the shared panel to Diff; mobile closes the drawer.
+  and keeps Repos selected, including the open modal drawer; people switch to
+  Diff themselves for the file tree.
   Repositories sort by their most active visible stream. Streams sort by
   estimated code activity, with captured collection time as fallback and stable
   identity ties. Rows retain compact tree density, truncation, ages and metadata.
@@ -260,7 +262,12 @@ such detail into a token. New layout spacing must use the scale.
 - A newer head for the viewed stream shows a one-line `--accent-bg` notice below
   the header with an outline-muted “View latest” action. Never swap the open review.
 - A compact header action counts unopened changed heads across projects and
-  opens the most recently active one. Share the drawer's per-browser seen state,
+  opens a “New changes” menu anchored below it, on `--surface-raised` with the
+  shared menu shadow. Opening the menu never swaps the review. Rows follow
+  activity order and show repository name (medium, primary text) with age, then
+  branch with changed-file count, then the linked worktree name or “Primary
+  checkout” (secondary metadata, single-line truncation). Choosing a row opens
+  that stream. Share the drawer's per-browser seen state,
   baseline existing heads on first visit, and clear a head's mark when opened.
   Keep the same-stream notice available. Unchanged submissions must not create
   unread prompts. Use existing ghost-button typography, icons and accessible
@@ -484,8 +491,8 @@ Do not add motion for decoration. New animation must honor
 - Keep the real shell, Repos navigation and theme actions available while review
   data loads. Reserve the shared navigation panel width and split/unified layout
   with neutral skeletons for repo rows, file rows, the toolbar and diff frames.
-  Keep Diff disabled until a review is ready; switching to Repos replaces the file
-  placeholders within the same panel.
+  Keep Diff disabled until a review is ready; Repos shows its own placeholders
+  in the same panel, and switching to Diff shows the file placeholders.
   Narrow screens hide the placeholder file sidebar and follow the narrow layout.
 - Skeletons use `--border-muted`, existing spacing and radius tokens, and a gentle
   shared opacity pulse. Disable animation under `prefers-reduced-motion`. Keep
@@ -515,7 +522,7 @@ Do not add motion for decoration. New animation must honor
 - Collapse navigation to the toggle-controlled modal drawer; its width is
   `min(320px, 88vw)`. Keep file selection, comments, and export reachable there.
   The repos drawer follows the same modal pattern from its own toggle; opening
-  it closes the file drawer, and choosing a stream closes it.
+  it closes the file drawer. Choosing a stream keeps it open.
   Its tab strip matches `--topbar-height`, including the tablet header height.
   File/folder rows, filter, summary toggle, and review progress retain desktop
   control heights and spacing; do not apply the general mobile enlargement here.

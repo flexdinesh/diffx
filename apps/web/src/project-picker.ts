@@ -99,9 +99,13 @@ export function contextIsLinkedWorktree(context: ApiContext) {
     : Boolean(context.worktreeName);
 }
 
+export function contextWorktreeName(context: ApiContext) {
+  return context.worktreeName || context.observation?.worktreeName || "Unknown";
+}
+
 export function contextCheckoutLabel(context: ApiContext) {
   if (contextIsLinkedWorktree(context))
-    return `Linked worktree: ${context.worktreeName || context.observation?.worktreeName || "Unknown"}`;
+    return `Linked worktree: ${contextWorktreeName(context)}`;
   if (context.observation?.linkedWorktree === false) return "Primary checkout";
   return "Checkout type unknown";
 }

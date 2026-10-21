@@ -5,8 +5,8 @@ import { useSidebarState } from "./sidebar-context.tsx";
 import { useCompactChrome } from "./use-compact-chrome.ts";
 
 const views = [
-  { id: "diff", label: "Diff", Icon: FileDiffIcon },
   { id: "projects", label: "Repos", Icon: FolderGit2Icon },
+  { id: "diff", label: "Diff", Icon: FileDiffIcon },
 ] satisfies {
   id: "projects" | "diff";
   label: string;

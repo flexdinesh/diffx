@@ -9,7 +9,7 @@ export function useSidebar() {
   const [mobile, setMobile] = useState(
     () => matchMedia("(max-width: 1011px)").matches,
   );
-  const [view, setView] = useState<WorkspaceView>("diff");
+  const [view, setView] = useState<WorkspaceView>("projects");
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(
     () => saved("sidebar-collapsed") === "true",

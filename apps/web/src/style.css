@@ -441,6 +441,61 @@ kbd {
   border-radius: 50%;
   background: var(--accent);
 }
+.new-changes-menu {
+  width: min(22rem, calc(100vw - 2 * var(--page-gutter)));
+}
+.new-changes-header {
+  margin-bottom: var(--space-1);
+  padding: var(--space-1) var(--space-2) var(--space-2);
+  border-bottom: 1px solid var(--border-muted);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+.new-changes-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-0-5);
+  padding: var(--space-1-5) var(--space-2);
+}
+.new-changes-item svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--muted);
+}
+.new-changes-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+.new-changes-detail {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+.new-changes-repo,
+.new-changes-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.new-changes-repo {
+  color: var(--fg);
+  font-weight: var(--weight-medium);
+}
+.new-changes-age,
+.new-changes-count {
+  flex-shrink: 0;
+  color: var(--muted);
+  font: var(--text-xs) var(--font-mono);
+  font-weight: var(--weight-normal);
+  font-variant-numeric: tabular-nums;
+}
+.new-changes-item[data-highlighted] :is(.new-changes-repo, svg) {
+  color: var(--accent);
+}
 .projects-empty {
   padding: var(--space-2);
   color: var(--text-secondary);

@@ -164,6 +164,11 @@ async function ready(page: Page, value = "all-v1") {
   ).toBeVisible();
 }
 
+/** Repos is the initial view; the file sidebar opens from the Diff view. */
+async function showDiff(page: Page) {
+  await page.getByRole("button", { name: "Diff", exact: true }).click();
+}
+
 test("comparison uses the captured merge base and follows the selected scope", async ({
   page,
 }) => {
@@ -409,6 +414,7 @@ test("draft survives scopes and explicit reload without automatic diff polling",
   const state = await localWorkspace(page);
   await page.goto("/");
   await ready(page);
+  await showDiff(page);
   const inline = page.locator("#viewer .comment-editor textarea");
   // Worker rendering can replace the hover utility during initial highlighting.
   await expect(async () => {
@@ -518,6 +524,7 @@ test("comment navigation changes scope and clears filters after previews load", 
   ];
   await page.goto("/");
   await ready(page);
+  await showDiff(page);
   await page.getByRole("searchbox", { name: "Filter files" }).fill("unmatched");
   await expect(page.locator("#viewer diffs-container")).toHaveCount(0);
   await page.getByRole("tab", { name: /Review/ }).click();
@@ -1409,8 +1416,14 @@ test("repos drawer lists current changed streams and announces newer snapshots",
   await page.goto("/contexts/rate-1");
   await ready(page);
   expect(latestRequests).toContain("true");
-  await page.getByRole("button", { name: "Repos", exact: true }).click();
   const nav = page.locator("#projects-nav");
+  const projectsView = page.getByRole("button", {
+    name: "Repos",
+    exact: true,
+  });
+  // Repos is the initial view.
+  await expect(nav).toBeVisible();
+  await expect(projectsView).toHaveAttribute("aria-current", "page");
   await expect(
     nav.getByRole("button", { name: /^(web-app|acme-api)/ }),
   ).toHaveText([/web-app/, /acme-api/]);
@@ -1437,19 +1450,21 @@ test("repos drawer lists current changed streams and announces newer snapshots",
   await notice.getByRole("button", { name: "View latest" }).click();
   await expect(page).toHaveURL(/\/streams\/stream-feat%2Frate-limit$/);
   await expect(notice).toBeHidden();
-  await page.getByRole("button", { name: "Repos", exact: true }).click();
+  await projectsView.click();
 
-  await nav.getByRole("link", { name: /^main/ }).click();
+  // Choosing a stream replaces the review but keeps Repos selected.
+  const mainStream = nav.getByRole("link", { name: /^main/ });
+  await mainStream.click();
   await expect(page).toHaveURL(/\/streams\/stream-main$/);
+  await expect(nav).toBeVisible();
+  await expect(page.locator("#sidebar")).toBeHidden();
+  await expect(projectsView).toHaveAttribute("aria-current", "page");
+  await expect(mainStream).toHaveAttribute("aria-current", "page");
+  await expect(mainStream).toBeFocused();
+  const diffView = page.getByRole("button", { name: "Diff", exact: true });
+  await diffView.click();
   await expect(nav).toBeHidden();
   await expect(page.locator("#sidebar")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Diff", exact: true }),
-  ).toBeFocused();
-  const projectsView = page.getByRole("button", {
-    name: "Repos",
-    exact: true,
-  });
   await projectsView.click();
   await expect(nav.getByRole("searchbox")).toHaveCount(0);
   await nav.getByRole("button", { name: "Search reviews" }).click();
@@ -1487,13 +1502,18 @@ test("repos drawer lists current changed streams and announces newer snapshots",
   await expect(nav).toBeHidden();
   await expect(mobileTrigger).toBeFocused();
   await mobileTrigger.click();
-  await nav.getByRole("link", { name: /^feat\/rate-limit/ }).click();
+  // The mobile drawer stays open on Repos after choosing a stream.
+  const rateStream = nav.getByRole("link", { name: /^feat\/rate-limit/ });
+  await rateStream.click();
   await expect(page).toHaveURL(/\/streams\/stream-feat%2Frate-limit$/);
+  await expect(nav).toBeVisible();
+  await expect(page.locator("main")).toHaveAttribute("inert", "");
+  await expect(rateStream).toHaveAttribute("aria-current", "page");
+  await expect(rateStream).toBeFocused();
+  await page.keyboard.press("Escape");
   await expect(nav).toBeHidden();
   await expect(page.locator("main")).not.toHaveAttribute("inert", "");
-  await expect(
-    page.getByRole("button", { name: "Show file sidebar" }),
-  ).toBeFocused();
+  await expect(mobileTrigger).toBeFocused();
 });
 
 test("live stream URLs open the latest head on load and keep it until navigation", async ({
@@ -1574,7 +1594,7 @@ test("live stream URLs open the latest head on load and keep it until navigation
 });
 
 for (const mode of ["local", "remote"]) {
-  test(`${mode} global new changes opens the most active unread stream explicitly`, async ({
+  test(`${mode} global new changes lists unread streams to open explicitly`, async ({
     page,
   }) => {
     await page.clock.install();
@@ -1643,25 +1663,25 @@ for (const mode of ["local", "remote"]) {
     );
     await page.goto("/contexts/viewed");
     await ready(page);
-    const global = page.getByRole("button", {
-      name: /^Open latest new changes/,
-    });
+    const global = page.getByRole("button", { name: /^New changes/ });
     await expect(global).toHaveCount(0);
-    await page.getByRole("button", { name: "Repos", exact: true }).click();
     const nav = page.getByRole("navigation", { name: "Repos" });
+    await expect(nav).toBeVisible();
     await expect(nav.locator(".project-name")).toHaveText(["api", "web"]);
 
     const newerApi = snapshot("api-new", "api", 200, 900);
-    const newerWeb = snapshot("web-new", "web", 400, 10);
+    const newerWeb = {
+      ...snapshot("web-new", "web", 400, 10),
+      branch: "fix-login",
+      worktreeName: "web-login",
+    };
     contexts.set(newerApi.id, newerApi);
     contexts.set(newerWeb.id, newerWeb);
     heads = [newerApi, newerWeb];
     await page.evaluate(() =>
       window.dispatchEvent(new Event("test-ingestion")),
     );
-    await expect(global).toHaveAccessibleName(
-      "Open latest new changes (2 streams)",
-    );
+    await expect(global).toHaveAccessibleName("New changes (2 streams)");
     await expect(global).toHaveText("2 new");
     await expect(nav.locator(".project-name")).toHaveText(["web", "api"]);
     await expect(page.locator(".snapshot-notice")).toContainText(
@@ -1671,19 +1691,33 @@ for (const mode of ["local", "remote"]) {
     await page.clock.fastForward(5 * 60_000);
     expect(collections).toBe(0);
 
-    await global.focus();
-    await page.keyboard.press("Enter");
-    await ready(page);
-    await expect(page).toHaveURL(/\/streams\/stream-web$/);
-    await expect(global).toHaveAccessibleName(
-      "Open latest new changes (1 stream)",
+    // Opening the list never swaps the review; each entry names its checkout.
+    await global.click();
+    const menu = page.getByRole("menu", { name: "New changes" });
+    await expect(menu).toBeVisible();
+    await expect(page).toHaveURL(/\/contexts\/viewed$/);
+    const items = menu.getByRole("menuitem");
+    await expect(items).toHaveCount(2);
+    await expect(items.nth(0)).toHaveAccessibleName(
+      /^web, fix-login, web-login, /,
     );
+    await expect(items.nth(0)).toContainText("web");
+    await expect(items.nth(0)).toContainText("fix-login");
+    await expect(items.nth(0)).toContainText("web-login");
+    await expect(items.nth(1)).toHaveAccessibleName(/^api, main, /);
+
+    // Choosing the less active entry opens exactly that stream and clears it.
+    await items.nth(1).click();
+    await ready(page);
+    await expect(page).toHaveURL(/\/streams\/stream-api$/);
+    await expect(menu).toBeHidden();
+    await expect(global).toHaveAccessibleName("New changes (1 stream)");
     await expect(page.locator(".snapshot-notice")).toBeHidden();
     await expect(
       page.getByRole("button", { name: "Diff", exact: true }),
     ).toBeFocused();
 
-    // Compact chrome preserves the action and restores focus to the closed drawer's toggle.
+    // Compact chrome keeps the list keyboard reachable and restores focus to the closed drawer's toggle.
     await page.setViewportSize({ width: 390, height: 844 });
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(global).toBeVisible();
@@ -1693,8 +1727,16 @@ for (const mode of ["local", "remote"]) {
     );
     await global.focus();
     await page.keyboard.press("Enter");
+    await expect(menu).toBeVisible();
+    const menuBounds = await menu.boundingBox();
+    expect(
+      menuBounds && menuBounds.x >= 0 && menuBounds.x + menuBounds.width <= 390,
+    ).toBe(true);
+    await expect(items).toHaveCount(1);
+    await expect(items.first()).toBeFocused();
+    await page.keyboard.press("Enter");
     await ready(page);
-    await expect(page).toHaveURL(/\/streams\/stream-api$/);
+    await expect(page).toHaveURL(/\/streams\/stream-web$/);
     await expect(global).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Show file sidebar" }),
@@ -1782,7 +1824,10 @@ test("local first launch waits for collection with an empty catalog", async ({
   const diffView = page.getByRole("button", { name: "Diff", exact: true });
   await expect(diffView).toBeDisabled();
   await expect(diffView).not.toHaveAttribute("aria-controls");
-  await page.getByRole("button", { name: "Repos", exact: true }).click();
+  // Repos is the initial view and shows its own placeholders while loading.
+  await expect(
+    page.getByRole("button", { name: "Repos", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
   const projects = page.getByRole("navigation", { name: "Repos" });
   await expect(projects).toContainText("Collecting repos…");
   await expect(projects.locator(".projects-skeleton")).toBeVisible();

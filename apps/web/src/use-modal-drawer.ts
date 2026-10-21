@@ -9,13 +9,18 @@ export function useModalDrawer(
 ) {
   useEffect(() => {
     if (!active) return;
-    const main = document.querySelector<HTMLElement>("main");
-    const header = document.querySelector<HTMLElement>(".topbar");
-    const views = document.querySelector<HTMLElement>(".activity-bar");
+    // The background can remount while the drawer stays open (opening a
+    // review replaces <main>), so keep whichever elements are current inert.
+    const background = () =>
+      document.querySelectorAll<HTMLElement>("main, .topbar, .activity-bar");
+    const makeInert = () => {
+      for (const element of background())
+        if (!element.hasAttribute("inert")) element.setAttribute("inert", "");
+    };
     const drawer = document.querySelector<HTMLElement>(drawerSelector);
-    main?.setAttribute("inert", "");
-    header?.setAttribute("inert", "");
-    views?.setAttribute("inert", "");
+    makeInert();
+    const remounts = new MutationObserver(makeInert);
+    remounts.observe(document.body, { childList: true, subtree: true });
     const focusable = () =>
       Array.from(
         drawer?.querySelectorAll<HTMLElement>(
@@ -40,9 +45,8 @@ export function useModalDrawer(
     document.addEventListener("keydown", trapFocus);
     return () => {
       document.removeEventListener("keydown", trapFocus);
-      main?.removeAttribute("inert");
-      header?.removeAttribute("inert");
-      views?.removeAttribute("inert");
+      remounts.disconnect();
+      for (const element of background()) element.removeAttribute("inert");
       document.querySelector<HTMLElement>(toggleSelector)?.focus();
     };
   }, [active, drawerSelector, toggleSelector]);

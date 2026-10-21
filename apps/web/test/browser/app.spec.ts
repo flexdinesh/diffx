@@ -15,12 +15,21 @@ async function resolvedRadius(
   }, token);
 }
 
+/** Repos opens first; file-tree tests select Diff the way a user would. */
+async function showDiff(page: Page) {
+  const view = page.getByRole("button", { name: "Diff", exact: true });
+  await view.click();
+  await expect(view).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("#sidebar")).toBeVisible();
+}
+
 test.beforeEach(async ({ request }) => resetFixtureState(request));
 
 test("file summary counts change types across filtering and mobile", async ({
   page,
 }) => {
   await page.goto("/");
+  await showDiff(page);
   const summary = page.getByRole("region", { name: "Summary", exact: true });
   await expect(summary.locator("#summary-files")).toHaveText("12");
   for (const label of [
@@ -104,6 +113,7 @@ test("shows server process metrics in the compact status bar", async ({
     }),
   );
   await page.goto("/");
+  await showDiff(page);
 
   await expect(page.locator("#server-cpu")).toHaveText("12.5%");
   await expect(page.locator("#server-ram")).toHaveText("50.0 MB");
@@ -121,6 +131,7 @@ test("shows server process metrics in the compact status bar", async ({
 test("renders and filters a piped diff", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 4_000 });
   await page.goto("/");
+  await showDiff(page);
 
   await expect(page.getByRole("heading", { name: "Piped" })).toBeVisible();
   await expect(page.locator("#connection")).toHaveText("Fixed snapshot");
@@ -258,6 +269,7 @@ test("file navigation scrolls to and retriggers a destination cue", async ({
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
   await page.setViewportSize({ width: 1280, height: 420 });
   await page.goto("/");
+  await showDiff(page);
 
   const file = page.locator(
     '#file-tree [data-path="src/components/Badge.tsx"]',
@@ -301,6 +313,7 @@ test("scrolling selects the top file only when the previous diff leaves", async 
 }) => {
   await page.setViewportSize({ width: 1280, height: 420 });
   await page.goto("/");
+  await showDiff(page);
   const first = page.locator('#file-tree [data-path="config/diffx.json"]');
   const second = page.locator('#file-tree [data-path="docs/legacy.md"]');
   const firstDiff = page
@@ -357,6 +370,7 @@ test("scroll selection preserves collapsed diffs and works with filtered files",
 }) => {
   await page.setViewportSize({ width: 1280, height: 420 });
   await page.goto("/");
+  await showDiff(page);
   await page.getByRole("searchbox", { name: "Filter files" }).fill("src/");
   const badge = page.locator(
     '#file-tree [data-path="src/components/Badge.tsx"]',
@@ -590,6 +604,7 @@ test("only the diff collapse button toggles a file and paths copy independently"
 }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
+  await showDiff(page);
   const file = page
     .locator("#viewer diffs-container")
     .filter({ hasText: "src/components/Badge.tsx" });
@@ -650,6 +665,7 @@ for (const [start, end] of [
   }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.goto("/");
+    await showDiff(page);
     await expect(page.locator("#additions")).toHaveText("+43");
     await page.evaluate(() => document.fonts.ready);
     await page
@@ -746,6 +762,7 @@ test("reset reviewed clears file review marks and disables when empty", async ({
 }) => {
   await page.setViewportSize({ width: 1280, height: 4_000 });
   await page.goto("/");
+  await showDiff(page);
 
   const reset = page.getByRole("button", { name: "Reset reviewed" });
   await expect(reset).toBeDisabled();
@@ -798,6 +815,7 @@ test("inline comments use a distinct structured surface while sidebar comments r
   // 1280px of diff chrome beside the expanded projects drawer.
   await page.setViewportSize({ width: 1536, height: 4_000 });
   await page.goto("/");
+  await showDiff(page);
   await page.evaluate(async () => {
     const catalog: unknown = await (await fetch("/api/v2/contexts")).json();
     if (
@@ -901,6 +919,7 @@ test("inline comments use a distinct structured surface while sidebar comments r
     if (!imported.ok) throw new Error("Could not seed review comments");
   });
   await page.reload();
+  await showDiff(page);
 
   const inline = page.locator(
     '#viewer [data-comment-id="range-comment"] .comment-card',
@@ -1316,6 +1335,7 @@ test("display controls expose state and persist preferences", async ({
   page,
 }) => {
   await page.goto("/");
+  await showDiff(page);
   await expect(page.getByRole("heading", { name: "Piped" })).toBeVisible();
 
   await page.getByRole("tab", { name: /Review/ }).click();
@@ -1376,7 +1396,7 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
       .evaluateAll((buttons) =>
         buttons.map((button) => button.getAttribute("aria-label")),
       ),
-  ).toEqual(["Diff", "Repos"]);
+  ).toEqual(["Repos", "Diff"]);
   await expect(
     page.locator(".topbar .header-actions > :last-child"),
   ).toHaveAttribute("id", "theme");
@@ -1388,6 +1408,14 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
   await expect(
     page.locator(".topbar #projects-toggle, .topbar #sidebar-toggle"),
   ).toHaveCount(0);
+  // Repos is the initial view; Diff opens the file tree on request.
+  await expect(
+    page.getByRole("button", { name: "Repos", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("#projects-nav")).toBeVisible();
+  await expect(page.locator("#sidebar")).toBeHidden();
+  await showDiff(page);
+  await expect(page.locator("#projects-nav")).toBeHidden();
   const filter = page.getByRole("searchbox", { name: "Filter files" });
   await filter.fill("value");
   const before = await brand.boundingBox();
@@ -1555,9 +1583,8 @@ test("shared navigation resizer preserves width across Diff and Repos", async ({
       );
     });
   const initialWidth = Number(await resizer.getAttribute("aria-valuenow"));
-  for (const view of ["Diff", "Repos"]) {
-    if (view === "Repos")
-      await page.getByRole("button", { name: view, exact: true }).click();
+  for (const view of ["Repos", "Diff"]) {
+    if (view === "Diff") await showDiff(page);
     await expect(resizer).toBeVisible();
     const before = Number(await resizer.getAttribute("aria-valuenow"));
     await expect(panel).toHaveCSS("width", `${before}px`);
@@ -1579,14 +1606,14 @@ test("shared navigation resizer preserves width across Diff and Repos", async ({
     await expect(panel).toHaveCSS("width", `${before + 20}px`);
   }
   const resizedWidth = initialWidth + 40;
-  await page.getByRole("button", { name: "Diff", exact: true }).click();
+  await page.getByRole("button", { name: "Repos", exact: true }).click();
   await expect(panel).toHaveCSS("width", `${resizedWidth}px`);
   await page.reload();
   await expect(resizer).toHaveAttribute("aria-valuenow", String(resizedWidth));
   await expect(panel).toHaveCSS("width", `${resizedWidth}px`);
-  await page.getByRole("button", { name: "Repos", exact: true }).click();
+  await showDiff(page);
   await expect(panel).toHaveCSS("width", `${resizedWidth}px`);
-  await page.getByRole("button", { name: "Repos", exact: true }).click();
+  await page.getByRole("button", { name: "Diff", exact: true }).click();
   await expect(resizer).toBeHidden();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Show repos" }).click();
@@ -1606,6 +1633,7 @@ test("copy dialog reports clipboard status and restores focus", async ({
     });
   });
   await page.goto("/");
+  await showDiff(page);
   await expect(page.locator("#connection")).toHaveText("Fixed snapshot");
   await page.evaluate(async () => {
     const catalog: unknown = await (await fetch("/api/v2/contexts")).json();
@@ -1692,6 +1720,7 @@ test("copy dialog reports clipboard status and restores focus", async ({
     if (!imported.ok) throw new Error("Could not seed review comments");
   });
   await page.reload();
+  await showDiff(page);
 
   await page.getByRole("tab", { name: /Review/ }).click();
   await page.getByRole("button", { name: "Filter comments: Open" }).click();
@@ -1866,6 +1895,7 @@ test("drawer aligns its header and retains desktop navigation density", async ({
 }) => {
   await page.setViewportSize({ width: 1280, height: 844 });
   await page.goto("/");
+  await showDiff(page);
   await expect(page.locator("#file-tree .file-row").first()).toBeVisible();
   const density = () =>
     page.evaluate(() => {
@@ -2022,6 +2052,7 @@ test("diff file and folder collapse state survives reload within the tab", async
 }) => {
   await page.setViewportSize({ width: 1280, height: 4_000 });
   await page.goto("/");
+  await showDiff(page);
   await page
     .getByRole("button", {
       name: "Collapse src/components/Badge.tsx",
@@ -2030,6 +2061,7 @@ test("diff file and folder collapse state survives reload within the tab", async
     .click();
   await page.getByRole("button", { name: "Collapse folder docs" }).click();
   await page.reload();
+  await showDiff(page);
   await expect(
     page.getByRole("button", {
       name: "Expand src/components/Badge.tsx",
