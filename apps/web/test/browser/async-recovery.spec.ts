@@ -1,4 +1,5 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { type Page, type Route } from "@playwright/test";
+import { expect, test } from "./fixtures.ts";
 import { createApiClient, type ApiRepositoryDiff } from "@diffx/api";
 import type { ReviewComment } from "@diffx/shared";
 

@@ -60,7 +60,9 @@ List available tasks with `mise tasks`. Keep personal overrides in
 | Run all pre-push checks, including Go race tests           | `pnpm check:push`                |
 | Run lightweight CI checks                                  | `mise run check:ci`              |
 
-Set `DIFFX_TEST_PORT` for a separate browser-test server (default 4173), e.g. `DIFFX_TEST_PORT=4183 mise exec -- pnpm --filter @diffx/web test:browser`.
+Browser tests build the web app and CLI once, then each Playwright worker runs its own
+in-memory fixture server behind a Vite preview on a free port. Tests run in parallel
+without shared review state, and concurrent runs from other worktrees do not collide.
 
 `mise run setup` enables the Husky `pre-push` hook. Every push runs
 `mise run check:push`: all repository suites, boundary contracts and Go race tests, then rejects
@@ -72,8 +74,10 @@ local platform.
 Both CI and release verification run `mise run check:ci`: static checks, web and
 CLI builds, generated-file consistency, and the distribution API smoke test.
 Local `mise run check` adds dependency/design guards, behavioral contracts,
-JavaScript unit/browser suites, release-tool tests and all Go tests; pre-push
-adds Go race tests. Keep these full suites and guards local. Chromium is installed
+JavaScript unit/browser suites, release-tool tests and all Go tests, running these
+suites concurrently after the build; pre-push runs the Go tests with the race
+detector instead. Go tests time out after 3 minutes (5 with the race detector) so a
+hang fails fast. Keep these full suites and guards local. Chromium is installed
 by local setup, not CI/release workflows. CI does not run a native OS test matrix.
 GitHub's `ci-required` ruleset requires the lightweight `checks` status on an
 up-to-date `main` change, including administrators; it is configured in GitHub,

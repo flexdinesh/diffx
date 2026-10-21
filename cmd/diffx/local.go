@@ -152,6 +152,10 @@ func acquireLocalInput(values options, stdin *os.File) (initialInput, error) {
 		if err != nil {
 			return initialInput{}, err
 		}
+		// Reject typos before serving; collection runs only after startup.
+		if info, err := os.Stat(absolute); err != nil || !info.IsDir() {
+			return initialInput{}, fmt.Errorf("checkout path %s is not a readable directory", absolute)
+		}
 		paths = append(paths, absolute)
 	}
 	return initialInput{Kind: "worktree", Paths: paths}, nil

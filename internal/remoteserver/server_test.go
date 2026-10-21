@@ -340,7 +340,9 @@ func TestRemoteRunShutdownClosesActiveEventStream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := &http.Client{Timeout: 3 * time.Second}
+	// Without keep-alives the client never leaves a spare unused connection,
+	// which http.Server.Shutdown would wait on for 5s as a new connection.
+	client := &http.Client{Timeout: 3 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
 	login, err := client.Post("http://"+address+"/api/v2/auth/login", "application/json", strings.NewReader(`{"username":"account","password":"`+testPassword+`"}`))
 	if err != nil {
 		t.Fatal(err)

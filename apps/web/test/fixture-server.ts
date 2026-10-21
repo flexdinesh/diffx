@@ -19,16 +19,21 @@ function stopProcess(child: ChildProcess) {
   }
 }
 
-export async function startFixtureServer(): Promise<{
-  target: string;
-  plugin: Plugin;
-}> {
-  const root = fileURLToPath(new URL("../../..", import.meta.url));
+export const repositoryRoot = fileURLToPath(
+  new URL("../../..", import.meta.url),
+);
+
+/**
+ * Starts an isolated in-memory fixture server. Browser tests pass a prebuilt
+ * binary and built web assets; Vite development compiles the CLI instead.
+ */
+export async function startFixtureProcess(
+  options: { binary?: string; webDir?: string } = {},
+): Promise<{ target: string; stop: () => void }> {
   const child = spawn(
-    "go",
+    options.binary ?? "go",
     [
-      "run",
-      "./cmd/diffx",
+      ...(options.binary ? [] : ["run", "./cmd/diffx"]),
       "dev",
       "--fixture",
       "test/fixtures/sample.diff",
@@ -37,9 +42,10 @@ export async function startFixtureServer(): Promise<{
       "--no-browser",
       "--port",
       "0",
+      ...(options.webDir ? ["--web-dir", options.webDir] : []),
     ],
     {
-      cwd: root,
+      cwd: repositoryRoot,
       detached: process.platform !== "win32",
       env: { ...process.env, DIFFX_EXIT_ON_STDIN_CLOSE: "1" },
       stdio: ["pipe", "pipe", "inherit"],
@@ -81,7 +87,14 @@ export async function startFixtureServer(): Promise<{
       resolve(`http://127.0.0.1:${port}`);
     });
   });
-  const stop = () => stopProcess(child);
+  return { target, stop: () => stopProcess(child) };
+}
+
+export async function startFixtureServer(): Promise<{
+  target: string;
+  plugin: Plugin;
+}> {
+  const { target, stop } = await startFixtureProcess();
   const interrupt = () => {
     stop();
     process.exit(130);
