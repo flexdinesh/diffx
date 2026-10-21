@@ -1,5 +1,8 @@
 # MCP
 
+User-facing usage lives in [the docs site](../docs-website/src/pages/mcp.md); update it
+alongside this document.
+
 diffx exposes stored reviews and comments to coding agents through MCP.
 `/mcp` discovers contexts for the authenticated user; `/mcp/contexts/{id}` fixes
 the default context for diff and comment tools to one immutable observation or

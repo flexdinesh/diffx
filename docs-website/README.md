@@ -1,20 +1,21 @@
 # Docs website
 
-Public user documentation built with Hugo and Hextra. Independent of the
-application; existing `docs/` remains code and contributor documentation.
+Public user documentation built with [Vocs](https://vocs.dev). Canonical source
+for user-facing usage; the root README links here. Existing `docs/` remains code
+and contributor documentation.
 
 ## Run locally
 
 From the repository root, with mise installed and the project trusted:
 
 ```sh
+pnpm install --frozen-lockfile
 mise run docs:dev
 ```
 
-Open <http://localhost:1313/>. Changes reload automatically; stop with `Ctrl+C`.
-Mise installs the pinned Hugo extended binary when needed. The theme is pinned
-in this directory's `go.mod` and `go.sum`; its first download needs network access.
-The website needs Go and Git for Hugo modules, with no Node dependencies.
+Open <http://localhost:5173/>. Changes reload automatically; stop with `Ctrl+C`.
+The site pins React 19.3 directly, as Vocs requires; the web app keeps the
+catalog React version.
 
 ## Build
 
@@ -22,19 +23,20 @@ The website needs Go and Git for Hugo modules, with no Node dependencies.
 mise run docs:build
 ```
 
-Static HTML and assets go to `docs-website/dist/` (gitignored). Build warnings
-fail the command. `mise run docs:check` runs the same validation.
+Static HTML and assets go to `docs-website/dist/public/` (gitignored). Dead
+links fail the build. `mise run docs:check` runs the same validation. Preview a
+build with `pnpm --filter @diffx/docs preview`.
 
 The pnpm workspace also exposes `pnpm --filter @diffx/docs dev`, `build`, and
-`check` through mise. Application builds remain independent.
+`preview`. Application builds remain independent.
 
 ## Edit
 
-- Homepage: `content/_index.md`.
-- Guides: Markdown files in `content/`; use `weight` to order the sidebar.
-- Screenshots and other assets: add files under `static/`, then reference them
-  with paths such as `/images/review.png`.
-- Site configuration: `hugo.yaml`.
+- Pages: Markdown files in `src/pages/`. Keep them plain Markdown so GitHub
+  renders the files the README links to.
+- Link pages with relative `page.md` paths; Vocs rewrites them to routes.
+- Sidebar and site configuration: `vocs.config.ts`.
+- Screenshots and other assets: add files under `public/`, then reference
+  them with paths such as `/images/review.png`.
 
-Use Hextra's built-in docs layout, search, code blocks, and theme toggle. Keep
-pages brief; no custom layout or deployment setup yet.
+Keep pages brief; no custom layout or deployment setup yet.

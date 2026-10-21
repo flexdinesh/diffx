@@ -1,8 +1,9 @@
 ---
 title: Getting started
 description: Install diffx and open your first local review.
-weight: 1
 ---
+
+# Getting started
 
 ## Install
 
@@ -12,10 +13,22 @@ With Homebrew:
 brew install flexdinesh/tap/diffx
 ```
 
-Or with Go 1.25 or later:
+Latest stable release with Go 1.25 or later:
 
 ```sh
 go install github.com/flexdinesh/diffx/cmd/diffx@latest
+```
+
+Or install a specific stable version:
+
+```sh
+go install github.com/flexdinesh/diffx/cmd/diffx@v0.2.0
+```
+
+Or install the latest `main` changes that passed CI:
+
+```sh
+go install github.com/flexdinesh/diffx/cmd/diffx@edge
 ```
 
 ## Open a review
@@ -37,6 +50,8 @@ diffx /path/to/repo
 
 ## Capture new changes
 
-A review is a fixed snapshot. After editing your code, stop diffx with `Ctrl+C`
-and run it again to capture the latest changes. Comments and review progress
+A review is a fixed snapshot. After editing your code, use **Sync all
+checkouts** (Alt+R) to capture the latest changes. Comments and review progress
 persist across restarts.
+
+See [Usage](usage.md) for all options.

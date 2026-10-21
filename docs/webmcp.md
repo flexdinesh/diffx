@@ -1,5 +1,8 @@
 # WebMCP
 
+User-facing usage lives in [the docs site](../docs-website/src/pages/webmcp.md); update it
+alongside this document.
+
 diffx registers its review tools with a compatible browser through the
 current WebMCP `document.modelContext` API. This lets a browser agent work with
 the page without learning its DOM or clicking controls.
