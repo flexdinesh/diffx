@@ -43,7 +43,7 @@ while slower checkouts continue. Publication commits and emits the existing
 ingestion event for each observation. The UI opens available snapshots and shows
 loading feedback only for missing data; failures remain visible with Retry.
 Omitted paths mean the current directory; `--path` repeats and `--scan-depth` (default 8) bounds the
-search. Captured snapshots remain fixed after edits and branch switches until the
+search. Every path must be an existing directory; missing paths fail before serving. Captured snapshots remain fixed after edits and branch switches until the
 user requests collection by loading a live URL or pressing Sync, which discovers
 the paths again and ingests a new snapshot of every checkout; nothing watches Git.
 Piped input is validated and collected once before serving.

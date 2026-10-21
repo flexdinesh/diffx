@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/flexdinesh/diffx/internal/ingestion"
 )
@@ -100,12 +102,39 @@ func TestCollectorOptionsRejectAmbiguousInputsBeforeStartup(t *testing.T) {
 		{"sync", "--host", "0.0.0.0"},
 		{"service", "start", "--server", "http://example.test"},
 	}
+	// Isolate from a developer's running diffx; a regression that starts a
+	// server fails at the deadline instead of hanging the suite.
+	t.Chdir(t.TempDir())
+	t.Setenv("DIFFX_CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
+	t.Setenv("DIFFX_RUNTIME_DIR", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	for _, args := range cases {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			if err := run(t.Context(), args, nil, io.Discard, io.Discard); err == nil {
-				t.Fatalf("accepted %v", args)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			err := run(ctx, args, nil, io.Discard, io.Discard)
+			if err == nil || ctx.Err() != nil {
+				t.Fatalf("accepted %v: %v", args, err)
 			}
 		})
+	}
+}
+
+func TestLocalInputRejectsMissingCheckoutPathBeforeStartup(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "file.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(root, "missing"), file} {
+		values := options{directory: path, sourceID: "test-source", trigger: "manual"}
+		if _, err := acquireLocalInput(values, nil); err == nil || !strings.Contains(err.Error(), path) {
+			t.Fatalf("accepted checkout path %s: %v", path, err)
+		}
+	}
+	values := options{directory: root, paths: []string{root, filepath.Join(root, "missing")}, sourceID: "test-source", trigger: "manual"}
+	if _, err := acquireLocalInput(values, nil); err == nil {
+		t.Fatal("accepted a missing repeated checkout path")
 	}
 }
 

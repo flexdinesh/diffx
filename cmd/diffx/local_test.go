@@ -23,6 +23,11 @@ func TestLocalInputDefaultsToCurrentDirectory(t *testing.T) {
 	if err != nil || input.Kind != "worktree" || !slices.Equal(input.Paths, []string{root}) {
 		t.Fatalf("default input: %+v %v", input, err)
 	}
+	for _, name := range []string{"one", "two"} {
+		if err := os.Mkdir(filepath.Join(root, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	values, err := parseOptions([]string{"--path", "one", "--path=two"}, io.Discard)
 	if err != nil {
 		t.Fatal(err)
