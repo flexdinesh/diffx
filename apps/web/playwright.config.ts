@@ -1,13 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const port = Number(process.env.DIFFX_TEST_PORT ?? 4173);
-
 export default defineConfig({
-  workers: 1,
+  // Workers own isolated fixture servers (test/browser/fixtures.ts).
+  fullyParallel: true,
+  // Leave headroom for Pierre rendering and concurrent Go checks.
+  workers: "33%",
+  globalSetup: "./test/browser/global-setup.ts",
   testDir: "./test/browser",
   outputDir: "test-results",
   use: {
-    baseURL: `http://127.0.0.1:${port}`,
     trace: "retain-on-failure",
   },
   projects: [
@@ -16,10 +17,4 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    command: `pnpm dev --port ${port}`,
-    url: `http://127.0.0.1:${port}`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
 });

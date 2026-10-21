@@ -74,7 +74,7 @@ run = "pnpm test:go"
 
 [tasks."test:race"]
 description = "Run Go race tests (requires a C compiler)"
-run = "go test -race ./..."
+run = "go test -race -timeout 5m ./..."
 
 [tasks."test:conformance"]
 description = "Build the CLI and smoke-test its API contract"
@@ -129,14 +129,25 @@ run = [
   "pnpm test:conformance",
 ]
 
+[tasks."test:js"]
+description = "Run JavaScript unit and browser suites"
+run = "pnpm test"
+
+[tasks."test:release"]
+description = "Run release-tool tests"
+run = "pnpm test:release"
+
+# Suites after the build are independent; run them concurrently.
 [tasks.check]
 description = "Run all repository checks and test suites"
 run = [
   { task = "check:ci" },
-  { task = "test:contracts:rules" },
-  "pnpm test",
-  "pnpm test:release",
-  { task = "test:go" },
+  { tasks = [
+    "test:contracts:rules",
+    "test:js",
+    "test:release",
+    "test:go",
+  ] },
 ]
 
 [tasks."test:contracts"]
@@ -163,9 +174,19 @@ run = [
   "node --test test/contracts/*.test.ts",
 ]
 
+# Race tests run the same Go suite with the detector, replacing test:go.
 [tasks."check:push"]
 description = "Full pre-push checks, race tests, and generated-file consistency"
-run = [{ task = "check" }, { task = "test:race" }, { task = "check:generated" }]
+run = [
+  { task = "check:ci" },
+  { tasks = [
+    "test:contracts:rules",
+    "test:js",
+    "test:release",
+    "test:race",
+  ] },
+  { task = "check:generated" },
+]
 
 [tasks."release:publish"]
 description = "Publish the checked-out release tag with GoReleaser"

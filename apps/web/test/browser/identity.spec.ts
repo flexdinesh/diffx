@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./fixtures.ts";
 
 const account = { id: "account-a", username: "alice" };
 function bootstrap(signedIn: boolean, signupEnabled = false) {

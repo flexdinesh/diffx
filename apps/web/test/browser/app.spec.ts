@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./fixtures.ts";
 import { resetFixtureState } from "./fixture-state.ts";
 
 async function resolvedRadius(
@@ -812,6 +813,8 @@ test("mobile keeps review progress visible beside the diff", async ({
 test("inline comments use a distinct structured surface while sidebar comments remain cards", async ({
   page,
 }) => {
+  // Rendering every file in a 4000px viewport takes ~20s even serially.
+  test.slow();
   // 1280px of diff chrome beside the expanded projects drawer.
   await page.setViewportSize({ width: 1536, height: 4_000 });
   await page.goto("/");
