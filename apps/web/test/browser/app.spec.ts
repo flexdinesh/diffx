@@ -104,9 +104,7 @@ test("disabled comments issue no requests and expose no comment UI", async ({
   expect(commentRequests).toBe(0);
 });
 
-test("shows server process metrics in the compact status bar", async ({
-  page,
-}) => {
+test("shows server status with process metrics on hover", async ({ page }) => {
   await page.route("**/api/v2/metrics", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -116,17 +114,44 @@ test("shows server process metrics in the compact status bar", async ({
   await page.goto("/");
   await showDiff(page);
 
+  const status = page.getByRole("button", { name: "Server status: Ready" });
+  await expect(status).toBeVisible();
+  await expect(page.locator("#server-cpu")).toHaveCount(0);
+  await status.hover();
+  const popup = page.getByRole("dialog", { name: "Ready" });
+  await expect(popup).toContainText("Diffx server process");
   await expect(page.locator("#server-cpu")).toHaveText("12.5%");
   await expect(page.locator("#server-ram")).toHaveText("50.0 MB");
-  await expect(page.locator("#server-metrics")).toHaveAttribute(
-    "title",
-    /Diffx server process/,
-  );
+  await page.mouse.move(0, 0);
+  await expect(popup).toBeHidden();
+  await status.focus();
+  await page.keyboard.press("Enter");
+  await expect(popup).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(popup).toBeHidden();
   const sidebar = await page.locator(".sidebar-footer").boundingBox();
   const main = await page.locator(".main-footer").boundingBox();
   if (!sidebar || !main) throw new Error("Missing status bars");
   expect(main.height).toBeCloseTo(sidebar.height, 1);
   expect(main.y).toBeCloseTo(sidebar.y, 1);
+});
+
+test("reports an unreachable server in the status indicator", async ({
+  page,
+}) => {
+  await page.route("**/api/v2/metrics", (route) =>
+    route.fulfill({ status: 503, body: "" }),
+  );
+  await page.goto("/");
+  await showDiff(page);
+
+  const status = page.getByRole("button", {
+    name: "Server status: Server unavailable",
+  });
+  await status.hover();
+  const popup = page.getByRole("dialog", { name: "Server unavailable" });
+  await expect(popup).toContainText("Retrying automatically");
+  await expect(page.locator("#server-cpu")).toHaveText("--");
 });
 
 test("renders and filters a piped diff", async ({ page }) => {
@@ -1547,7 +1572,11 @@ test("header text stays centered and Theme reaches the shell edge", async ({
             bottomClearance: label.bottom - text.bottom,
           };
         });
+      const workbench = document.querySelector(".workbench");
+      if (!workbench) throw new Error("Missing workbench");
       return {
+        top: box.top,
+        islandGap: workbench.getBoundingClientRect().top - box.bottom,
         rightInset: box.right - themeBox.right,
         iconOffset: Math.abs(
           themeBox.y + themeBox.height / 2 - (box.y + box.height / 2),
@@ -1555,6 +1584,9 @@ test("header text stays centered and Theme reaches the shell edge", async ({
         labels,
       };
     });
+    // Controls center between the window edge and the islands below.
+    expect(geometry.top).toBe(0);
+    expect(geometry.islandGap).toBe(0);
     expect(geometry.rightInset).toBe(0);
     expect(geometry.iconOffset).toBe(0);
     expect(geometry.labels.length).toBeGreaterThan(0);
@@ -1564,6 +1596,30 @@ test("header text stays centered and Theme reaches the shell edge", async ({
       expect(label.topClearance).toBeGreaterThanOrEqual(0);
       expect(label.bottomClearance).toBeGreaterThanOrEqual(0);
     }
+  }
+});
+
+test("header actions show a visible hover surface in both themes", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const theme = page.locator("#theme");
+  await expect(theme).toBeVisible();
+  for (const mode of ["light", "dark"]) {
+    await page
+      .locator("html")
+      .evaluate((element, value) => (element.dataset.theme = value), mode);
+    await theme.hover();
+    const surfaces = await theme.evaluate((element) => {
+      const header = element.closest(".topbar");
+      if (!header) throw new Error("Missing header");
+      return {
+        header: getComputedStyle(header).backgroundColor,
+        hover: getComputedStyle(element).backgroundColor,
+      };
+    });
+    expect(surfaces.hover).not.toBe(surfaces.header);
+    await page.mouse.move(0, 400);
   }
 });
 
@@ -1934,9 +1990,11 @@ test("drawer aligns its header and retains desktop navigation density", async ({
     await expect.poll(density).toEqual(desktop);
     const header = await page.locator(".topbar").boundingBox();
     const tabs = await page.locator(".sidebar-tabs").boundingBox();
-    if (!header || !tabs) throw new Error("Missing drawer header");
+    const drawer = await page.locator("#sidebar").boundingBox();
+    if (!header || !tabs || !drawer) throw new Error("Missing drawer header");
     expect(tabs.height).toBe(header.height);
-    expect(tabs.y).toBe(header.y);
+    // The header fills the shell's top gutter; the drawer keeps its uniform inset.
+    expect(tabs.y).toBe(drawer.x);
     if (width === 390) {
       const toolbar = await page.locator(".toolbar").boundingBox();
       const theme = await page.locator("#theme").boundingBox();
