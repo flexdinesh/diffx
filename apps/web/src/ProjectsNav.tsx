@@ -3,6 +3,7 @@ import type { ApiContext } from "@diffx/api";
 import {
   ChevronRightIcon,
   FolderGit2Icon,
+  FolderTreeIcon,
   GitBranchIcon,
   HistoryIcon,
   SearchIcon,
@@ -11,9 +12,20 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { save, saved } from "./preferences.ts";
-import { contextChangeLabel, contextIsPiped } from "./project-picker.ts";
+import {
+  contextChangeLabel,
+  contextIsLinkedWorktree,
+  contextIsPiped,
+  contextWorktreeName,
+} from "./project-picker.ts";
 import { contextActivity } from "./context-activity.ts";
 import {
   newerHead,
@@ -108,7 +120,7 @@ export function ProjectsNav() {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)
       return;
     event.preventDefault();
-    openStream(head);
+    openStream(head, { preserveNavigation: true });
   };
   return (
     <>
@@ -314,28 +326,107 @@ function ProjectsEmpty({
   );
 }
 
-/** Opens the most active unread head without interrupting the open review. */
+/** Lists unread heads; choosing one opens it and clears its mark. */
 export function NewChangesButton() {
   const { unreadHeads, openStream } = useCatalog();
-  const latest = unreadHeads[0];
-  if (!latest) return null;
+  const now = useNow();
+  if (!unreadHeads.length) return null;
   const count = unreadHeads.length;
+  const label = `New changes (${count} ${count === 1 ? "stream" : "streams"})`;
   return (
-    <Button
-      type="button"
-      id="new-changes"
-      variant="ghost"
-      size="sm"
-      aria-label={`Open latest new changes (${count} ${count === 1 ? "stream" : "streams"})`}
-      title={`Open ${latest.name} · ${streamTitle(latest)}`}
-      onClick={() => openStream(latest)}
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            id="new-changes"
+            variant="ghost"
+            size="sm"
+            aria-label={label}
+            title={label}
+          />
+        }
+      >
+        <HistoryIcon aria-hidden="true" />
+        <span>
+          {count}
+          <span className="max-md:hidden"> new</span>
+        </span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        side="bottom"
+        align="end"
+        className="new-changes-menu"
+        aria-label="New changes"
+      >
+        <div className="new-changes-header" aria-hidden="true">
+          New changes
+        </div>
+        {unreadHeads.map((context) => (
+          <NewChangeItem
+            key={context.id}
+            context={context}
+            now={now}
+            onOpen={() => openStream(context)}
+          />
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function NewChangeItem({
+  context,
+  now,
+  onOpen,
+}: {
+  context: ApiContext;
+  now: number;
+  onOpen: () => void;
+}) {
+  const piped = contextIsPiped(context);
+  const repository = piped ? "Piped" : context.name;
+  const branch = streamTitle(context);
+  const worktree = contextIsLinkedWorktree(context)
+    ? contextWorktreeName(context)
+    : context.observation?.linkedWorktree === false
+      ? "Primary checkout"
+      : "";
+  const age = relativeAge(contextActivity(context), now);
+  const Icon = piped ? SquareTerminalIcon : FolderGit2Icon;
+  return (
+    <DropdownMenuItem
+      className="new-changes-item"
+      aria-label={[
+        repository,
+        branch,
+        worktree,
+        contextChangeLabel(context),
+        age,
+      ]
+        .filter(Boolean)
+        .join(", ")}
+      onClick={onOpen}
     >
-      <HistoryIcon aria-hidden="true" />
-      <span>
-        {count}
-        <span className="max-md:hidden"> new</span>
+      <span className="new-changes-line">
+        <Icon className="size-(--icon-sm)" aria-hidden="true" />
+        <span className="new-changes-repo">{repository}</span>
+        <span className="new-changes-age">{age}</span>
       </span>
-    </Button>
+      <span className="new-changes-line new-changes-detail">
+        {!piped && (
+          <GitBranchIcon className="size-(--icon-sm)" aria-hidden="true" />
+        )}
+        <span className="new-changes-text">{branch}</span>
+        <span className="new-changes-count">{context.changedFileCount}</span>
+      </span>
+      {worktree && (
+        <span className="new-changes-line new-changes-detail">
+          <FolderTreeIcon className="size-(--icon-sm)" aria-hidden="true" />
+          <span className="new-changes-text">{worktree}</span>
+        </span>
+      )}
+    </DropdownMenuItem>
   );
 }
 

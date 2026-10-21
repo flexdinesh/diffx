@@ -59,12 +59,18 @@ function commentFor(
   };
 }
 
+// Repos is the initial view; file navigation lives in Diff.
+async function showDiff(page: Page) {
+  await page.getByRole("button", { name: "Diff", exact: true }).click();
+}
+
 async function openWorkspace(page: Page) {
   await page.route("**/api/v2/contexts/*/review-marks?*", (route) =>
     route.fulfill({ json: { marks: [] } }),
   );
   await page.setViewportSize({ width: 1280, height: 844 });
   await page.goto("/");
+  await showDiff(page);
   await expect(page.locator("#additions")).toHaveText("+43");
   await page.evaluate(() => document.fonts.ready);
 }
@@ -480,6 +486,7 @@ test("reset waits for pending marks and clears their collapse state", async ({
   });
   // Reload initializes the owner from the server mark, not browser storage.
   await page.reload();
+  await showDiff(page);
   await expect(page.locator("#review-count")).toHaveText("1 of 12 reviewed");
   await page.route("**/api/v2/contexts/*/review-marks/*?*", (route) => {
     updates.push(route);

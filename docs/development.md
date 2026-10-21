@@ -261,8 +261,9 @@ files (per stream and scope) and closed tree folders (per stream) persist in
 snapshots key by context. One draft persists
 across scopes. Context selection uses the Repos view and the popup picker (Cmd/Ctrl+K
 or the Repos “Search reviews” magnifier). Repos and Diff share the panel
-beside the activity rail; selecting a stream loads its diff and switches to the
-file tree. Clicking the active view toggles the panel. `use-sidebar.ts` owns
+beside the activity rail, with Repos first and selected initially; selecting a
+stream in Repos loads its diff and keeps Repos open. Clicking the active view
+toggles the panel. `use-sidebar.ts` owns
 view selection, visibility, shared width and mobile drawer focus.
 `Navigation.tsx` owns the common frame and resize handle for both views. Compact header
 controls remain available when the rail is hidden; the header shows the open
@@ -292,7 +293,8 @@ available and show Retry when no stored review can open. An explicit sync never
 replaces the open review: it reloads the heads,
 so the newer-head notice, drawer dots and global unread action announce new
 snapshots, and feedback reports synced, updated and failed checkouts. The global
-action opens the most recently active unopened changed head. The drawer and
+action opens a menu of unopened changed heads in activity order, naming each
+head's repository, branch and worktree; choosing one opens that head. The drawer and
 header share one per-browser seen-state owner; first visits baseline existing
 heads and unchanged submissions do not create unread prompts. Activity ordering
 uses catalog `lastChangedAt`, falling back to captured collection time, with

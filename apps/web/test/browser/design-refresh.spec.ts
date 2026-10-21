@@ -3,6 +3,11 @@ import { resetFixtureState } from "./fixture-state.ts";
 
 test.beforeEach(async ({ request }) => resetFixtureState(request));
 
+/** Repos is the initial view; the file sidebar opens from the Diff view. */
+async function showDiff(page: Page) {
+  await page.getByRole("button", { name: "Diff", exact: true }).click();
+}
+
 async function seedReviewComments(page: Page) {
   await page.evaluate(async () => {
     const catalog: unknown = await (await fetch("/api/v2/contexts")).json();
@@ -139,6 +144,7 @@ test("interactive controls share the semantic control radius", async ({
   page,
 }) => {
   await page.goto("/");
+  await showDiff(page);
 
   const viewOptions = page.getByRole("button", { name: "View options" });
   const controlRadius = await viewOptions.evaluate(
@@ -203,6 +209,7 @@ test("review actions use progressive disclosure, status filters, and confirmed d
 }) => {
   await page.goto("/");
   await seedReviewComments(page);
+  await showDiff(page);
 
   await expect(
     page.getByRole("button", { name: "Hide summary" }),
@@ -342,6 +349,7 @@ test("bulk comment deletion selects a status and defaults to all", async ({
 }) => {
   await page.goto("/");
   await seedReviewComments(page);
+  await showDiff(page);
   await page.getByRole("tab", { name: /Review/ }).click();
 
   const panel = page.locator("#comments-panel");

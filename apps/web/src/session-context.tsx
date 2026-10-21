@@ -55,8 +55,14 @@ interface Catalog {
   selectedId: string;
   /** Pins one snapshot. */
   select: (id: string, options?: { restoreFocus?: boolean }) => void;
-  /** Follows a stream's latest head; piped snapshots stay pinned. */
-  openStream: (head: ApiContext, options?: { restoreFocus?: boolean }) => void;
+  /**
+   * Follows a stream's latest head; piped snapshots stay pinned. Opens the Diff
+   * view unless navigation is preserved.
+   */
+  openStream: (
+    head: ApiContext,
+    options?: { restoreFocus?: boolean; preserveNavigation?: boolean },
+  ) => void;
   deleteContext: (id: string) => Promise<void>;
   pickerOpen: boolean;
   openPicker: () => void;
