@@ -10,8 +10,8 @@ import (
 	"github.com/flexdinesh/diffx/internal/review"
 )
 
-// ErrNoDefaultBranch means no existing local default branch can be resolved.
-var ErrNoDefaultBranch = errors.New("no local default branch available for comparison")
+// ErrNoDefaultBranch means no existing default branch ref can be resolved.
+var ErrNoDefaultBranch = errors.New("no default branch available for comparison")
 
 // ErrComparisonUnavailable permits replaying an already captured comparison
 // after its local refs disappear. It never masks process or cancellation errors.
@@ -41,25 +41,93 @@ func ComparisonInfo(source Source) (Comparison, bool) {
 	return git.comparison.Comparison, true
 }
 
-// DefaultBranch resolves existing local refs only. It never fetches or consults
-// a feature branch's upstream, which may simply track that same feature branch.
-func DefaultBranch(ctx context.Context, root string) (string, error) {
+// DefaultBaselines resolves existing refs for the first default branch name
+// (`origin/HEAD`, `main`, then `master`) with a local or remote-tracking ref:
+// the local branch first, then its remote-tracking upstream or origin
+// counterpart. It never fetches or consults a feature branch's upstream, which
+// may simply track that same feature branch.
+func DefaultBaselines(ctx context.Context, root string) ([]string, error) {
 	remote, err := runGit(ctx, root, 16<<10, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
 	if err != nil && !comparisonGitExit(err, 1) {
-		return "", err
+		return nil, err
 	}
 	candidates := []string{"main", "master"}
 	if branch, ok := strings.CutPrefix(strings.TrimSpace(remote), "refs/remotes/origin/"); ok {
 		candidates = append([]string{branch}, candidates...)
 	}
 	for _, branch := range candidates {
-		if _, err := resolveCommit(ctx, root, "refs/heads/"+branch); err == nil {
-			return branch, nil
-		} else if !comparisonGitExit(err, 128) {
+		local := "refs/heads/" + branch
+		var baselines []string
+		exists, err := refExists(ctx, root, local)
+		if err != nil {
+			return nil, err
+		}
+		tracking := "refs/remotes/origin/" + branch
+		if exists {
+			baselines = append(baselines, local)
+			upstream, err := runGit(ctx, root, 16<<10, "for-each-ref", "--format=%(upstream)", local)
+			if err != nil {
+				return nil, err
+			}
+			if upstream = strings.TrimSpace(upstream); strings.HasPrefix(upstream, "refs/remotes/") {
+				if exists, err := refExists(ctx, root, upstream); err != nil {
+					return nil, err
+				} else if exists {
+					tracking = upstream
+				}
+			}
+		}
+		if exists, err := refExists(ctx, root, tracking); err != nil {
+			return nil, err
+		} else if exists {
+			baselines = append(baselines, tracking)
+		}
+		if len(baselines) > 0 {
+			return baselines, nil
+		}
+	}
+	return nil, ErrNoDefaultBranch
+}
+
+func refExists(ctx context.Context, root, ref string) (bool, error) {
+	if _, err := resolveCommit(ctx, root, ref); err == nil {
+		return true, nil
+	} else if !comparisonGitExit(err, 128) {
+		return false, err
+	}
+	return false, nil
+}
+
+// nearestBaseline keeps the first baseline unless a later one's merge base
+// strictly descends from it; ties and divergence keep the earlier baseline.
+// Baselines with unrelated histories are skipped; if none relate, the first
+// remains so the caller reports its usual fallback or failure.
+func nearestBaseline(ctx context.Context, root, head string, baselines []string) (string, error) {
+	chosen, chosenBase := baselines[0], ""
+	for _, baseline := range baselines {
+		raw, err := runGit(ctx, root, 1024, "merge-base", baseline, head)
+		if comparisonGitExit(err, 1) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		mergeBase := strings.TrimSpace(raw)
+		if chosenBase == "" {
+			chosen, chosenBase = baseline, mergeBase
+			continue
+		}
+		if mergeBase == chosenBase {
+			continue
+		}
+		_, err = runGit(ctx, root, 1024, "merge-base", "--is-ancestor", chosenBase, mergeBase)
+		if err == nil {
+			chosen, chosenBase = baseline, mergeBase
+		} else if !comparisonGitExit(err, 1) {
 			return "", err
 		}
 	}
-	return "", ErrNoDefaultBranch
+	return chosen, nil
 }
 
 func resolveCommit(ctx context.Context, root, ref string) (string, error) {
@@ -83,8 +151,9 @@ func OpenComparison(ctx context.Context, directory, base, branch string) (Source
 	if (base == "" || base == "HEAD") && branch == "" {
 		return source, nil
 	}
+	var baselines []string
 	if auto {
-		base, err = DefaultBranch(ctx, source.root)
+		baselines, err = DefaultBaselines(ctx, source.root)
 		if errors.Is(err, ErrNoDefaultBranch) && branch == "" {
 			return source, nil
 		}
@@ -94,7 +163,7 @@ func OpenComparison(ctx context.Context, directory, base, branch string) (Source
 			}
 			return nil, err
 		}
-		base = "refs/heads/" + base
+		base = baselines[0]
 	}
 	target := "HEAD"
 	if branch != "" {
@@ -106,6 +175,11 @@ func OpenComparison(ctx context.Context, directory, base, branch string) (Source
 			return source, nil // Unborn checkout: retain normal empty-tree collection.
 		}
 		return nil, comparisonFailure(fmt.Sprintf("resolve comparison target %q", target), err, 128)
+	}
+	if len(baselines) > 1 {
+		if base, err = nearestBaseline(ctx, source.root, head, baselines); err != nil {
+			return nil, fmt.Errorf("find comparison merge base: %w", err)
+		}
 	}
 	baseTip, err := resolveCommit(ctx, source.root, base)
 	if err != nil {

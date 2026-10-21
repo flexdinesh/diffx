@@ -27,28 +27,150 @@ func comparisonRepository(t *testing.T) string {
 	return root
 }
 
-func TestDefaultBranchUsesLocalRemoteHeadCounterpartThenConventions(t *testing.T) {
+func TestDefaultBaselinesUseRemoteHeadThenConventions(t *testing.T) {
 	root := comparisonRepository(t)
-	if name, err := DefaultBranch(t.Context(), root); err != nil || name != "main" {
-		t.Fatalf("main fallback: %q %v", name, err)
+	assertBaselines := func(label string, want ...string) {
+		t.Helper()
+		got, err := DefaultBaselines(t.Context(), root)
+		if err != nil || strings.Join(got, " ") != strings.Join(want, " ") {
+			t.Fatalf("%s: %q %v", label, got, err)
+		}
 	}
+	assertBaselines("main fallback", "refs/heads/main")
 	testGit(t, root, "branch", "trunk")
 	testGit(t, root, "update-ref", "refs/remotes/origin/trunk", "HEAD")
 	testGit(t, root, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
-	if name, err := DefaultBranch(t.Context(), root); err != nil || name != "trunk" {
-		t.Fatalf("remote HEAD local counterpart: %q %v", name, err)
-	}
+	assertBaselines("remote HEAD with local branch", "refs/heads/trunk", "refs/remotes/origin/trunk")
 	testGit(t, root, "branch", "-D", "trunk")
-	if name, err := DefaultBranch(t.Context(), root); err != nil || name != "main" {
-		t.Fatalf("missing local counterpart: %q %v", name, err)
-	}
+	assertBaselines("remote HEAD without local branch", "refs/remotes/origin/trunk")
+	testGit(t, root, "symbolic-ref", "--delete", "refs/remotes/origin/HEAD")
+	testGit(t, root, "update-ref", "-d", "refs/remotes/origin/trunk")
 	testGit(t, root, "branch", "-m", "main", "master")
-	if name, err := DefaultBranch(t.Context(), root); err != nil || name != "master" {
-		t.Fatalf("master fallback: %q %v", name, err)
-	}
+	assertBaselines("master fallback", "refs/heads/master")
 	testGit(t, root, "branch", "-m", "master", "custom")
-	if _, err := DefaultBranch(t.Context(), root); !errors.Is(err, ErrNoDefaultBranch) {
+	if _, err := DefaultBaselines(t.Context(), root); !errors.Is(err, ErrNoDefaultBranch) {
 		t.Fatalf("missing default: %v", err)
+	}
+}
+
+func TestDefaultBaselinesPreferDefaultBranchUpstream(t *testing.T) {
+	root := comparisonRepository(t)
+	testGit(t, root, "remote", "add", "origin", "https://example.com/origin.git")
+	testGit(t, root, "update-ref", "refs/remotes/origin/main", "HEAD")
+	testGit(t, root, "remote", "add", "upstream", "https://example.com/upstream.git")
+	testGit(t, root, "update-ref", "refs/remotes/upstream/main", "HEAD")
+	testGit(t, root, "branch", "--set-upstream-to=upstream/main", "main")
+	testGit(t, root, "switch", "-c", "feature")
+	testGit(t, root, "branch", "--set-upstream-to=origin/main", "feature")
+	got, err := DefaultBaselines(t.Context(), root)
+	if err != nil || strings.Join(got, " ") != "refs/heads/main refs/remotes/upstream/main" {
+		t.Fatalf("default branch upstream ignored: %q %v", got, err)
+	}
+}
+
+func TestAutoComparisonUsesNearestDefaultBaseline(t *testing.T) {
+	cases := []struct {
+		name, want string
+		arrange    func(t *testing.T, root string)
+	}{
+		{"branch from fetched remote", "refs/remotes/origin/main", func(t *testing.T, root string) {
+			testGit(t, root, "switch", "-c", "remote")
+			testGit(t, root, "commit", "--allow-empty", "-m", "upstream")
+			testGit(t, root, "update-ref", "refs/remotes/origin/main", "HEAD")
+			testGit(t, root, "switch", "-c", "feature")
+			testGit(t, root, "branch", "-D", "remote")
+		}},
+		{"branch from unpushed local", "refs/heads/main", func(t *testing.T, root string) {
+			testGit(t, root, "update-ref", "refs/remotes/origin/main", "HEAD")
+			testGit(t, root, "commit", "--allow-empty", "-m", "unpushed")
+			testGit(t, root, "switch", "-c", "feature")
+		}},
+		{"stale remote", "refs/heads/main", func(t *testing.T, root string) {
+			testGit(t, root, "update-ref", "refs/remotes/origin/main", "HEAD")
+			testGit(t, root, "commit", "--allow-empty", "-m", "fetched then pulled")
+			testGit(t, root, "switch", "-c", "feature")
+		}},
+		{"equal merge bases", "refs/heads/main", func(t *testing.T, root string) {
+			testGit(t, root, "update-ref", "refs/remotes/origin/main", "HEAD")
+			testGit(t, root, "switch", "-c", "feature")
+		}},
+		{"diverged defaults, branch from remote", "refs/remotes/origin/main", func(t *testing.T, root string) {
+			divergeDefaults(t, root)
+			testGit(t, root, "switch", "-c", "feature", "refs/remotes/origin/main")
+		}},
+		{"diverged defaults, branch from local", "refs/heads/main", func(t *testing.T, root string) {
+			divergeDefaults(t, root)
+			testGit(t, root, "switch", "-c", "feature", "main")
+		}},
+		{"unrelated remote", "refs/heads/main", func(t *testing.T, root string) {
+			testGit(t, root, "switch", "--orphan", "remote")
+			testGit(t, root, "commit", "--allow-empty", "-m", "unrelated")
+			testGit(t, root, "update-ref", "refs/remotes/origin/main", "HEAD")
+			testGit(t, root, "switch", "main")
+			testGit(t, root, "branch", "-D", "remote")
+			testGit(t, root, "switch", "-c", "feature")
+		}},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			root := comparisonRepository(t)
+			test.arrange(t, root)
+			testGit(t, root, "commit", "--allow-empty", "-m", "feature")
+			want := strings.TrimSpace(testGit(t, root, "merge-base", test.want, "HEAD"))
+			for _, branch := range []string{"", "feature"} {
+				source, err := OpenComparison(t.Context(), root, "auto", branch)
+				if err != nil {
+					t.Fatal(err)
+				}
+				comparison, ok := ComparisonInfo(source)
+				if !ok || comparison.BaseRef != test.want || comparison.BaseOID != want {
+					t.Fatalf("branch %q: %+v, want %s at %s", branch, comparison, test.want, want)
+				}
+			}
+		})
+	}
+}
+
+func divergeDefaults(t *testing.T, root string) {
+	t.Helper()
+	testGit(t, root, "switch", "-c", "remote")
+	testGit(t, root, "commit", "--allow-empty", "-m", "upstream")
+	testGit(t, root, "update-ref", "refs/remotes/origin/main", "HEAD")
+	testGit(t, root, "switch", "main")
+	testGit(t, root, "branch", "-D", "remote")
+	testGit(t, root, "commit", "--allow-empty", "-m", "local")
+}
+
+func TestAutoComparisonUsesRemoteWithoutLocalDefault(t *testing.T) {
+	root := comparisonRepository(t)
+	testGit(t, root, "update-ref", "refs/remotes/origin/main", "HEAD")
+	testGit(t, root, "switch", "-c", "feature")
+	testGit(t, root, "branch", "-D", "main")
+	testGit(t, root, "commit", "--allow-empty", "-m", "feature")
+	source, err := OpenComparison(t.Context(), root, "auto", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if comparison, ok := ComparisonInfo(source); !ok || comparison.BaseRef != "refs/remotes/origin/main" {
+		t.Fatalf("remote default ignored: %+v", comparison)
+	}
+}
+
+func TestAutoComparisonDetectsMovedRemoteBaseline(t *testing.T) {
+	root := comparisonRepository(t)
+	testGit(t, root, "switch", "-c", "feature")
+	testGit(t, root, "commit", "--allow-empty", "-m", "upstream")
+	testGit(t, root, "update-ref", "refs/remotes/origin/main", "HEAD")
+	testGit(t, root, "commit", "--allow-empty", "-m", "feature")
+	source, err := OpenComparison(t.Context(), root, "auto", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, root, "update-ref", "refs/remotes/origin/main", "HEAD")
+	_, err = source.Snapshot(t.Context(), review.DiffAll)
+	var problem *RequestError
+	if !errors.As(err, &problem) || problem.Status != 409 {
+		t.Fatalf("moved remote baseline accepted: %v", err)
 	}
 }
 

@@ -88,8 +88,8 @@ and plugins require a remote URL and bearer token; they never bootstrap a local
 server. `diffx remote status` checks the destination, credential and protocol,
 and reports agent-hook deliveries still waiting.
 
-The all scope includes branch changes from the local default branch's merge base
-plus working changes. Staged/unstaged retain HEAD/index semantics.
+The all scope includes branch changes from the default branch's nearest merge base
+(local or remote-tracking) plus working changes. Staged/unstaged retain HEAD/index semantics.
 `--base HEAD` selects working changes only. Collection never fetches Git refs.
 Matching captures reuse review state. Retention defaults to seven days after the
 last fresh submission; retries do not extend it.

@@ -163,8 +163,10 @@ default unless an explicit config file, environment or `--listen` overrides it.
 ## Synchronization
 
 The worker captures committed feature-branch changes and dirty files against the
-merge base with the local default branch (`origin/HEAD`, `main`, then `master`).
-Staged/unstaged scopes retain their HEAD/index meanings, including untracked
+merge base with the default branch (`origin/HEAD`, `main`, then `master`). It
+compares the local branch and its remote-tracking upstream (else `origin`'s
+counterpart), using the remote merge base only when it descends from the local
+one; ties and divergence keep local. Refs are never fetched. Staged/unstaged scopes retain their HEAD/index meanings, including untracked
 files. If no default branch exists, live collection records explicit
 working-tree/HEAD fallback; object-only recovery requires an available baseline.
 It retains patches and bounded full before/after contents for future
