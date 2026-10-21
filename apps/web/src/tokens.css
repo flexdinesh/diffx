@@ -12,6 +12,7 @@
   --border-control: #7f8491;
   --border-strong: var(--border-control);
   --hover: #eeeef4;
+  --shell-hover: #e1e2e8;
   --diff-file-header: var(--panel);
   --diff-canvas: var(--bg);
   --diff-canvas-dot: var(--border);
@@ -95,6 +96,7 @@
   --border-control: #747985;
   --border-strong: var(--border-control);
   --hover: #282930;
+  --shell-hover: #36373e;
   --diff-canvas: #111216;
   --diff-canvas-dot: #282a31;
   --accent: #aba7ff;

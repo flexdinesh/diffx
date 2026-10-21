@@ -102,6 +102,7 @@ measured elements or replace the application tokens with framework defaults.
 | Control boundary              | `--border-control`  | Inputs and controls requiring stronger boundaries                  |
 | Emphasized boundary           | `--border-strong`   | Rare boundaries requiring emphasis beyond focus or error styling   |
 | Neutral hover                 | `--hover`           | Available controls under the pointer, compact count surfaces       |
+| Shell hover                   | `--shell-hover`     | Hover/expanded header controls on `--shell-canvas`                 |
 | Accent                        | `--accent`          | Selection, focus, navigation links, primary commit action          |
 | Accent interaction            | `--accent-hover`    | Hover/active on filled primary actions                             |
 | Selected surface              | `--accent-bg`       | Selected file or pressed toggle                                    |
@@ -120,7 +121,7 @@ measured elements or replace the application tokens with framework defaults.
 - Status always includes text, a sign, an icon, or a shape. Preserve staging's
   empty/half/full dot distinction; its half-fill is information, not decoration.
 - CPU and RAM in the status bar describe the Diffx server process, not
-  the browser or whole machine. Keep that scope explicit in the tooltip.
+  the browser or whole machine. Keep that scope explicit in the status popup.
 - Pierre owns syntax colors, changed-line fills, word highlights, line selection,
   and code-theme surfaces. App status tokens govern the surrounding UI only.
 - Quiet frames use the light canvas/dot tokens or their dark equivalents from
@@ -204,7 +205,9 @@ such detail into a token. New layout spacing must use the scale.
   Keep these frames outside Pierre's measured file geometry. At compact widths,
   remove the empty navigation island and retain the inset review surface;
   modal drawers use the same inset and corners without clipping focus or menus.
-- Header: `--topbar-height` (36 desktop, 44 narrow or coarse pointer). Keep
+- Header: `--topbar-height` (36 desktop, 44 narrow or coarse pointer). The
+  header replaces the shell's top gutter, sitting flush with the window edge
+  directly above the islands, so its controls center between both edges. Keep
   desktop controls at 32px, header icons at 16px, the divider at 16px, and group
   spacing at 6px so the header recedes into the editor chrome. Toolbar and sidebar
   tabs share the compact 36px desktop rhythm (`--control-small` plus two
@@ -220,7 +223,8 @@ such detail into a token. New layout spacing must use the scale.
 - Header uses `--shell-canvas`, a quiet brand, and the review identity as its primary
   context. Keep the secondary scope heading and muted monospace path inline;
   hide the path at 768–1011px and both below 768px. Group ghost Refresh and
-  sync actions at the trailing edge; share `--hover` feedback with the trigger.
+  sync actions at the trailing edge; share `--shell-hover` feedback with the
+  trigger, since `--hover` is indistinguishable from the shell canvas.
   Theme is the rightmost header action in every layout, with the same ghost
   styling, 32px desktop hit area and 16px icon. Keep its outer edge flush with
   the shell; never apply the diff scrollbar inset to header actions. Snapshot deletion is absent
@@ -272,7 +276,13 @@ such detail into a token. New layout spacing must use the scale.
   Keep the same-stream notice available. Unchanged submissions must not create
   unread prompts. Use existing ghost-button typography, icons and accessible
   labels; preserve the header's review identity and compact-layout controls.
-- Status bar: `--statusbar-height` (28), with shortcuts shed before server metrics.
+- Status bar: `--statusbar-height` (28), with shortcuts shed before server status.
+  Server status is an icon-only compact ghost trigger at the trailing edge:
+  success check when ready, reduced-motion-safe spinner while connecting, and
+  error alert when metrics are unreachable; its accessible name carries the
+  state. Hover, focus plus Enter, or tap opens a `--surface-raised` popover
+  titled by the state, with a “Diffx server process” section listing CPU and RAM.
+  Add future system details as further sections in the same popover.
 - The diff display toolbar uses `--panel`, matching the header and status bar.
 - Desktop navigation panel: `--sidebar-width` defaults to 330px. `Navigation.tsx` owns
   the shared frame and resize handle for Diff and Repos; `use-sidebar.ts` owns

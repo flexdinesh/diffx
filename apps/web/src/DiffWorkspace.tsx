@@ -39,7 +39,7 @@ import {
   placementFor,
   type CommentAnnotation,
 } from "./review-model.ts";
-import { ServerMetrics } from "./ServerMetrics.tsx";
+import { ServerStatus } from "./ServerStatus.tsx";
 import { WorkspaceFeedback } from "./WorkspaceFeedback.tsx";
 import { capabilityEnabled, useSession } from "./session-context.tsx";
 
@@ -840,7 +840,7 @@ export function DiffWorkspace() {
               </>
             )}
           </span>
-          <ServerMetrics />
+          <ServerStatus />
         </span>
       </footer>
     </main>
