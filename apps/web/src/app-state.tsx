@@ -14,10 +14,10 @@ import { saveSessionPaths, sessionPaths } from "./preferences.ts";
 import { streamKey } from "./project-nav.ts";
 import {
   capabilityEnabled,
-  type SyncSummary,
   useCatalog,
   useSession,
 } from "./session-context.tsx";
+import type { SyncSummary } from "./use-collection.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
 import { useDiff } from "./use-diff.ts";
 import { useFileNavigation } from "./use-file-navigation.ts";

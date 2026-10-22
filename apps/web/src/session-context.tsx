@@ -1,13 +1,8 @@
-import {
-  api,
-  errorDetail,
-  type ApiCollectionFailure,
-  type ApiCollectionResult,
-  type ApiContext,
-} from "@diffx/api";
+import { api, errorDetail, type ApiContext } from "@diffx/api";
 import {
   createContext,
   type ReactNode,
+  type RefObject,
   useCallback,
   useContext,
   useEffect,
@@ -15,30 +10,22 @@ import {
   useRef,
   useState,
 } from "react";
-import { LoaderCircleIcon } from "lucide-react";
-import { AccountButton } from "./account.tsx";
-import { ThemeButton } from "./ThemeButton.tsx";
-import { Skeleton } from "@/components/ui/skeleton";
-import { WorkspaceLoading } from "./WorkspaceLoading.tsx";
-import { useIdentity, navigate } from "./identity-context.tsx";
-import { Button } from "@/components/ui/button";
-import { ContextIdentity } from "./ContextIdentity.tsx";
-import { ProjectPicker } from "./ProjectPicker.tsx";
-import { Navigation } from "./Navigation.tsx";
-import {
-  HeaderBrand,
-  NewChangesButton,
-  ProjectsToggle,
-} from "./ProjectsNav.tsx";
+import { useIdentity } from "./identity-context.tsx";
 import { latestChangedContext } from "./context-activity.ts";
 import { unseenChangedHeads, type SeenStreams } from "./project-nav.ts";
 import { useSeenStreams } from "./use-seen-streams.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
-import { useCompactChrome } from "./use-compact-chrome.ts";
 import {
   useContextCatalog,
   type ContextCatalog,
 } from "./use-context-catalog.ts";
+import {
+  contextPath,
+  routeFromUrl,
+  streamPath,
+  type Route,
+} from "./review-route.ts";
+import { useCollection, type SyncSummary } from "./use-collection.ts";
 
 type LoadState =
   | { status: "loading" }
@@ -74,62 +61,28 @@ interface Catalog {
   collecting: boolean;
   collectError: string;
 }
-export interface SyncSummary {
-  checkouts: number;
-  /** Synced contexts that were not already current heads. */
-  updated: number;
-  failures: ApiCollectionFailure[];
+/** Loading, empty and failure state for the shell shown until a review is ready. */
+export interface SessionShellState {
+  ready: boolean;
+  loading: boolean;
+  empty: boolean;
+  missing: boolean;
+  statusError: string;
+  collectError: string;
+  collectOnLoad: boolean;
+  collecting: boolean;
+  remote: boolean;
+  statusRef: RefObject<HTMLElement | null>;
+  retry: () => void;
+  history: ContextCatalog;
+  setPickerOpen: (open: boolean) => void;
 }
 const CatalogContext = createContext<Catalog | null>(null);
 const SessionContext = createContext<ApiContext | null>(null);
+const SessionShellContext = createContext<SessionShellState | null>(null);
 
 export function capabilityEnabled(capability: { state: string }) {
   return capability.state === "enabled";
-}
-
-/**
- * `/contexts/{id}` pins one snapshot. `/streams/{id}` follows a stream's latest
- * head, resolved on load and navigation only. `/` resolves to a live stream.
- */
-type Route =
-  | { kind: "pinned"; id: string }
-  | { kind: "live"; stream: string }
-  | { kind: "root" };
-
-function routeValue(prefix: string) {
-  const match = new RegExp(`^/${prefix}/([^/]+)/?$`).exec(
-    window.location.pathname,
-  );
-  if (!match?.[1]) return "";
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    return "";
-  }
-}
-
-function routeFromUrl(): Route {
-  const id = routeValue("contexts");
-  if (id) return { kind: "pinned", id };
-  const stream = routeValue("streams");
-  return stream ? { kind: "live", stream } : { kind: "root" };
-}
-
-export function contextPath(id: string) {
-  return `/contexts/${encodeURIComponent(id)}`;
-}
-
-export function streamPath(head: ApiContext) {
-  return head.streamId
-    ? `/streams/${encodeURIComponent(head.streamId)}`
-    : contextPath(head.id);
-}
-
-export function CurrentContext() {
-  const catalog = useContext(CatalogContext);
-  return catalog?.current ? (
-    <ContextIdentity current={catalog.current} />
-  ) : null;
 }
 
 export function SessionProvider({ children }: { children: ReactNode }) {
@@ -152,18 +105,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // Navigation needs only current work; the picker's history loads on demand.
   const heads = useContextCatalog(true, true);
   const history = useContextCatalog(false, pickerOpen);
-  const [collecting, setCollecting] = useState(false);
-  const [collectError, setCollectError] = useState("");
-  const collectionRequest = useRef<Promise<ApiCollectionResult | null> | null>(
-    null,
-  );
   const selectedRef = useRef(selectedId);
   useEffect(() => {
     selectedRef.current = selectedId;
   }, [selectedId]);
   const statusRef = useRef<HTMLElement>(null);
   const restorePickerFocus = useRef(false);
-  const compact = useCompactChrome();
   const { openDiff } = useSidebarState();
   const openPicker = useCallback(() => setPickerOpen(true), []);
   const show = useCallback(
@@ -223,53 +170,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [show],
   );
   const { remove: removeHead, retry: reloadHeads } = heads;
-  // Load-time navigation joins an active collection. Explicit Sync ignores
-  // duplicate requests while the current collection is running.
-  const collectLatest = useCallback(
-    (initial = false) => {
-      if (collectionRequest.current)
-        return initial ? collectionRequest.current : Promise.resolve(null);
-      setCollecting(true);
-      setCollectError("");
-      const request = (async () => {
-        try {
-          const { data, error } = await api.POST("/api/v2/collections", {
-            params: { query: { initial } },
-          });
-          if (!data)
-            throw new Error(errorDetail(error, "Unable to sync changes"));
-          reloadHeads();
-          return data;
-        } catch (error) {
-          setCollectError(errorDetail(error, "Unable to sync changes"));
-          return null;
-        } finally {
-          collectionRequest.current = null;
-          setCollecting(false);
-        }
-      })();
-      collectionRequest.current = request;
-      return request;
-    },
-    [reloadHeads],
-  );
-  const headsRef = useRef(heads.contexts);
-  useEffect(() => {
-    headsRef.current = heads.contexts;
-  }, [heads.contexts]);
-  // Like arrivals in distributed mode, synced snapshots never replace the open
-  // review; the newer-head notice and projects drawer announce them.
-  const syncCheckouts = useCallback(async () => {
-    const current = new Set(headsRef.current.map((context) => context.id));
-    const result = await collectLatest();
-    if (!result) return null;
-    return {
-      checkouts: result.contexts.length + result.failures.length,
-      updated: result.contexts.filter((context) => !current.has(context.id))
-        .length,
-      failures: result.failures,
-    };
-  }, [collectLatest]);
+  const {
+    collectLatest,
+    syncCheckouts,
+    collecting,
+    collectError,
+    setCollectError,
+  } = useCollection(heads.contexts, reloadHeads);
   const collect = collectEnabled ? syncCheckouts : null;
   const { remove: removeHistory } = history;
   const deleteContext = useCallback(
@@ -342,7 +249,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         defaultContextId: result?.defaultContextId ?? "",
       });
     });
-  }, [collectOnLoad, route, collectLatest]);
+  }, [collectOnLoad, route, collectLatest, setCollectError]);
   useEffect(() => {
     if (!resolving) return;
     const findHead = (contexts: ApiContext[]) =>
@@ -477,124 +384,62 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       target?.focus();
     }
   }, [state, empty]);
+  const retry = useCallback(() => {
+    setState({ status: "loading" });
+    if (collectError) {
+      collected.current = null;
+      setCollectError("");
+      setMissing(false);
+      setCollectionResult(null);
+    }
+    reloadHeads();
+    setAttempt((current) => current + 1);
+  }, [collectError, setCollectError, reloadHeads]);
+  const shell = useMemo(
+    () => ({
+      ready,
+      loading,
+      empty,
+      missing,
+      statusError,
+      collectError,
+      collectOnLoad,
+      collecting,
+      remote,
+      statusRef,
+      retry,
+      history,
+      setPickerOpen,
+    }),
+    [
+      ready,
+      loading,
+      empty,
+      missing,
+      statusError,
+      collectError,
+      collectOnLoad,
+      collecting,
+      remote,
+      retry,
+      history,
+    ],
+  );
   return (
     <CatalogContext value={catalog}>
-      <div className="app-shell">
-        <div className="app-main">
-          {ready ? (
-            <SessionContext value={state.session}>{children}</SessionContext>
-          ) : (
-            <>
-              <header className="topbar">
-                {compact && <ProjectsToggle />}
-                <HeaderBrand />
-                <CurrentContext />
-                {loading && !current && (
-                  <Skeleton className="loading-identity" />
-                )}
-                <div className="header-actions">
-                  <NewChangesButton />
-                  {collecting && (
-                    <Button
-                      type="button"
-                      id="sync"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Sync all checkouts"
-                      title="Syncing checkouts"
-                      aria-busy="true"
-                      disabled
-                    >
-                      <LoaderCircleIcon
-                        className="size-(--icon-base)"
-                        aria-hidden="true"
-                      />
-                    </Button>
-                  )}
-                  {compact && <AccountButton />}
-                  <ThemeButton />
-                </div>
-              </header>
-              <div className="workbench">
-                <Navigation loading={loading} />
-                <main
-                  className={`session-status${loading ? " is-loading" : ""}`}
-                  role="status"
-                  aria-busy={loading}
-                  ref={statusRef}
-                  tabIndex={-1}
-                >
-                  {loading ? (
-                    <WorkspaceLoading collecting={collectOnLoad} />
-                  ) : (
-                    <>
-                      <h1>
-                        {statusError
-                          ? collectError
-                            ? "Cannot sync changes"
-                            : "Cannot load diffx"
-                          : missing
-                            ? "No current snapshot"
-                            : empty
-                              ? heads.contexts.length
-                                ? "No changes to review"
-                                : "No review contexts yet"
-                              : "Loading diffx"}
-                      </h1>
-                      <p>
-                        {statusError ||
-                          (missing
-                            ? "This stream's snapshots expired or were deleted. Pick current work from Repos."
-                            : empty
-                              ? remote
-                                ? "Create a collector token in settings, then run diffx sync to publish your changes."
-                                : "Run diffx to review a checkout, or diffx sync to publish remotely."
-                              : "Reading review context…")}
-                      </p>
-                      {empty && remote && (
-                        <Button
-                          variant="outline"
-                          onClick={() => navigate("/settings")}
-                        >
-                          Create a collector token
-                        </Button>
-                      )}
-                      {statusError && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => {
-                            setState({ status: "loading" });
-                            if (collectError) {
-                              collected.current = null;
-                              setCollectError("");
-                              setMissing(false);
-                              setCollectionResult(null);
-                            }
-                            reloadHeads();
-                            setAttempt((current) => current + 1);
-                          }}
-                        >
-                          Retry
-                        </Button>
-                      )}
-                    </>
-                  )}
-                </main>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-      <ProjectPicker
-        contexts={history.loaded ? history.contexts : heads.contexts}
-        selectedId={selectedId}
-        select={select}
-        open={pickerOpen}
-        onOpenChange={setPickerOpen}
-      />
+      <SessionShellContext value={shell}>
+        <SessionContext value={ready ? state.session : null}>
+          {children}
+        </SessionContext>
+      </SessionShellContext>
     </CatalogContext>
   );
+}
+
+export function useSessionShell() {
+  const shell = useContext(SessionShellContext);
+  if (!shell) throw new Error("Session shell requires SessionProvider");
+  return shell;
 }
 
 export function useCatalog() {
