@@ -254,8 +254,12 @@ map into Tailwind and shadcn theme roles. Reuse primitives from
 `apps/web/src/components/ui`; keep authored CSS for specialized layout, dynamic
 geometry, and Pierre's measured rendering boundary.
 
-`App.tsx` composes page sections. `AppProvider` composes appearance, sidebar,
-and workspace owners. The identity owner loads server mode and the current
+`App.tsx` composes page sections. `main.tsx` composes sidebar and appearance
+providers around identity; `SessionProvider` owns context selection, routes
+(`review-route.ts`) and collection (`use-collection.ts`) and imports no views;
+`SessionShell` renders its loading, empty and failure states; `AppProvider`
+keys workspace owners by context. Lint rejects import cycles, Hook-rule
+violations and type assertions. The identity owner loads server mode and the current
 account before mounting review state; distributed login and `/settings` work with
 zero observations. Account changes dispose workspace requests and event streams.
 Local mode bypasses account flows. Consumers subscribe through domain hooks for diff source,

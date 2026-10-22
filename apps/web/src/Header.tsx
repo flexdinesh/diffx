@@ -14,7 +14,8 @@ import {
 } from "./ProjectsNav.tsx";
 import { useDiffSource } from "./app-state.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
-import { CurrentContext, useCatalog, useSession } from "./session-context.tsx";
+import { useCatalog, useSession } from "./session-context.tsx";
+import { CurrentContext } from "./SessionShell.tsx";
 import { contextDiagnostics, observationSummary } from "./project-picker.ts";
 import { useCompactChrome } from "./use-compact-chrome.ts";
 

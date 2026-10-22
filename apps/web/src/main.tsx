@@ -7,6 +7,7 @@ import { SidebarProvider } from "./sidebar-context.tsx";
 import { AppProvider } from "./app-state.tsx";
 import { highlighterOptions, poolOptions } from "./diff-workers.ts";
 import { SessionProvider } from "./session-context.tsx";
+import { SessionShell } from "./SessionShell.tsx";
 import "@fontsource-variable/jetbrains-mono/wght.css";
 import "./typography.css";
 import "./tokens.css";
@@ -47,14 +48,16 @@ function ApplicationRoutes() {
     return <AccountSettings />;
   return (
     <SessionProvider key={state.bootstrap.user?.id ?? "local"}>
-      <WorkerPoolContextProvider
-        poolOptions={poolOptions}
-        highlighterOptions={highlighterOptions}
-      >
-        <AppProvider>
-          <App />
-        </AppProvider>
-      </WorkerPoolContextProvider>
+      <SessionShell>
+        <WorkerPoolContextProvider
+          poolOptions={poolOptions}
+          highlighterOptions={highlighterOptions}
+        >
+          <AppProvider>
+            <App />
+          </AppProvider>
+        </WorkerPoolContextProvider>
+      </SessionShell>
     </SessionProvider>
   );
 }

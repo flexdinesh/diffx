@@ -36,7 +36,8 @@ import {
   streamTitle,
   type ProjectGroup,
 } from "./project-nav.ts";
-import { streamPath, useCatalog, useSession } from "./session-context.tsx";
+import { useCatalog, useSession } from "./session-context.tsx";
+import { streamPath } from "./review-route.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
 
 const shortcut = navigator.platform.includes("Mac") ? "⌘K" : "Ctrl K";
