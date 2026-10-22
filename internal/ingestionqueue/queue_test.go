@@ -88,3 +88,46 @@ func TestWorkerCancellationAndLeaseFencing(t *testing.T) {
 		t.Fatalf("lost lease retried: %s %v", q.action, err)
 	}
 }
+
+// flakyQueue fails its first claim, then offers one job and stays empty.
+type flakyQueue struct {
+	recordingQueue
+	claims    int
+	completed chan struct{}
+}
+
+func (q *flakyQueue) Claim(context.Context, time.Duration) (Delivery, error) {
+	q.claims++
+	switch q.claims {
+	case 1:
+		return Delivery{}, errors.New("database is locked")
+	case 2:
+		return Delivery{OwnerID: "owner", Job: Job{ID: "job", Attempt: 1}}, nil
+	}
+	return Delivery{}, ErrEmpty
+}
+
+func (q *flakyQueue) Complete(context.Context, Delivery, string) error {
+	close(q.completed)
+	return nil
+}
+
+func TestWorkerSurvivesQueueStorageFailure(t *testing.T) {
+	q := &flakyQueue{completed: make(chan struct{})}
+	ctx, cancel := context.WithCancel(t.Context())
+	result := make(chan error, 1)
+	go func() {
+		result <- Run(ctx, q, func(context.Context, string, ingestion.Request) (string, error) { return "context", nil })
+	}()
+	select {
+	case <-q.completed:
+	case err := <-result:
+		t.Fatalf("worker stopped after a storage failure: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker did not process the next job")
+	}
+	cancel()
+	if err := <-result; err != nil {
+		t.Fatalf("shutdown error = %v", err)
+	}
+}
