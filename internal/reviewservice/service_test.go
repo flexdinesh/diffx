@@ -67,6 +67,20 @@ func (store *storeStub) PutComment(_ string, comment review.ReviewComment) error
 	return nil
 }
 
+func (store *storeStub) ReplaceComment(_ string, comment review.ReviewComment) (bool, error) {
+	store.putCalls++
+	if store.putError != nil {
+		return false, store.putError
+	}
+	for index := range store.comments {
+		if store.comments[index].ID == comment.ID {
+			store.comments[index] = comment
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func TestListCommentsFiltersAndEnrichesInStoredOrder(t *testing.T) {
 	source := &sourceStub{
 		support: diffsource.Support{Scopes: []review.DiffMode{review.DiffStaged, review.DiffUnstaged}},
@@ -409,5 +423,32 @@ func TestDeleteOutdatedCommentsUsesPlacement(t *testing.T) {
 	result, err := service.DeleteComments(context.Background(), "outdated")
 	if err != nil || result.Deleted != 1 || len(result.Comments) != 1 || result.Comments[0].ID != "moved" || result.Comments[0].Placement == nil {
 		t.Fatalf("delete outdated = %#v %v", result, err)
+	}
+}
+
+// deletedDuringWriteStub reads a comment that is deleted before the write commits.
+type deletedDuringWriteStub struct{ storeStub }
+
+func (store *deletedDuringWriteStub) ReplaceComment(string, review.ReviewComment) (bool, error) {
+	store.putCalls++
+	return false, nil
+}
+
+func TestCommentEditsReportNotFoundWhenDeletedConcurrently(t *testing.T) {
+	source := &sourceStub{support: diffsource.Support{Scopes: []review.DiffMode{review.DiffAll}}}
+	store := &deletedDuringWriteStub{storeStub{comments: []review.ReviewComment{comment("id", review.DiffAll, "file.go", "old", "open")}}}
+	service := New(boundSession(source, session.Policies{}), store)
+
+	if _, err := service.ResolveComment("id"); !errors.Is(err, ErrCommentNotFound) {
+		t.Fatalf("resolve error = %v", err)
+	}
+	body := "edited"
+	_, err := service.UpdateComment(context.Background(), "id", UpdateCommentInput{Body: &body})
+	var requestError *review.RequestError
+	if !errors.As(err, &requestError) || requestError.Status != 404 {
+		t.Fatalf("update error = %v", err)
+	}
+	if store.putCalls != 2 {
+		t.Fatalf("writes = %d", store.putCalls)
 	}
 }

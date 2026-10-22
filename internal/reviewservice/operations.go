@@ -284,8 +284,12 @@ func (service *Service) UpdateComment(ctx context.Context, commentID string, bod
 		if body.Status != nil {
 			comment.Status = *body.Status
 		}
-		if err := service.store.PutComment(service.session.ContextID, comment); err != nil {
+		replaced, err := service.store.ReplaceComment(service.session.ContextID, comment)
+		if err != nil {
 			return review.ReviewComment{}, err
+		}
+		if !replaced {
+			break
 		}
 		return service.placedComment(ctx, comment.ID)
 	}
@@ -319,8 +323,12 @@ func (service *Service) CarryComment(ctx context.Context, commentID string) (rev
 	carried.Target, carried.Side, carried.Start, carried.End = "file", "additions", 0, 0
 	carried.CarriedFrom = &review.CommentCarriedFrom{VersionID: comment.VersionID, Side: comment.Side, Start: comment.Start, End: comment.End}
 	carried.Anchor, carried.Placement = nil, nil
-	if err := service.store.PutComment(service.session.ContextID, carried); err != nil {
+	replaced, err := service.store.ReplaceComment(service.session.ContextID, carried)
+	if err != nil {
 		return review.ReviewComment{}, err
+	}
+	if !replaced {
+		return review.ReviewComment{}, review.Error(404, "Comment not found")
 	}
 	return service.placedComment(ctx, carried.ID)
 }

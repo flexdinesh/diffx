@@ -24,11 +24,13 @@ export function ServerStatus() {
   const [metrics, setMetrics] = useState<ApiServerMetrics | null>(null);
   useEffect(() => {
     let disposed = false;
-    let controller = new AbortController();
+    let pending = false;
+    const controller = new AbortController();
+    const { signal } = controller;
+    // A slow response is not replaced by the next tick, so it can still report health.
     async function refresh() {
-      controller.abort();
-      controller = new AbortController();
-      const { signal } = controller;
+      if (pending) return;
+      pending = true;
       try {
         const { data } = await api.GET("/api/v2/metrics", { signal });
         if (disposed) return;
@@ -38,6 +40,8 @@ export function ServerStatus() {
         } else setHealth("unavailable");
       } catch {
         if (!disposed && !signal.aborted) setHealth("unavailable");
+      } finally {
+        pending = false;
       }
     }
     void refresh();
