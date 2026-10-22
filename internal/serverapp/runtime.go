@@ -3,6 +3,7 @@ package serverapp
 import (
 	"context"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"sync"
@@ -53,9 +54,15 @@ func Run(ctx context.Context, endpoints []Endpoint, tasks []Task, ready func()) 
 	return result
 }
 
+// Prune removes expired state hourly. A failed pass is logged and retried at
+// the next tick; retention cleanup never stops serving.
 func Prune(prune func(time.Time) error) Task {
+	return pruneEvery(time.Hour, prune)
+}
+
+func pruneEvery(interval time.Duration, prune func(time.Time) error) Task {
 	return func(ctx context.Context) error {
-		ticker := time.NewTicker(time.Hour)
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -63,7 +70,7 @@ func Prune(prune func(time.Time) error) Task {
 				return nil
 			case now := <-ticker.C:
 				if err := prune(now); err != nil {
-					return err
+					log.Printf("prune expired state: %v", err)
 				}
 			}
 		}

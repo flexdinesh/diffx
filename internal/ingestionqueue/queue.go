@@ -4,6 +4,7 @@ package ingestionqueue
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/ingestion"
@@ -38,27 +39,34 @@ type Queue interface {
 
 type Ingest func(context.Context, string, ingestion.Request) (string, error)
 
+// storageBackoff spaces out claims after a queue storage failure.
+const storageBackoff = time.Second
+
 // Run uses bounded processing and renews leases without coupling ingestion to
 // the queue implementation. A crash after commit is recovered by ingestion replay.
+// Queue storage failures are logged and retried after a backoff instead of
+// stopping the server; an unacknowledged lease expires and is claimed again.
 func Run(ctx context.Context, queue Queue, ingest Ingest) error {
 	for ctx.Err() == nil {
 		delivery, err := queue.Claim(ctx, 30*time.Second)
-		if errors.Is(err, ErrEmpty) {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(200 * time.Millisecond):
+		wait := 200 * time.Millisecond
+		if err == nil {
+			err = process(ctx, queue, delivery, ingest)
+			if err == nil || errors.Is(err, ErrLeaseLost) {
+				continue
 			}
-			continue
 		}
-		if err != nil {
-			return err
+		if ctx.Err() != nil {
+			return nil
 		}
-		if err := process(ctx, queue, delivery, ingest); err != nil && !errors.Is(err, ErrLeaseLost) {
-			if ctx.Err() != nil {
-				return nil
-			}
-			return err
+		if !errors.Is(err, ErrEmpty) {
+			log.Printf("ingestion queue: %v", err)
+			wait = storageBackoff
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(wait):
 		}
 	}
 	return nil

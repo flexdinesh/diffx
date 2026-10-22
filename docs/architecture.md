@@ -42,7 +42,8 @@ contexts are not found. A scoped selection without checkouts matches nothing.
 Local listeners and the browser start before checkout discovery and collection. A server-owned task performs the
 initial collection; the first live-page collection request joins its result,
 including when the task finished before the browser opened. Explicit Sync always
-collects fresh snapshots. Collection failures leave the server running for retry,
+collects fresh snapshots. Collection failures, queue storage errors and failed
+retention pruning are logged and leave the server running for retry,
 and shutdown cancels and joins collection before releasing database ownership.
 
 Activity metadata is collected by the shared producer pipeline, never by catalog
