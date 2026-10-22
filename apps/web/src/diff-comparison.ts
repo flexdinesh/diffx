@@ -1,5 +1,5 @@
 import type { ApiContext } from "@diffx/api";
-import type { DiffMode } from "@diffx/shared";
+import type { DiffMode } from "./diff-mode.ts";
 import { contextIsPiped } from "./project-picker.ts";
 
 export function diffComparison(

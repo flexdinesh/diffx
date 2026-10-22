@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parsePatchFiles } from "@pierre/diffs";
-import type { ChangedFile, RepositoryDiff } from "@diffx/shared";
+import type {
+  ApiChangedFile as ChangedFile,
+  ApiRepositoryDiff as RepositoryDiff,
+} from "@diffx/api";
 import { fileKind, gitDecoration } from "../src/file-decoration.ts";
 import {
   ancestorPaths,

@@ -134,7 +134,7 @@ opens reviews directly without exposing identity controls.
 guards, shared Go/TypeScript comment examples, the Go suite (including
 storage/lifecycle/queue/transport boundary tests) and real HTTP schema
 validation. Local `mise run check` and pre-push run these checks alongside the
-web unit/browser, plugin/shared and docs-site suites. `test:contracts:rules`
+web unit/browser, plugin and docs-site suites. `test:contracts:rules`
 holds only the non-Go guards, because `check` and pre-push already run every Go
 package; no hand-maintained package list can miss a new boundary test. CI and
 release verification retain static checks, builds, generated-file consistency

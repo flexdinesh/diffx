@@ -1,4 +1,4 @@
-import type { ChangedFile } from "@diffx/shared";
+import type { ApiChangedFile as ChangedFile } from "@diffx/api";
 
 export type FileKind =
   | "typescript"

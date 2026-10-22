@@ -1,12 +1,16 @@
-import type { ChangedFile, RepositoryDiff, ReviewComment } from "@diffx/shared";
+import type {
+  ApiChangedFile as ChangedFile,
+  ApiRepositoryDiff as RepositoryDiff,
+} from "@diffx/api";
+import type { ReviewComment } from "./review-comments.ts";
 
 export {
   commentContext,
   formatComments,
   lineContext,
   parseComments,
-} from "@diffx/shared";
-export type { ReviewComment, ReviewOrigin } from "@diffx/shared";
+} from "./review-comments.ts";
+export type { ReviewComment, ReviewOrigin } from "./review-comments.ts";
 
 export type CommentAnnotation =
   | { kind: "saved"; comment: ReviewComment }

@@ -1,4 +1,5 @@
-import type { DiffMode, ReviewComment } from "@diffx/shared";
+import type { DiffMode } from "./diff-mode.ts";
+import type { ReviewComment } from "./review-comments.ts";
 import {
   createContext,
   useCallback,

@@ -1,6 +1,11 @@
 import type { FileDiffMetadata, SelectedLineRange } from "@pierre/diffs";
-import { api, errorDetail } from "@diffx/api";
-import type { ChangedFile, RepositoryDiff, ReviewComment } from "@diffx/shared";
+import {
+  api,
+  errorDetail,
+  type ApiChangedFile as ChangedFile,
+  type ApiRepositoryDiff as RepositoryDiff,
+} from "@diffx/api";
+import type { ReviewComment } from "./review-comments.ts";
 import {
   type Dispatch,
   type SetStateAction,

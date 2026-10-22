@@ -1,10 +1,10 @@
 import type { CodeViewHandle } from "@pierre/diffs/react";
 import type {
-  ChangedFile,
-  DiffMode,
-  RepositoryDiff,
-  ReviewComment,
-} from "@diffx/shared";
+  ApiChangedFile as ChangedFile,
+  ApiRepositoryDiff as RepositoryDiff,
+} from "@diffx/api";
+import type { DiffMode } from "./diff-mode.ts";
+import type { ReviewComment } from "./review-comments.ts";
 import {
   useCallback,
   useEffect,
