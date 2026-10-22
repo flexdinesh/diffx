@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"reflect"
 	"strings"
 
 	"github.com/flexdinesh/diffx/internal/collector"
@@ -78,192 +77,39 @@ func runSync(ctx context.Context, arguments []string, stdin *os.File, stdout, st
 	if err != nil {
 		return err
 	}
-	digest := sha256.Sum256([]byte(values.token))
-	route := strings.TrimRight(values.server, "/") + ":" + hex.EncodeToString(digest[:])
-	box, err := submission.Open(ctx, stateDir, route)
-	if err != nil {
-		return err
-	}
-	defer box.Close()
-	pending, err := box.Pending()
-	if err != nil {
-		return err
-	}
 	var failures []error
-	var fresh ingestion.Request
-	reusedSubmission := ""
+	var fresh *ingestion.Request
 	if !values.retry {
 		progress.show("Collect · reading selected checkout")
 		values.progress = func(stage, detail string) { progress.show(stage + " · " + detail) }
-		var collectErr error
-		fresh, collectErr = collectSubmission(ctx, values)
+		collected, collectErr := collectSubmission(ctx, values)
 		if collectErr != nil {
 			failures = append(failures, collectErr)
 		} else {
-			fingerprint := syncFingerprint(fresh)
-			for _, item := range pending {
-				if fingerprint != "" && syncFingerprint(item.Request) == fingerprint {
-					reusedSubmission = item.Request.SubmissionID
-					break
-				}
-			}
-			if reusedSubmission == "" {
-				item := submission.Pending{Request: fresh}
-				if err := box.Save(item); err != nil {
-					return err
-				}
-				pending = append(pending, item)
-			}
+			fresh = &collected
 		}
 	}
-	progress.show("Upload · connecting")
-	target, err := submission.Resolve(ctx, values.server, values.token)
+	result, err := submission.Sync(ctx, submission.SyncOptions{
+		StateDir: stateDir, Server: values.server, Token: values.token,
+		Fresh: fresh, Fingerprint: syncFingerprint, Progress: progress.show,
+	})
 	if err != nil {
 		return err
 	}
-	// Unknown-owner captures stay bound to the collecting credential. Once health
-	// establishes the owner, persist under that identity before any upload so a
-	// replacement credential can recover the exact attempted payload.
-	provisional := box
-	box, err = submission.Open(ctx, stateDir, target.Target.Destination)
-	if err != nil {
-		return err
-	}
-	defer box.Close()
-	verified, err := box.Pending()
-	if err != nil {
-		return err
-	}
-	for index := 0; index < len(pending); index++ {
-		item := pending[index]
-		if item.StateID != "" && item.StateID != target.Target.Identity {
-			failures = append(failures, fmt.Errorf("submission %s belongs to another server database; retained for recovery", item.Request.SubmissionID))
-			if item.Request.SubmissionID == reusedSubmission {
-				freshItem := submission.Pending{Request: fresh}
-				if err := provisional.Save(freshItem); err != nil {
-					return err
-				}
-				pending = append(pending, freshItem)
-			}
-			continue
-		}
-		found := false
-		for _, existing := range verified {
-			if existing.Request.SubmissionID == item.Request.SubmissionID {
-				if !reflect.DeepEqual(existing.Request, item.Request) || existing.StateID != target.Target.Identity {
-					return fmt.Errorf("submission %s conflicts with retained payload", item.Request.SubmissionID)
-				}
-				found = true
-				break
-			}
-		}
-		if !found && !values.retry && item.Request.SubmissionID == fresh.SubmissionID {
-			// A new collection can recover an immutable attempted submission.
-			fingerprint := syncFingerprint(item.Request)
-			for _, existing := range verified {
-				if fingerprint != "" && syncFingerprint(existing.Request) == fingerprint {
-					reusedSubmission = existing.Request.SubmissionID
-					found = true
-					break
-				}
-			}
-		}
-		if !found {
-			item.StateID = target.Target.Identity
-			if err := box.Save(item); err != nil {
-				return err
-			}
-			verified = append(verified, item)
-		}
-		if err := provisional.Remove(item.Request.SubmissionID); err != nil {
-			return err
-		}
-	}
-	pending = verified
-	if len(pending) == 0 {
-		if len(failures) > 0 {
-			return errors.Join(failures...)
-		}
-		return errors.New("no pending submissions")
-	}
-	target.Progress = func(job ingestion.Job) {
-		progress.show(fmt.Sprintf("Ingest · %s · attempt %d", job.State, job.Attempt))
-	}
-	uploaded, unchanged := 0, 0
-	for index := 0; index < len(pending); index++ {
-		item := pending[index]
-		if item.StateID != "" && item.StateID != target.Target.Identity {
-			failures = append(failures, fmt.Errorf("submission %s belongs to another server database; retained for recovery", item.Request.SubmissionID))
-			if item.Request.SubmissionID == reusedSubmission {
-				freshItem := submission.Pending{Request: fresh}
-				if err := box.Save(freshItem); err != nil {
-					return err
-				}
-				pending = append(pending, freshItem)
-			}
-			continue
-		}
-		fingerprint := syncFingerprint(item.Request)
-		ack, err := box.Acknowledgement(item.Request)
-		if err != nil {
-			return err
-		}
-		if fingerprint != "" && ack.Fingerprint == fingerprint && ack.StateID == target.Target.Identity && ack.ContextID != "" {
-			current, err := target.Current(ctx, ack.ContextID)
-			if err != nil {
-				return err
-			}
-			if current {
-				if err := box.Remove(item.Request.SubmissionID); err != nil {
-					return err
-				}
-				unchanged++
-				continue
-			}
-		}
-		item.StateID = target.Target.Identity
-		if err := box.Save(item); err != nil {
-			return err
-		}
-		progress.show(fmt.Sprintf("Upload · %d/%d", index+1, len(pending)))
-		receipt, err := target.Deliver(ctx, item.Request)
-		if err != nil {
-			failures = append(failures, fmt.Errorf("submission %s retained; resume with sync --retry: %w", item.Request.SubmissionID, err))
-			continue
-		}
-		uploaded++
-		if err := box.Acknowledge(item.Request, fingerprint, target.Target.Identity, receipt.ContextID); err != nil {
-			return err
-		}
-		if item.Request.SubmissionID == reusedSubmission {
-			// A retry can commit older content without becoming the stream head.
-			// Publish the fresh collection only when that saved payload is stale.
-			current, err := target.Current(ctx, receipt.ContextID)
-			if err != nil {
-				return err
-			}
-			if !current {
-				freshItem := submission.Pending{Request: fresh}
-				if err := box.Save(freshItem); err != nil {
-					return err
-				}
-				pending = append(pending, freshItem)
-			}
-		}
-		if err := box.Remove(item.Request.SubmissionID); err != nil {
-			return err
-		}
-	}
+	failures = append(failures, result.Failures...)
 	if len(failures) > 0 {
 		return errors.Join(failures...)
+	}
+	if result.Empty {
+		return errors.New("no pending submissions")
 	}
 	progress.show("Ingest · complete")
 	if values.print {
 		fmt.Fprintln(stdout, strings.TrimRight(values.server, "/"))
-	} else if unchanged > 0 {
-		fmt.Fprintf(stdout, "Synced %d observations (%d unchanged)\n", uploaded, unchanged)
+	} else if result.Unchanged > 0 {
+		fmt.Fprintf(stdout, "Synced %d observations (%d unchanged)\n", result.Uploaded, result.Unchanged)
 	} else {
-		fmt.Fprintf(stdout, "Synced %d observations\n", uploaded)
+		fmt.Fprintf(stdout, "Synced %d observations\n", result.Uploaded)
 	}
 	return nil
 }

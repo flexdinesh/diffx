@@ -20,6 +20,10 @@ type Pending struct {
 	StateID string            `json:"stateId,omitempty"`
 }
 
+// AcknowledgementTTL bounds how long any producer, manual sync or hooks, may
+// trust an acknowledgement before uploading again.
+const AcknowledgementTTL = 24 * time.Hour
+
 // Acknowledgement permits upload suppression only while its server context
 // remains current. Fingerprints are supplied by the collector composition.
 type Acknowledgement struct {
@@ -87,7 +91,7 @@ func (box *Outbox) Acknowledgement(request ingestion.Request) (Acknowledgement, 
 	if err := json.Unmarshal(raw, &ack); err != nil {
 		return Acknowledgement{}, err
 	}
-	if time.Since(ack.At) >= 24*time.Hour {
+	if time.Since(ack.At) >= AcknowledgementTTL {
 		return Acknowledgement{}, nil
 	}
 	return ack, nil

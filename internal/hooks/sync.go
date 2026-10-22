@@ -13,6 +13,7 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/processlock"
+	"github.com/flexdinesh/diffx/internal/submission"
 )
 
 // Collection is durable before health checks or local startup. A saved payload
@@ -90,7 +91,7 @@ func (engine Engine) sync(ctx context.Context, directory string, event Event) er
 	// the server. The acknowledgement is validated against health before skipping.
 	cached := engine.latestAcknowledgement(directory)
 	previous := ""
-	if cached.Target.Identity != "" && time.Since(cached.At) < acknowledgementTTL && (engine.Confirm == nil || cached.ContextID != "") {
+	if cached.Target.Identity != "" && time.Since(cached.At) < submission.AcknowledgementTTL && (engine.Confirm == nil || cached.ContextID != "") {
 		previous = cached.Fingerprint
 	}
 	var fresh ingestion.Request
@@ -135,7 +136,7 @@ func (engine Engine) sync(ctx context.Context, directory string, event Event) er
 	ackPath := filepath.Join(directory, stream+".ack.json")
 	pendingPath := filepath.Join(directory, stream+".pending.json")
 	var ack state
-	ackValid := readJSON(ackPath, &ack) == nil && target.Identity != "" && ack.Target == target && time.Since(ack.At) < acknowledgementTTL && (engine.Confirm == nil || ack.ContextID != "")
+	ackValid := readJSON(ackPath, &ack) == nil && target.Identity != "" && ack.Target == target && time.Since(ack.At) < submission.AcknowledgementTTL && (engine.Confirm == nil || ack.ContextID != "")
 	if !ackValid && !priorAttempt && !hasCaptureBound(captured) && engine.SuppressInitialEmpty != nil && emptyCapture(fresh) {
 		skip, reconcileErr := engine.SuppressInitialEmpty(ctx, target, fresh)
 		if reconcileErr == nil && skip {

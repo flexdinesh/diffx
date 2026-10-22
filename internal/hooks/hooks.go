@@ -22,7 +22,6 @@ var ErrCooldown = errors.New("service startup cooling down")
 var ErrUnavailable = errors.New("collection source unavailable")
 
 const defaultTimeout = 30 * time.Second
-const acknowledgementTTL = 24 * time.Hour
 const pendingTTL = 7 * 24 * time.Hour
 const maxPendingBytes = 256 << 20
 

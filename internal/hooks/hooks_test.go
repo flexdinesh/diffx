@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/flexdinesh/diffx/internal/submission"
 	"os"
 	"path/filepath"
 	"strings"
@@ -142,7 +143,7 @@ func TestUnknownIdentityAndExpiredAcknowledgementNeverSkip(t *testing.T) {
 			engine.Deliver = func(context.Context, Target, ingestion.Request) (string, error) { return "context", nil }
 			trigger(t, engine)
 			directory, _ := engine.jobPath(*job)
-			ack := state{Target: target, Fingerprint: "old", At: time.Now().Add(-acknowledgementTTL - time.Minute)}
+			ack := state{Target: target, Fingerprint: "old", At: time.Now().Add(-submission.AcknowledgementTTL - time.Minute)}
 			if unknown {
 				ack.At = time.Now()
 			}
