@@ -68,8 +68,11 @@ personal lifecycle discovery.
 - `reviewstore`: SQLite transactions, identity persistence, stored reads,
   retention and queue adapter.
 - `ingestionqueue`: admission/lease contract and worker failure policy.
-- `submission`: immutable recovery, destination identity and delivery, shared by
-  manual sync and hooks. No dependency on hook scheduling.
+- `submission`: destination identity, delivery and the acknowledgement TTL,
+  shared by manual sync and hooks; owns manual sync's route-scoped outbox
+  recovery (`Sync`). Hooks keep job- and session-scoped capture and
+  acknowledgement state because their suppression scope differs. No dependency
+  on hook scheduling.
 - `hooks`: finite scheduling, coalescing and session-aware suppression.
 - `httpapi`, `mcpapi`: transport parsing, projection and error mapping.
 - `serverapp`: transport/task composition; `daemon`: local lifecycle;

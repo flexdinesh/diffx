@@ -357,9 +357,9 @@ reveals its tree row without expanding the diff or navigating again.
 See [architecture.md](architecture.md) for repository boundaries and dependency
 rules.
 
-Shared producer orchestration in `cmd/diffx` resolves config → environment →
-flags once, pins verified retries to account/database identity and serves manual/hook
-delivery. Hooks use session-scoped acknowledgements plus server reconciliation;
+`cmd/diffx` resolves config → environment → flags once and composes producers;
+`submission.Sync` pins verified manual retries to account/database identity, and
+hooks deliver through the same `submission` destination. Hooks use session-scoped acknowledgements plus server reconciliation;
 their private pending data retains a separate seven-day expiry. Token rotation
 preserves a verified destination's pending data; offline captures with unknown
 owners remain bound to their original credential until authenticated. REST and MCP
