@@ -10,7 +10,7 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/review"
 	"github.com/flexdinesh/diffx/internal/reviewdata"
-	"github.com/flexdinesh/diffx/internal/session"
+	"github.com/flexdinesh/diffx/internal/reviewsession"
 )
 
 type MutationStore interface {
@@ -30,13 +30,13 @@ type MutationStore interface {
 // Snapshot reads and capability checks belong to the application, shared by transports.
 func (service *Service) Snapshot(ctx context.Context, mode review.DiffMode) (review.RepositoryDiff, error) {
 	if !service.session.Capabilities.Diff.Scopes.Allows(mode) {
-		return review.RepositoryDiff{}, session.NotEnabled(session.DiffScopes)
+		return review.RepositoryDiff{}, reviewsession.NotEnabled(reviewsession.DiffScopes)
 	}
 	return service.session.Source.Snapshot(ctx, mode)
 }
 
 // Session is the resolved context the service is bound to.
-func (service *Service) Session() session.Session { return service.session }
+func (service *Service) Session() reviewsession.Session { return service.session }
 
 // OwnsDiff reports whether a diff identity belongs to this context.
 func (service *Service) OwnsDiff(id string) bool {
@@ -124,19 +124,19 @@ func (service *Service) DeleteComment(ctx context.Context, id string) (bool, err
 }
 func (service *Service) Marks(ctx context.Context, mode review.DiffMode) ([]review.ReviewMark, error) {
 	if !service.session.Capabilities.Diff.Scopes.Allows(mode) {
-		return nil, session.NotEnabled(session.DiffScopes)
+		return nil, reviewsession.NotEnabled(reviewsession.DiffScopes)
 	}
 	return service.store.Marks(ctx, service.session.ContextID, mode)
 }
 func (service *Service) ClearMarks(ctx context.Context, mode review.DiffMode) error {
 	if !service.session.Capabilities.Diff.Scopes.Allows(mode) {
-		return session.NotEnabled(session.DiffScopes)
+		return reviewsession.NotEnabled(reviewsession.DiffScopes)
 	}
 	return service.store.ClearMarks(ctx, service.session.ContextID, mode)
 }
 func (service *Service) DeleteMark(ctx context.Context, mode review.DiffMode, id string) error {
 	if !service.session.Capabilities.Diff.Scopes.Allows(mode) {
-		return session.NotEnabled(session.DiffScopes)
+		return reviewsession.NotEnabled(reviewsession.DiffScopes)
 	}
 	return service.store.DeleteMark(ctx, service.session.ContextID, mode, id)
 }
@@ -232,7 +232,7 @@ func (service *Service) CreateComment(ctx context.Context, body CreateCommentInp
 		return review.ReviewComment{}, review.Error(400, "Invalid comment")
 	}
 	if !service.session.Capabilities.Diff.Scopes.Allows(body.Scope) {
-		return review.ReviewComment{}, session.NotEnabled(session.DiffScopes)
+		return review.ReviewComment{}, reviewsession.NotEnabled(reviewsession.DiffScopes)
 	}
 	snapshot, file, err := service.CurrentFile(ctx, body.Scope, body.DiffID, body.VersionID, body.FileID, body.FileVersion)
 	if err != nil {
@@ -455,7 +455,7 @@ func (service *Service) ExportComments(ctx context.Context, input ExportComments
 
 func (service *Service) PutMark(ctx context.Context, mode review.DiffMode, fileID, versionID, fileVersion string) (review.ReviewMark, error) {
 	if !service.session.Capabilities.Diff.Scopes.Allows(mode) {
-		return review.ReviewMark{}, session.NotEnabled(session.DiffScopes)
+		return review.ReviewMark{}, reviewsession.NotEnabled(reviewsession.DiffScopes)
 	}
 	snapshot, err := service.Snapshot(ctx, mode)
 	if err != nil {

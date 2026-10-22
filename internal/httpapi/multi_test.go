@@ -19,12 +19,12 @@ import (
 	"github.com/flexdinesh/diffx/internal/diffsource"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/review"
+	"github.com/flexdinesh/diffx/internal/reviewsession"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
-	"github.com/flexdinesh/diffx/internal/session"
 )
 
 type testProvider struct {
-	sessions []session.Session
+	sessions []reviewsession.Session
 }
 
 func (provider *testProvider) UserID() string {
@@ -33,13 +33,13 @@ func (provider *testProvider) UserID() string {
 	}
 	return provider.sessions[0].User.ID
 }
-func (provider *testProvider) Resolve(_ context.Context, id string) (session.Session, error) {
+func (provider *testProvider) Resolve(_ context.Context, id string) (reviewsession.Session, error) {
 	for _, active := range provider.sessions {
 		if active.ContextID == id {
 			return active, nil
 		}
 	}
-	return session.Session{}, diffsource.Error(404, "Context not found")
+	return reviewsession.Session{}, diffsource.Error(404, "Context not found")
 }
 func (provider *testProvider) Get(ctx context.Context, id string) (contextservice.Context, error) {
 	active, err := provider.Resolve(ctx, id)
@@ -89,7 +89,7 @@ func TestMultiContextObservationIsolation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		provider.sessions = append(provider.sessions, patchSession(t, store, source, string(raw), session.Policies{}))
+		provider.sessions = append(provider.sessions, patchSession(t, store, source, string(raw), reviewsession.Policies{}))
 	}
 	server := httptest.NewServer(newMulti(provider, store, fstest.MapFS{"index.html": {Data: []byte("web")}}))
 	defer server.Close()

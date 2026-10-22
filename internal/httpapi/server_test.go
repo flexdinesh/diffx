@@ -18,8 +18,8 @@ import (
 	"github.com/flexdinesh/diffx/internal/diffsource"
 	"github.com/flexdinesh/diffx/internal/review"
 	"github.com/flexdinesh/diffx/internal/reviewservice"
+	"github.com/flexdinesh/diffx/internal/reviewsession"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
-	"github.com/flexdinesh/diffx/internal/session"
 )
 
 func request(t *testing.T, client *http.Client, method, url string, body any) *http.Response {
@@ -56,7 +56,7 @@ func decode[T any](t *testing.T, response *http.Response) T {
 	return value
 }
 
-func patchSession(t *testing.T, store *reviewstore.Store, source diffsource.Source, raw string, policies session.Policies) session.Session {
+func patchSession(t *testing.T, store *reviewstore.Store, source diffsource.Source, raw string, policies reviewsession.Policies) reviewsession.Session {
 	t.Helper()
 	user, err := store.User("test-uid", "test-user")
 	if err != nil {
@@ -80,7 +80,7 @@ func patchSession(t *testing.T, store *reviewstore.Store, source diffsource.Sour
 	if err != nil {
 		t.Fatal(err)
 	}
-	active.Capabilities = session.ResolveCapabilities(active.Source.Support(), policies)
+	active.Capabilities = reviewsession.ResolveCapabilities(active.Source.Support(), policies)
 	return active
 }
 
@@ -97,7 +97,7 @@ func TestAPIReviewWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	active := patchSession(t, store, source, string(raw), session.Policies{})
+	active := patchSession(t, store, source, string(raw), reviewsession.Policies{})
 	handler := New(reviewservice.New(active, store), fstest.MapFS{"index.html": {Data: []byte("web")}})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -231,7 +231,7 @@ func TestSessionCapabilitiesAndEnforcement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	active := patchSession(t, store, source, string(raw), session.Policies{})
+	active := patchSession(t, store, source, string(raw), reviewsession.Policies{})
 	server := httptest.NewServer(New(reviewservice.New(active, store), fstest.MapFS{"index.html": {Data: []byte("web")}}))
 	defer server.Close()
 
@@ -240,12 +240,12 @@ func TestSessionCapabilitiesAndEnforcement(t *testing.T) {
 		t.Fatalf("session status: %d", sessionResponse.StatusCode)
 	}
 	got := decode[struct {
-		Capabilities session.Capabilities `json:"capabilities"`
+		Capabilities reviewsession.Capabilities `json:"capabilities"`
 	}](t, sessionResponse)
-	if got.Capabilities.Diff.Scopes.State != session.Enabled || len(got.Capabilities.Diff.Scopes.Values) != 1 || got.Capabilities.Diff.Scopes.Values[0] != review.DiffAll {
+	if got.Capabilities.Diff.Scopes.State != reviewsession.Enabled || len(got.Capabilities.Diff.Scopes.Values) != 1 || got.Capabilities.Diff.Scopes.Values[0] != review.DiffAll {
 		t.Fatalf("scopes: %#v", got.Capabilities.Diff.Scopes)
 	}
-	if got.Capabilities.Diff.Refresh.State != session.Unavailable || got.Capabilities.Diff.StagingMetadata.State != session.Unavailable || got.Capabilities.Files.Contents.State != session.Unavailable || got.Capabilities.Review.Comments.State != session.Enabled {
+	if got.Capabilities.Diff.Refresh.State != reviewsession.Unavailable || got.Capabilities.Diff.StagingMetadata.State != reviewsession.Unavailable || got.Capabilities.Files.Contents.State != reviewsession.Unavailable || got.Capabilities.Review.Comments.State != reviewsession.Enabled {
 		t.Fatalf("capabilities: %#v", got.Capabilities)
 	}
 
@@ -255,8 +255,8 @@ func TestSessionCapabilitiesAndEnforcement(t *testing.T) {
 	} {
 		response := request(t, server.Client(), http.MethodGet, server.URL+endpoint, nil)
 		assertCapabilityProblem(t, response, map[string]string{
-			"/api/review/diffs/current?scope=staged": session.DiffScopes,
-			"/api/review/diffs/" + active.DiffIDs[review.DiffAll] + "/files/file/contents?scope=all&fileVersion=version&versionId=version": session.FilesContents,
+			"/api/review/diffs/current?scope=staged": reviewsession.DiffScopes,
+			"/api/review/diffs/" + active.DiffIDs[review.DiffAll] + "/files/file/contents?scope=all&fileVersion=version&versionId=version": reviewsession.FilesContents,
 		}[endpoint])
 	}
 }
@@ -274,7 +274,7 @@ func TestDisabledCommentsRejectEveryRoute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	active := patchSession(t, store, source, string(raw), session.Policies{Comments: session.DisablePolicy})
+	active := patchSession(t, store, source, string(raw), reviewsession.Policies{Comments: reviewsession.DisablePolicy})
 	server := httptest.NewServer(New(reviewservice.New(active, store), fstest.MapFS{"index.html": {Data: []byte("web")}}))
 	defer server.Close()
 
@@ -295,7 +295,7 @@ func TestDisabledCommentsRejectEveryRoute(t *testing.T) {
 		{method: http.MethodPost, path: "/api/review/comments/id/carry"},
 	} {
 		response := request(t, server.Client(), test.method, server.URL+test.path, test.body)
-		assertCapabilityProblem(t, response, session.ReviewComments)
+		assertCapabilityProblem(t, response, reviewsession.ReviewComments)
 	}
 }
 
@@ -332,7 +332,7 @@ func TestUnclassifiedErrorsHideInternalDetail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	active := patchSession(t, store, source, string(raw), session.Policies{})
+	active := patchSession(t, store, source, string(raw), reviewsession.Policies{})
 	failing := failingCommentsStore{store}
 	server := httptest.NewServer(New(reviewservice.New(active, failing), fstest.MapFS{}))
 	defer server.Close()

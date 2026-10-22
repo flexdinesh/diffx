@@ -1,4 +1,4 @@
-// Package controlapi implements the private, authenticated CLI-to-daemon API.
+// Package controlapi implements the private, authenticated CLI-to-local-server API.
 package controlapi
 
 import "github.com/flexdinesh/diffx/internal/config"
@@ -20,7 +20,7 @@ type Status struct {
 	Observations    int      `json:"observations"`
 }
 
-// Problem is a daemon rejection, distinct from an interrupted transport.
+// Problem is a local server rejection, distinct from an interrupted transport.
 type Problem struct {
 	Type   string `json:"type"`
 	Title  string `json:"title"`

@@ -1,4 +1,4 @@
-package daemon
+package localserver
 
 import (
 	"context"
@@ -42,7 +42,7 @@ func (client *Client) probe(ctx context.Context) (Descriptor, Status, error) {
 		}
 	}
 	// Another discovery probe can hold ownership briefly while proving stopped.
-	// Confirm contention persists before treating it as an unresponsive daemon.
+	// Confirm contention persists before treating it as an unresponsive local server.
 	var lock *processlock.Lock
 	var err error
 	for attempt := 0; attempt < 20; attempt++ {

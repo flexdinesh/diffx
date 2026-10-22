@@ -13,7 +13,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/review"
 	"github.com/flexdinesh/diffx/internal/reviewdata"
-	"github.com/flexdinesh/diffx/internal/session"
+	"github.com/flexdinesh/diffx/internal/reviewsession"
 )
 
 type Context struct {
@@ -33,7 +33,7 @@ type Context struct {
 	ChangedFileCount *int                            `json:"changedFileCount"`
 	ExpiresAt        *int64                          `json:"expiresAt"`
 	SubmittedFrom    *string                         `json:"submittedFrom"`
-	Capabilities     session.Capabilities            `json:"capabilities"`
+	Capabilities     reviewsession.Capabilities      `json:"capabilities"`
 	Availability     string                          `json:"availability"`
 	Branch           *string                         `json:"branch"`
 	WorktreeName     *string                         `json:"worktreeName"`
@@ -147,12 +147,12 @@ func (service *Service) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (service *Service) Resolve(ctx context.Context, id string) (session.Session, error) {
+func (service *Service) Resolve(ctx context.Context, id string) (reviewsession.Session, error) {
 	if err := service.background.Err(); err != nil {
-		return session.Session{}, err
+		return reviewsession.Session{}, err
 	}
 	if err := ctx.Err(); err != nil {
-		return session.Session{}, err
+		return reviewsession.Session{}, err
 	}
 	now := time.Now()
 	item, err := service.store.Context(ctx, service.user.ID, id, now)
@@ -160,18 +160,18 @@ func (service *Service) Resolve(ctx context.Context, id string) (session.Session
 		err = service.inScope(ctx, id)
 	}
 	if err != nil {
-		return session.Session{}, requestError(err)
+		return reviewsession.Session{}, requestError(err)
 	}
 	binding, err := service.store.ContextBinding(ctx, service.user.ID, id, now)
 	if err != nil {
-		return session.Session{}, requestError(err)
+		return reviewsession.Session{}, requestError(err)
 	}
 	if item.Metadata == nil {
-		return session.Session{}, review.Error(500, "Observation metadata missing")
+		return reviewsession.Session{}, review.Error(500, "Observation metadata missing")
 	}
 	source := &storedSource{store: service.store, ownerID: service.user.ID, id: id, metadata: *item.Metadata, binding: binding, kind: item.Source}
-	resolved := session.Resolve(source, session.Policies{})
-	resolved.User = session.User{ID: service.user.ID, Name: service.user.Name}
+	resolved := reviewsession.Resolve(source, reviewsession.Policies{})
+	resolved.User = reviewsession.User{ID: service.user.ID, Name: service.user.Name}
 	resolved.ContextID = binding.ContextID
 	resolved.LocationID = binding.LocationID
 	resolved.RepositoryID = binding.RepositoryID

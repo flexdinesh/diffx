@@ -15,12 +15,12 @@ import (
 	"github.com/flexdinesh/diffx/internal/processmetrics"
 	"github.com/flexdinesh/diffx/internal/review"
 	"github.com/flexdinesh/diffx/internal/reviewservice"
-	"github.com/flexdinesh/diffx/internal/session"
+	"github.com/flexdinesh/diffx/internal/reviewsession"
 	contract "github.com/flexdinesh/diffx/packages/api"
 )
 
 type Handler struct {
-	session session.Session
+	session reviewsession.Session
 	review  *reviewservice.Service
 	assets  fs.FS
 	metrics *processmetrics.Collector
@@ -118,7 +118,7 @@ func (handler *Handler) api(response http.ResponseWriter, request *http.Request)
 		return true, handler.getFile(response, request, route)
 	}
 	if (commentRoute(pathname) || agentReviewRoute(pathname)) && !handler.session.Capabilities.Review.Comments.Enabled() {
-		return true, session.NotEnabled(session.ReviewComments)
+		return true, reviewsession.NotEnabled(reviewsession.ReviewComments)
 	}
 	if pathname == "/api/review/review/comments" && request.Method == http.MethodGet {
 		includeResolved, err := booleanQuery(request, "includeResolved")
@@ -311,7 +311,7 @@ func (handler *Handler) requestScope(request *http.Request) (review.DiffMode, er
 		return "", review.Error(400, "Invalid diff scope")
 	}
 	if !handler.session.Capabilities.Diff.Scopes.Allows(mode) {
-		return "", session.NotEnabled(session.DiffScopes)
+		return "", reviewsession.NotEnabled(reviewsession.DiffScopes)
 	}
 	return mode, nil
 }
@@ -321,7 +321,7 @@ func (handler *Handler) getFile(response http.ResponseWriter, request *http.Requ
 		return review.Error(404, "File preview not found")
 	}
 	if route.resource == "contents" && !handler.session.Capabilities.Files.Contents.Enabled() {
-		return session.NotEnabled(session.FilesContents)
+		return reviewsession.NotEnabled(reviewsession.FilesContents)
 	}
 	mode, err := handler.requestScope(request)
 	if err != nil {
@@ -384,7 +384,7 @@ func (handler *Handler) exportComments(response http.ResponseWriter, request *ht
 			return review.Error(400, "Invalid diff scope")
 		}
 		if !handler.session.Capabilities.Diff.Scopes.Allows(parsed) {
-			return session.NotEnabled(session.DiffScopes)
+			return reviewsession.NotEnabled(reviewsession.DiffScopes)
 		}
 	}
 	if query.Has("revision") != query.Has("scope") {
@@ -476,7 +476,7 @@ func (handler *Handler) problem(response http.ResponseWriter, err error) {
 	// Unclassified errors can carry storage or filesystem details; log them only.
 	body := map[string]any{"type": "about:blank", "title": "Request Failed", "status": status, "detail": "Server could not process request"}
 	var requestError *review.RequestError
-	var capabilityError *session.CapabilityError
+	var capabilityError *reviewsession.CapabilityError
 	classified := errors.As(err, &requestError)
 	classified = errors.As(err, &capabilityError) || classified
 	if classified {

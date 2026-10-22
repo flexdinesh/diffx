@@ -1,4 +1,4 @@
-package daemon
+package localserver
 
 import (
 	"golang.org/x/sys/windows"

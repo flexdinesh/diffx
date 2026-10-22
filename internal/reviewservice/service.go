@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/flexdinesh/diffx/internal/review"
-	"github.com/flexdinesh/diffx/internal/session"
+	"github.com/flexdinesh/diffx/internal/reviewsession"
 )
 
 var ErrCommentNotFound = errors.New("review comment not found")
@@ -41,11 +41,11 @@ type Resolution struct {
 }
 
 type Service struct {
-	session session.Session
+	session reviewsession.Session
 	store   MutationStore
 }
 
-func New(active session.Session, store MutationStore) *Service {
+func New(active reviewsession.Session, store MutationStore) *Service {
 	service := &Service{session: active, store: store}
 	return service
 }
@@ -149,7 +149,7 @@ func (service *Service) ResolveComment(ctx context.Context, commentID string) (R
 
 func (service *Service) requireComments() error {
 	if !service.session.Capabilities.Review.Comments.Enabled() {
-		return session.NotEnabled(session.ReviewComments)
+		return reviewsession.NotEnabled(reviewsession.ReviewComments)
 	}
 	return nil
 }

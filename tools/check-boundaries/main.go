@@ -19,44 +19,44 @@ const modulePrefix = "github.com/flexdinesh/diffx/"
 var allowed = map[string][]string{
 	"cmd/diffx": {
 		"internal/browser", "internal/collector", "internal/config", "internal/contextservice",
-		"internal/daemon", "internal/diffsource", "internal/hooks", "internal/ingestion",
+		"internal/diffsource", "internal/hooks", "internal/ingestion", "internal/localserver",
 		"internal/review", "internal/reviewstore", "internal/submission", "internal/version",
 	},
 	"cmd/diffx-server":        {"internal/config", "internal/identityservice", "internal/remoteserver", "internal/reviewstore", "internal/version"},
 	"internal/browser":        {},
 	"internal/collector":      {"internal/diffsource", "internal/ingestion", "internal/review"},
 	"internal/config":         {"internal/processlock"},
-	"internal/contextservice": {"internal/review", "internal/reviewdata", "internal/session", "internal/ingestion"},
+	"internal/contextservice": {"internal/review", "internal/reviewdata", "internal/reviewsession", "internal/ingestion"},
 	"internal/controlapi":     {"internal/config", "internal/review"},
-	"internal/daemon": {
-		"internal/config", "internal/contextservice", "internal/controlapi", "internal/ingestion", "internal/processlock",
-		"internal/reviewstore", "internal/serverapp", "internal/version", "internal/webui",
-	},
-	"internal/diffsource": {"internal/processlock", "internal/review"},
-	"internal/hooks":      {"internal/ingestion", "internal/processlock", "internal/submission"},
+	"internal/diffsource":     {"internal/processlock", "internal/review"},
+	"internal/hooks":          {"internal/ingestion", "internal/processlock", "internal/submission"},
 	"internal/httpapi": {
-		"internal/review", "internal/reviewdata", "internal/session", "internal/contextservice",
+		"internal/review", "internal/reviewdata", "internal/reviewsession", "internal/contextservice",
 		"internal/reviewservice", "internal/ingestion", "internal/processmetrics", "packages/api",
 	},
 	"internal/ingestion":       {"internal/review"},
 	"internal/identityservice": {},
 	"internal/ingestionqueue":  {"internal/review", "internal/ingestion"},
-	"internal/mcpapi":          {"internal/review", "internal/contextservice", "internal/reviewservice", "internal/ingestion"},
-	"internal/processlock":     {},
-	"internal/processmetrics":  {},
+	"internal/localserver": {
+		"internal/config", "internal/contextservice", "internal/controlapi", "internal/ingestion", "internal/processlock",
+		"internal/reviewstore", "internal/serverapp", "internal/version", "internal/webui",
+	},
+	"internal/mcpapi":         {"internal/review", "internal/contextservice", "internal/reviewservice", "internal/ingestion"},
+	"internal/processlock":    {},
+	"internal/processmetrics": {},
 	"internal/remoteserver": {
 		"internal/contextservice", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/review",
 		"internal/reviewstore", "internal/serverapp", "internal/webui", "packages/api",
 	},
 	"internal/review":        {},
 	"internal/reviewdata":    {"internal/review", "internal/ingestion"},
-	"internal/reviewservice": {"internal/review", "internal/reviewdata", "internal/session", "internal/contextservice", "internal/ingestion"},
+	"internal/reviewservice": {"internal/review", "internal/reviewdata", "internal/reviewsession", "internal/contextservice", "internal/ingestion"},
+	"internal/reviewsession": {"internal/review"},
 	"internal/reviewstore":   {"internal/identityservice", "internal/review", "internal/reviewdata", "internal/ingestion", "internal/ingestionqueue", "internal/processlock"},
 	"internal/serverapp": {
 		"internal/contextservice", "internal/httpapi", "internal/ingestion", "internal/ingestionqueue",
 		"internal/mcpapi", "internal/review", "internal/reviewdata", "internal/reviewservice", "internal/version",
 	},
-	"internal/session":    {"internal/review"},
 	"internal/submission": {"internal/ingestion", "internal/processlock"},
 	// Test helpers are classified, but production packages cannot import them.
 	"internal/testsupport": {
@@ -81,7 +81,7 @@ func checkPackage(pkg listedPackage) []string {
 	var violations []string
 	for _, dependency := range pkg.Imports {
 		if dependency == "os/exec" && !slices.Contains([]string{
-			"internal/browser", "internal/daemon", "internal/diffsource", "internal/hooks",
+			"internal/browser", "internal/diffsource", "internal/hooks", "internal/localserver",
 		}, name) {
 			violations = append(violations, fmt.Sprintf("%s must not execute processes", name))
 		}

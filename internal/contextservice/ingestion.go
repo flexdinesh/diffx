@@ -7,7 +7,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/review"
 	"github.com/flexdinesh/diffx/internal/reviewdata"
-	"github.com/flexdinesh/diffx/internal/session"
+	"github.com/flexdinesh/diffx/internal/reviewsession"
 )
 
 func (service *Service) Ingest(ctx context.Context, input ingestion.Request) (Submission, error) {
@@ -78,8 +78,8 @@ func (source *storedSource) Contents(ctx context.Context, mode review.DiffMode, 
 	return *preview.Contents, nil
 }
 
-func storedCapabilities(scopes []review.DiffMode, contents bool) session.Capabilities {
-	return session.ResolveCapabilities(storedSupport(scopes, contents), session.Policies{})
+func storedCapabilities(scopes []review.DiffMode, contents bool) reviewsession.Capabilities {
+	return reviewsession.ResolveCapabilities(storedSupport(scopes, contents), reviewsession.Policies{})
 }
 
 func storedSupport(scopes []review.DiffMode, contents bool) review.Support {

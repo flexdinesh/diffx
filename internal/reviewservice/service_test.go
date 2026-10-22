@@ -8,7 +8,7 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/diffsource"
 	"github.com/flexdinesh/diffx/internal/review"
-	"github.com/flexdinesh/diffx/internal/session"
+	"github.com/flexdinesh/diffx/internal/reviewsession"
 )
 
 type sourceStub struct {
@@ -95,7 +95,7 @@ func TestListCommentsFiltersAndEnrichesInStoredOrder(t *testing.T) {
 		comment("resolved", review.DiffStaged, "anchored.go", "same", "resolved"),
 		comment("unknown", review.DiffAll, "unknown.go", "unknown", "open"),
 	}}
-	service := New(boundSession(source, session.Policies{}), store)
+	service := New(boundSession(source, reviewsession.Policies{}), store)
 
 	got, err := service.ListComments(context.Background(), false)
 	if err != nil {
@@ -135,7 +135,7 @@ func TestListCommentsReturnsNonNilEmptySliceWithoutSnapshots(t *testing.T) {
 		support:   diffsource.Support{Scopes: []review.DiffMode{review.DiffAll}},
 		snapshots: make(map[review.DiffMode]review.RepositoryDiff),
 	}
-	service := New(boundSession(source, session.Policies{}), &storeStub{})
+	service := New(boundSession(source, reviewsession.Policies{}), &storeStub{})
 
 	got, err := service.ListComments(context.Background(), false)
 	if err != nil {
@@ -157,7 +157,7 @@ func TestListCommentsPropagatesSnapshotFailure(t *testing.T) {
 		errors:    map[review.DiffMode]error{review.DiffAll: want},
 	}
 	store := &storeStub{comments: []review.ReviewComment{comment("id", review.DiffAll, "file.go", "old", "open")}}
-	service := New(boundSession(source, session.Policies{}), store)
+	service := New(boundSession(source, reviewsession.Policies{}), store)
 
 	if _, err := service.ListComments(context.Background(), false); !errors.Is(err, want) {
 		t.Fatalf("error = %v", err)
@@ -170,7 +170,7 @@ func TestListCommentsPropagatesCancellation(t *testing.T) {
 		snapshots: make(map[review.DiffMode]review.RepositoryDiff),
 	}
 	store := &storeStub{comments: []review.ReviewComment{comment("id", review.DiffAll, "file.go", "old", "open")}}
-	service := New(boundSession(source, session.Policies{}), store)
+	service := New(boundSession(source, reviewsession.Policies{}), store)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -182,7 +182,7 @@ func TestListCommentsPropagatesCancellation(t *testing.T) {
 func TestResolveCommentIsIdempotentAndAllowsStaleIdentity(t *testing.T) {
 	source := &sourceStub{support: diffsource.Support{Scopes: []review.DiffMode{review.DiffAll}}}
 	store := &storeStub{comments: []review.ReviewComment{comment("stale-id", review.DiffAll, "gone.go", "old", "open")}}
-	service := New(boundSession(source, session.Policies{}), store)
+	service := New(boundSession(source, reviewsession.Policies{}), store)
 
 	got, err := service.ResolveComment(t.Context(), "stale-id")
 	if err != nil {
@@ -209,7 +209,7 @@ func TestResolveCommentIsIdempotentAndAllowsStaleIdentity(t *testing.T) {
 
 func TestResolveCommentReturnsTypedNotFoundError(t *testing.T) {
 	source := &sourceStub{support: diffsource.Support{Scopes: []review.DiffMode{review.DiffAll}}}
-	service := New(boundSession(source, session.Policies{}), &storeStub{})
+	service := New(boundSession(source, reviewsession.Policies{}), &storeStub{})
 
 	_, err := service.ResolveComment(t.Context(), "missing")
 	if !errors.Is(err, ErrCommentNotFound) {
@@ -228,7 +228,7 @@ func TestResolveCommentPropagatesStoreFailure(t *testing.T) {
 		comments: []review.ReviewComment{comment("id", review.DiffAll, "file.go", "old", "open")},
 		putError: want,
 	}
-	service := New(boundSession(source, session.Policies{}), store)
+	service := New(boundSession(source, reviewsession.Policies{}), store)
 
 	if _, err := service.ResolveComment(t.Context(), "id"); !errors.Is(err, want) {
 		t.Fatalf("error = %v", err)
@@ -238,7 +238,7 @@ func TestResolveCommentPropagatesStoreFailure(t *testing.T) {
 func TestMethodsRejectDisabledCommentCapability(t *testing.T) {
 	source := &sourceStub{support: diffsource.Support{Scopes: []review.DiffMode{review.DiffAll}}}
 	store := &storeStub{comments: []review.ReviewComment{comment("id", review.DiffAll, "file.go", "old", "open")}}
-	service := New(boundSession(source, session.Policies{Comments: session.DisablePolicy}), store)
+	service := New(boundSession(source, reviewsession.Policies{Comments: reviewsession.DisablePolicy}), store)
 
 	if _, err := service.ListComments(context.Background(), false); !capabilityError(err) {
 		t.Fatalf("list error = %v", err)
@@ -252,8 +252,8 @@ func TestMethodsRejectDisabledCommentCapability(t *testing.T) {
 }
 
 func capabilityError(err error) bool {
-	var capability *session.CapabilityError
-	return errors.As(err, &capability) && capability.Capability == session.ReviewComments
+	var capability *reviewsession.CapabilityError
+	return errors.As(err, &capability) && capability.Capability == reviewsession.ReviewComments
 }
 
 func comment(id string, scope review.DiffMode, path, fingerprint, status string) review.ReviewComment {
@@ -284,7 +284,7 @@ func TestUpdateCommentPreservesAnchorAndValidatesBeforeWriting(t *testing.T) {
 	source := &sourceStub{support: diffsource.Support{Scopes: []review.DiffMode{review.DiffAll}}}
 	original := comment("id", review.DiffAll, "file.go", "fingerprint", "open")
 	store := &storeStub{comments: []review.ReviewComment{original}}
-	service := New(boundSession(source, session.Policies{}), store)
+	service := New(boundSession(source, reviewsession.Policies{}), store)
 	body, status := "  revised concern  ", "resolved"
 	got, err := service.UpdateComment(context.Background(), "id", UpdateCommentInput{Body: &body, Status: &status})
 	if err != nil {
@@ -302,7 +302,7 @@ func TestUpdateCommentPreservesAnchorAndValidatesBeforeWriting(t *testing.T) {
 			t.Fatalf("accepted invalid update: %#v", input)
 		}
 	}
-	disabled := New(boundSession(source, session.Policies{Comments: session.DisablePolicy}), store)
+	disabled := New(boundSession(source, reviewsession.Policies{Comments: reviewsession.DisablePolicy}), store)
 	if _, err := disabled.UpdateComment(context.Background(), "id", UpdateCommentInput{Body: &body}); !capabilityError(err) {
 		t.Fatalf("disabled update: %v", err)
 	}
@@ -311,8 +311,8 @@ func TestUpdateCommentPreservesAnchorAndValidatesBeforeWriting(t *testing.T) {
 	}
 }
 
-func boundSession(source review.Source, policies session.Policies) session.Session {
-	active := session.Resolve(source, policies)
+func boundSession(source review.Source, policies reviewsession.Policies) reviewsession.Session {
+	active := reviewsession.Resolve(source, policies)
 	active.DiffIDs = map[review.DiffMode]string{review.DiffAll: "diff-all", review.DiffStaged: "diff-staged", review.DiffUnstaged: "diff-unstaged"}
 	return active
 }
@@ -359,7 +359,7 @@ func TestListCommentsPlacesStreamCommentsInViewedSnapshot(t *testing.T) {
 		earlierComment("changed", "file.go", "+ rewritten", 2),
 		earlierComment("renamed", "old.go", "+ before", 1),
 	}}
-	service := New(boundSession(streamSource(), session.Policies{}), store)
+	service := New(boundSession(streamSource(), reviewsession.Policies{}), store)
 	got, err := service.ListComments(context.Background(), false)
 	if err != nil {
 		t.Fatal(err)
@@ -389,7 +389,7 @@ func TestCarryCommentKeepsOutdatedCommentAtFileLevel(t *testing.T) {
 		earlierComment("gone", "gone.go", "+ gone", 1),
 		resolved,
 	}}
-	service := New(boundSession(streamSource(), session.Policies{}), store)
+	service := New(boundSession(streamSource(), reviewsession.Policies{}), store)
 	for id, status := range map[string]int{"moved": 409, "gone": 409, "resolved": 409, "missing": 404} {
 		var request *review.RequestError
 		if _, err := service.CarryComment(context.Background(), id); !errors.As(err, &request) || request.Status != status {
@@ -416,7 +416,7 @@ func TestDeleteOutdatedCommentsUsesPlacement(t *testing.T) {
 		earlierComment("moved", "file.go", "+ kept", 2),
 		earlierComment("changed", "file.go", "+ rewritten", 2),
 	}}
-	service := New(boundSession(streamSource(), session.Policies{}), store)
+	service := New(boundSession(streamSource(), reviewsession.Policies{}), store)
 	if _, err := service.DeleteComments(context.Background(), "stale"); err == nil {
 		t.Fatal("retired stale selection accepted")
 	}
@@ -437,7 +437,7 @@ func (store *deletedDuringWriteStub) ReplaceComment(context.Context, string, rev
 func TestCommentEditsReportNotFoundWhenDeletedConcurrently(t *testing.T) {
 	source := &sourceStub{support: diffsource.Support{Scopes: []review.DiffMode{review.DiffAll}}}
 	store := &deletedDuringWriteStub{storeStub{comments: []review.ReviewComment{comment("id", review.DiffAll, "file.go", "old", "open")}}}
-	service := New(boundSession(source, session.Policies{}), store)
+	service := New(boundSession(source, reviewsession.Policies{}), store)
 
 	if _, err := service.ResolveComment(t.Context(), "id"); !errors.Is(err, ErrCommentNotFound) {
 		t.Fatalf("resolve error = %v", err)
@@ -456,7 +456,7 @@ func TestCommentEditsReportNotFoundWhenDeletedConcurrently(t *testing.T) {
 func TestVersionRejectsDiffsOutsideTheContextBeforeStorage(t *testing.T) {
 	source := &sourceStub{support: diffsource.Support{Scopes: []review.DiffMode{review.DiffAll}}}
 	// The embedded nil MutationStore panics if the store is reached.
-	service := New(boundSession(source, session.Policies{}), &storeStub{})
+	service := New(boundSession(source, reviewsession.Policies{}), &storeStub{})
 	_, err := service.Version(t.Context(), "foreign", "version")
 	var requestError *review.RequestError
 	if !errors.As(err, &requestError) || requestError.Status != 404 {

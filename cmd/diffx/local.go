@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/collector"
-	"github.com/flexdinesh/diffx/internal/daemon"
 	"github.com/flexdinesh/diffx/internal/ingestion"
+	"github.com/flexdinesh/diffx/internal/localserver"
 )
 
 func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, stderr io.Writer) error {
@@ -43,21 +43,21 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 	}
 	started := time.Now()
 	label := "Piped diff"
-	var selected daemon.Input
+	var selected localserver.Input
 	if input.Kind == "worktree" {
 		label = strings.Join(input.Paths, ", ")
-		collect := func(ctx context.Context, publish func(ingestion.Request) error) ([]daemon.CollectionFailure, error) {
+		collect := func(ctx context.Context, publish func(ingestion.Request) error) ([]localserver.CollectionFailure, error) {
 			return collectWorkspaces(ctx, values, input.Paths, stderr, publish)
 		}
-		selected = daemon.Input{Collect: collect}
+		selected = localserver.Input{Collect: collect}
 	} else {
 		request, err := collectInitialInput(ctx, values, input)
 		if err != nil {
 			return err
 		}
-		selected = daemon.Input{Collection: daemon.Collection{Requests: []ingestion.Request{request}}}
+		selected = localserver.Input{Collection: localserver.Collection{Requests: []ingestion.Request{request}}}
 	}
-	return daemon.RunForeground(ctx, settings, selected, func(status daemon.Status) (bool, error) {
+	return localserver.RunForeground(ctx, settings, selected, func(status localserver.Status) (bool, error) {
 		if values.replace {
 			return true, nil
 		}
@@ -83,7 +83,7 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 			}
 			return strings.EqualFold(strings.TrimSpace(reply.answer), "y") || strings.EqualFold(strings.TrimSpace(reply.answer), "yes"), nil
 		}
-	}, func(status daemon.Status, published daemon.Published) {
+	}, func(status localserver.Status, published localserver.Published) {
 		if input.Kind == "worktree" {
 			address := status.BrowserURL + "/"
 			writeStartup(stdout, loadedInput{mode: "git", directory: label, collecting: true, processed: time.Since(started), mcpURL: status.BrowserURL + "/mcp"}, address)
@@ -108,7 +108,7 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 
 // collectWorkspaces collects every checkout discovered under the selected
 // paths. Discovery diagnostics go to stderr; failures stay in the collection.
-func collectWorkspaces(ctx context.Context, values options, paths []string, stderr io.Writer, publish func(ingestion.Request) error) ([]daemon.CollectionFailure, error) {
+func collectWorkspaces(ctx context.Context, values options, paths []string, stderr io.Writer, publish func(ingestion.Request) error) ([]localserver.CollectionFailure, error) {
 	settings, err := collectionOptions(values)
 	if err != nil {
 		return nil, err
@@ -120,9 +120,9 @@ func collectWorkspaces(ctx context.Context, values options, paths []string, stde
 	if err != nil {
 		return nil, err
 	}
-	failures := make([]daemon.CollectionFailure, 0, len(batch.Failures))
+	failures := make([]localserver.CollectionFailure, 0, len(batch.Failures))
 	for _, failure := range batch.Failures {
-		failures = append(failures, daemon.CollectionFailure{Path: failure.Path, Detail: failure.Detail})
+		failures = append(failures, localserver.CollectionFailure{Path: failure.Path, Detail: failure.Detail})
 	}
 	return failures, nil
 }
