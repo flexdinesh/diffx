@@ -93,7 +93,7 @@ interface Props {
   files: ChangedFile[];
   selected: string;
   closed: Set<string>;
-  filtering: boolean;
+  emptyMessage: string;
   isReviewed: (file: ChangedFile) => boolean;
   commentCounts: Map<string, CommentCount>;
   stagingMetadata: boolean;
@@ -105,7 +105,7 @@ export function FileNavigation({
   files,
   selected,
   closed,
-  filtering,
+  emptyMessage,
   isReviewed,
   commentCounts,
   stagingMetadata,
@@ -238,9 +238,7 @@ export function FileNavigation({
       {files.length ? (
         renderNodes(buildFileTree(files), 0)
       ) : (
-        <p className="tree-folder">
-          {filtering ? "No matching files" : "No changed files"}
-        </p>
+        <p className="tree-folder">{emptyMessage}</p>
       )}
     </nav>
   );

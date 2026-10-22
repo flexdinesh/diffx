@@ -1,5 +1,10 @@
 import type { CodeViewHandle } from "@pierre/diffs/react";
-import type { DiffMode, RepositoryDiff, ReviewComment } from "@diffx/shared";
+import type {
+  ChangedFile,
+  DiffMode,
+  RepositoryDiff,
+  ReviewComment,
+} from "@diffx/shared";
 import {
   useCallback,
   useEffect,
@@ -10,7 +15,12 @@ import {
   type SetStateAction,
 } from "react";
 import { ancestorPaths, filesInTreeOrder } from "./file-tree.ts";
-import { saveSessionPaths, sessionPaths } from "./preferences.ts";
+import {
+  saveSessionFlag,
+  saveSessionPaths,
+  sessionFlag,
+  sessionPaths,
+} from "./preferences.ts";
 import {
   commentInFile,
   placedInline,
@@ -47,6 +57,7 @@ interface NavigationOptions {
   refresh: () => void;
   changeMode: (mode: DiffMode) => void;
   setCollapsed: Dispatch<SetStateAction<Set<string>>>;
+  isReviewed: (file: ChangedFile) => boolean;
   setFeedback: (message: string) => void;
   showSidebar: () => void;
   closeMobile: () => void;
@@ -62,6 +73,7 @@ export function useFileNavigation({
   refresh,
   changeMode,
   setCollapsed,
+  isReviewed,
   setFeedback,
   showSidebar,
   closeMobile,
@@ -86,12 +98,19 @@ export function useFileNavigation({
     saveSessionPaths(closedKey, closed);
   }, [closedKey, closed]);
   const [filteredClosed, setFilteredClosed] = useState(new Set<string>());
+  const hideReviewedKey = `hide-reviewed:${stream}`;
+  const [hideReviewed, setHideReviewed] = useState(() =>
+    sessionFlag(hideReviewedKey),
+  );
+  useEffect(() => {
+    saveSessionFlag(hideReviewedKey, hideReviewed);
+  }, [hideReviewedKey, hideReviewed]);
   const [pendingComment, setPendingComment] = useState<ReviewComment | null>(
     null,
   );
   const viewer = useRef<CodeViewHandle<CommentAnnotation, undefined>>(null);
   const search = useRef<HTMLInputElement>(null);
-  const files = useMemo(
+  const matchingFiles = useMemo(
     () =>
       filesInTreeOrder(
         repository?.files.filter((file) =>
@@ -100,9 +119,26 @@ export function useFileNavigation({
       ),
     [repository, filter],
   );
-  const activePath = files.some((file) => file.path === selected)
-    ? selected
-    : (files[0]?.path ?? "");
+  // The tree and diff list share one visible set.
+  const files = useMemo(
+    () =>
+      hideReviewed
+        ? matchingFiles.filter((file) => !isReviewed(file))
+        : matchingFiles,
+    [matchingFiles, hideReviewed, isReviewed],
+  );
+  // A selected file hidden as reviewed hands off to its next visible neighbor.
+  const activePath = useMemo(() => {
+    if (files.some((file) => file.path === selected)) return selected;
+    const index = matchingFiles.findIndex((file) => file.path === selected);
+    const visible = (file: ChangedFile) => files.includes(file);
+    const neighbor =
+      index < 0
+        ? undefined
+        : (matchingFiles.slice(index + 1).find(visible) ??
+          matchingFiles.slice(0, index).findLast(visible));
+    return (neighbor ?? files[0])?.path ?? "";
+  }, [files, matchingFiles, selected]);
   const selectVisibleFile = useCallback((path: string) => {
     setSelected(path);
     const expandParents = (previous: Set<string>) => {
@@ -122,6 +158,25 @@ export function useFileNavigation({
         ?.scrollIntoView({ block: "nearest" });
     });
   }, []);
+  // Hiding the file in view continues the review at its neighbor.
+  useEffect(() => {
+    if (
+      !hideReviewed ||
+      !activePath ||
+      activePath === selected ||
+      !matchingFiles.some((file) => file.path === selected)
+    )
+      return;
+    selectVisibleFile(activePath);
+    requestAnimationFrame(() => {
+      viewer.current?.scrollTo({
+        type: "item",
+        id: activePath,
+        align: "start",
+        behavior: "instant",
+      });
+    });
+  }, [hideReviewed, activePath, selected, matchingFiles, selectVisibleFile]);
   const revealFile = useCallback(
     (path: string) => {
       selectVisibleFile(path);
@@ -183,6 +238,10 @@ export function useFileNavigation({
         setFilter("");
         return;
       }
+      if (!files.some((file) => file.path === target.path)) {
+        setHideReviewed(false);
+        return;
+      }
       revealFile(target.path);
       const frame = requestAnimationFrame(() => {
         if (!target.range) {
@@ -220,7 +279,7 @@ export function useFileNavigation({
     }
     setTab("comments");
     setPendingComment(null);
-  }, [pendingComment, busy, repository, filter, revealFile]);
+  }, [pendingComment, busy, repository, filter, files, revealFile]);
 
   const showOutdatedComments = useCallback(() => {
     setTab("comments");
@@ -287,6 +346,9 @@ export function useFileNavigation({
       setTab,
       filter,
       setFilter,
+      hideReviewed,
+      setHideReviewed,
+      matchingFiles,
       files,
       activePath,
       navigationTarget,
@@ -305,6 +367,8 @@ export function useFileNavigation({
     [
       tab,
       filter,
+      hideReviewed,
+      matchingFiles,
       files,
       activePath,
       navigationTarget,

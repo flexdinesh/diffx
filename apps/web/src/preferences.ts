@@ -56,6 +56,23 @@ export function sessionPaths(key: string): Set<string> {
   }
 }
 
+export function sessionFlag(key: string): boolean {
+  try {
+    return sessionStorage.getItem(key) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function saveSessionFlag(key: string, value: boolean) {
+  try {
+    if (value) sessionStorage.setItem(key, "true");
+    else sessionStorage.removeItem(key);
+  } catch {
+    // Storage is optional.
+  }
+}
+
 export function saveSessionPaths(key: string, paths: ReadonlySet<string>) {
   try {
     if (paths.size) sessionStorage.setItem(key, JSON.stringify([...paths]));

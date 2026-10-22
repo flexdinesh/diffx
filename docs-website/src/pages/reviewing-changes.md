@@ -22,7 +22,8 @@ Browse all reviews (Ctrl/Cmd+K) to reach older or empty snapshots. Select a
 repository, then an observation. Search/filter stored metadata to find
 a branch, worktree, host, source or agent run. Switch between its collected all,
 staged and unstaged scopes. Use the file tree to navigate, mark files as reviewed
-and comment on lines. **Copy unresolved** and **Copy all** export comments as
+and comment on lines. **Hide reviewed files**, beside the file filter, removes
+reviewed files from both the tree and the diff for that tab. **Copy unresolved** and **Copy all** export comments as
 agent-ready XML.
 
 Observations are immutable. New content creates another observation; matching
