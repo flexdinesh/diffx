@@ -1,8 +1,5 @@
 {
   "extends": "../tsconfig.json",
-  "compilerOptions": {
-    "paths": { "@diffx/shared": ["../packages/shared/src/index.ts"] }
-  },
   "include": [
     "conformance/*.ts",
     "contracts/*.ts",

@@ -1,4 +1,4 @@
-import type { RepositoryDiff } from "@diffx/shared";
+import type { ApiRepositoryDiff as RepositoryDiff } from "@diffx/api";
 import {
   CheckCircle2Icon,
   ChevronDownIcon,

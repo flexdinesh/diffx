@@ -1,5 +1,10 @@
-import { api, errorDetail } from "@diffx/api";
-import type { ChangedFile, DiffMode, RepositoryDiff } from "@diffx/shared";
+import {
+  api,
+  errorDetail,
+  type ApiChangedFile as ChangedFile,
+  type ApiRepositoryDiff as RepositoryDiff,
+} from "@diffx/api";
+import type { DiffMode } from "./diff-mode.ts";
 import {
   useCallback,
   useEffect,

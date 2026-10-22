@@ -12,8 +12,11 @@ import {
   useWorkerPool,
 } from "@pierre/diffs/react";
 import { MessageSquareIcon } from "lucide-react";
-import { api, errorDetail } from "@diffx/api";
-import type { RepositoryDiff } from "@diffx/shared";
+import {
+  api,
+  errorDetail,
+  type ApiRepositoryDiff as RepositoryDiff,
+} from "@diffx/api";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {

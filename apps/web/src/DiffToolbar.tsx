@@ -1,4 +1,4 @@
-import { isDiffMode } from "@diffx/shared";
+import { isDiffMode } from "./diff-mode.ts";
 import {
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,

@@ -1,7 +1,7 @@
 import { type Page, type Route } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { createApiClient, type ApiRepositoryDiff } from "@diffx/api";
-import type { ReviewComment } from "@diffx/shared";
+import type { ReviewComment } from "../../src/review-comments.ts";
 
 declare global {
   interface Window {

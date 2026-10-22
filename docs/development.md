@@ -353,7 +353,9 @@ and `observation.head`; reading them never resolves current Git refs.
 `DiffWorkspace.tsx` owns Pierre rendering,
 versions, worker options, and measured geometry. `use-review.ts` and
 `use-reviewed-files.ts` own their REST requests and recovery; reads cannot settle
-across writes or owner disposal. Keep section-only state within its component.
+across writes or owner disposal. `review-comments.ts` owns comment validation and
+agent-facing formatting; `test/contracts/comments.json` holds examples checked
+by both it and Go. Keep section-only state within its component.
 Scrolling the diff selects the top visible file in navigation; selection advances
 only after that file’s entire diff leaves the viewport. Scroll-driven selection
 reveals its tree row without expanding the diff or navigating again.

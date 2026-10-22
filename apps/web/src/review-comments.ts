@@ -3,7 +3,7 @@ import type {
   FileDiffMetadata,
   SelectedLineRange,
 } from "@pierre/diffs";
-import type { DiffMode } from "./index.ts";
+import type { DiffMode } from "./diff-mode.ts";
 
 import type { ApiReviewComment, ApiReviewMark } from "@diffx/api";
 export type ReviewComment = ApiReviewComment;
