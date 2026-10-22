@@ -1,8 +1,9 @@
 import { useMemo } from "react";
-import { XIcon } from "lucide-react";
+import { EyeOffIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Toggle } from "@/components/ui/toggle";
 import {
   togglePath,
   useDiffSource,
@@ -26,6 +27,9 @@ export function FileExplorerNav() {
     setTab,
     filter,
     setFilter,
+    hideReviewed,
+    setHideReviewed,
+    matchingFiles,
     files,
     activePath,
     closed,
@@ -162,27 +166,39 @@ export function FileExplorerNav() {
           </Button>
         </div>
         <TabsContent value="files" id="file-panel">
-          <div className="search-box">
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <circle cx="7" cy="7" r="4.5" />
-              <path d="m10.5 10.5 3 3" />
-            </svg>
-            <Input
-              ref={search}
-              id="search"
-              type="search"
-              placeholder="Filter files…"
-              aria-label="Filter files"
-              value={filter}
-              onChange={(event) => {
-                setFilter(event.target.value);
-                setFilteredClosed(new Set());
-              }}
-            />
-            <kbd>Alt+/</kbd>
+          <div className="file-filter-row">
+            <div className="search-box">
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="7" cy="7" r="4.5" />
+                <path d="m10.5 10.5 3 3" />
+              </svg>
+              <Input
+                ref={search}
+                id="search"
+                type="search"
+                placeholder="Filter files…"
+                aria-label="Filter files"
+                value={filter}
+                onChange={(event) => {
+                  setFilter(event.target.value);
+                  setFilteredClosed(new Set());
+                }}
+              />
+              <kbd>Alt+/</kbd>
+            </div>
+            <Toggle
+              id="hide-reviewed"
+              className="hide-reviewed-toggle"
+              aria-label="Hide reviewed files"
+              title="Hide reviewed files"
+              pressed={hideReviewed}
+              onPressedChange={setHideReviewed}
+            >
+              <EyeOffIcon aria-hidden="true" />
+            </Toggle>
           </div>
           <p className="visually-hidden" role="status" aria-live="polite">
-            {filter
+            {filter || hideReviewed
               ? `${files.length} of ${allFiles.length} changed files shown`
               : ""}
           </p>
@@ -190,7 +206,13 @@ export function FileExplorerNav() {
             files={files}
             selected={activePath}
             closed={filter ? filteredClosed : closed}
-            filtering={!!filter}
+            emptyMessage={
+              !allFiles.length
+                ? "No changed files"
+                : matchingFiles.length
+                  ? "All files reviewed"
+                  : "No matching files"
+            }
             isReviewed={isReviewed}
             commentCounts={commentCounts}
             stagingMetadata={stagingMetadataEnabled}

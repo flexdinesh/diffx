@@ -116,6 +116,7 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
     refresh,
     changeMode,
     setCollapsed,
+    isReviewed: reviewed.isReviewed,
     setFeedback: review.setFeedback,
     showSidebar,
     closeMobile,

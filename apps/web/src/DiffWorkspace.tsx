@@ -158,6 +158,8 @@ export function DiffWorkspace() {
     selectVisibleFile,
     filter,
     setFilter,
+    matchingFiles,
+    setHideReviewed,
     navigationTarget,
     commentNavigationTarget,
     navigateComment,
@@ -629,24 +631,32 @@ export function DiffWorkspace() {
   );
 
   const loadingChanges = !repository && !diff.notice;
+  // Matching files with none visible were all hidden as reviewed.
+  const allReviewedHidden = matchingFiles.length > 0;
   const emptyTitle = !repository
     ? "Cannot load changes"
-    : filter
-      ? "No matching files"
-      : piped
-        ? "No file changes in this input"
-        : mode === "staged"
-          ? "Nothing staged"
-          : "No changes in this snapshot";
+    : allReviewedHidden
+      ? filter
+        ? "All matching files reviewed"
+        : "All files reviewed"
+      : filter
+        ? "No matching files"
+        : piped
+          ? "No file changes in this input"
+          : mode === "staged"
+            ? "Nothing staged"
+            : "No changes in this snapshot";
   const emptyDescription = !repository
     ? "Check that the server is running, then refresh."
-    : filter
-      ? "Try a different filename or clear the filter."
-      : piped
-        ? "Run a command that emits a Git patch, then pipe it into diffx."
-        : mode === "staged"
-          ? "No staged changes were collected in this snapshot."
-          : "No changes in this snapshot. Collect another snapshot with diffx or diffx sync.";
+    : allReviewedHidden
+      ? "Reviewed files are hidden."
+      : filter
+        ? "Try a different filename or clear the filter."
+        : piped
+          ? "Run a command that emits a Git patch, then pipe it into diffx."
+          : mode === "staged"
+            ? "No staged changes were collected in this snapshot."
+            : "No changes in this snapshot. Collect another snapshot with diffx or diffx sync.";
   return (
     <main>
       <DiffToolbar />
@@ -809,14 +819,24 @@ export function DiffWorkspace() {
             <>
               <h2>{emptyTitle}</h2>
               <p>{emptyDescription}</p>
-              {!!filter && (
+              {allReviewedHidden ? (
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setFilter("")}
+                  onClick={() => setHideReviewed(false)}
                 >
-                  Clear filter
+                  Show reviewed files
                 </Button>
+              ) : (
+                !!filter && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setFilter("")}
+                  >
+                    Clear filter
+                  </Button>
+                )
               )}
             </>
           )}

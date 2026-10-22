@@ -822,6 +822,75 @@ test("reset reviewed clears file review marks and disables when empty", async ({
   await expect(reset).toBeDisabled();
 });
 
+test("hide reviewed files filters the tree and diff together", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 4_000 });
+  await page.goto("/");
+  await showDiff(page);
+
+  const hide = page.getByRole("button", { name: "Hide reviewed files" });
+  const rows = page.locator("#file-tree .file-row");
+  const headers = page.locator("#viewer diffs-container");
+  const status = page.locator("#file-panel [role=status]");
+  await expect(hide).toHaveAttribute("aria-pressed", "false");
+  await expect(rows).toHaveCount(12);
+  await expect(headers).toHaveCount(12);
+
+  await page
+    .getByRole("button", { name: "Mark config/diffx.json reviewed" })
+    .click();
+  await expect(page.locator("#review-count")).toHaveText("1 of 12 reviewed");
+  await hide.click();
+  await expect(hide).toHaveAttribute("aria-pressed", "true");
+  await expect(rows).toHaveCount(11);
+  await expect(headers).toHaveCount(11);
+  await expect(
+    page.locator('#file-tree [data-path="config/diffx.json"]'),
+  ).toHaveCount(0);
+  await expect(status).toHaveText("11 of 12 changed files shown");
+
+  // Marking the selected file hides it at once and selects its next neighbor.
+  await page.locator('#file-tree [data-path="docs/legacy.md"]').click();
+  await page
+    .getByRole("button", { name: "Mark docs/legacy.md reviewed" })
+    .click();
+  await expect(rows).toHaveCount(10);
+  await expect(headers).toHaveCount(10);
+  await expect(page.locator("#file-tree [aria-current=true]")).toHaveAttribute(
+    "data-path",
+    "scripts/release.sh",
+  );
+
+  // Text filtering composes with hidden reviewed files.
+  await page.getByRole("searchbox", { name: "Filter files" }).fill("docs");
+  await expect(rows).toHaveCount(0);
+  await expect(page.locator("#file-tree")).toHaveText("All files reviewed");
+  await expect(page.locator("#empty h2")).toHaveText(
+    "All matching files reviewed",
+  );
+  await page.getByRole("searchbox", { name: "Filter files" }).fill("");
+
+  await page.reload();
+  await showDiff(page);
+  await expect(hide).toHaveAttribute("aria-pressed", "true");
+  await expect(rows).toHaveCount(10);
+
+  const unreviewed = page.locator("#viewer .review-button[aria-pressed=false]");
+  for (let remaining = 10; remaining > 0; remaining -= 1) {
+    await unreviewed.first().click();
+    await expect(rows).toHaveCount(remaining - 1);
+  }
+  await expect(page.locator("#review-count")).toHaveText("12 of 12 reviewed");
+  await expect(rows).toHaveCount(0);
+  await expect(page.locator("#file-tree")).toHaveText("All files reviewed");
+  await expect(page.locator("#empty h2")).toHaveText("All files reviewed");
+  await page.getByRole("button", { name: "Show reviewed files" }).click();
+  await expect(hide).toHaveAttribute("aria-pressed", "false");
+  await expect(rows).toHaveCount(12);
+  await expect(headers).toHaveCount(12);
+});
+
 test("mobile keeps review progress visible beside the diff", async ({
   page,
 }) => {

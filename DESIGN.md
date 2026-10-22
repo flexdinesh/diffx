@@ -424,6 +424,12 @@ such detail into a token. New layout spacing must use the scale.
   each tint with Pierre's existing background instead of replacing it.
 - Navigation uses a quiet background, aligned text/icons, and a clear current
   item. Reviewed files retain readable text and a check; do not fade the entire row.
+- “Hide reviewed files” is an icon toggle beside the file filter, matching the
+  field's height and `--border-muted` boundary; pressed uses the accent toggle
+  state. `useFileNavigation` owns one visible file set for the tree, diff list
+  and Alt+J/K. Marking the file in view hides it at once and moves selection to
+  its next visible neighbor. Empty results say “All files reviewed” with a
+  “Show reviewed files” action; comment navigation to a hidden file shows them.
 - Navigating from the file list briefly pulses the destination file header with
   the accent for about one second. Reduced-motion mode uses static feedback that
   remains visible long enough to identify the destination without animation.

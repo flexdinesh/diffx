@@ -260,8 +260,8 @@ account before mounting review state; distributed login and `/settings` work wit
 zero observations. Account changes dispose workspace requests and event streams.
 Local mode bypasses account flows. Consumers subscribe through domain hooks for diff source,
 navigation, draft, review, reviewed files, and collapse state. Collapsed diff
-files (per stream and scope) and closed tree folders (per stream) persist in
-`sessionStorage`, so reloads and newer snapshots keep them within a tab; piped
+files (per stream and scope), closed tree folders and Hide reviewed files (per
+stream) persist in `sessionStorage`, so reloads and newer snapshots keep them within a tab; piped
 snapshots key by context. One draft persists
 across scopes. Context selection uses the Repos view and the popup picker (Cmd/Ctrl+K
 or the Repos “Search reviews” magnifier). Repos and Diff share the panel
