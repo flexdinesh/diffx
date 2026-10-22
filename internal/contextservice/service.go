@@ -46,7 +46,8 @@ type Page struct {
 	NextCursor *string   `json:"nextCursor"`
 }
 
-type Submission struct {
+// Publication is an ingested context with its snapshot.
+type Publication struct {
 	Context  Context               `json:"context"`
 	Snapshot review.RepositoryDiff `json:"snapshot"`
 }

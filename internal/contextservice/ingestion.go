@@ -10,27 +10,27 @@ import (
 	"github.com/flexdinesh/diffx/internal/reviewsession"
 )
 
-func (service *Service) Ingest(ctx context.Context, input ingestion.Request) (Submission, error) {
+func (service *Service) Ingest(ctx context.Context, input ingestion.Request) (Publication, error) {
 	if err := ctx.Err(); err != nil {
-		return Submission{}, err
+		return Publication{}, err
 	}
 	if err := ingestion.Validate(input); err != nil {
-		return Submission{}, review.Error(400, "%v", err)
+		return Publication{}, review.Error(400, "%v", err)
 	}
 	binding, err := service.store.IngestContext(ctx, service.user.ID, input)
 	if err != nil {
-		return Submission{}, requestError(err)
+		return Publication{}, requestError(err)
 	}
 	service.events.publish(binding.ContextID)
 	item, err := service.Get(ctx, binding.ContextID)
 	if err != nil {
-		return Submission{}, err
+		return Publication{}, err
 	}
 	snapshot, err := service.store.ObservationSnapshot(ctx, service.user.ID, binding.ContextID, review.DiffAll)
 	if err != nil {
-		return Submission{}, requestError(err)
+		return Publication{}, requestError(err)
 	}
-	return Submission{Context: item, Snapshot: snapshot}, nil
+	return Publication{Context: item, Snapshot: snapshot}, nil
 }
 
 type storedSource struct {

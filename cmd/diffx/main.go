@@ -78,9 +78,9 @@ func runFixture(ctx context.Context, arguments []string, stdin *os.File, stdout,
 		go func() { _, _ = io.Copy(io.Discard, stdin); cancel() }()
 	}
 	started := time.Now()
-	return localserver.Run(ctx, settings, "", &request, func(status localserver.Status, submitted *contextservice.Submission) {
+	return localserver.Run(ctx, settings, "", &request, func(status localserver.Status, submitted *contextservice.Publication) {
 		address := status.BrowserURL + "/contexts/" + url.PathEscape(submitted.Context.ID)
-		writeStartup(stdout, submissionInput(*submitted, time.Since(started)), address)
+		writeStartup(stdout, publicationInput(*submitted, time.Since(started)), address)
 		openBrowser(values, address, stderr)
 	})
 }

@@ -95,7 +95,7 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 			return
 		}
 		address := status.BrowserURL + "/contexts/" + url.PathEscape(submitted.Context.ID)
-		loaded := submissionInput(submitted, time.Since(started))
+		loaded := publicationInput(submitted, time.Since(started))
 		loaded.mode, loaded.directory = "pipe", ""
 		for _, failure := range published.Failures {
 			fmt.Fprintf(stderr, "  diffx: %s: %s\n", failure.Path, failure.Detail)

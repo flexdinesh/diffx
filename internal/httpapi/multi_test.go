@@ -167,7 +167,7 @@ func TestMultiObservationsAndRetainedFilesWithoutCheckout(t *testing.T) {
 	}
 	provider := contextservice.New(store, user)
 	roots := []string{t.TempDir(), t.TempDir()}
-	targets := make([]contextservice.Submission, 0, 2)
+	targets := make([]contextservice.Publication, 0, 2)
 	for index, root := range roots {
 		gitCommand(t, root, "init")
 		gitCommand(t, root, "symbolic-ref", "HEAD", "refs/heads/shared")

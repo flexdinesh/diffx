@@ -53,8 +53,8 @@ type Collect func(context.Context, func(ingestion.Request) error) ([]CollectionF
 
 // Published is the outcome of ingesting one collection.
 type Published struct {
-	Submissions []contextservice.Submission
-	Failures    []CollectionFailure
+	Publications []contextservice.Publication
+	Failures     []CollectionFailure
 	// launched is the context of the deepest checkout containing its request's
 	// input path. Reused observations keep their first run's metadata.
 	launched      string
@@ -65,11 +65,11 @@ type Published struct {
 // Among equals, the checkout containing the collection's input path wins, so
 // `diffx PATH` inside a worktree opens that worktree; then recent activity.
 // A successful collection of older observations still has an available default.
-func (published Published) Newest() (contextservice.Submission, bool) {
-	var newest, fallback contextservice.Submission
+func (published Published) Newest() (contextservice.Publication, bool) {
+	var newest, fallback contextservice.Publication
 	found, available := false, false
 	changed := false
-	for _, submitted := range published.Submissions {
+	for _, submitted := range published.Publications {
 		if submitted.Context.Availability != "available" {
 			continue
 		}
@@ -134,7 +134,7 @@ func (published *Published) ingest(ctx context.Context, service *contextservice.
 	if err != nil {
 		return err
 	}
-	published.Submissions = append(published.Submissions, submitted)
+	published.Publications = append(published.Publications, submitted)
 	if depth := launchDepth(input.Metadata); depth > published.launchedDepth {
 		published.launched, published.launchedDepth = submitted.Context.ID, depth
 	}
@@ -268,8 +268,8 @@ func (handler *Collections) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Contexts         []contextservice.Context `json:"contexts"`
 		Failures         []CollectionFailure      `json:"failures"`
 		DefaultContextID string                   `json:"defaultContextId"`
-	}{make([]contextservice.Context, 0, len(published.Submissions)), make([]CollectionFailure, 0, len(published.Failures)), newest.Context.ID}
-	for _, submitted := range published.Submissions {
+	}{make([]contextservice.Context, 0, len(published.Publications)), make([]CollectionFailure, 0, len(published.Failures)), newest.Context.ID}
+	for _, submitted := range published.Publications {
 		result.Contexts = append(result.Contexts, submitted.Context)
 	}
 	result.Failures = append(result.Failures, published.Failures...)

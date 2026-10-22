@@ -72,7 +72,7 @@ func acquireInput(values options, stdin *os.File) (initialInput, error) {
 
 func newSubmissionID() string { return rand.Text() }
 
-func submissionInput(value contextservice.Submission, elapsed time.Duration) loadedInput {
+func publicationInput(value contextservice.Publication, elapsed time.Duration) loadedInput {
 	input := loadedInput{snapshot: value.Snapshot, processed: elapsed, mode: "git"}
 	if value.Context.Root != nil {
 		input.directory = *value.Context.Root
