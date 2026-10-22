@@ -1,10 +1,12 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
+	"log"
 	"mime"
 	"net/http"
 	"path"
@@ -489,16 +491,24 @@ func (handler *Handler) serveAsset(response http.ResponseWriter, request *http.R
 
 func (handler *Handler) problem(response http.ResponseWriter, err error) {
 	status := 500
-	body := map[string]any{"type": "about:blank", "title": "Request Failed", "status": status, "detail": err.Error()}
+	// Unclassified errors can carry storage or filesystem details; log them only.
+	body := map[string]any{"type": "about:blank", "title": "Request Failed", "status": status, "detail": "Server could not process request"}
 	var requestError *review.RequestError
-	if errors.As(err, &requestError) {
+	var capabilityError *session.CapabilityError
+	classified := errors.As(err, &requestError)
+	classified = errors.As(err, &capabilityError) || classified
+	if classified {
+		body["detail"] = err.Error()
+	} else if !errors.Is(err, context.Canceled) {
+		log.Printf("request failed: %v", err)
+	}
+	if requestError != nil {
 		status = requestError.Status
 		if status == http.StatusServiceUnavailable && strings.HasPrefix(requestError.Detail, "source_unavailable:") {
 			body["code"] = "source_unavailable"
 		}
 	}
-	var capabilityError *session.CapabilityError
-	if errors.As(err, &capabilityError) {
+	if capabilityError != nil {
 		status = http.StatusNotFound
 		body["code"] = "capability_not_enabled"
 		body["capability"] = capabilityError.Capability

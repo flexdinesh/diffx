@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -308,5 +309,38 @@ func assertCapabilityProblem(t *testing.T, response *http.Response, capability s
 	}](t, response)
 	if problem.Code != "capability_not_enabled" || problem.Capability != capability {
 		t.Fatalf("problem = %#v", problem)
+	}
+}
+
+type failingCommentsStore struct{ *reviewstore.Store }
+
+func (failingCommentsStore) Comments(string) ([]review.ReviewComment, error) {
+	return nil, errors.New("sqlite: disk I/O error at /home/private/state.db")
+}
+
+func TestUnclassifiedErrorsHideInternalDetail(t *testing.T) {
+	raw, err := os.ReadFile("../../test/fixtures/sample.diff")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := diffsource.OpenPatch(string(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := reviewstore.Open("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := patchSession(t, store, source, string(raw), session.Policies{})
+	failing := failingCommentsStore{store}
+	server := httptest.NewServer(New(active, failing, reviewservice.New(active, failing), fstest.MapFS{}))
+	defer server.Close()
+	response := request(t, server.Client(), http.MethodGet, server.URL+"/api/review/comments", nil)
+	if response.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status: %d", response.StatusCode)
+	}
+	problem := decode[map[string]any](t, response)
+	if detail, _ := problem["detail"].(string); detail != "Server could not process request" {
+		t.Fatalf("problem leaked internal detail: %#v", problem)
 	}
 }

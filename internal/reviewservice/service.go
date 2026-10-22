@@ -26,6 +26,7 @@ func (err *CommentNotFoundError) Unwrap() error {
 type CommentStore interface {
 	Comments(string) ([]review.ReviewComment, error)
 	PutComment(string, review.ReviewComment) error
+	ReplaceComment(string, review.ReviewComment) (bool, error)
 }
 
 type Comment struct {
@@ -133,8 +134,12 @@ func (service *Service) ResolveComment(commentID string) (Resolution, error) {
 		}
 		if comment.Status != "resolved" {
 			comment.Status = "resolved"
-			if err := service.store.PutComment(service.session.ContextID, comment); err != nil {
+			replaced, err := service.store.ReplaceComment(service.session.ContextID, comment)
+			if err != nil {
 				return Resolution{}, err
+			}
+			if !replaced {
+				return Resolution{}, &CommentNotFoundError{CommentID: commentID}
 			}
 		}
 		return Resolution{CommentID: comment.ID, Status: "resolved"}, nil

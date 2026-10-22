@@ -415,6 +415,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     ? state.session
     : heads.contexts.find((context) => context.id === selectedId);
   const seen = useSeenStreams(
+    identity.status === "ready" ? (identity.bootstrap.user?.id ?? null) : null,
     heads.contexts,
     heads.loaded,
     ready ? current : undefined,

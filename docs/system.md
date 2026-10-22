@@ -112,7 +112,8 @@ heads by repository. A stream is one owner, source, repository, checkout, branch
 and comparison policy; every context carries its opaque `streamId` and the
 stream's current `latestContextId`. The drawer hides clean, unavailable and
 unknown-status heads, orders streams by recent code activity and repositories by
-their most active visible stream, and marks heads this browser has not opened.
+their most active visible stream, and marks heads this account has not opened in
+this browser.
 Equal activity uses stable stream and context identities. A global header action
 counts unopened changed heads and opens the most active one. First visits mark
 existing heads as seen; opening a head clears its mark. Ingestion events reload

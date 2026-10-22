@@ -69,57 +69,79 @@ func (store *Store) Comments(contextID string) ([]review.ReviewComment, error) {
 // must name this context's snapshot; an existing comment may keep the snapshot
 // it was written against.
 func (store *Store) PutComment(contextID string, comment review.ReviewComment) error {
+	_, err := store.writeComment(contextID, comment, false)
+	return err
+}
+
+// ReplaceComment updates an existing stream comment and reports false when it
+// no longer exists, so an edit racing a delete cannot recreate the comment.
+func (store *Store) ReplaceComment(contextID string, comment review.ReviewComment) (bool, error) {
+	return store.writeComment(contextID, comment, true)
+}
+
+func (store *Store) writeComment(contextID string, comment review.ReviewComment, existing bool) (bool, error) {
 	transaction, err := store.db.Begin()
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer transaction.Rollback()
 	diffID, reviewID, err := store.reviewFor(transaction, contextID, comment.Scope)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if comment.DiffID == "" {
 		comment.DiffID = diffID
 	}
 	if comment.DiffID == diffID {
 		if err := versionFor(transaction, diffID, comment.VersionID); err != nil {
-			return err
+			return false, err
 		}
 	} else {
 		var raw string
 		err := transaction.QueryRow(`SELECT data FROM comments WHERE id=? AND review_id=?`, comment.ID, reviewID).Scan(&raw)
 		if errors.Is(err, sql.ErrNoRows) {
-			return errors.New("comment belongs to a different diff")
+			if existing {
+				return false, nil
+			}
+			return false, errors.New("comment belongs to a different diff")
 		}
 		if err != nil {
-			return err
+			return false, err
 		}
 		var stored review.ReviewComment
 		if err := json.Unmarshal([]byte(raw), &stored); err != nil {
-			return err
+			return false, err
 		}
 		if stored.DiffID != comment.DiffID || stored.VersionID != comment.VersionID {
-			return errors.New("comment belongs to a different diff")
+			return false, errors.New("comment belongs to a different diff")
 		}
 	}
 	comment.Placement = nil
 	raw, err := json.Marshal(comment)
 	if err != nil {
-		return err
+		return false, err
 	}
 	// Pruned snapshot versions leave the reference in data only.
-	result, err := transaction.Exec(`INSERT INTO comments(id, review_id, version_id, file_id, data, created_at) VALUES(?, ?, (SELECT id FROM diff_versions WHERE id=?), ?, ?, ?) ON CONFLICT(id) DO UPDATE SET version_id=excluded.version_id, file_id=excluded.file_id, data=excluded.data WHERE comments.review_id=excluded.review_id`, comment.ID, reviewID, comment.VersionID, comment.Path, string(raw), int64(comment.CreatedAt))
+	var result sql.Result
+	if existing {
+		result, err = transaction.Exec(`UPDATE comments SET version_id=(SELECT id FROM diff_versions WHERE id=?), file_id=?, data=? WHERE id=? AND review_id=?`, comment.VersionID, comment.Path, string(raw), comment.ID, reviewID)
+	} else {
+		result, err = transaction.Exec(`INSERT INTO comments(id, review_id, version_id, file_id, data, created_at) VALUES(?, ?, (SELECT id FROM diff_versions WHERE id=?), ?, ?, ?) ON CONFLICT(id) DO UPDATE SET version_id=excluded.version_id, file_id=excluded.file_id, data=excluded.data WHERE comments.review_id=excluded.review_id`, comment.ID, reviewID, comment.VersionID, comment.Path, string(raw), int64(comment.CreatedAt))
+	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	changed, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return false, err
 	}
 	if changed != 1 {
-		return errors.New("comment ID belongs to another review")
+		if existing {
+			return false, nil
+		}
+		return false, errors.New("comment ID belongs to another review")
 	}
-	return transaction.Commit()
+	return true, transaction.Commit()
 }
 
 func (store *Store) ImportComments(contextID string, comments []review.ReviewComment) ([]review.ReviewComment, error) {

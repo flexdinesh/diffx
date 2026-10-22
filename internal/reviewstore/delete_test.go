@@ -250,3 +250,34 @@ func TestMarksCarryWhileFilePatchIsUnchanged(t *testing.T) {
 		t.Fatalf("clearing removed a mark hidden in that snapshot: %#v %v", marks, err)
 	}
 }
+
+func TestReplaceCommentCannotResurrectDeletedComment(t *testing.T) {
+	store := openTestStore(t)
+	owner := testUser(t, store, "owner")
+	binding, err := store.Ingest(owner.ID, observationRequest("source", "only"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PutComment(binding.ContextID, review.ReviewComment{ID: "comment", Scope: review.DiffAll, Body: "check", Status: "open", CreatedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	comments, err := store.Comments(binding.ContextID)
+	if err != nil || len(comments) != 1 {
+		t.Fatalf("stored comment: %#v %v", comments, err)
+	}
+	edited := comments[0]
+	edited.Status = "resolved"
+	if replaced, err := store.ReplaceComment(binding.ContextID, edited); err != nil || !replaced {
+		t.Fatalf("replace existing comment: %v %v", replaced, err)
+	}
+	if deleted, err := store.DeleteComment(binding.ContextID, "comment"); err != nil || !deleted {
+		t.Fatalf("delete comment: %v %v", deleted, err)
+	}
+	// An edit read before the delete must not recreate the comment.
+	if replaced, err := store.ReplaceComment(binding.ContextID, edited); err != nil || replaced {
+		t.Fatalf("replace deleted comment: %v %v", replaced, err)
+	}
+	if comments, err := store.Comments(binding.ContextID); err != nil || len(comments) != 0 {
+		t.Fatalf("deleted comment resurrected: %#v %v", comments, err)
+	}
+}

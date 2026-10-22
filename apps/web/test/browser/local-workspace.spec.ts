@@ -2379,3 +2379,56 @@ test("local sync collects every checkout without replacing the open review", asy
   await expect(page).toHaveURL(/\/contexts\/local-review$/);
   expect(collections).toHaveLength(3);
 });
+
+test("each remote account baselines its own seen heads", async ({ page }) => {
+  // Another account's seen map in this browser must not mark this account's heads unread.
+  await page.addInitScript(() => {
+    const other = JSON.stringify({ "stream-other": "other-head" });
+    localStorage.setItem("projects-seen", other);
+    localStorage.setItem("projects-seen:account-a", other);
+  });
+  const state = await localWorkspace(page);
+  await page.route("**/api/v2/bootstrap", (route) =>
+    route.fulfill({
+      json: {
+        mode: "remote",
+        signupEnabled: false,
+        user: { id: "account-b", username: "bob" },
+        csrfToken: "csrf",
+        collect: false,
+      },
+    }),
+  );
+  const head = (repository: string): ApiContext => ({
+    ...state.context,
+    id: `${repository}-head`,
+    repositoryId: repository,
+    name: repository,
+    streamId: `stream-${repository}`,
+    latestContextId: `${repository}-head`,
+    lastChangedAt: 100,
+    lastSubmittedAt: 1,
+  });
+  const heads = [head("api"), head("web")];
+  await page.route("**/api/v2/contexts?*", (route) =>
+    route.fulfill({ json: { contexts: heads, nextCursor: null } }),
+  );
+  await page.route("**/api/v2/contexts/*", (route) =>
+    route.fulfill({
+      json: heads.find((context) =>
+        new URL(route.request().url()).pathname.endsWith(`/${context.id}`),
+      ),
+    }),
+  );
+  await page.goto("/contexts/api-head");
+  await ready(page);
+  await expect(
+    page.getByRole("navigation", { name: "Repos" }).locator(".project-name"),
+  ).toHaveText(["api", "web"]);
+  await expect(page.getByRole("button", { name: /^New changes/ })).toHaveCount(
+    0,
+  );
+  expect(
+    await page.evaluate(() => localStorage.getItem("projects-seen:account-b")),
+  ).toContain("web-head");
+});

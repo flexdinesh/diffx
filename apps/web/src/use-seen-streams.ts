@@ -9,13 +9,16 @@ import {
 } from "./project-nav.ts";
 
 // One browser-local owner supplies both drawer dots and global navigation.
+// Each account baselines its own heads; local mode keeps the original key.
 export function useSeenStreams(
+  account: string | null,
   heads: ApiContext[],
   loaded: boolean,
   current: ApiContext | undefined,
 ) {
+  const key = account === null ? "projects-seen" : `projects-seen:${account}`;
   const [seen, setSeen] = useState<SeenStreams | null>(() =>
-    readSeen(saved("projects-seen")),
+    readSeen(saved(key)),
   );
   useEffect(() => {
     if (seen === null && loaded) setSeen(baselineSeen(heads));
@@ -34,7 +37,7 @@ export function useSeenStreams(
     );
   }, [currentHead]);
   useEffect(() => {
-    if (seen) save("projects-seen", JSON.stringify(seen));
-  }, [seen]);
+    if (seen) save(key, JSON.stringify(seen));
+  }, [key, seen]);
   return seen;
 }
