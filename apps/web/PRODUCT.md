@@ -35,7 +35,7 @@ A local review workspace that combines a browser-based Git diff with comments th
 
 - Product usage and behavior: `../../docs-website/src/pages/`.
 - Architecture and frontend ownership: `../../docs/architecture.md` and `../../docs/development.md`.
-- Agent integration: `../../docs/mcp.md` and `../../docs/webmcp.md`.
+- Agent integration: `../../docs-website/src/pages/mcp.md` and `../../docs-website/src/pages/webmcp.md`.
 - Existing visual system and Pierre integration rules: `../../DESIGN.md` and `src/DiffWorkspace.tsx`.
 
 ## Product Principles

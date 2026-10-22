@@ -119,7 +119,7 @@ func checkPackages(input io.Reader, diagnostics io.Writer) (bool, error) {
 }
 
 func main() {
-	command := exec.Command("go", "list", "-json", "./cmd/...", "./internal/...")
+	command := exec.Command("go", "list", "-e", "-json", "./cmd/...", "./internal/...")
 	command.Stderr = os.Stderr
 	output, err := command.Output()
 	if err != nil {

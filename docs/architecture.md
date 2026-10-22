@@ -123,12 +123,13 @@ opens reviews directly without exposing identity controls.
 
 ## Contracts and evolution
 
-`mise run test:contracts` runs production dependency checks, storage/lifecycle/
-queue/transport boundaries, frontend token guards, shared Go/TypeScript comment
-examples and real HTTP schema validation. Local `mise run check` and pre-push
-run these checks alongside the web unit/browser and plugin/shared suites.
-`test:contracts:rules` reuses built binaries so the full local check does not
-rebuild or repeat the distribution smoke test and JavaScript suites. CI and
+`mise run test:contracts` runs production dependency checks, frontend token
+guards, shared Go/TypeScript comment examples, the Go suite (including
+storage/lifecycle/queue/transport boundary tests) and real HTTP schema
+validation. Local `mise run check` and pre-push run these checks alongside the
+web unit/browser, plugin/shared and docs-site suites. `test:contracts:rules`
+holds only the non-Go guards, because `check` and pre-push already run every Go
+package; no hand-maintained package list can miss a new boundary test. CI and
 release verification retain static checks, builds, generated-file consistency
 and the distribution API smoke test; full suites and guards stay local.
 

@@ -1,6 +1,10 @@
 # AGENTS.md
 
-Go CLI/server in `cmd/` and `internal/`; embedded React/Vite app in `apps/web/`.
+One product, multi-project repo. Go CLI/server module at the root (`cmd/`,
+`internal/`, `tools/`); embedded React/Vite app in `apps/web/`; OpenAPI contract
+(Go embed + generated TS client) in `packages/api/`; agent plugins in
+`packages/plugin-*`; user docs site in `docs-website/`; maintainer docs in
+`docs/`; cross-package conformance, contract and release tests in `test/`.
 
 - Keep changes minimal. Follow existing patterns.
 - Preserve TypeScript type safety: no `any`, type assertions, or non-null assertions.

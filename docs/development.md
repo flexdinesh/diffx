@@ -18,7 +18,7 @@ go install github.com/flexdinesh/diffx/cmd/diffx@edge
 - Git
 - Bash (included with Git for Windows)
 
-Mise manages Go 1.25, Node from `.node-version`, and pnpm from `package.json`.
+Mise manages Go 1.27, Node from `.node-version`, and pnpm from `package.json`.
 After cloning, trust the project config, install tools, then install dependencies,
 hooks, and Playwright Chromium:
 
@@ -366,9 +366,9 @@ owners remain bound to their original credential until authenticated. REST and M
 compose `reviewservice`; global `/mcp` provides catalog discovery and stored
 diff/patch retrieval with explicit context IDs.
 
-See [plugins.md](plugins.md) for native harness installation, asynchronous
-checkout sync, configuration precedence and hook diagnostics. Normal builds and
-checks compile the adapters; host SDK dependencies are development types only.
+See [plugin setup](../docs-website/src/pages/plugins.md) for native harness installation, asynchronous
+checkout sync, configuration precedence and hook diagnostics. `mise run generate`
+and CI checks compile the adapters; web and CLI builds leave them unchanged; host SDK dependencies are development types only.
 Pi and OpenCode's self-contained `dist/index.js` artifacts are committed so a
 clone is ready to install without a build. After changing adapter source, run
 `mise run plugins:build` and commit the regenerated artifacts. Codex and Claude
