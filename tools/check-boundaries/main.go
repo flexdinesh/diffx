@@ -25,11 +25,11 @@ var allowed = map[string][]string{
 	"cmd/diffx-server":        {"internal/config", "internal/identityservice", "internal/remoteserver", "internal/reviewstore", "internal/version"},
 	"internal/browser":        {},
 	"internal/collector":      {"internal/diffsource", "internal/ingestion", "internal/review"},
-	"internal/config":         {"internal/processlock", "internal/reviewstore"},
+	"internal/config":         {"internal/processlock"},
 	"internal/contextservice": {"internal/review", "internal/reviewdata", "internal/session", "internal/ingestion"},
 	"internal/controlapi":     {"internal/config", "internal/review"},
 	"internal/daemon": {
-		"internal/contextservice", "internal/controlapi", "internal/ingestion", "internal/processlock",
+		"internal/config", "internal/contextservice", "internal/controlapi", "internal/ingestion", "internal/processlock",
 		"internal/reviewstore", "internal/serverapp", "internal/version", "internal/webui",
 	},
 	"internal/diffsource": {"internal/processlock", "internal/review"},

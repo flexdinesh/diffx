@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/flexdinesh/diffx/internal/processlock"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 )
 
 type ServerSettings struct {
@@ -127,8 +126,31 @@ func (values Values) Get(key string) (interface{}, error) {
 }
 
 func Default() (Values, error) {
-	state, err := reviewstore.DefaultPath()
+	state, err := DefaultStatePath()
 	return Values{Local: LocalValues{Host: "127.0.0.1", State: state, RetentionDays: 7}}, err
+}
+
+// StateDir is the private root for the default database, manual sync outboxes
+// and hook state. DIFFX_RUNTIME_DIR isolates all of them with the config file.
+func StateDir() (string, error) {
+	if runtime := os.Getenv("DIFFX_RUNTIME_DIR"); runtime != "" {
+		return filepath.Abs(runtime)
+	}
+	state := os.Getenv("XDG_STATE_HOME")
+	if state == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		state = filepath.Join(home, ".local", "state")
+	}
+	return filepath.Join(state, "diffx"), nil
+}
+
+// DefaultStatePath is the local persistent database used when none is configured.
+func DefaultStatePath() (string, error) {
+	dir, err := StateDir()
+	return filepath.Join(dir, "state.db"), err
 }
 
 func Path() (string, error) {

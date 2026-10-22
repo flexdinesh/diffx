@@ -11,13 +11,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 
 	"github.com/flexdinesh/diffx/internal/collector"
+	"github.com/flexdinesh/diffx/internal/config"
 	"github.com/flexdinesh/diffx/internal/ingestion"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/submission"
 )
 
@@ -75,13 +74,13 @@ func runSync(ctx context.Context, arguments []string, stdin *os.File, stdout, st
 		progress.terminal = isatty.IsTerminal(file.Fd())
 	}
 	defer progress.close()
-	state, err := reviewstore.DefaultPath()
+	stateDir, err := config.StateDir()
 	if err != nil {
 		return err
 	}
 	digest := sha256.Sum256([]byte(values.token))
 	route := strings.TrimRight(values.server, "/") + ":" + hex.EncodeToString(digest[:])
-	box, err := submission.Open(ctx, filepath.Dir(state), route)
+	box, err := submission.Open(ctx, stateDir, route)
 	if err != nil {
 		return err
 	}
@@ -126,7 +125,7 @@ func runSync(ctx context.Context, arguments []string, stdin *os.File, stdout, st
 	// establishes the owner, persist under that identity before any upload so a
 	// replacement credential can recover the exact attempted payload.
 	provisional := box
-	box, err = submission.Open(ctx, filepath.Dir(state), target.Target.Destination)
+	box, err = submission.Open(ctx, stateDir, target.Target.Destination)
 	if err != nil {
 		return err
 	}

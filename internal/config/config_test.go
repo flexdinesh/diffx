@@ -330,3 +330,30 @@ func TestFlatConfigErrorProvidesValidNestedExample(t *testing.T) {
 		t.Fatalf("error exposes credentials: %s", message)
 	}
 }
+
+func TestRuntimeDirectoryIsolatesEveryDefaultStatePath(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", state)
+	t.Setenv("DIFFX_RUNTIME_DIR", "")
+	if dir, err := StateDir(); err != nil || dir != filepath.Join(state, "diffx") {
+		t.Fatalf("state dir = %q %v", dir, err)
+	}
+	runtime := t.TempDir()
+	t.Setenv("DIFFX_RUNTIME_DIR", runtime)
+	t.Setenv("DIFFX_CONFIG_PATH", "")
+	dir, err := StateDir()
+	if err != nil || dir != runtime {
+		t.Fatalf("isolated state dir = %q %v", dir, err)
+	}
+	database, err := DefaultStatePath()
+	if err != nil || database != filepath.Join(runtime, "state.db") {
+		t.Fatalf("isolated database = %q %v", database, err)
+	}
+	values, err := Load()
+	if err != nil || values.Local.State != database {
+		t.Fatalf("first-use default state = %q %v", values.Local.State, err)
+	}
+	if path, err := Path(); err != nil || filepath.Dir(path) != runtime {
+		t.Fatalf("config path = %q %v", path, err)
+	}
+}

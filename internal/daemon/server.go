@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/flexdinesh/diffx/internal/config"
 	"github.com/flexdinesh/diffx/internal/contextservice"
 	"github.com/flexdinesh/diffx/internal/controlapi"
 	"github.com/flexdinesh/diffx/internal/ingestion"
@@ -73,7 +74,7 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 		return errors.New("retention-days must be between 1 and 106751")
 	}
 	if settings.State == "" {
-		path, err := reviewstore.DefaultPath()
+		path, err := config.DefaultStatePath()
 		if err != nil {
 			return err
 		}

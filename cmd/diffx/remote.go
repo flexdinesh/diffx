@@ -49,7 +49,7 @@ func runRemote(ctx context.Context, arguments []string, stdout io.Writer) (failu
 		return fmt.Errorf("remote unavailable: %w", err)
 	}
 	fmt.Fprintf(stdout, "  server:  ok, accepting agent and sync ingestion (database %.12s)\n", destination.Target.Identity)
-	directory, err := hooks.StateDirectory()
+	directory, err := hookDirectory()
 	if err != nil {
 		return err
 	}
