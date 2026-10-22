@@ -94,7 +94,7 @@ func process(ctx context.Context, queue Queue, delivery Delivery, ingest Ingest)
 		return queue.Complete(ctx, delivery, id)
 	}
 	var problem *review.RequestError
-	if errors.As(err, &problem) && problem.Status >= 400 && problem.Status < 500 {
+	if review.Permanent(err) && errors.As(err, &problem) {
 		return queue.Fail(ctx, delivery, problem.Detail)
 	}
 	if delivery.Attempt >= 5 {

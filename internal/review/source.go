@@ -2,6 +2,7 @@ package review
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -30,6 +31,17 @@ func (err *RequestError) Error() string { return err.Detail }
 
 func Error(status int, format string, values ...any) error {
 	return &RequestError{Status: status, Detail: fmt.Sprintf(format, values...)}
+}
+
+// Permanent reports whether retrying the same request cannot succeed: a
+// client-class rejection other than timeout or rate limiting. Unclassified
+// errors, timeouts, throttling and server failures are transient.
+func Permanent(err error) bool {
+	var request *RequestError
+	if !errors.As(err, &request) || request.Status < 400 || request.Status >= 500 {
+		return false
+	}
+	return request.Status != 408 && request.Status != 429
 }
 
 func Message(value string) *string { return &value }
