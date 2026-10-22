@@ -151,7 +151,7 @@ func recordCollectorActivity(activity hooks.Activity, secrets ...string) {
 			activity.Error = strings.ReplaceAll(activity.Error, secret, "[redacted]")
 		}
 	}
-	directory, err := hooks.StateDirectory()
+	directory, err := hookDirectory()
 	if err == nil {
 		hooks.Engine{Directory: directory}.Record(activity)
 	}

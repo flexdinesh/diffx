@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/diffx/internal/config"
 	"github.com/flexdinesh/diffx/internal/hooks"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
@@ -278,7 +280,7 @@ func TestSyncReusesPendingPayloadAndRefreshesStaleReplay(t *testing.T) {
 	if err := sync(); err == nil {
 		t.Fatal("offline sync succeeded")
 	}
-	path, err := reviewstore.DefaultPath()
+	path, err := config.DefaultStatePath()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +375,7 @@ func TestSyncKeepsForeignPendingPayloadAndPublishesFreshCollection(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	path, err := reviewstore.DefaultPath()
+	path, err := config.DefaultStatePath()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,7 +415,7 @@ func TestSyncRotatedTokenRecoversOnlyItsOwnersAttemptedPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state, err := reviewstore.DefaultPath()
+	state, err := config.DefaultStatePath()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -492,7 +494,7 @@ func TestSyncRetainsConflictingProvisionalAndOwnerPayloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state, err := reviewstore.DefaultPath()
+	state, err := config.DefaultStatePath()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -647,5 +649,21 @@ func TestHookRotatedEnvironmentTokenRecoversOwnersRemovedCheckout(t *testing.T) 
 	foreignContexts, err := fixture.store.ObservationContexts(foreign.ID, 10, 0, "", ingestion.Filter{})
 	if err != nil || len(foreignContexts) != 0 {
 		t.Fatalf("foreign hook observations: %+v %v", foreignContexts, err)
+	}
+}
+
+func TestOfflineSyncKeepsPendingStateInsideRuntimeDirectory(t *testing.T) {
+	root := cliRepository(t)
+	fixture := newSyncFixture(t)
+	fixture.online.Store(false)
+	if err := run(t.Context(), []string{"sync", root}, nil, io.Discard, io.Discard); err == nil {
+		t.Fatal("offline sync succeeded")
+	}
+	if _, err := os.Stat(filepath.Join(os.Getenv("XDG_STATE_HOME"), "diffx")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("isolated sync wrote personal state: %v", err)
+	}
+	entries, err := os.ReadDir(os.Getenv("DIFFX_RUNTIME_DIR"))
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("pending sync state missing from runtime directory: %v %v", entries, err)
 	}
 }

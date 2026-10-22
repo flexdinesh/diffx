@@ -353,10 +353,9 @@ func TestPrunePendingRetentionAndPrivateFiles(t *testing.T) {
 
 func TestRuntimeIsolationAndSafeJobNames(t *testing.T) {
 	runtime := t.TempDir()
-	t.Setenv("DIFFX_RUNTIME_DIR", runtime)
-	directory, err := StateDirectory()
-	if err != nil || directory != filepath.Join(runtime, "hooks-v4") {
-		t.Fatalf("directory = %q %v", directory, err)
+	directory := Directory(runtime)
+	if directory != filepath.Join(runtime, "hooks-v4") {
+		t.Fatalf("directory = %q", directory)
 	}
 	engine := Engine{Directory: directory}
 	if err := engine.Run(context.Background(), "../../outside"); err == nil {

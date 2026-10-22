@@ -85,19 +85,9 @@ type pending struct {
 	Request ingestion.Request `json:"request"`
 }
 
-func StateDirectory() (string, error) {
-	if runtime := os.Getenv("DIFFX_RUNTIME_DIR"); runtime != "" {
-		return filepath.Join(runtime, "hooks-v4"), nil
-	}
-	root := os.Getenv("XDG_STATE_HOME")
-	if root == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		root = filepath.Join(home, ".local", "state")
-	}
-	return filepath.Join(root, "diffx", "hooks-v4"), nil
+// Directory is the versioned hook state under diffx's private state root.
+func Directory(stateDir string) string {
+	return filepath.Join(stateDir, "hooks-v4")
 }
 
 func key(parts ...string) string {

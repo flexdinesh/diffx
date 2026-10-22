@@ -74,7 +74,8 @@ personal lifecycle discovery.
 - `httpapi`, `mcpapi`: transport parsing, projection and error mapping.
 - `serverapp`: transport/task composition; `daemon`: local lifecycle;
   `remoteserver`: remote authentication and worker composition.
-- `config`, `processlock`, `browser`, `version`: configuration, process ownership,
+- `config`, `processlock`, `browser`, `version`: configuration and private state
+  paths (`StateDir`, honouring `DIFFX_RUNTIME_DIR`), process ownership,
   browser launch and build metadata; `processmetrics`: server process metrics;
   `webui`: embedded assets. `testsupport` is test-only.
 

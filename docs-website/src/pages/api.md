@@ -32,7 +32,9 @@ printed `/mcp/contexts/{id}` URL; see
 WebMCP while the page is open; see [WebMCP](webmcp.md).
 
 Local data lives in `$XDG_STATE_HOME/diffx/state.db`, or
-`~/.local/state/diffx/state.db`. `--state memory` disables persistence.
+`~/.local/state/diffx/state.db`. An isolated `DIFFX_RUNTIME_DIR` moves the
+default database, manual sync and hook state, and config into that directory.
+`--state memory` disables persistence.
 Current schema 11 state persists across restarts. Older, newer or unrecognized
 databases are refused without an automatic reset. To start fresh, stop the
 server, back up its state directory, and explicitly choose a new database path.

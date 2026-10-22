@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/collector"
+	"github.com/flexdinesh/diffx/internal/config"
 	"github.com/flexdinesh/diffx/internal/diffsource"
 	"github.com/flexdinesh/diffx/internal/hooks"
 	"github.com/flexdinesh/diffx/internal/ingestion"
@@ -37,7 +38,7 @@ func requireRemoteMode(configFile string) error {
 
 // Hooks are notifications, never a reason to block or continue an agent turn.
 func runHook(arguments []string, stdin io.Reader, stdout io.Writer) error {
-	directory, err := hooks.StateDirectory()
+	directory, err := hookDirectory()
 	if err != nil {
 		return nil
 	}
@@ -75,7 +76,7 @@ func runCollector(arguments []string, stdout io.Writer) error {
 		fmt.Fprintln(stdout, "Usage: diffx collector status | retry [--config-file FILE]")
 		return nil
 	}
-	directory, err := hooks.StateDirectory()
+	directory, err := hookDirectory()
 	if err != nil {
 		return err
 	}
@@ -349,4 +350,9 @@ func newHookEngine(directory string) hooks.Engine {
 		return receipt.ContextID, err
 	}
 	return engine
+}
+
+func hookDirectory() (string, error) {
+	stateDir, err := config.StateDir()
+	return hooks.Directory(stateDir), err
 }
