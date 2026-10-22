@@ -38,7 +38,7 @@ rename to new.ts
 	defer store.Close()
 	active := patchSession(t, store, source, raw, session.Policies{})
 	service := reviewservice.New(active, store)
-	server := httptest.NewServer(New(active, store, service, fstest.MapFS{"index.html": {Data: []byte("web")}}))
+	server := httptest.NewServer(New(service, fstest.MapFS{"index.html": {Data: []byte("web")}}))
 	defer server.Close()
 	snapshot := decode[review.RepositoryDiff](t, request(t, server.Client(), http.MethodGet, server.URL+"/api/review/diffs/current?scope=all", nil))
 	if len(snapshot.Files) != 3 {

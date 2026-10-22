@@ -11,11 +11,9 @@ import (
 	"net/http"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/flexdinesh/diffx/internal/processmetrics"
 	"github.com/flexdinesh/diffx/internal/review"
-	"github.com/flexdinesh/diffx/internal/reviewdata"
 	"github.com/flexdinesh/diffx/internal/reviewservice"
 	"github.com/flexdinesh/diffx/internal/session"
 	contract "github.com/flexdinesh/diffx/packages/api"
@@ -23,29 +21,19 @@ import (
 
 type Handler struct {
 	session session.Session
-	store   Store
 	review  *reviewservice.Service
 	assets  fs.FS
 	metrics *processmetrics.Collector
 }
 
-func New(active session.Session, store Store, service *reviewservice.Service, assets fs.FS) *Handler {
+func New(service *reviewservice.Service, assets fs.FS) *Handler {
 	return &Handler{
-		session: active, store: store, review: service, assets: assets,
+		session: service.Session(), review: service, assets: assets,
 		metrics: processmetrics.New(),
 	}
 }
 
 func (handler *Handler) SessionID() string { return handler.session.ID }
-
-func (handler *Handler) ownsDiff(diffID string) bool {
-	for _, id := range handler.session.DiffIDs {
-		if id == diffID {
-			return true
-		}
-	}
-	return false
-}
 
 func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("X-Content-Type-Options", "nosniff")
@@ -123,13 +111,7 @@ func (handler *Handler) api(response http.ResponseWriter, request *http.Request)
 		return true, writeResult(response, snapshot, err)
 	}
 	if diffID, versionID, ok := parseVersionRoute(pathname); ok && request.Method == http.MethodGet {
-		if !handler.ownsDiff(diffID) {
-			return true, review.Error(404, "Diff version not found")
-		}
-		snapshot, err := handler.store.StoredVersion(handler.session.User.ID, diffID, versionID, time.Now())
-		if errors.Is(err, reviewdata.ErrNotFound) {
-			err = review.Error(404, "Diff version not found")
-		}
+		snapshot, err := handler.review.Version(diffID, versionID)
 		return true, writeResult(response, snapshot, err)
 	}
 	if route, ok := parseFileRoute(pathname); ok && request.Method == http.MethodGet {
@@ -335,7 +317,7 @@ func (handler *Handler) requestScope(request *http.Request) (review.DiffMode, er
 }
 
 func (handler *Handler) getFile(response http.ResponseWriter, request *http.Request, route fileRoute) error {
-	if !handler.ownsDiff(route.diffID) {
+	if !handler.review.OwnsDiff(route.diffID) {
 		return review.Error(404, "File preview not found")
 	}
 	if route.resource == "contents" && !handler.session.Capabilities.Files.Contents.Enabled() {

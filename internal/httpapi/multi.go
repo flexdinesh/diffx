@@ -14,29 +14,27 @@ import (
 	"github.com/flexdinesh/diffx/internal/review"
 	"github.com/flexdinesh/diffx/internal/reviewdata"
 	"github.com/flexdinesh/diffx/internal/reviewservice"
-	"github.com/flexdinesh/diffx/internal/session"
 	contract "github.com/flexdinesh/diffx/packages/api"
 )
 
-// Provider resolves persistent identities into request-local source bindings.
+// Provider reads and deletes context metadata within the caller's catalog.
 type Provider interface {
-	Resolve(context.Context, string) (session.Session, error)
-	ListFiltered(context.Context, int, string, ingestion.Filter) (contextservice.Page, error)
 	Get(context.Context, string) (contextservice.Context, error)
 	Delete(context.Context, string) error
-	UserID() string
 }
 
+// Multi routes owner-scoped REST requests; review operations go through the
+// application catalog so ownership and storage stay behind reviewservice.
 type Multi struct {
 	provider Provider
-	store    Store
+	catalog  *reviewservice.Catalog
 	assets   fs.FS
 	metrics  *processmetrics.Collector
 }
 
 // NewMultiWithContext ties shared snapshot work to the service lifetime.
 func (multi *Multi) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	base := &Handler{store: multi.store, assets: multi.assets, metrics: multi.metrics}
+	base := &Handler{assets: multi.assets, metrics: multi.metrics}
 	response.Header().Set("X-Content-Type-Options", "nosniff")
 	response.Header().Set("Referrer-Policy", "no-referrer")
 	response.Header().Set("Cache-Control", "no-store")
@@ -82,7 +80,7 @@ func (multi *Multi) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		var err error
 		query := request.URL.Query()
 		filter := ingestion.Filter{Query: query.Get("q"), Repository: query.Get("repository"), Branch: query.Get("branch"), Worktree: query.Get("worktree"), Hostname: query.Get("hostname"), SourceID: query.Get("sourceId"), RunID: query.Get("runId"), Harness: query.Get("harness"), SessionID: query.Get("sessionId"), SessionName: query.Get("sessionName"), Latest: query.Get("latest") == "true"}
-		page, err = multi.provider.ListFiltered(request.Context(), limit, query.Get("cursor"), filter)
+		page, err = multi.catalog.ListContexts(request.Context(), limit, query.Get("cursor"), filter)
 		if err != nil {
 			base.problem(response, err)
 			return
@@ -139,7 +137,7 @@ func (multi *Multi) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		base.serveAsset(response, assetRequest)
 		return
 	}
-	active, err := multi.provider.Resolve(request.Context(), contextID)
+	service, err := multi.catalog.Review(request.Context(), contextID)
 	if err != nil {
 		if errors.Is(err, reviewdata.ErrNotFound) {
 			err = review.Error(404, "Context not found")
@@ -147,12 +145,12 @@ func (multi *Multi) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		base.problem(response, err)
 		return
 	}
-	handler := &Handler{session: active, store: multi.store, review: reviewservice.New(active, multi.store), assets: multi.assets, metrics: multi.metrics}
+	handler := &Handler{session: service.Session(), review: service, assets: multi.assets, metrics: multi.metrics}
 	scoped := request.Clone(request.Context())
 	scoped.URL.Path = scopedPath
 	handler.ServeHTTP(response, scoped)
 }
 
-func NewMulti(provider Provider, store Store, assets fs.FS) http.Handler {
-	return &Multi{provider: provider, store: store, assets: assets, metrics: processmetrics.New()}
+func NewMulti(provider Provider, catalog *reviewservice.Catalog, assets fs.FS) http.Handler {
+	return &Multi{provider: provider, catalog: catalog, assets: assets, metrics: processmetrics.New()}
 }

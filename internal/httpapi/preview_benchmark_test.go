@@ -2,6 +2,7 @@ package httpapi_test
 
 import (
 	"fmt"
+	"github.com/flexdinesh/diffx/internal/reviewservice"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -48,7 +49,7 @@ func BenchmarkFilePreviews(b *testing.B) {
 			if len(snapshot.Files) != count {
 				b.Fatalf("collected %d files, want %d", len(snapshot.Files), count)
 			}
-			handler := httpapi.NewMulti(provider, store, fstest.MapFS{"index.html": {Data: []byte("web")}})
+			handler := httpapi.NewMulti(provider, reviewservice.NewCatalog(provider, store), fstest.MapFS{"index.html": {Data: []byte("web")}})
 			requests := make([]*http.Request, 0, count)
 			for _, file := range snapshot.Files {
 				query := url.Values{"scope": {"all"}, "versionId": {snapshot.VersionID}, "fileVersion": {file.Fingerprint}}
