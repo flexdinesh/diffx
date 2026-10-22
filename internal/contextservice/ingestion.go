@@ -26,7 +26,7 @@ func (service *Service) Ingest(ctx context.Context, input ingestion.Request) (Su
 	if err != nil {
 		return Submission{}, err
 	}
-	snapshot, err := service.store.ObservationSnapshot(service.user.ID, binding.ContextID, review.DiffAll)
+	snapshot, err := service.store.ObservationSnapshot(ctx, service.user.ID, binding.ContextID, review.DiffAll)
 	if err != nil {
 		return Submission{}, requestError(err)
 	}
@@ -57,7 +57,7 @@ func (source *storedSource) Snapshot(ctx context.Context, mode review.DiffMode) 
 	if err := ctx.Err(); err != nil {
 		return review.RepositoryDiff{}, err
 	}
-	value, err := source.store.ObservationSnapshot(source.ownerID, source.id, mode)
+	value, err := source.store.ObservationSnapshot(ctx, source.ownerID, source.id, mode)
 	return value, requestError(err)
 }
 func (source *storedSource) Patch(ctx context.Context, mode review.DiffMode, file review.ChangedFile, expected *string) (review.FilePatch, error) {

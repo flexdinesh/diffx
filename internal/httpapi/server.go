@@ -111,7 +111,7 @@ func (handler *Handler) api(response http.ResponseWriter, request *http.Request)
 		return true, writeResult(response, snapshot, err)
 	}
 	if diffID, versionID, ok := parseVersionRoute(pathname); ok && request.Method == http.MethodGet {
-		snapshot, err := handler.review.Version(diffID, versionID)
+		snapshot, err := handler.review.Version(request.Context(), diffID, versionID)
 		return true, writeResult(response, snapshot, err)
 	}
 	if route, ok := parseFileRoute(pathname); ok && request.Method == http.MethodGet {
@@ -129,7 +129,7 @@ func (handler *Handler) api(response http.ResponseWriter, request *http.Request)
 		return true, writeResult(response, map[string]any{"comments": comments}, err)
 	}
 	if commentID, ok := reviewResolveRoute(pathname); ok && request.Method == http.MethodPost {
-		resolution, err := handler.review.ResolveComment(commentID)
+		resolution, err := handler.review.ResolveComment(request.Context(), commentID)
 		if errors.Is(err, reviewservice.ErrCommentNotFound) {
 			err = review.Error(404, "Comment not found")
 		}
@@ -161,7 +161,7 @@ func (handler *Handler) api(response http.ResponseWriter, request *http.Request)
 		case http.MethodPatch:
 			return true, handler.updateComment(response, request, commentID)
 		case http.MethodDelete:
-			deleted, err := handler.review.DeleteComment(commentID)
+			deleted, err := handler.review.DeleteComment(request.Context(), commentID)
 			if err != nil {
 				return true, err
 			}
@@ -179,10 +179,10 @@ func (handler *Handler) api(response http.ResponseWriter, request *http.Request)
 		}
 		switch request.Method {
 		case http.MethodGet:
-			marks, err := handler.review.Marks(mode)
+			marks, err := handler.review.Marks(request.Context(), mode)
 			return true, writeResult(response, map[string]any{"marks": marks}, err)
 		case http.MethodDelete:
-			if err := handler.review.ClearMarks(mode); err != nil {
+			if err := handler.review.ClearMarks(request.Context(), mode); err != nil {
 				return true, err
 			}
 			response.WriteHeader(http.StatusNoContent)
@@ -196,7 +196,7 @@ func (handler *Handler) api(response http.ResponseWriter, request *http.Request)
 		case http.MethodDelete:
 			mode, err := handler.requestScope(request)
 			if err == nil {
-				err = handler.review.DeleteMark(mode, fileID)
+				err = handler.review.DeleteMark(request.Context(), mode, fileID)
 			}
 			if err != nil {
 				return true, err

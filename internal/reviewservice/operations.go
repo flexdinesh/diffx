@@ -15,14 +15,14 @@ import (
 
 type MutationStore interface {
 	CommentStore
-	DeleteComment(string, string) (bool, error)
-	DeleteComments(string, map[string]bool) (int, error)
-	ImportComments(string, []review.ReviewComment) ([]review.ReviewComment, error)
-	Marks(string, review.DiffMode) ([]review.ReviewMark, error)
-	ClearMarks(string, review.DiffMode) error
-	DeleteMark(string, review.DiffMode, string) error
-	PutMark(string, review.ReviewMark) error
-	StoredVersion(string, string, string, time.Time) (review.RepositoryDiff, error)
+	DeleteComment(context.Context, string, string) (bool, error)
+	DeleteComments(context.Context, string, map[string]bool) (int, error)
+	ImportComments(context.Context, string, []review.ReviewComment) ([]review.ReviewComment, error)
+	Marks(context.Context, string, review.DiffMode) ([]review.ReviewMark, error)
+	ClearMarks(context.Context, string, review.DiffMode) error
+	DeleteMark(context.Context, string, review.DiffMode, string) error
+	PutMark(context.Context, string, review.ReviewMark) error
+	StoredVersion(context.Context, string, string, string, time.Time) (review.RepositoryDiff, error)
 	ObservationFileVersion(context.Context, string, string, review.DiffMode, string) (reviewdata.FileVersion, error)
 	ObservationPatch(context.Context, string, string, review.DiffMode, string, string) (review.FilePatch, error)
 }
@@ -49,11 +49,11 @@ func (service *Service) OwnsDiff(id string) bool {
 }
 
 // Version reads a stored snapshot version of one of this context's diffs.
-func (service *Service) Version(diffID, versionID string) (review.RepositoryDiff, error) {
+func (service *Service) Version(ctx context.Context, diffID, versionID string) (review.RepositoryDiff, error) {
 	if !service.OwnsDiff(diffID) {
 		return review.RepositoryDiff{}, review.Error(404, "Diff version not found")
 	}
-	snapshot, err := service.store.StoredVersion(service.session.User.ID, diffID, versionID, time.Now())
+	snapshot, err := service.store.StoredVersion(ctx, service.session.User.ID, diffID, versionID, time.Now())
 	if errors.Is(err, reviewdata.ErrNotFound) {
 		err = review.Error(404, "Diff version not found")
 	}
@@ -89,7 +89,7 @@ func (service *Service) Comments(ctx context.Context) ([]review.ReviewComment, e
 }
 
 func (service *Service) placedComments(ctx context.Context) ([]review.ReviewComment, error) {
-	comments, err := service.store.Comments(service.session.ContextID)
+	comments, err := service.store.Comments(ctx, service.session.ContextID)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func (service *Service) placedComments(ctx context.Context) ([]review.ReviewComm
 
 // placedComment returns one placed comment from this context's stream review.
 func (service *Service) placedComment(ctx context.Context, commentID string) (review.ReviewComment, error) {
-	comments, err := service.store.Comments(service.session.ContextID)
+	comments, err := service.store.Comments(ctx, service.session.ContextID)
 	if err != nil {
 		return review.ReviewComment{}, err
 	}
@@ -116,29 +116,29 @@ func (service *Service) placedComment(ctx context.Context, commentID string) (re
 	}
 	return review.ReviewComment{}, review.Error(404, "Comment not found")
 }
-func (service *Service) DeleteComment(id string) (bool, error) {
+func (service *Service) DeleteComment(ctx context.Context, id string) (bool, error) {
 	if err := service.requireComments(); err != nil {
 		return false, err
 	}
-	return service.store.DeleteComment(service.session.ContextID, id)
+	return service.store.DeleteComment(ctx, service.session.ContextID, id)
 }
-func (service *Service) Marks(mode review.DiffMode) ([]review.ReviewMark, error) {
+func (service *Service) Marks(ctx context.Context, mode review.DiffMode) ([]review.ReviewMark, error) {
 	if !service.session.Capabilities.Diff.Scopes.Allows(mode) {
 		return nil, session.NotEnabled(session.DiffScopes)
 	}
-	return service.store.Marks(service.session.ContextID, mode)
+	return service.store.Marks(ctx, service.session.ContextID, mode)
 }
-func (service *Service) ClearMarks(mode review.DiffMode) error {
+func (service *Service) ClearMarks(ctx context.Context, mode review.DiffMode) error {
 	if !service.session.Capabilities.Diff.Scopes.Allows(mode) {
 		return session.NotEnabled(session.DiffScopes)
 	}
-	return service.store.ClearMarks(service.session.ContextID, mode)
+	return service.store.ClearMarks(ctx, service.session.ContextID, mode)
 }
-func (service *Service) DeleteMark(mode review.DiffMode, id string) error {
+func (service *Service) DeleteMark(ctx context.Context, mode review.DiffMode, id string) error {
 	if !service.session.Capabilities.Diff.Scopes.Allows(mode) {
 		return session.NotEnabled(session.DiffScopes)
 	}
-	return service.store.DeleteMark(service.session.ContextID, mode, id)
+	return service.store.DeleteMark(ctx, service.session.ContextID, mode, id)
 }
 func contentContext(contents string, start, end int) (string, bool) {
 	if start > end {
@@ -188,7 +188,7 @@ func (service *Service) validateReference(ctx context.Context, diffID, versionID
 	if versionID == "" {
 		return nil
 	}
-	_, err := service.store.StoredVersion(service.session.User.ID, diffID, versionID, time.Now())
+	_, err := service.store.StoredVersion(ctx, service.session.User.ID, diffID, versionID, time.Now())
 	if err == nil {
 		return nil
 	}
@@ -273,7 +273,7 @@ func (service *Service) CreateComment(ctx context.Context, body CreateCommentInp
 		Target: body.Target, Side: body.Side, Start: start, End: end, Code: code, Anchor: anchor, Body: strings.TrimSpace(body.Body), Status: "open", CreatedAt: float64(time.Now().UnixMilli()),
 		Origin: &review.ReviewOrigin{DiffID: snapshot.ID, VersionID: snapshot.VersionID, Source: snapshot.Source, Repository: snapshot.Name, Branch: snapshot.Branch, Head: snapshot.Head, Revision: snapshot.Revision, File: review.ReviewFileOrigin{Status: file.Status, OldPath: file.OldPath}},
 	}
-	if err := service.store.PutComment(service.session.ContextID, comment); err != nil {
+	if err := service.store.PutComment(ctx, service.session.ContextID, comment); err != nil {
 		return review.ReviewComment{}, err
 	}
 	return service.placedComment(ctx, comment.ID)
@@ -286,7 +286,7 @@ func (service *Service) UpdateComment(ctx context.Context, commentID string, bod
 	if body.Body == nil && body.Status == nil || body.Body != nil && strings.TrimSpace(*body.Body) == "" || body.Status != nil && *body.Status != "open" && *body.Status != "resolved" {
 		return review.ReviewComment{}, review.Error(400, "Invalid comment update")
 	}
-	comments, err := service.store.Comments(service.session.ContextID)
+	comments, err := service.store.Comments(ctx, service.session.ContextID)
 	if err != nil {
 		return review.ReviewComment{}, err
 	}
@@ -300,7 +300,7 @@ func (service *Service) UpdateComment(ctx context.Context, commentID string, bod
 		if body.Status != nil {
 			comment.Status = *body.Status
 		}
-		replaced, err := service.store.ReplaceComment(service.session.ContextID, comment)
+		replaced, err := service.store.ReplaceComment(ctx, service.session.ContextID, comment)
 		if err != nil {
 			return review.ReviewComment{}, err
 		}
@@ -339,7 +339,7 @@ func (service *Service) CarryComment(ctx context.Context, commentID string) (rev
 	carried.Target, carried.Side, carried.Start, carried.End = "file", "additions", 0, 0
 	carried.CarriedFrom = &review.CommentCarriedFrom{VersionID: comment.VersionID, Side: comment.Side, Start: comment.Start, End: comment.End}
 	carried.Anchor, carried.Placement = nil, nil
-	replaced, err := service.store.ReplaceComment(service.session.ContextID, carried)
+	replaced, err := service.store.ReplaceComment(ctx, service.session.ContextID, carried)
 	if err != nil {
 		return review.ReviewComment{}, err
 	}
@@ -367,7 +367,7 @@ func (service *Service) DeleteComments(ctx context.Context, selection string) (D
 			selected[comment.ID] = true
 		}
 	}
-	deleted, err := service.store.DeleteComments(service.session.ContextID, selected)
+	deleted, err := service.store.DeleteComments(ctx, service.session.ContextID, selected)
 	if err != nil {
 		return DeletedComments{}, err
 	}
@@ -396,7 +396,7 @@ func (service *Service) ImportComments(ctx context.Context, input []review.Revie
 		}
 	}
 	// Placement is computed per viewed snapshot; storage never keeps imported placements.
-	comments, err := service.store.ImportComments(service.session.ContextID, input)
+	comments, err := service.store.ImportComments(ctx, service.session.ContextID, input)
 	if err != nil {
 		return nil, err
 	}
@@ -426,7 +426,7 @@ func (service *Service) ExportComments(ctx context.Context, input ExportComments
 		current = &snapshot
 	}
 	selected := make([]review.ReviewComment, 0)
-	comments, err := service.store.Comments(service.session.ContextID)
+	comments, err := service.store.Comments(ctx, service.session.ContextID)
 	if err != nil {
 		return "", err
 	}
@@ -472,7 +472,7 @@ func (service *Service) PutMark(ctx context.Context, mode review.DiffMode, fileI
 			return review.ReviewMark{}, review.Error(409, "File changed. Refresh to try again.")
 		}
 		mark := review.ReviewMark{DiffID: snapshot.ID, VersionID: snapshot.VersionID, FileID: fileID, FileVersion: fileVersion, Scope: mode}
-		if err := service.store.PutMark(service.session.ContextID, mark); err != nil {
+		if err := service.store.PutMark(ctx, service.session.ContextID, mark); err != nil {
 			return review.ReviewMark{}, err
 		}
 		return mark, nil

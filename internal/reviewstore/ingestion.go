@@ -63,7 +63,7 @@ func (store *Store) IngestContext(ctx context.Context, ownerID string, request i
 		return Binding{}, err
 	}
 	if id != "" {
-		binding, err := observationBinding(tx, ownerID, id)
+		binding, err := observationBinding(ctx, tx, ownerID, id)
 		if err != nil {
 			return Binding{}, err
 		}
@@ -90,7 +90,7 @@ func (store *Store) IngestContext(ctx context.Context, ownerID string, request i
 			if err := putObservationSubmission(tx, ownerID, id, hash, request, sequence); err != nil {
 				return Binding{}, err
 			}
-			binding, err := observationBinding(tx, ownerID, id)
+			binding, err := observationBinding(ctx, tx, ownerID, id)
 			if err != nil {
 				return Binding{}, err
 			}
@@ -264,15 +264,15 @@ func patchDigest(patch review.FilePatch) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func observationBinding(db queryer, ownerID, contextID string) (Binding, error) {
+func observationBinding(ctx context.Context, db queryer, ownerID, contextID string) (Binding, error) {
 	binding := Binding{ContextID: contextID, DiffIDs: make(map[review.DiffMode]string)}
-	if err := db.QueryRow(`SELECT o.repository_id FROM observations o JOIN contexts c ON c.id=o.context_id JOIN diffs d ON d.id=c.anchor_diff_id WHERE o.owner_id=? AND o.context_id=? AND d.expires_at>?`, ownerID, contextID, time.Now().UnixMilli()).Scan(&binding.RepositoryID); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT o.repository_id FROM observations o JOIN contexts c ON c.id=o.context_id JOIN diffs d ON d.id=c.anchor_diff_id WHERE o.owner_id=? AND o.context_id=? AND d.expires_at>?`, ownerID, contextID, time.Now().UnixMilli()).Scan(&binding.RepositoryID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Binding{}, ErrNotFound
 		}
 		return Binding{}, err
 	}
-	rows, err := db.Query(`SELECT mode,diff_id FROM observation_scopes WHERE context_id=?`, contextID)
+	rows, err := db.QueryContext(ctx, `SELECT mode,diff_id FROM observation_scopes WHERE context_id=?`, contextID)
 	if err != nil {
 		return Binding{}, err
 	}
@@ -302,9 +302,9 @@ func (store *Store) Observation(ownerID, contextID string) (ingestion.Metadata, 
 	return metadata, err
 }
 
-func (store *Store) ObservationSnapshot(ownerID, contextID string, mode review.DiffMode) (review.RepositoryDiff, error) {
+func (store *Store) ObservationSnapshot(ctx context.Context, ownerID, contextID string, mode review.DiffMode) (review.RepositoryDiff, error) {
 	var raw string
-	err := store.db.QueryRow(`SELECT v.manifest FROM observations o JOIN observation_scopes s ON s.context_id=o.context_id JOIN diff_versions v ON v.id=s.version_id JOIN diffs d ON d.id=s.diff_id WHERE o.owner_id=? AND o.context_id=? AND s.mode=? AND d.expires_at>?`, ownerID, contextID, mode, time.Now().UnixMilli()).Scan(&raw)
+	err := store.db.QueryRowContext(ctx, `SELECT v.manifest FROM observations o JOIN observation_scopes s ON s.context_id=o.context_id JOIN diff_versions v ON v.id=s.version_id JOIN diffs d ON d.id=s.diff_id WHERE o.owner_id=? AND o.context_id=? AND s.mode=? AND d.expires_at>?`, ownerID, contextID, mode, time.Now().UnixMilli()).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return review.RepositoryDiff{}, ErrNotFound
 	}
@@ -347,7 +347,7 @@ func (store *Store) ObservationPatch(ctx context.Context, ownerID, contextID str
 }
 
 // ObservationContexts filters immutable observations using captured metadata.
-func (store *Store) ObservationContexts(ownerID string, limit int, beforeTime int64, beforeID string, filter ingestion.Filter) ([]ContextInfo, error) {
+func (store *Store) ObservationContexts(ctx context.Context, ownerID string, limit int, beforeTime int64, beforeID string, filter ingestion.Filter) ([]ContextInfo, error) {
 	query := contextSelect + ` WHERE c.owner_id=? AND o.context_id IS NOT NULL AND d.expires_at>?`
 	arguments := []any{ownerID, time.Now().UnixMilli()}
 	// All predicates match one collection, rather than mixing facts from
@@ -399,7 +399,7 @@ func (store *Store) ObservationContexts(ownerID string, limit int, beforeTime in
 	}
 	query += ` ORDER BY c.last_submitted_at DESC,c.id DESC LIMIT ?`
 	arguments = append(arguments, limit)
-	rows, err := store.db.Query(query, arguments...)
+	rows, err := store.db.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return nil, err
 	}

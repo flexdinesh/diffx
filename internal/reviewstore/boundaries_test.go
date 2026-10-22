@@ -21,10 +21,10 @@ func TestSessionAssociationsReuseReviewAndFilterEveryCollection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.PutComment(binding.ContextID, review.ReviewComment{ID: "comment", Scope: review.DiffAll, Body: "keep", CreatedAt: 1}); err != nil {
+	if err := store.PutComment(t.Context(), binding.ContextID, review.ReviewComment{ID: "comment", Scope: review.DiffAll, Body: "keep", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.PutMark(binding.ContextID, review.ReviewMark{Scope: review.DiffAll, FileID: "file", FileVersion: "all-fingerprint"}); err != nil {
+	if err := store.PutMark(t.Context(), binding.ContextID, review.ReviewMark{Scope: review.DiffAll, FileID: "file", FileVersion: "all-fingerprint"}); err != nil {
 		t.Fatal(err)
 	}
 	second := first
@@ -42,29 +42,29 @@ func TestSessionAssociationsReuseReviewAndFilterEveryCollection(t *testing.T) {
 		{Harness: "claude", SessionID: "session-b", SessionName: "Review boundaries"},
 		{Query: "boundaries"}, {Query: "originating/worktree"},
 	} {
-		items, err := store.ObservationContexts(user.ID, 100, 0, "", filter)
+		items, err := store.ObservationContexts(t.Context(), user.ID, 100, 0, "", filter)
 		if err != nil || len(items) != 1 || items[0].ID != binding.ContextID {
 			t.Fatalf("filter %#v: %#v %v", filter, items, err)
 		}
 	}
-	items, err := store.ObservationContexts(user.ID, 100, 0, "", ingestion.Filter{Harness: "codex", SessionID: "session-b"})
+	items, err := store.ObservationContexts(t.Context(), user.ID, 100, 0, "", ingestion.Filter{Harness: "codex", SessionID: "session-b"})
 	if err != nil || len(items) != 0 {
 		t.Fatalf("mixed unrelated session facts: %#v %v", items, err)
 	}
-	context, err := store.Context(user.ID, binding.ContextID, time.Now())
+	context, err := store.Context(t.Context(), user.ID, binding.ContextID, time.Now())
 	if err != nil || len(context.Sessions) != 2 || context.Metadata.RunID != "session-a" || context.Metadata.AgentSession != nil {
 		t.Fatalf("provenance: %#v %v", context, err)
 	}
-	comments, err := store.Comments(binding.ContextID)
+	comments, err := store.Comments(t.Context(), binding.ContextID)
 	if err != nil || len(comments) != 1 {
 		t.Fatalf("comments: %#v %v", comments, err)
 	}
-	marks, err := store.Marks(binding.ContextID, review.DiffAll)
+	marks, err := store.Marks(t.Context(), binding.ContextID, review.DiffAll)
 	if err != nil || len(marks) != 1 {
 		t.Fatalf("marks: %#v %v", marks, err)
 	}
 	other := testUser(t, store, "other-session-user")
-	items, err = store.ObservationContexts(other.ID, 100, 0, "", ingestion.Filter{SessionID: "session-a"})
+	items, err = store.ObservationContexts(t.Context(), other.ID, 100, 0, "", ingestion.Filter{SessionID: "session-a"})
 	if err != nil || len(items) != 0 {
 		t.Fatalf("cross-user session: %#v %v", items, err)
 	}
@@ -106,12 +106,12 @@ func TestSessionNameUpdatesByCollectionOrderAndSource(t *testing.T) {
 	if _, err := store.Ingest(user.ID, otherSource); err != nil {
 		t.Fatal(err)
 	}
-	context, err := store.Context(user.ID, binding.ContextID, time.Now())
+	context, err := store.Context(t.Context(), user.ID, binding.ContextID, time.Now())
 	if err != nil || len(context.Sessions) != 1 || context.Sessions[0].SourceID != "source-a" || context.Sessions[0].Name != "Current" || context.Sessions[0].FirstObservedAt != 100 || context.Sessions[0].LastObservedAt != 400 {
 		t.Fatalf("mutable session: %#v %v", context, err)
 	}
 	for _, filter := range []ingestion.Filter{{SourceID: "source-a", SessionName: "Current"}, {Query: "Current"}} {
-		items, err := store.ObservationContexts(user.ID, 100, 0, "", filter)
+		items, err := store.ObservationContexts(t.Context(), user.ID, 100, 0, "", filter)
 		if err != nil || len(items) != 1 || items[0].ID != binding.ContextID {
 			t.Fatalf("updated name filter: %#v %v", items, err)
 		}
@@ -161,15 +161,15 @@ func TestComparisonPoliciesHaveSeparateReviewsAndDurableHeads(t *testing.T) {
 		id    string
 		stale bool
 	}{{first.ContextID, false}, {second.ContextID, true}, {third.ContextID, false}, {latest.ContextID, false}} {
-		context, err := store.Context(user.ID, check.id, time.Now())
+		context, err := store.Context(t.Context(), user.ID, check.id, time.Now())
 		if err != nil || context.Stale != check.stale {
 			t.Fatalf("policy freshness: %#v %v", context, err)
 		}
 	}
-	if err := store.DeleteContext(user.ID, latest.ContextID); err != nil {
+	if err := store.DeleteContext(t.Context(), user.ID, latest.ContextID); err != nil {
 		t.Fatal(err)
 	}
-	context, err := store.Context(user.ID, second.ContextID, time.Now())
+	context, err := store.Context(t.Context(), user.ID, second.ContextID, time.Now())
 	if err != nil || !context.Stale {
 		t.Fatalf("deleted latest regressed head: %#v %v", context, err)
 	}
@@ -189,7 +189,7 @@ func TestRetentionConfigurationPreservesExistingExpiryAndReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	original, err := store.Context(user.ID, binding.ContextID, time.Now())
+	original, err := store.Context(t.Context(), user.ID, binding.ContextID, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +205,7 @@ func TestRetentionConfigurationPreservesExistingExpiryAndReplay(t *testing.T) {
 	if _, err := store.Ingest(user.ID, request); err != nil {
 		t.Fatal(err)
 	}
-	replay, err := store.Context(user.ID, binding.ContextID, time.Now())
+	replay, err := store.Context(t.Context(), user.ID, binding.ContextID, time.Now())
 	if err != nil || *replay.ExpiresAt != *original.ExpiresAt {
 		t.Fatalf("changed existing expiry: %#v %v", replay, err)
 	}
@@ -213,7 +213,7 @@ func TestRetentionConfigurationPreservesExistingExpiryAndReplay(t *testing.T) {
 	if _, err := store.Ingest(user.ID, request); err != nil {
 		t.Fatal(err)
 	}
-	refreshed, err := store.Context(user.ID, binding.ContextID, time.Now())
+	refreshed, err := store.Context(t.Context(), user.ID, binding.ContextID, time.Now())
 	if err != nil || *refreshed.ExpiresAt-refreshed.LastSubmittedAt != duration.Milliseconds() {
 		t.Fatalf("fresh retention: %#v %v", refreshed, err)
 	}
@@ -236,17 +236,17 @@ func TestContainerRunWithoutHarnessRemainsSearchableWithoutSession(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	context, err := store.Context(user.ID, binding.ContextID, time.Now())
+	context, err := store.Context(t.Context(), user.ID, binding.ContextID, time.Now())
 	if err != nil || len(context.Sessions) != 0 {
 		t.Fatalf("container mistaken for session: %#v %v", context, err)
 	}
 	for _, filter := range []ingestion.Filter{{RunID: "container-execution"}, {Query: "container-execution"}} {
-		items, err := store.ObservationContexts(user.ID, 100, 0, "", filter)
+		items, err := store.ObservationContexts(t.Context(), user.ID, 100, 0, "", filter)
 		if err != nil || len(items) != 1 || items[0].ID != binding.ContextID {
 			t.Fatalf("container provenance lost: %#v %v", items, err)
 		}
 	}
-	items, err := store.ObservationContexts(user.ID, 100, 0, "", ingestion.Filter{SessionID: "container-execution"})
+	items, err := store.ObservationContexts(t.Context(), user.ID, 100, 0, "", ingestion.Filter{SessionID: "container-execution"})
 	if err != nil || len(items) != 0 {
 		t.Fatalf("container filter mistaken for session: %#v %v", items, err)
 	}

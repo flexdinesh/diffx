@@ -83,7 +83,7 @@ func TestSyncPrintDebugCommitsSelectedCheckoutAndRecoversRemovedCheckout(t *test
 	if strings.Contains(debug.String(), token) {
 		t.Fatal("debug leaked credentials")
 	}
-	contexts, err := store.ObservationContexts(owner.ID, 10, 0, "", ingestion.Filter{})
+	contexts, err := store.ObservationContexts(t.Context(), owner.ID, 10, 0, "", ingestion.Filter{})
 	if err != nil || len(contexts) != 1 {
 		t.Fatalf("selected checkout publication: %d %v", len(contexts), err)
 	}
@@ -189,7 +189,7 @@ func TestSyncAndHooksCollectOneCheckoutAndDeduplicate(t *testing.T) {
 		return output.String()
 	}
 	sync(1)
-	contexts, err := fixture.store.ObservationContexts(fixture.ownerID, 10, 0, "", ingestion.Filter{})
+	contexts, err := fixture.store.ObservationContexts(t.Context(), fixture.ownerID, 10, 0, "", ingestion.Filter{})
 	if err != nil || len(contexts) != 1 {
 		t.Fatalf("selected checkout contexts: %#v %v", contexts, err)
 	}
@@ -202,7 +202,7 @@ func TestSyncAndHooksCollectOneCheckoutAndDeduplicate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored, err := fixture.store.ObservationSnapshot(fixture.ownerID, originalID, review.DiffAll)
+	stored, err := fixture.store.ObservationSnapshot(t.Context(), fixture.ownerID, originalID, review.DiffAll)
 	if err != nil || len(stored.Files) != len(local.Scopes[0].Snapshot.Files) || len(stored.Files) != 1 {
 		t.Fatalf("local/remote selected checkout diff: %+v %v", stored, err)
 	}
@@ -236,7 +236,7 @@ func TestSyncAndHooksCollectOneCheckoutAndDeduplicate(t *testing.T) {
 	hook("B", 3)
 	sync(3)
 	for _, session := range []string{"A", "B"} {
-		contexts, err := fixture.store.ObservationContexts(fixture.ownerID, 10, 0, "", ingestion.Filter{Harness: "codex", SessionID: session})
+		contexts, err := fixture.store.ObservationContexts(t.Context(), fixture.ownerID, 10, 0, "", ingestion.Filter{Harness: "codex", SessionID: session})
 		if err != nil || len(contexts) != 1 || contexts[0].ID != originalID {
 			t.Fatalf("session %s duplicated or lost review: %+v %v", session, contexts, err)
 		}
@@ -251,7 +251,7 @@ func TestSyncAndHooksCollectOneCheckoutAndDeduplicate(t *testing.T) {
 		t.Fatal(err)
 	}
 	sync(5)
-	contexts, err = fixture.store.ObservationContexts(fixture.ownerID, 10, 0, "", ingestion.Filter{})
+	contexts, err = fixture.store.ObservationContexts(t.Context(), fixture.ownerID, 10, 0, "", ingestion.Filter{})
 	if err != nil || len(contexts) != 2 {
 		t.Fatalf("changed content history: %+v %v", contexts, err)
 	}
@@ -260,11 +260,11 @@ func TestSyncAndHooksCollectOneCheckoutAndDeduplicate(t *testing.T) {
 			t.Fatal("recollected content stayed stale")
 		}
 	}
-	if err := fixture.store.DeleteContext(fixture.ownerID, originalID); err != nil {
+	if err := fixture.store.DeleteContext(t.Context(), fixture.ownerID, originalID); err != nil {
 		t.Fatal(err)
 	}
 	sync(6)
-	contexts, err = fixture.store.ObservationContexts(fixture.ownerID, 10, 0, "", ingestion.Filter{})
+	contexts, err = fixture.store.ObservationContexts(t.Context(), fixture.ownerID, 10, 0, "", ingestion.Filter{})
 	if err != nil || len(contexts) != 2 {
 		t.Fatalf("deleted context suppressed fresh collection: %+v %v", contexts, err)
 	}
@@ -327,7 +327,7 @@ func TestSyncReusesPendingPayloadAndRefreshesStaleReplay(t *testing.T) {
 	if fixture.uploads.Load() != 2 {
 		t.Fatalf("stale retry needed fresh submission: %d uploads", fixture.uploads.Load())
 	}
-	contexts, err := fixture.store.ObservationContexts(fixture.ownerID, 10, 0, "", ingestion.Filter{})
+	contexts, err := fixture.store.ObservationContexts(t.Context(), fixture.ownerID, 10, 0, "", ingestion.Filter{})
 	if err != nil || len(contexts) != 2 {
 		t.Fatalf("stale retry duplicated history: %+v %v", contexts, err)
 	}
@@ -357,12 +357,12 @@ func TestSyncRecordsNewSessionMetadataWithoutDuplicatingReviews(t *testing.T) {
 		if got := fixture.uploads.Load(); got != step.uploads {
 			t.Fatalf("session %s/%s: %d uploads, want %d", step.session, step.name, got, step.uploads)
 		}
-		contexts, err := fixture.store.ObservationContexts(fixture.ownerID, 10, 0, "", ingestion.Filter{Harness: "codex", SessionID: step.session, SessionName: step.name})
+		contexts, err := fixture.store.ObservationContexts(t.Context(), fixture.ownerID, 10, 0, "", ingestion.Filter{Harness: "codex", SessionID: step.session, SessionName: step.name})
 		if err != nil || len(contexts) != 1 {
 			t.Fatalf("session association: %+v %v", contexts, err)
 		}
 	}
-	contexts, err := fixture.store.ObservationContexts(fixture.ownerID, 10, 0, "", ingestion.Filter{})
+	contexts, err := fixture.store.ObservationContexts(t.Context(), fixture.ownerID, 10, 0, "", ingestion.Filter{})
 	if err != nil || len(contexts) != 1 {
 		t.Fatalf("session uploads duplicated snapshot: %+v %v", contexts, err)
 	}
@@ -469,11 +469,11 @@ func TestSyncRotatedTokenRecoversOnlyItsOwnersAttemptedPayload(t *testing.T) {
 	if err := run(t.Context(), []string{"sync", "--retry"}, nil, io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	contexts, err := fixture.store.ObservationContexts(fixture.ownerID, 10, 0, "", ingestion.Filter{})
+	contexts, err := fixture.store.ObservationContexts(t.Context(), fixture.ownerID, 10, 0, "", ingestion.Filter{})
 	if err != nil || len(contexts) != 1 {
 		t.Fatalf("rotated token failed to publish owner's saved collection: %+v %v", contexts, err)
 	}
-	foreignContexts, err := fixture.store.ObservationContexts(foreign.ID, 10, 0, "", ingestion.Filter{})
+	foreignContexts, err := fixture.store.ObservationContexts(t.Context(), foreign.ID, 10, 0, "", ingestion.Filter{})
 	if err != nil || len(foreignContexts) != 0 {
 		t.Fatalf("foreign owner received saved collection: %+v %v", foreignContexts, err)
 	}
@@ -638,7 +638,7 @@ func TestHookRotatedEnvironmentTokenRecoversOwnersRemovedCheckout(t *testing.T) 
 	if err := retry(replacement.Secret); err != nil {
 		t.Fatal(err)
 	}
-	contexts, err := fixture.store.ObservationContexts(fixture.ownerID, 10, 0, "", ingestion.Filter{})
+	contexts, err := fixture.store.ObservationContexts(t.Context(), fixture.ownerID, 10, 0, "", ingestion.Filter{})
 	if err != nil || len(contexts) != 1 {
 		t.Fatalf("rotated hook delivery: %+v %v", contexts, err)
 	}
@@ -646,7 +646,7 @@ func TestHookRotatedEnvironmentTokenRecoversOwnersRemovedCheckout(t *testing.T) 
 	if err != nil || replay.ContextID != contexts[0].ID {
 		t.Fatalf("hook recovery replaced immutable submission: %+v %v", replay, err)
 	}
-	foreignContexts, err := fixture.store.ObservationContexts(foreign.ID, 10, 0, "", ingestion.Filter{})
+	foreignContexts, err := fixture.store.ObservationContexts(t.Context(), foreign.ID, 10, 0, "", ingestion.Filter{})
 	if err != nil || len(foreignContexts) != 0 {
 		t.Fatalf("foreign hook observations: %+v %v", foreignContexts, err)
 	}

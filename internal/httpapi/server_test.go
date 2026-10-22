@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -314,7 +315,7 @@ func assertCapabilityProblem(t *testing.T, response *http.Response, capability s
 
 type failingCommentsStore struct{ *reviewstore.Store }
 
-func (failingCommentsStore) Comments(string) ([]review.ReviewComment, error) {
+func (failingCommentsStore) Comments(context.Context, string) ([]review.ReviewComment, error) {
 	return nil, errors.New("sqlite: disk I/O error at /home/private/state.db")
 }
 

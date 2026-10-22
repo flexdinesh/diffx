@@ -50,7 +50,7 @@ func TestActivityProjectionPreservesHeadOrderAndObservationProvenance(t *testing
 			}
 			assertActivity := func(id string, activity, captured int64, stale bool) {
 				t.Helper()
-				item, err := store.Context(owner.ID, id, time.Now())
+				item, err := store.Context(t.Context(), owner.ID, id, time.Now())
 				if err != nil || item.ActivityAt != activity || item.Metadata == nil || item.Metadata.ActivityAt != captured || item.Stale != stale {
 					t.Fatalf("activity projection: %+v, %v; want activity %d, captured %d, stale %v", item, err, activity, captured, stale)
 				}
@@ -99,7 +99,7 @@ func TestActivityProjectionPreservesHeadOrderAndObservationProvenance(t *testing
 				t.Fatal(err)
 			}
 			assertActivity(latest.ContextID, 390, 390, false)
-			if _, err := store.Context(other.ID, latest.ContextID, time.Now()); !errors.Is(err, ErrNotFound) {
+			if _, err := store.Context(t.Context(), other.ID, latest.ContextID, time.Now()); !errors.Is(err, ErrNotFound) {
 				t.Fatalf("activity leaked across owners: %v", err)
 			}
 			if err := store.Close(); err != nil {
