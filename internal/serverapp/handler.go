@@ -45,19 +45,20 @@ func (options Options) Capabilities() Capabilities {
 	}
 }
 
-func Handler(ctx context.Context, service *contextservice.Service, store httpapi.Store, assets fs.FS, defaultID string, options ...Options) http.Handler {
+func Handler(ctx context.Context, service *contextservice.Service, store reviewservice.MutationStore, assets fs.FS, defaultID string, options ...Options) http.Handler {
 	var configuration Options
 	if len(options) > 0 {
 		configuration = options[0]
 	}
 	capabilities := configuration.Capabilities()
+	catalog := reviewservice.NewCatalog(service, store)
 
 	mux := http.NewServeMux()
 	current := &defaultContext{id: defaultID}
 	if configuration.Collections != nil {
 		current = configuration.Collections.current
 	}
-	mcp := contextMCP(service, store, current)
+	mcp := contextMCP(service, catalog, current)
 	mux.Handle("/mcp", mcp)
 	mux.Handle("/mcp/", mcp)
 	mux.Handle("/control/", http.NotFoundHandler())
@@ -82,7 +83,7 @@ func Handler(ctx context.Context, service *contextservice.Service, store httpapi
 		mux.Handle("/api/v2/collections", configuration.Collections)
 	}
 	mux.HandleFunc("/api/v2/events", func(w http.ResponseWriter, r *http.Request) { stream(ctx, service, w, r) })
-	mux.Handle("/", httpapi.NewMulti(service, store, assets))
+	mux.Handle("/", httpapi.NewMulti(service, catalog, assets))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -185,7 +186,7 @@ func stream(ctx context.Context, service *contextservice.Service, w http.Respons
 	}
 }
 
-func contextMCP(service *contextservice.Service, store httpapi.Store, current *defaultContext) http.Handler {
+func contextMCP(service *contextservice.Service, catalog *reviewservice.Catalog, current *defaultContext) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := current.get()
 		if strings.HasPrefix(r.URL.Path, "/mcp/contexts/") {
@@ -204,7 +205,7 @@ func contextMCP(service *contextservice.Service, store httpapi.Store, current *d
 				return
 			}
 		}
-		mcpapi.NewCatalog(reviewservice.NewCatalog(service, store), id, buildversion.String()).ServeHTTP(w, r)
+		mcpapi.NewCatalog(catalog, id, buildversion.String()).ServeHTTP(w, r)
 	})
 }
 

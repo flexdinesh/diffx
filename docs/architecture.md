@@ -74,7 +74,8 @@ personal lifecycle discovery.
   acknowledgement state because their suppression scope differs. No dependency
   on hook scheduling.
 - `hooks`: finite scheduling, coalescing and session-aware suppression.
-- `httpapi`, `mcpapi`: transport parsing, projection and error mapping.
+- `httpapi`, `mcpapi`: transport parsing, projection and error mapping. Both
+  reach review operations through `reviewservice.Catalog` and hold no store.
 - `serverapp`: transport/task composition; `daemon`: local lifecycle;
   `remoteserver`: remote authentication and worker composition.
 - `config`, `processlock`, `browser`, `version`: configuration and private state

@@ -452,3 +452,14 @@ func TestCommentEditsReportNotFoundWhenDeletedConcurrently(t *testing.T) {
 		t.Fatalf("writes = %d", store.putCalls)
 	}
 }
+
+func TestVersionRejectsDiffsOutsideTheContextBeforeStorage(t *testing.T) {
+	source := &sourceStub{support: diffsource.Support{Scopes: []review.DiffMode{review.DiffAll}}}
+	// The embedded nil MutationStore panics if the store is reached.
+	service := New(boundSession(source, session.Policies{}), &storeStub{})
+	_, err := service.Version("foreign", "version")
+	var requestError *review.RequestError
+	if !errors.As(err, &requestError) || requestError.Status != 404 {
+		t.Fatalf("foreign version error = %v", err)
+	}
+}

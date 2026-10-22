@@ -97,7 +97,7 @@ func TestAPIReviewWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	active := patchSession(t, store, source, string(raw), session.Policies{})
-	handler := New(active, store, reviewservice.New(active, store), fstest.MapFS{"index.html": {Data: []byte("web")}})
+	handler := New(reviewservice.New(active, store), fstest.MapFS{"index.html": {Data: []byte("web")}})
 	server := httptest.NewServer(handler)
 	defer server.Close()
 	emptyCommentsResponse := request(t, server.Client(), http.MethodGet, server.URL+"/api/review/comments", nil)
@@ -231,7 +231,7 @@ func TestSessionCapabilitiesAndEnforcement(t *testing.T) {
 		t.Fatal(err)
 	}
 	active := patchSession(t, store, source, string(raw), session.Policies{})
-	server := httptest.NewServer(New(active, store, reviewservice.New(active, store), fstest.MapFS{"index.html": {Data: []byte("web")}}))
+	server := httptest.NewServer(New(reviewservice.New(active, store), fstest.MapFS{"index.html": {Data: []byte("web")}}))
 	defer server.Close()
 
 	sessionResponse := request(t, server.Client(), http.MethodGet, server.URL+"/api/review/session", nil)
@@ -274,7 +274,7 @@ func TestDisabledCommentsRejectEveryRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	active := patchSession(t, store, source, string(raw), session.Policies{Comments: session.DisablePolicy})
-	server := httptest.NewServer(New(active, store, reviewservice.New(active, store), fstest.MapFS{"index.html": {Data: []byte("web")}}))
+	server := httptest.NewServer(New(reviewservice.New(active, store), fstest.MapFS{"index.html": {Data: []byte("web")}}))
 	defer server.Close()
 
 	for _, test := range []struct {
@@ -333,7 +333,7 @@ func TestUnclassifiedErrorsHideInternalDetail(t *testing.T) {
 	}
 	active := patchSession(t, store, source, string(raw), session.Policies{})
 	failing := failingCommentsStore{store}
-	server := httptest.NewServer(New(active, failing, reviewservice.New(active, failing), fstest.MapFS{}))
+	server := httptest.NewServer(New(reviewservice.New(active, failing), fstest.MapFS{}))
 	defer server.Close()
 	response := request(t, server.Client(), http.MethodGet, server.URL+"/api/review/comments", nil)
 	if response.StatusCode != http.StatusInternalServerError {

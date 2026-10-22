@@ -3,6 +3,8 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"github.com/flexdinesh/diffx/internal/reviewservice"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -89,7 +91,7 @@ func TestMultiContextObservationIsolation(t *testing.T) {
 		}
 		provider.sessions = append(provider.sessions, patchSession(t, store, source, string(raw), session.Policies{}))
 	}
-	server := httptest.NewServer(NewMulti(provider, store, fstest.MapFS{"index.html": {Data: []byte("web")}}))
+	server := httptest.NewServer(newMulti(provider, store, fstest.MapFS{"index.html": {Data: []byte("web")}}))
 	defer server.Close()
 	first := provider.sessions[0]
 	second := provider.sessions[1]
@@ -137,7 +139,7 @@ func TestMultiGlobalRoutesWithoutContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	server := httptest.NewServer(NewMulti(&testProvider{}, store, fstest.MapFS{"index.html": {Data: []byte("web")}}))
+	server := httptest.NewServer(newMulti(&testProvider{}, store, fstest.MapFS{"index.html": {Data: []byte("web")}}))
 	defer server.Close()
 	for _, suffix := range []string{"/api/v2/contexts", "/api/v2/metrics", "/openapi.yaml", "/contexts/example", "/streams/example"} {
 		response := request(t, server.Client(), http.MethodGet, server.URL+suffix, nil)
@@ -188,7 +190,7 @@ func TestMultiObservationsAndRetainedFilesWithoutCheckout(t *testing.T) {
 		}
 		targets = append(targets, target)
 	}
-	server := httptest.NewServer(NewMulti(provider, store, fstest.MapFS{"index.html": {Data: []byte("web")}}))
+	server := httptest.NewServer(newMulti(provider, store, fstest.MapFS{"index.html": {Data: []byte("web")}}))
 	defer server.Close()
 	page := decode[contextservice.Page](t, request(t, server.Client(), http.MethodGet, server.URL+"/api/v2/contexts?repository=shared&branch=shared", nil))
 	if len(page.Contexts) != 2 || page.Contexts[0].Observation == nil || page.Contexts[1].Observation == nil || page.Contexts[0].Observation.SourceID == page.Contexts[1].Observation.SourceID {
@@ -321,7 +323,7 @@ func TestComparisonMetadataSurvivesRestartWithoutGit(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", t.TempDir())
-	server := httptest.NewServer(NewMulti(contextservice.New(store, user), store, fstest.MapFS{"index.html": {Data: []byte("web")}}))
+	server := httptest.NewServer(newMulti(contextservice.New(store, user), store, fstest.MapFS{"index.html": {Data: []byte("web")}}))
 	defer server.Close()
 	page := decode[contextservice.Page](t, request(t, server.Client(), http.MethodGet, server.URL+"/api/v2/contexts", nil))
 	if len(page.Contexts) != len(expected) {
@@ -340,4 +342,13 @@ func TestComparisonMetadataSurvivesRestartWithoutGit(t *testing.T) {
 
 func (p *testProvider) ListFiltered(ctx context.Context, limit int, cursor string, filter ingestion.Filter) (contextservice.Page, error) {
 	return p.List(ctx, limit, cursor)
+}
+
+type catalogProvider interface {
+	Provider
+	reviewservice.ContextProvider
+}
+
+func newMulti(provider catalogProvider, store reviewservice.MutationStore, assets fs.FS) http.Handler {
+	return NewMulti(provider, reviewservice.NewCatalog(provider, store), assets)
 }

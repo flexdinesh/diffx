@@ -61,7 +61,7 @@ func TestStoredPreviewReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshot := submitted.Snapshot
-	handler := NewMulti(provider, store, nil)
+	handler := newMulti(provider, store, nil)
 	for _, test := range []struct {
 		name, diffID, versionID, fileID, fingerprint, scope, resource string
 		status                                                        int

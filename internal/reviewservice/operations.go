@@ -35,13 +35,29 @@ func (service *Service) Snapshot(ctx context.Context, mode review.DiffMode) (rev
 	return service.session.Source.Snapshot(ctx, mode)
 }
 
-func (service *Service) ownsDiff(id string) bool {
+// Session is the resolved context the service is bound to.
+func (service *Service) Session() session.Session { return service.session }
+
+// OwnsDiff reports whether a diff identity belongs to this context.
+func (service *Service) OwnsDiff(id string) bool {
 	for _, owned := range service.session.DiffIDs {
 		if owned == id {
 			return true
 		}
 	}
 	return false
+}
+
+// Version reads a stored snapshot version of one of this context's diffs.
+func (service *Service) Version(diffID, versionID string) (review.RepositoryDiff, error) {
+	if !service.OwnsDiff(diffID) {
+		return review.RepositoryDiff{}, review.Error(404, "Diff version not found")
+	}
+	snapshot, err := service.store.StoredVersion(service.session.User.ID, diffID, versionID, time.Now())
+	if errors.Is(err, reviewdata.ErrNotFound) {
+		err = review.Error(404, "Diff version not found")
+	}
+	return snapshot, err
 }
 func randomID() (string, error) {
 	value := make([]byte, 16)
@@ -166,7 +182,7 @@ func (service *Service) validateReference(ctx context.Context, diffID, versionID
 	if diffID == "" && versionID == "" {
 		return nil
 	}
-	if !service.ownsDiff(diffID) {
+	if !service.OwnsDiff(diffID) {
 		return review.Error(404, "Comment diff not found")
 	}
 	if versionID == "" {
