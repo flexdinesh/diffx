@@ -24,9 +24,9 @@ func (err *CommentNotFoundError) Unwrap() error {
 }
 
 type CommentStore interface {
-	Comments(string) ([]review.ReviewComment, error)
-	PutComment(string, review.ReviewComment) error
-	ReplaceComment(string, review.ReviewComment) (bool, error)
+	Comments(context.Context, string) ([]review.ReviewComment, error)
+	PutComment(context.Context, string, review.ReviewComment) error
+	ReplaceComment(context.Context, string, review.ReviewComment) (bool, error)
 }
 
 type Comment struct {
@@ -56,7 +56,7 @@ func (service *Service) ListComments(ctx context.Context, includeResolved bool) 
 	if err := service.requireComments(); err != nil {
 		return nil, err
 	}
-	storedComments, err := service.store.Comments(service.session.ContextID)
+	storedComments, err := service.store.Comments(ctx, service.session.ContextID)
 	if err != nil {
 		return nil, err
 	}
@@ -120,11 +120,11 @@ func (service *Service) place(ctx context.Context, comments []review.ReviewComme
 	return nil
 }
 
-func (service *Service) ResolveComment(commentID string) (Resolution, error) {
+func (service *Service) ResolveComment(ctx context.Context, commentID string) (Resolution, error) {
 	if err := service.requireComments(); err != nil {
 		return Resolution{}, err
 	}
-	comments, err := service.store.Comments(service.session.ContextID)
+	comments, err := service.store.Comments(ctx, service.session.ContextID)
 	if err != nil {
 		return Resolution{}, err
 	}
@@ -134,7 +134,7 @@ func (service *Service) ResolveComment(commentID string) (Resolution, error) {
 		}
 		if comment.Status != "resolved" {
 			comment.Status = "resolved"
-			replaced, err := service.store.ReplaceComment(service.session.ContextID, comment)
+			replaced, err := service.store.ReplaceComment(ctx, service.session.ContextID, comment)
 			if err != nil {
 				return Resolution{}, err
 			}

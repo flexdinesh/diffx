@@ -22,7 +22,7 @@ func (service fakeReviewService) ListComments(ctx context.Context, includeResolv
 	return service.list(ctx, includeResolved)
 }
 
-func (service fakeReviewService) ResolveComment(commentID string) (reviewservice.Resolution, error) {
+func (service fakeReviewService) ResolveComment(_ context.Context, commentID string) (reviewservice.Resolution, error) {
 	return service.resolve(commentID)
 }
 

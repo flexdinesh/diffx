@@ -221,7 +221,7 @@ func TestPublicIngestionSurvivesProducerRemovalAndServerRestart(t *testing.T) {
 			}
 			file := first.Snapshot.Files[0]
 			comment := review.ReviewComment{ID: "retained-comment", DiffID: first.Snapshot.ID, VersionID: first.Snapshot.VersionID, Path: file.Path, Scope: review.DiffAll, Fingerprint: file.Fingerprint, Side: "additions", Start: 1, End: 1, Code: "after", Body: "Check this change", Status: "open", CreatedAt: 1}
-			if err := d.store.PutComment(first.ContextID, comment); err != nil {
+			if err := d.store.PutComment(t.Context(), first.ContextID, comment); err != nil {
 				t.Fatal(err)
 			}
 			fresh := input
@@ -403,7 +403,7 @@ func TestIngestionNotificationReferencesCommittedObservation(t *testing.T) {
 	if err != nil || !strings.Contains(line, receipt.ContextID) {
 		t.Fatalf("SSE context: %q %v", line, err)
 	}
-	if _, err := d.store.ObservationSnapshot(d.owner, receipt.ContextID, review.DiffAll); err != nil {
+	if _, err := d.store.ObservationSnapshot(t.Context(), d.owner, receipt.ContextID, review.DiffAll); err != nil {
 		t.Fatalf("notification before commit: %v", err)
 	}
 	if _, err := reader.ReadString('\n'); err != nil {
@@ -552,11 +552,11 @@ func TestForeignRESTMutationsLeaveReviewStateUntouched(t *testing.T) {
 	}
 	snapshot, file := foreign.Snapshot, foreign.Snapshot.Files[0]
 	original := review.ReviewComment{ID: "foreign-comment", DiffID: snapshot.ID, VersionID: snapshot.VersionID, Path: file.Path, Scope: review.DiffAll, Fingerprint: file.Fingerprint, Side: "additions", Start: 1, End: 1, Body: "Keep this concern", Status: "open", CreatedAt: 1}
-	if err := d.store.PutComment(foreign.Context.ID, original); err != nil {
+	if err := d.store.PutComment(t.Context(), foreign.Context.ID, original); err != nil {
 		t.Fatal(err)
 	}
 	mark := review.ReviewMark{DiffID: snapshot.ID, VersionID: snapshot.VersionID, FileID: file.ID, FileVersion: file.Fingerprint, Scope: review.DiffAll}
-	if err := d.store.PutMark(foreign.Context.ID, mark); err != nil {
+	if err := d.store.PutMark(t.Context(), foreign.Context.ID, mark); err != nil {
 		t.Fatal(err)
 	}
 	create := map[string]any{"diffId": snapshot.ID, "versionId": snapshot.VersionID, "fileId": file.ID, "fileVersion": file.Fingerprint, "scope": "all", "side": "additions", "start": 1, "end": 1, "body": "New concern"}
@@ -591,11 +591,11 @@ func TestForeignRESTMutationsLeaveReviewStateUntouched(t *testing.T) {
 			}
 		})
 	}
-	comments, err := d.store.Comments(foreign.Context.ID)
+	comments, err := d.store.Comments(t.Context(), foreign.Context.ID)
 	if err != nil || !reflect.DeepEqual(comments, []review.ReviewComment{original}) {
 		t.Fatalf("foreign comments changed: %#v %v", comments, err)
 	}
-	marks, err := d.store.Marks(foreign.Context.ID, review.DiffAll)
+	marks, err := d.store.Marks(t.Context(), foreign.Context.ID, review.DiffAll)
 	if err != nil || !reflect.DeepEqual(marks, []review.ReviewMark{mark}) {
 		t.Fatalf("foreign marks changed: %#v %v", marks, err)
 	}
@@ -732,7 +732,7 @@ func TestStreamReviewSpansSnapshotsInBothCompositions(t *testing.T) {
 				t.Fatalf("agent comments: %#v", agent.Comments)
 			}
 			call("DELETE", laterBase, nil, 204, nil)
-			if comments, err := d.store.Comments(later.ContextID); err != nil || len(comments) != 0 {
+			if comments, err := d.store.Comments(t.Context(), later.ContextID); err != nil || len(comments) != 0 {
 				t.Fatalf("stream end kept comments: %#v %v", comments, err)
 			}
 		})

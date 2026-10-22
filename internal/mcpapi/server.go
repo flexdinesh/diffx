@@ -16,7 +16,7 @@ const ProtocolVersion = "2026-07-28"
 
 type ReviewService interface {
 	ListComments(context.Context, bool) ([]reviewservice.Comment, error)
-	ResolveComment(string) (reviewservice.Resolution, error)
+	ResolveComment(context.Context, string) (reviewservice.Resolution, error)
 }
 
 type getReviewCommentsInput struct {
@@ -118,7 +118,7 @@ func registerTools(server *mcp.Server, service ReviewService, catalog *reviewser
 		if err != nil {
 			return nil, reviewservice.Resolution{}, err
 		}
-		resolution, err := active.ResolveComment(input.CommentID)
+		resolution, err := active.ResolveComment(ctx, input.CommentID)
 		return &mcp.CallToolResult{}, resolution, err
 	})
 }

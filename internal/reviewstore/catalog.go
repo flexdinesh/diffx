@@ -1,6 +1,7 @@
 package reviewstore
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -104,8 +105,8 @@ func scanContext(row scanner) (ContextInfo, error) {
 	return item, err
 }
 
-func (store *Store) Context(ownerID, id string, now time.Time) (ContextInfo, error) {
-	item, err := scanContext(store.db.QueryRow(contextSelect+` WHERE c.owner_id=? AND c.id=?`, ownerID, id))
+func (store *Store) Context(ctx context.Context, ownerID, id string, now time.Time) (ContextInfo, error) {
+	item, err := scanContext(store.db.QueryRowContext(ctx, contextSelect+` WHERE c.owner_id=? AND c.id=?`, ownerID, id))
 	if err != nil {
 		return ContextInfo{}, err
 	}
@@ -118,24 +119,24 @@ func (store *Store) Context(ownerID, id string, now time.Time) (ContextInfo, err
 // DeleteContext removes the context and every scope's snapshot. Review state
 // survives while its stream has another observation. Stream heads intentionally
 // survive so older observations remain stale.
-func (store *Store) DeleteContext(ownerID, id string) error {
-	transaction, err := store.db.Begin()
+func (store *Store) DeleteContext(ctx context.Context, ownerID, id string) error {
+	transaction, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer transaction.Rollback()
 	var anchor string
-	err = transaction.QueryRow("SELECT anchor_diff_id FROM contexts WHERE owner_id=? AND id=?", ownerID, id).Scan(&anchor)
+	err = transaction.QueryRowContext(ctx, "SELECT anchor_diff_id FROM contexts WHERE owner_id=? AND id=?", ownerID, id).Scan(&anchor)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
 	if err != nil {
 		return err
 	}
-	if _, err = transaction.Exec("DELETE FROM diffs WHERE owner_id=? AND id<>? AND id IN (SELECT diff_id FROM observation_scopes WHERE context_id=?)", ownerID, anchor, id); err != nil {
+	if _, err = transaction.ExecContext(ctx, "DELETE FROM diffs WHERE owner_id=? AND id<>? AND id IN (SELECT diff_id FROM observation_scopes WHERE context_id=?)", ownerID, anchor, id); err != nil {
 		return err
 	}
-	if _, err = transaction.Exec("DELETE FROM diffs WHERE owner_id=? AND id=?", ownerID, anchor); err != nil {
+	if _, err = transaction.ExecContext(ctx, "DELETE FROM diffs WHERE owner_id=? AND id=?", ownerID, anchor); err != nil {
 		return err
 	}
 	if err := endStreams(transaction); err != nil {
@@ -145,7 +146,7 @@ func (store *Store) DeleteContext(ownerID, id string) error {
 }
 
 // Contexts uses a keyset cursor; concurrent submissions may move an item across pages.
-func (store *Store) Contexts(ownerID string, limit int, beforeTime int64, beforeID string, now time.Time) ([]ContextInfo, error) {
+func (store *Store) Contexts(ctx context.Context, ownerID string, limit int, beforeTime int64, beforeID string, now time.Time) ([]ContextInfo, error) {
 	query := contextSelect + ` WHERE c.owner_id=? AND (d.expires_at IS NULL OR d.expires_at>?)`
 	arguments := []any{ownerID, now.UnixMilli()}
 	if beforeID != "" {
@@ -154,7 +155,7 @@ func (store *Store) Contexts(ownerID string, limit int, beforeTime int64, before
 	}
 	query += ` ORDER BY c.last_submitted_at DESC,c.id DESC LIMIT ?`
 	arguments = append(arguments, limit)
-	rows, err := store.db.Query(query, arguments...)
+	rows, err := store.db.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -170,10 +171,10 @@ func (store *Store) Contexts(ownerID string, limit int, beforeTime int64, before
 	return items, rows.Err()
 }
 
-func (store *Store) ContextCount(ownerID string, selection ingestion.Selection, now time.Time) (int, error) {
+func (store *Store) ContextCount(ctx context.Context, ownerID string, selection ingestion.Selection, now time.Time) (int, error) {
 	var count int
 	predicate, values := selectionPredicate(selection)
-	err := store.db.QueryRow(`SELECT COUNT(*)
+	err := store.db.QueryRowContext(ctx, `SELECT COUNT(*)
 		FROM contexts c LEFT JOIN diffs d ON d.id=c.anchor_diff_id LEFT JOIN observations o ON o.context_id=c.id
 		WHERE c.owner_id=? AND (d.expires_at IS NULL OR d.expires_at>?)`+predicate,
 		append([]any{ownerID, now.UnixMilli()}, values...)...).Scan(&count)
@@ -181,21 +182,21 @@ func (store *Store) ContextCount(ownerID string, selection ingestion.Selection, 
 }
 
 type queryer interface {
-	QueryRow(string, ...any) *sql.Row
-	Query(string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
-func bindingFor(db queryer, ownerID, id string, now time.Time) (Binding, error) {
-	item, err := scanContext(db.QueryRow(contextSelect+` WHERE c.owner_id=? AND c.id=?`, ownerID, id))
+func bindingFor(ctx context.Context, db queryer, ownerID, id string, now time.Time) (Binding, error) {
+	item, err := scanContext(db.QueryRowContext(ctx, contextSelect+` WHERE c.owner_id=? AND c.id=?`, ownerID, id))
 	if err != nil {
 		return Binding{}, err
 	}
 	if item.ExpiresAt != nil && *item.ExpiresAt <= now.UnixMilli() {
 		return Binding{}, ErrExpired
 	}
-	return observationBinding(db, ownerID, id)
+	return observationBinding(ctx, db, ownerID, id)
 }
 
-func (store *Store) ContextBinding(ownerID, id string, now time.Time) (Binding, error) {
-	return bindingFor(store.db, ownerID, id, now)
+func (store *Store) ContextBinding(ctx context.Context, ownerID, id string, now time.Time) (Binding, error) {
+	return bindingFor(ctx, store.db, ownerID, id, now)
 }

@@ -118,7 +118,7 @@ rename to new.ts
 	}
 	for _, comment := range comments {
 		for range 2 {
-			resolution, err := service.ResolveComment(comment.ID)
+			resolution, err := service.ResolveComment(t.Context(), comment.ID)
 			if err != nil || resolution.Status != "resolved" {
 				t.Fatalf("file resolution: %#v, %v", resolution, err)
 			}

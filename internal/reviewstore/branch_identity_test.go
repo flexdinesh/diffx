@@ -35,7 +35,7 @@ func TestReusedBranchNameKeepsIndependentReviewAndFreshness(t *testing.T) {
 		id    string
 		stale bool
 	}{{first.ContextID, true}, {renamed.ContextID, false}, {reused.ContextID, false}} {
-		context, err := store.Context(user.ID, check.id, time.Now())
+		context, err := store.Context(t.Context(), user.ID, check.id, time.Now())
 		if err != nil || context.Stale != check.stale {
 			t.Fatalf("independent branch freshness %s: %#v, %v", check.id, context, err)
 		}

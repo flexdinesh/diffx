@@ -41,7 +41,7 @@ func TestQueueRestartReplayAndLeaseFencing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	before, err := store.Context(owner.ID, binding.ContextID, time.Now())
+	before, err := store.Context(t.Context(), owner.ID, binding.ContextID, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestQueueRestartReplayAndLeaseFencing(t *testing.T) {
 	if err != nil || replay.ContextID != binding.ContextID {
 		t.Fatalf("commit replay: %+v %v", replay, err)
 	}
-	after, err := store.Context(owner.ID, binding.ContextID, time.Now())
+	after, err := store.Context(t.Context(), owner.ID, binding.ContextID, time.Now())
 	if err != nil || *after.ExpiresAt != *before.ExpiresAt || after.LastSubmittedAt != before.LastSubmittedAt || after.ActivityAt != 98 || recovered.Request.Metadata.ActivityAt != 98 {
 		t.Fatalf("retry extended retention: %v", err)
 	}
@@ -106,15 +106,15 @@ func TestQueueAcceptanceOrdersEqualCollectionTimesAndPreventsResurrection(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	old, err := store.Context(owner.ID, older.ContextID, time.Now())
+	old, err := store.Context(t.Context(), owner.ID, older.ContextID, time.Now())
 	if err != nil || !old.Stale {
 		t.Fatalf("worker order changed freshness: %+v %v", old, err)
 	}
-	latest, err := store.Context(owner.ID, newer.ContextID, time.Now())
+	latest, err := store.Context(t.Context(), owner.ID, newer.ContextID, time.Now())
 	if err != nil || latest.Stale {
 		t.Fatalf("accepted last must be latest: %+v %v", latest, err)
 	}
-	if err := store.DeleteContext(owner.ID, newer.ContextID); err != nil {
+	if err := store.DeleteContext(t.Context(), owner.ID, newer.ContextID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Ingest(owner.ID, second); !errors.Is(err, ErrNotFound) {

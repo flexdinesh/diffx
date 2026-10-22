@@ -55,7 +55,7 @@ func TestObservationRetryAndIndependentSources(t *testing.T) {
 	if _, err := store.Observation(other.ID, first.ContextID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-user metadata: %v", err)
 	}
-	if _, err := store.ObservationSnapshot(other.ID, first.ContextID, review.DiffAll); !errors.Is(err, ErrNotFound) {
+	if _, err := store.ObservationSnapshot(t.Context(), other.ID, first.ContextID, review.DiffAll); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-user snapshot: %v", err)
 	}
 	if _, err := store.ObservationPatch(t.Context(), other.ID, first.ContextID, review.DiffAll, "file", "all-fingerprint"); !errors.Is(err, ErrNotFound) {
@@ -90,7 +90,7 @@ func TestObservationFreshnessUsesCollectionOrderAndRetries(t *testing.T) {
 		}
 		bindings = append(bindings, binding)
 		for previous, binding := range bindings {
-			item, err := store.Context(user.ID, binding.ContextID, time.Now())
+			item, err := store.Context(t.Context(), user.ID, binding.ContextID, time.Now())
 			if err != nil || item.Stale != expected[index][previous] {
 				t.Fatalf("freshness after %s for %s: %#v, %v", request.SubmissionID, requests[previous].SubmissionID, item, err)
 			}
@@ -103,20 +103,20 @@ func TestObservationFreshnessUsesCollectionOrderAndRetries(t *testing.T) {
 		t.Fatalf("retry: %#v, %v", retry, err)
 	}
 	for index, binding := range bindings {
-		item, err := store.Context(user.ID, binding.ContextID, time.Now())
+		item, err := store.Context(t.Context(), user.ID, binding.ContextID, time.Now())
 		if err != nil || item.Stale != (index < len(bindings)-1) {
 			t.Fatalf("freshness for %s: %#v, %v", requests[index].SubmissionID, item, err)
 		}
 	}
-	filtered, err := store.ObservationContexts(user.ID, 1, 0, "", ingestion.Filter{RunID: "old-run"})
+	filtered, err := store.ObservationContexts(t.Context(), user.ID, 1, 0, "", ingestion.Filter{RunID: "old-run"})
 	if err != nil || len(filtered) != 1 || !filtered[0].Stale {
 		t.Fatalf("staleness with newer observation outside search: %#v, %v", filtered, err)
 	}
-	all, err := store.Contexts(user.ID, 100, 0, "", time.Now())
+	all, err := store.Contexts(t.Context(), user.ID, 100, 0, "", time.Now())
 	if err != nil || len(all) != len(bindings) {
 		t.Fatalf("catalog: %#v, %v", all, err)
 	}
-	page, err := store.Contexts(user.ID, 1, all[0].LastSubmittedAt, all[0].ID, time.Now())
+	page, err := store.Contexts(t.Context(), user.ID, 1, all[0].LastSubmittedAt, all[0].ID, time.Now())
 	if err != nil || len(page) != 1 || page[0].ID != all[1].ID || page[0].Stale != all[1].Stale {
 		t.Fatalf("paginated freshness: %#v, %v", page, err)
 	}
@@ -164,7 +164,7 @@ func TestObservationFreshnessTracksDeduplicatedSubmissions(t *testing.T) {
 			metadata[step.content] = request.Metadata
 		}
 		for content, id := range contexts {
-			item, err := store.Context(user.ID, id, time.Now())
+			item, err := store.Context(t.Context(), user.ID, id, time.Now())
 			if err != nil || item.Stale != (content != step.latest) || item.Metadata == nil || *item.Metadata != metadata[content] {
 				t.Fatalf("freshness after %s for %s: %#v, %v", step.id, content, item, err)
 			}
@@ -208,7 +208,7 @@ func TestObservationFreshnessKeepsStreamsSeparate(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, identity := range []struct{ ownerID, contextID string }{{user.ID, old.ContextID}, {ownerID, newest.ContextID}} {
-				item, err := store.Context(identity.ownerID, identity.contextID, time.Now())
+				item, err := store.Context(t.Context(), identity.ownerID, identity.contextID, time.Now())
 				if err != nil || item.Stale {
 					t.Fatalf("independent stream became stale: %#v, %v", item, err)
 				}
@@ -267,11 +267,11 @@ func TestObservationFreshnessSurvivesPruningLatestSnapshot(t *testing.T) {
 					}
 					store = reopened
 				}
-				item, err := store.Context(user.ID, first.ContextID, time.Now())
+				item, err := store.Context(t.Context(), user.ID, first.ContextID, time.Now())
 				if err != nil || !item.Stale {
 					t.Fatalf("old snapshot promoted %s: %#v, %v", phase, item, err)
 				}
-				items, err := store.ObservationContexts(user.ID, 100, 0, "", ingestion.Filter{SourceID: "source"})
+				items, err := store.ObservationContexts(t.Context(), user.ID, 100, 0, "", ingestion.Filter{SourceID: "source"})
 				if err != nil || len(items) != 1 || !items[0].Stale {
 					t.Fatalf("catalog freshness %s: %#v, %v", phase, items, err)
 				}
@@ -282,7 +282,7 @@ func TestObservationFreshnessSurvivesPruningLatestSnapshot(t *testing.T) {
 			if err != nil || fresh.ContextID != first.ContextID {
 				t.Fatalf("fresh dedupe: %#v, %v", fresh, err)
 			}
-			item, err := store.Context(user.ID, first.ContextID, time.Now())
+			item, err := store.Context(t.Context(), user.ID, first.ContextID, time.Now())
 			if err != nil || item.Stale {
 				t.Fatalf("fresh snapshot remained stale: %#v, %v", item, err)
 			}
@@ -347,15 +347,15 @@ func TestObservationReopensWithoutCheckoutWithinRetention(t *testing.T) {
 	if err != nil || retry.ContextID != binding.ContextID {
 		t.Fatalf("durable replay: %#v, %v", retry, err)
 	}
-	item, err := store.Context(user.ID, binding.ContextID, time.Now().Add(24*time.Hour))
+	item, err := store.Context(t.Context(), user.ID, binding.ContextID, time.Now().Add(24*time.Hour))
 	if err != nil || !item.Stale || item.Kind != "observation" || item.Metadata == nil || item.Metadata.SourceID != "source" || item.Root == nil || *item.Root != request.Metadata.Root || item.ExpiresAt == nil {
 		t.Fatalf("metadata: %#v, %v", item, err)
 	}
-	latest, err := store.Context(user.ID, newest.ContextID, time.Now())
+	latest, err := store.Context(t.Context(), user.ID, newest.ContextID, time.Now())
 	if err != nil || latest.Stale {
 		t.Fatalf("latest after reopening and retry: %#v, %v", latest, err)
 	}
-	snapshot, err := store.ObservationSnapshot(user.ID, binding.ContextID, review.DiffStaged)
+	snapshot, err := store.ObservationSnapshot(t.Context(), user.ID, binding.ContextID, review.DiffStaged)
 	if err != nil || snapshot.ID != binding.DiffIDs[review.DiffStaged] || snapshot.Revision != "staged-revision" {
 		t.Fatalf("snapshot: %#v, %v", snapshot, err)
 	}
@@ -363,7 +363,7 @@ func TestObservationReopensWithoutCheckoutWithinRetention(t *testing.T) {
 	if err != nil || patch.Contents == nil || patch.Contents.After != "new" {
 		t.Fatalf("contents: %#v, %v", patch, err)
 	}
-	rebound, err := store.ContextBinding(user.ID, binding.ContextID, time.Now())
+	rebound, err := store.ContextBinding(t.Context(), user.ID, binding.ContextID, time.Now())
 	if err != nil || len(rebound.DiffIDs) != 3 || rebound.DiffIDs[review.DiffStaged] != snapshot.ID {
 		t.Fatalf("binding: %#v, %v", rebound, err)
 	}
@@ -376,41 +376,41 @@ func TestObservationReviewScopesAndMetadataSearch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := store.ObservationSnapshot(user.ID, binding.ContextID, review.DiffStaged)
+	snapshot, err := store.ObservationSnapshot(t.Context(), user.ID, binding.ContextID, review.DiffStaged)
 	if err != nil {
 		t.Fatal(err)
 	}
 	comment := review.ReviewComment{ID: "comment", DiffID: snapshot.ID, VersionID: snapshot.VersionID, Scope: review.DiffStaged, Path: "file.txt", Body: "review", CreatedAt: 1}
-	if err := store.PutComment(binding.ContextID, comment); err != nil {
+	if err := store.PutComment(t.Context(), binding.ContextID, comment); err != nil {
 		t.Fatal(err)
 	}
-	comments, err := store.Comments(binding.ContextID)
+	comments, err := store.Comments(t.Context(), binding.ContextID)
 	if err != nil || len(comments) != 1 || comments[0].VersionID != snapshot.VersionID {
 		t.Fatalf("comments: %#v, %v", comments, err)
 	}
 	mark := review.ReviewMark{DiffID: snapshot.ID, VersionID: snapshot.VersionID, Scope: review.DiffStaged, FileID: "file", FileVersion: "staged-fingerprint"}
-	if err := store.PutMark(binding.ContextID, mark); err != nil {
+	if err := store.PutMark(t.Context(), binding.ContextID, mark); err != nil {
 		t.Fatal(err)
 	}
-	marks, err := store.Marks(binding.ContextID, review.DiffStaged)
+	marks, err := store.Marks(t.Context(), binding.ContextID, review.DiffStaged)
 	if err != nil || len(marks) != 1 {
 		t.Fatalf("marks: %#v, %v", marks, err)
 	}
 	filters := []ingestion.Filter{{Query: "AGENT-HOST"}, {Repository: "my-repo", Branch: "feature", Worktree: "sandbox", Hostname: "agent-host", SourceID: "source"}}
 	for _, filter := range filters {
-		items, err := store.ObservationContexts(user.ID, 100, 0, "", filter)
+		items, err := store.ObservationContexts(t.Context(), user.ID, 100, 0, "", filter)
 		if err != nil || len(items) != 1 || items[0].Metadata == nil {
 			t.Fatalf("filter %#v: %#v, %v", filter, items, err)
 		}
 	}
-	items, err := store.ObservationContexts(user.ID, 100, 0, "", ingestion.Filter{Branch: "absent"})
+	items, err := store.ObservationContexts(t.Context(), user.ID, 100, 0, "", ingestion.Filter{Branch: "absent"})
 	if err != nil || len(items) != 0 {
 		t.Fatalf("nonmatching filter: %#v, %v", items, err)
 	}
-	if err := store.ClearMarks(binding.ContextID, review.DiffStaged); err != nil {
+	if err := store.ClearMarks(t.Context(), binding.ContextID, review.DiffStaged); err != nil {
 		t.Fatal(err)
 	}
-	if deleted, err := store.DeleteComment(binding.ContextID, "comment"); err != nil || !deleted {
+	if deleted, err := store.DeleteComment(t.Context(), binding.ContextID, "comment"); err != nil || !deleted {
 		t.Fatalf("delete comment: %v,%v", deleted, err)
 	}
 }
@@ -424,16 +424,16 @@ func TestObservationDedupePreservesReviewAndRefreshesOnlyFreshSubmissions(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := store.ObservationSnapshot(user.ID, first.ContextID, review.DiffStaged)
+	snapshot, err := store.ObservationSnapshot(t.Context(), user.ID, first.ContextID, review.DiffStaged)
 	if err != nil {
 		t.Fatal(err)
 	}
 	comment := review.ReviewComment{ID: "retained", DiffID: snapshot.ID, VersionID: snapshot.VersionID, Scope: review.DiffStaged, Path: "file.txt", Body: "check", CreatedAt: 1}
-	if err := store.PutComment(first.ContextID, comment); err != nil {
+	if err := store.PutComment(t.Context(), first.ContextID, comment); err != nil {
 		t.Fatal(err)
 	}
 	mark := review.ReviewMark{DiffID: snapshot.ID, VersionID: snapshot.VersionID, Scope: review.DiffStaged, FileID: "file", FileVersion: "staged-fingerprint"}
-	if err := store.PutMark(first.ContextID, mark); err != nil {
+	if err := store.PutMark(t.Context(), first.ContextID, mark); err != nil {
 		t.Fatal(err)
 	}
 	oldExpiry := time.Now().Add(time.Hour).UnixMilli()
@@ -447,7 +447,7 @@ func TestObservationDedupePreservesReviewAndRefreshesOnlyFreshSubmissions(t *tes
 	if err != nil || retry.ContextID != first.ContextID {
 		t.Fatalf("retry: %#v %v", retry, err)
 	}
-	item, err := store.Context(user.ID, first.ContextID, time.Now())
+	item, err := store.Context(t.Context(), user.ID, first.ContextID, time.Now())
 	if err != nil || item.ExpiresAt == nil || *item.ExpiresAt != oldExpiry || item.LastSubmittedAt != 1 {
 		t.Fatalf("retry refreshed TTL: %#v %v", item, err)
 	}
@@ -461,7 +461,7 @@ func TestObservationDedupePreservesReviewAndRefreshesOnlyFreshSubmissions(t *tes
 	if err != nil || reused.ContextID != first.ContextID {
 		t.Fatalf("dedupe: %#v %v", reused, err)
 	}
-	item, err = store.Context(user.ID, first.ContextID, time.Now())
+	item, err = store.Context(t.Context(), user.ID, first.ContextID, time.Now())
 	if err != nil || item.ExpiresAt == nil || *item.ExpiresAt-item.LastSubmittedAt != DefaultRetention.Milliseconds() || *item.ExpiresAt <= oldExpiry {
 		t.Fatalf("fresh TTL: %#v %v", item, err)
 	}
@@ -469,15 +469,15 @@ func TestObservationDedupePreservesReviewAndRefreshesOnlyFreshSubmissions(t *tes
 	if err := store.db.QueryRow(`SELECT COUNT(*) FROM observation_scopes s JOIN diffs d ON d.id=s.diff_id WHERE s.context_id=? AND d.expires_at=?`, first.ContextID, *item.ExpiresAt).Scan(&scopes); err != nil || scopes != 3 {
 		t.Fatalf("scope retention: %d %v", scopes, err)
 	}
-	comments, err := store.Comments(first.ContextID)
+	comments, err := store.Comments(t.Context(), first.ContextID)
 	if err != nil || len(comments) != 1 || comments[0].VersionID != snapshot.VersionID {
 		t.Fatalf("review lost: %#v %v", comments, err)
 	}
-	marks, err := store.Marks(first.ContextID, review.DiffStaged)
+	marks, err := store.Marks(t.Context(), first.ContextID, review.DiffStaged)
 	if err != nil || len(marks) != 1 {
 		t.Fatalf("mark lost: %#v %v", marks, err)
 	}
-	original, err := store.ObservationSnapshot(user.ID, first.ContextID, review.DiffStaged)
+	original, err := store.ObservationSnapshot(t.Context(), user.ID, first.ContextID, review.DiffStaged)
 	if err != nil || original.VersionID != snapshot.VersionID || original.Revision != snapshot.Revision {
 		t.Fatalf("snapshot replaced: %#v %v", original, err)
 	}
@@ -590,14 +590,14 @@ func TestObservationExpiryHidesReadsAndPrunesEveryScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, mode := range []review.DiffMode{review.DiffAll, review.DiffStaged} {
-		snapshot, err := store.ObservationSnapshot(user.ID, first.ContextID, mode)
+		snapshot, err := store.ObservationSnapshot(t.Context(), user.ID, first.ContextID, mode)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := store.PutComment(first.ContextID, review.ReviewComment{ID: string(mode), Scope: mode, VersionID: snapshot.VersionID, Path: "file.txt", Body: "check", CreatedAt: 1}); err != nil {
+		if err := store.PutComment(t.Context(), first.ContextID, review.ReviewComment{ID: string(mode), Scope: mode, VersionID: snapshot.VersionID, Path: "file.txt", Body: "check", CreatedAt: 1}); err != nil {
 			t.Fatal(err)
 		}
-		if err := store.PutMark(first.ContextID, review.ReviewMark{Scope: mode, VersionID: snapshot.VersionID, FileID: "file"}); err != nil {
+		if err := store.PutMark(t.Context(), first.ContextID, review.ReviewMark{Scope: mode, VersionID: snapshot.VersionID, FileID: "file"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -605,31 +605,31 @@ func TestObservationExpiryHidesReadsAndPrunesEveryScope(t *testing.T) {
 	if _, err := store.db.Exec(`UPDATE diffs SET expires_at=? WHERE id IN (SELECT diff_id FROM observation_scopes WHERE context_id=?)`, cutoff.UnixMilli(), first.ContextID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Context(user.ID, first.ContextID, time.Now()); !errors.Is(err, ErrExpired) {
+	if _, err := store.Context(t.Context(), user.ID, first.ContextID, time.Now()); !errors.Is(err, ErrExpired) {
 		t.Fatalf("expired context: %v", err)
 	}
 	if _, err := store.Observation(user.ID, first.ContextID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expired metadata: %v", err)
 	}
-	if _, err := store.ObservationSnapshot(user.ID, first.ContextID, review.DiffAll); !errors.Is(err, ErrNotFound) {
+	if _, err := store.ObservationSnapshot(t.Context(), user.ID, first.ContextID, review.DiffAll); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expired snapshot: %v", err)
 	}
 	if _, err := store.ObservationPatch(t.Context(), user.ID, first.ContextID, review.DiffStaged, "file", "staged-fingerprint"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expired patch: %v", err)
 	}
-	items, err := store.ObservationContexts(user.ID, 100, 0, "", ingestion.Filter{Repository: "my-repo"})
+	items, err := store.ObservationContexts(t.Context(), user.ID, 100, 0, "", ingestion.Filter{Repository: "my-repo"})
 	if err != nil || len(items) != 0 {
 		t.Fatalf("expired filtered catalog: %#v %v", items, err)
 	}
-	items, err = store.Contexts(user.ID, 100, 0, "", time.Now())
+	items, err = store.Contexts(t.Context(), user.ID, 100, 0, "", time.Now())
 	if err != nil || len(items) != 0 {
 		t.Fatalf("expired catalog: %#v %v", items, err)
 	}
-	comments, err := store.Comments(first.ContextID)
+	comments, err := store.Comments(t.Context(), first.ContextID)
 	if err != nil || len(comments) != 0 {
 		t.Fatalf("expired comments visible: %#v %v", comments, err)
 	}
-	marks, err := store.Marks(first.ContextID, review.DiffStaged)
+	marks, err := store.Marks(t.Context(), first.ContextID, review.DiffStaged)
 	if err != nil || len(marks) != 0 {
 		t.Fatalf("expired marks visible: %#v %v", marks, err)
 	}
@@ -646,11 +646,11 @@ func TestObservationExpiryHidesReadsAndPrunesEveryScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Review state spans the stream; pruning an older snapshot keeps it.
-	comments, err = store.Comments(second.ContextID)
+	comments, err = store.Comments(t.Context(), second.ContextID)
 	if err != nil || len(comments) != 2 {
 		t.Fatalf("stream comments lost with pruned snapshot: %#v %v", comments, err)
 	}
-	marks, err = store.Marks(second.ContextID, review.DiffStaged)
+	marks, err = store.Marks(t.Context(), second.ContextID, review.DiffStaged)
 	if err != nil || len(marks) != 1 || marks[0].DiffID != second.DiffIDs[review.DiffStaged] {
 		t.Fatalf("unchanged file mark not carried: %#v %v", marks, err)
 	}

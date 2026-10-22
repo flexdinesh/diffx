@@ -137,10 +137,10 @@ func (service *Service) Delete(ctx context.Context, id string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := service.inScope(id); err != nil {
+	if err := service.inScope(ctx, id); err != nil {
 		return requestError(err)
 	}
-	if err := service.store.DeleteContext(service.user.ID, id); err != nil {
+	if err := service.store.DeleteContext(ctx, service.user.ID, id); err != nil {
 		return requestError(err)
 	}
 	service.events.publish(id)
@@ -155,14 +155,14 @@ func (service *Service) Resolve(ctx context.Context, id string) (session.Session
 		return session.Session{}, err
 	}
 	now := time.Now()
-	item, err := service.store.Context(service.user.ID, id, now)
+	item, err := service.store.Context(ctx, service.user.ID, id, now)
 	if err == nil {
-		err = service.inScope(id)
+		err = service.inScope(ctx, id)
 	}
 	if err != nil {
 		return session.Session{}, requestError(err)
 	}
-	binding, err := service.store.ContextBinding(service.user.ID, id, now)
+	binding, err := service.store.ContextBinding(ctx, service.user.ID, id, now)
 	if err != nil {
 		return session.Session{}, requestError(err)
 	}
@@ -183,23 +183,23 @@ func (service *Service) Get(ctx context.Context, id string) (Context, error) {
 	if err := ctx.Err(); err != nil {
 		return Context{}, err
 	}
-	item, err := service.store.Context(service.user.ID, id, time.Now())
+	item, err := service.store.Context(ctx, service.user.ID, id, time.Now())
 	if err == nil {
-		err = service.inScope(id)
+		err = service.inScope(ctx, id)
 	}
 	if err != nil {
 		return Context{}, requestError(err)
 	}
-	return service.present(item)
+	return service.present(ctx, item)
 }
 
 // inScope reports out-of-scope contexts as not found, never as forbidden.
-func (service *Service) inScope(id string) error {
+func (service *Service) inScope(ctx context.Context, id string) error {
 	selection := service.selection(id)
 	if !selection.Scoped {
 		return nil
 	}
-	items, err := service.store.ObservationContexts(service.user.ID, 1, 0, "", ingestion.Filter{Selection: selection})
+	items, err := service.store.ObservationContexts(ctx, service.user.ID, 1, 0, "", ingestion.Filter{Selection: selection})
 	if err != nil {
 		return err
 	}
@@ -239,9 +239,9 @@ func (service *Service) ListFiltered(ctx context.Context, limit int, cursor stri
 	var err error
 	filter.Selection = service.selection("")
 	if !filter.IsZero() {
-		items, err = service.store.ObservationContexts(service.user.ID, limit+1, before.Time, before.ID, filter)
+		items, err = service.store.ObservationContexts(ctx, service.user.ID, limit+1, before.Time, before.ID, filter)
 	} else {
-		items, err = service.store.Contexts(service.user.ID, limit+1, before.Time, before.ID, time.Now())
+		items, err = service.store.Contexts(ctx, service.user.ID, limit+1, before.Time, before.ID, time.Now())
 	}
 	if err != nil {
 		return Page{}, err
@@ -258,7 +258,7 @@ func (service *Service) ListFiltered(ctx context.Context, limit int, cursor stri
 		items = items[:limit]
 	}
 	for _, item := range items {
-		value, err := service.present(item)
+		value, err := service.present(ctx, item)
 		if err != nil {
 			return Page{}, err
 		}
@@ -271,13 +271,13 @@ func (service *Service) Count(ctx context.Context) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
-	return service.store.ContextCount(service.user.ID, service.selection(""), time.Now())
+	return service.store.ContextCount(ctx, service.user.ID, service.selection(""), time.Now())
 }
 
-func (service *Service) present(item reviewdata.ContextInfo) (Context, error) {
+func (service *Service) present(ctx context.Context, item reviewdata.ContextInfo) (Context, error) {
 	if item.Kind == "observation" && item.Metadata != nil {
 		m := item.Metadata
-		binding, err := service.store.ContextBinding(service.user.ID, item.ID, time.Now())
+		binding, err := service.store.ContextBinding(ctx, service.user.ID, item.ID, time.Now())
 		scopes := []review.DiffMode{}
 		if err != nil {
 			return Context{}, requestError(err)

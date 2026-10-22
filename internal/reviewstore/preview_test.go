@@ -22,7 +22,7 @@ func TestObservationFilePreviewPreservesScopeIdentityAndFingerprint(t *testing.T
 	for _, scope := range request.Scopes[:2] {
 		mode := scope.Snapshot.Mode
 		t.Run(string(mode), func(t *testing.T) {
-			snapshot, err := store.ObservationSnapshot(owner.ID, binding.ContextID, mode)
+			snapshot, err := store.ObservationSnapshot(t.Context(), owner.ID, binding.ContextID, mode)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -106,7 +106,7 @@ func TestObservationFilePreviewRejectsExpiredAndDeletedContexts(t *testing.T) {
 			if state == "expired" {
 				_, err = store.db.Exec(`UPDATE diffs SET expires_at=? WHERE id IN (SELECT diff_id FROM observation_scopes WHERE context_id=?)`, time.Now().Add(-time.Second).UnixMilli(), binding.ContextID)
 			} else {
-				err = store.DeleteContext(owner.ID, binding.ContextID)
+				err = store.DeleteContext(t.Context(), owner.ID, binding.ContextID)
 			}
 			if err != nil {
 				t.Fatal(err)

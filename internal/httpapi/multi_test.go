@@ -218,7 +218,7 @@ func TestMultiObservationsAndRetainedFilesWithoutCheckout(t *testing.T) {
 	}
 	response.Body.Close()
 	comment := review.ReviewComment{ID: "owned-comment", DiffID: snapshot.ID, VersionID: snapshot.VersionID, Path: snapshot.Files[0].Path, Scope: review.DiffAll, Fingerprint: snapshot.Files[0].Fingerprint, Side: "additions", Start: 1, End: 1, Code: "after", Body: "body", Status: "open", CreatedAt: 1}
-	if err := store.PutComment(first.Context.ID, comment); err != nil {
+	if err := store.PutComment(t.Context(), first.Context.ID, comment); err != nil {
 		t.Fatal(err)
 	}
 	response = request(t, server.Client(), http.MethodDelete, secondBase+"/comments/owned-comment", nil)

@@ -1,6 +1,7 @@
 package reviewstore
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -15,9 +16,9 @@ import (
 const streamReviews = `SELECT r.id FROM reviews r JOIN observations o ON o.owner_id=r.owner_id AND o.stream_key=r.stream_key WHERE o.context_id=?`
 
 // reviewFor resolves a retained context's scope to its stream review.
-func (store *Store) reviewFor(transaction *sql.Tx, contextID string, mode review.DiffMode) (string, string, error) {
+func (store *Store) reviewFor(ctx context.Context, transaction *sql.Tx, contextID string, mode review.DiffMode) (string, string, error) {
 	var diffID, reviewID string
-	err := transaction.QueryRow(`SELECT s.diff_id, r.id FROM observations o JOIN observation_scopes s ON s.context_id=o.context_id AND s.mode=? JOIN diffs d ON d.id=s.diff_id
+	err := transaction.QueryRowContext(ctx, `SELECT s.diff_id, r.id FROM observations o JOIN observation_scopes s ON s.context_id=o.context_id AND s.mode=? JOIN diffs d ON d.id=s.diff_id
 		JOIN reviews r ON r.owner_id=o.owner_id AND r.stream_key=o.stream_key AND r.mode=s.mode
 		WHERE o.context_id=? AND (d.expires_at IS NULL OR d.expires_at>?)`, mode, contextID, time.Now().UnixMilli()).Scan(&diffID, &reviewID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -26,12 +27,12 @@ func (store *Store) reviewFor(transaction *sql.Tx, contextID string, mode review
 	return diffID, reviewID, err
 }
 
-func versionFor(transaction *sql.Tx, diffID, versionID string) error {
+func versionFor(ctx context.Context, transaction *sql.Tx, diffID, versionID string) error {
 	if versionID == "" {
 		return nil
 	}
 	var exists int
-	if err := transaction.QueryRow(`SELECT COUNT(*) FROM diff_versions WHERE id=? AND diff_id=?`, versionID, diffID).Scan(&exists); err != nil {
+	if err := transaction.QueryRowContext(ctx, `SELECT COUNT(*) FROM diff_versions WHERE id=? AND diff_id=?`, versionID, diffID).Scan(&exists); err != nil {
 		return err
 	}
 	if exists != 1 {
@@ -41,8 +42,8 @@ func versionFor(transaction *sql.Tx, diffID, versionID string) error {
 }
 
 // Comments returns the stream's comments while the context is retained.
-func (store *Store) Comments(contextID string) ([]review.ReviewComment, error) {
-	rows, err := store.db.Query(`SELECT c.data FROM comments c JOIN reviews r ON r.id=c.review_id
+func (store *Store) Comments(ctx context.Context, contextID string) ([]review.ReviewComment, error) {
+	rows, err := store.db.QueryContext(ctx, `SELECT c.data FROM comments c JOIN reviews r ON r.id=c.review_id
 		JOIN observations o ON o.owner_id=r.owner_id AND o.stream_key=r.stream_key
 		JOIN contexts x ON x.id=o.context_id JOIN diffs d ON d.id=x.anchor_diff_id
 		WHERE o.context_id=? AND (d.expires_at IS NULL OR d.expires_at>?) ORDER BY c.created_at, c.id`, contextID, time.Now().UnixMilli())
@@ -68,24 +69,24 @@ func (store *Store) Comments(contextID string) ([]review.ReviewComment, error) {
 // PutComment stores a comment in the context's stream review. New references
 // must name this context's snapshot; an existing comment may keep the snapshot
 // it was written against.
-func (store *Store) PutComment(contextID string, comment review.ReviewComment) error {
-	_, err := store.writeComment(contextID, comment, false)
+func (store *Store) PutComment(ctx context.Context, contextID string, comment review.ReviewComment) error {
+	_, err := store.writeComment(ctx, contextID, comment, false)
 	return err
 }
 
 // ReplaceComment updates an existing stream comment and reports false when it
 // no longer exists, so an edit racing a delete cannot recreate the comment.
-func (store *Store) ReplaceComment(contextID string, comment review.ReviewComment) (bool, error) {
-	return store.writeComment(contextID, comment, true)
+func (store *Store) ReplaceComment(ctx context.Context, contextID string, comment review.ReviewComment) (bool, error) {
+	return store.writeComment(ctx, contextID, comment, true)
 }
 
-func (store *Store) writeComment(contextID string, comment review.ReviewComment, existing bool) (bool, error) {
-	transaction, err := store.db.Begin()
+func (store *Store) writeComment(ctx context.Context, contextID string, comment review.ReviewComment, existing bool) (bool, error) {
+	transaction, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
 	}
 	defer transaction.Rollback()
-	diffID, reviewID, err := store.reviewFor(transaction, contextID, comment.Scope)
+	diffID, reviewID, err := store.reviewFor(ctx, transaction, contextID, comment.Scope)
 	if err != nil {
 		return false, err
 	}
@@ -93,12 +94,12 @@ func (store *Store) writeComment(contextID string, comment review.ReviewComment,
 		comment.DiffID = diffID
 	}
 	if comment.DiffID == diffID {
-		if err := versionFor(transaction, diffID, comment.VersionID); err != nil {
+		if err := versionFor(ctx, transaction, diffID, comment.VersionID); err != nil {
 			return false, err
 		}
 	} else {
 		var raw string
-		err := transaction.QueryRow(`SELECT data FROM comments WHERE id=? AND review_id=?`, comment.ID, reviewID).Scan(&raw)
+		err := transaction.QueryRowContext(ctx, `SELECT data FROM comments WHERE id=? AND review_id=?`, comment.ID, reviewID).Scan(&raw)
 		if errors.Is(err, sql.ErrNoRows) {
 			if existing {
 				return false, nil
@@ -124,9 +125,9 @@ func (store *Store) writeComment(contextID string, comment review.ReviewComment,
 	// Pruned snapshot versions leave the reference in data only.
 	var result sql.Result
 	if existing {
-		result, err = transaction.Exec(`UPDATE comments SET version_id=(SELECT id FROM diff_versions WHERE id=?), file_id=?, data=? WHERE id=? AND review_id=?`, comment.VersionID, comment.Path, string(raw), comment.ID, reviewID)
+		result, err = transaction.ExecContext(ctx, `UPDATE comments SET version_id=(SELECT id FROM diff_versions WHERE id=?), file_id=?, data=? WHERE id=? AND review_id=?`, comment.VersionID, comment.Path, string(raw), comment.ID, reviewID)
 	} else {
-		result, err = transaction.Exec(`INSERT INTO comments(id, review_id, version_id, file_id, data, created_at) VALUES(?, ?, (SELECT id FROM diff_versions WHERE id=?), ?, ?, ?) ON CONFLICT(id) DO UPDATE SET version_id=excluded.version_id, file_id=excluded.file_id, data=excluded.data WHERE comments.review_id=excluded.review_id`, comment.ID, reviewID, comment.VersionID, comment.Path, string(raw), int64(comment.CreatedAt))
+		result, err = transaction.ExecContext(ctx, `INSERT INTO comments(id, review_id, version_id, file_id, data, created_at) VALUES(?, ?, (SELECT id FROM diff_versions WHERE id=?), ?, ?, ?) ON CONFLICT(id) DO UPDATE SET version_id=excluded.version_id, file_id=excluded.file_id, data=excluded.data WHERE comments.review_id=excluded.review_id`, comment.ID, reviewID, comment.VersionID, comment.Path, string(raw), int64(comment.CreatedAt))
 	}
 	if err != nil {
 		return false, err
@@ -144,13 +145,13 @@ func (store *Store) writeComment(contextID string, comment review.ReviewComment,
 	return true, transaction.Commit()
 }
 
-func (store *Store) ImportComments(contextID string, comments []review.ReviewComment) ([]review.ReviewComment, error) {
+func (store *Store) ImportComments(ctx context.Context, contextID string, comments []review.ReviewComment) ([]review.ReviewComment, error) {
 	for _, comment := range comments {
 		if !comment.Valid() {
 			return nil, errors.New("invalid comment")
 		}
 	}
-	existing, err := store.Comments(contextID)
+	existing, err := store.Comments(ctx, contextID)
 	if err != nil {
 		return nil, err
 	}
@@ -161,17 +162,17 @@ func (store *Store) ImportComments(contextID string, comments []review.ReviewCom
 	for _, comment := range comments {
 		// Imports preserve existing IDs and never overwrite local edits.
 		if !seen[comment.ID] {
-			if err := store.PutComment(contextID, comment); err != nil {
+			if err := store.PutComment(ctx, contextID, comment); err != nil {
 				return nil, err
 			}
 			seen[comment.ID] = true
 		}
 	}
-	return store.Comments(contextID)
+	return store.Comments(ctx, contextID)
 }
 
-func (store *Store) DeleteComments(contextID string, selected map[string]bool) (int, error) {
-	transaction, err := store.db.Begin()
+func (store *Store) DeleteComments(ctx context.Context, contextID string, selected map[string]bool) (int, error) {
+	transaction, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -181,7 +182,7 @@ func (store *Store) DeleteComments(contextID string, selected map[string]bool) (
 		if !include {
 			continue
 		}
-		result, err := transaction.Exec(`DELETE FROM comments WHERE id=? AND review_id IN (`+streamReviews+`)`, id, contextID)
+		result, err := transaction.ExecContext(ctx, `DELETE FROM comments WHERE id=? AND review_id IN (`+streamReviews+`)`, id, contextID)
 		if err != nil {
 			return 0, err
 		}
@@ -194,8 +195,8 @@ func (store *Store) DeleteComments(contextID string, selected map[string]bool) (
 	return deleted, transaction.Commit()
 }
 
-func (store *Store) DeleteComment(contextID, commentID string) (bool, error) {
-	deleted, err := store.DeleteComments(contextID, map[string]bool{commentID: true})
+func (store *Store) DeleteComment(ctx context.Context, contextID, commentID string) (bool, error) {
+	deleted, err := store.DeleteComments(ctx, contextID, map[string]bool{commentID: true})
 	return deleted == 1, err
 }
 
@@ -208,8 +209,8 @@ const visibleMarks = `FROM observations o JOIN observation_scopes s ON s.context
 
 // Marks returns stream marks whose file patch is unchanged in this context,
 // projected onto this context's snapshot.
-func (store *Store) Marks(contextID string, scope review.DiffMode) ([]review.ReviewMark, error) {
-	rows, err := store.db.Query(`SELECT s.diff_id, s.version_id, m.file_id, f.fingerprint `+visibleMarks+` AND (d.expires_at IS NULL OR d.expires_at>?) ORDER BY m.file_id`, scope, contextID, time.Now().UnixMilli())
+func (store *Store) Marks(ctx context.Context, contextID string, scope review.DiffMode) ([]review.ReviewMark, error) {
+	rows, err := store.db.QueryContext(ctx, `SELECT s.diff_id, s.version_id, m.file_id, f.fingerprint `+visibleMarks+` AND (d.expires_at IS NULL OR d.expires_at>?) ORDER BY m.file_id`, scope, contextID, time.Now().UnixMilli())
 	if err != nil {
 		return nil, err
 	}
@@ -225,24 +226,24 @@ func (store *Store) Marks(contextID string, scope review.DiffMode) ([]review.Rev
 	return marks, rows.Err()
 }
 
-func (store *Store) PutMark(contextID string, mark review.ReviewMark) error {
-	transaction, err := store.db.Begin()
+func (store *Store) PutMark(ctx context.Context, contextID string, mark review.ReviewMark) error {
+	transaction, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer transaction.Rollback()
-	diffID, reviewID, err := store.reviewFor(transaction, contextID, mark.Scope)
+	diffID, reviewID, err := store.reviewFor(ctx, transaction, contextID, mark.Scope)
 	if err != nil {
 		return err
 	}
 	if mark.DiffID != "" && mark.DiffID != diffID {
 		return errors.New("mark belongs to a different diff")
 	}
-	if err := versionFor(transaction, diffID, mark.VersionID); err != nil {
+	if err := versionFor(ctx, transaction, diffID, mark.VersionID); err != nil {
 		return err
 	}
 	var digest string
-	err = transaction.QueryRow(`SELECT f.patch_digest FROM observation_scopes s JOIN diff_files f ON f.version_id=s.version_id WHERE s.context_id=? AND s.mode=? AND f.file_id=?`, contextID, mark.Scope, mark.FileID).Scan(&digest)
+	err = transaction.QueryRowContext(ctx, `SELECT f.patch_digest FROM observation_scopes s JOIN diff_files f ON f.version_id=s.version_id WHERE s.context_id=? AND s.mode=? AND f.file_id=?`, contextID, mark.Scope, mark.FileID).Scan(&digest)
 	if errors.Is(err, sql.ErrNoRows) {
 		return errors.New("mark file is not in the diff")
 	}
@@ -258,7 +259,7 @@ func (store *Store) PutMark(contextID string, mark review.ReviewMark) error {
 	if mark.VersionID != "" {
 		versionID = mark.VersionID
 	}
-	_, err = transaction.Exec(`INSERT INTO marks(review_id, file_id, version_id, patch_digest, data) VALUES(?, ?, ?, ?, ?) ON CONFLICT(review_id, file_id) DO UPDATE SET version_id=excluded.version_id, patch_digest=excluded.patch_digest, data=excluded.data`, reviewID, mark.FileID, versionID, digest, string(raw))
+	_, err = transaction.ExecContext(ctx, `INSERT INTO marks(review_id, file_id, version_id, patch_digest, data) VALUES(?, ?, ?, ?, ?) ON CONFLICT(review_id, file_id) DO UPDATE SET version_id=excluded.version_id, patch_digest=excluded.patch_digest, data=excluded.data`, reviewID, mark.FileID, versionID, digest, string(raw))
 	if err != nil {
 		return err
 	}
@@ -266,19 +267,19 @@ func (store *Store) PutMark(contextID string, mark review.ReviewMark) error {
 }
 
 // DeleteMark and ClearMarks remove only marks visible in this context.
-func (store *Store) DeleteMark(contextID string, scope review.DiffMode, fileID string) error {
-	_, err := store.db.Exec(`DELETE FROM marks WHERE file_id=? AND (review_id, file_id) IN (SELECT m.review_id, m.file_id `+visibleMarks+`)`, fileID, scope, contextID)
+func (store *Store) DeleteMark(ctx context.Context, contextID string, scope review.DiffMode, fileID string) error {
+	_, err := store.db.ExecContext(ctx, `DELETE FROM marks WHERE file_id=? AND (review_id, file_id) IN (SELECT m.review_id, m.file_id `+visibleMarks+`)`, fileID, scope, contextID)
 	return err
 }
 
-func (store *Store) ClearMarks(contextID string, scope review.DiffMode) error {
-	_, err := store.db.Exec(`DELETE FROM marks WHERE (review_id, file_id) IN (SELECT m.review_id, m.file_id `+visibleMarks+`)`, scope, contextID)
+func (store *Store) ClearMarks(ctx context.Context, contextID string, scope review.DiffMode) error {
+	_, err := store.db.ExecContext(ctx, `DELETE FROM marks WHERE (review_id, file_id) IN (SELECT m.review_id, m.file_id `+visibleMarks+`)`, scope, contextID)
 	return err
 }
 
-func (store *Store) StoredVersion(ownerID, diffID, versionID string, now time.Time) (review.RepositoryDiff, error) {
+func (store *Store) StoredVersion(ctx context.Context, ownerID, diffID, versionID string, now time.Time) (review.RepositoryDiff, error) {
 	var raw string
-	err := store.db.QueryRow(`SELECT v.manifest FROM diff_versions v JOIN diffs d ON d.id=v.diff_id WHERE d.owner_id=? AND d.id=? AND v.id=? AND (d.expires_at IS NULL OR d.expires_at>?)`, ownerID, diffID, versionID, now.UnixMilli()).Scan(&raw)
+	err := store.db.QueryRowContext(ctx, `SELECT v.manifest FROM diff_versions v JOIN diffs d ON d.id=v.diff_id WHERE d.owner_id=? AND d.id=? AND v.id=? AND (d.expires_at IS NULL OR d.expires_at>?)`, ownerID, diffID, versionID, now.UnixMilli()).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return review.RepositoryDiff{}, ErrNotFound
 	}

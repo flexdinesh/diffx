@@ -48,11 +48,11 @@ type storeStub struct {
 	putError error
 }
 
-func (store *storeStub) Comments(string) ([]review.ReviewComment, error) {
+func (store *storeStub) Comments(context.Context, string) ([]review.ReviewComment, error) {
 	return append([]review.ReviewComment(nil), store.comments...), nil
 }
 
-func (store *storeStub) PutComment(_ string, comment review.ReviewComment) error {
+func (store *storeStub) PutComment(_ context.Context, _ string, comment review.ReviewComment) error {
 	store.putCalls++
 	if store.putError != nil {
 		return store.putError
@@ -67,7 +67,7 @@ func (store *storeStub) PutComment(_ string, comment review.ReviewComment) error
 	return nil
 }
 
-func (store *storeStub) ReplaceComment(_ string, comment review.ReviewComment) (bool, error) {
+func (store *storeStub) ReplaceComment(_ context.Context, _ string, comment review.ReviewComment) (bool, error) {
 	store.putCalls++
 	if store.putError != nil {
 		return false, store.putError
@@ -184,7 +184,7 @@ func TestResolveCommentIsIdempotentAndAllowsStaleIdentity(t *testing.T) {
 	store := &storeStub{comments: []review.ReviewComment{comment("stale-id", review.DiffAll, "gone.go", "old", "open")}}
 	service := New(boundSession(source, session.Policies{}), store)
 
-	got, err := service.ResolveComment("stale-id")
+	got, err := service.ResolveComment(t.Context(), "stale-id")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestResolveCommentIsIdempotentAndAllowsStaleIdentity(t *testing.T) {
 		t.Fatalf("store = %#v, put calls = %d", store.comments, store.putCalls)
 	}
 
-	got, err = service.ResolveComment("stale-id")
+	got, err = service.ResolveComment(t.Context(), "stale-id")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestResolveCommentReturnsTypedNotFoundError(t *testing.T) {
 	source := &sourceStub{support: diffsource.Support{Scopes: []review.DiffMode{review.DiffAll}}}
 	service := New(boundSession(source, session.Policies{}), &storeStub{})
 
-	_, err := service.ResolveComment("missing")
+	_, err := service.ResolveComment(t.Context(), "missing")
 	if !errors.Is(err, ErrCommentNotFound) {
 		t.Fatalf("error = %v", err)
 	}
@@ -230,7 +230,7 @@ func TestResolveCommentPropagatesStoreFailure(t *testing.T) {
 	}
 	service := New(boundSession(source, session.Policies{}), store)
 
-	if _, err := service.ResolveComment("id"); !errors.Is(err, want) {
+	if _, err := service.ResolveComment(t.Context(), "id"); !errors.Is(err, want) {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -243,7 +243,7 @@ func TestMethodsRejectDisabledCommentCapability(t *testing.T) {
 	if _, err := service.ListComments(context.Background(), false); !capabilityError(err) {
 		t.Fatalf("list error = %v", err)
 	}
-	if _, err := service.ResolveComment("id"); !capabilityError(err) {
+	if _, err := service.ResolveComment(t.Context(), "id"); !capabilityError(err) {
 		t.Fatalf("resolve error = %v", err)
 	}
 	if len(source.calls) != 0 || store.putCalls != 0 {
@@ -317,7 +317,7 @@ func boundSession(source review.Source, policies session.Policies) session.Sessi
 	return active
 }
 
-func (store *storeStub) DeleteComments(_ string, selected map[string]bool) (int, error) {
+func (store *storeStub) DeleteComments(_ context.Context, _ string, selected map[string]bool) (int, error) {
 	remaining := store.comments[:0]
 	deleted := 0
 	for _, comment := range store.comments {
@@ -429,7 +429,7 @@ func TestDeleteOutdatedCommentsUsesPlacement(t *testing.T) {
 // deletedDuringWriteStub reads a comment that is deleted before the write commits.
 type deletedDuringWriteStub struct{ storeStub }
 
-func (store *deletedDuringWriteStub) ReplaceComment(string, review.ReviewComment) (bool, error) {
+func (store *deletedDuringWriteStub) ReplaceComment(context.Context, string, review.ReviewComment) (bool, error) {
 	store.putCalls++
 	return false, nil
 }
@@ -439,7 +439,7 @@ func TestCommentEditsReportNotFoundWhenDeletedConcurrently(t *testing.T) {
 	store := &deletedDuringWriteStub{storeStub{comments: []review.ReviewComment{comment("id", review.DiffAll, "file.go", "old", "open")}}}
 	service := New(boundSession(source, session.Policies{}), store)
 
-	if _, err := service.ResolveComment("id"); !errors.Is(err, ErrCommentNotFound) {
+	if _, err := service.ResolveComment(t.Context(), "id"); !errors.Is(err, ErrCommentNotFound) {
 		t.Fatalf("resolve error = %v", err)
 	}
 	body := "edited"
@@ -457,7 +457,7 @@ func TestVersionRejectsDiffsOutsideTheContextBeforeStorage(t *testing.T) {
 	source := &sourceStub{support: diffsource.Support{Scopes: []review.DiffMode{review.DiffAll}}}
 	// The embedded nil MutationStore panics if the store is reached.
 	service := New(boundSession(source, session.Policies{}), &storeStub{})
-	_, err := service.Version("foreign", "version")
+	_, err := service.Version(t.Context(), "foreign", "version")
 	var requestError *review.RequestError
 	if !errors.As(err, &requestError) || requestError.Status != 404 {
 		t.Fatalf("foreign version error = %v", err)
