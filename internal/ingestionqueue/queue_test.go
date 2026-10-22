@@ -3,6 +3,7 @@ package ingestionqueue
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/review"
 	"testing"
@@ -44,6 +45,10 @@ func TestWorkerOutcomeContract(t *testing.T) {
 		{"committed", 1, nil, "complete"},
 		{"transient", 1, errors.New("storage unavailable"), "retry"},
 		{"permanent", 1, review.Error(400, "invalid observation"), "fail"},
+		{"wrapped permanent", 1, fmt.Errorf("ingest: %w", review.Error(403, "Account unavailable")), "fail"},
+		{"throttled", 1, review.Error(429, "Too many requests"), "retry"},
+		{"timed out", 1, review.Error(408, "Request timeout"), "retry"},
+		{"server failure", 1, review.Error(503, "source_unavailable: busy"), "retry"},
 		{"exhausted", 5, errors.New("storage unavailable"), "fail"},
 	} {
 		t.Run(c.name, func(t *testing.T) {

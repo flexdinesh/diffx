@@ -67,7 +67,8 @@ personal lifecycle discovery.
 - `identityservice`: account, password, session and API-token policies.
 - `reviewstore`: SQLite transactions, identity persistence, stored reads,
   retention and queue adapter.
-- `ingestionqueue`: admission/lease contract and worker failure policy.
+- `ingestionqueue`: admission/lease contract and worker failure policy; jobs fail
+  permanently only for `review.Permanent` rejections (4xx except 408/429).
 - `submission`: destination identity, delivery and the acknowledgement TTL,
   shared by manual sync and hooks; owns manual sync's route-scoped outbox
   recovery (`Sync`). Hooks keep job- and session-scoped capture and
