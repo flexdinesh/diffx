@@ -1845,7 +1845,9 @@ test("local first launch waits for collection with an empty catalog", async ({
   await expect.poll(() => collections).toBe(1);
   if (!pending) throw new Error("Missing startup collection");
   heads = [snapshot];
-  await pending.fulfill({ json: { contexts: heads, failures: [] } });
+  await pending.fulfill({
+    json: { contexts: heads, failures: [], defaultContextId: snapshot.id },
+  });
   await ready(page);
   await expect(page).toHaveURL(/\/streams\/local-stream$/);
   expect(collections).toBe(1);
@@ -1944,6 +1946,66 @@ for (const initialHeads of ["stored", "arriving"]) {
     await ready(page);
   });
 }
+
+test("local root waits for collection to open its default over earlier heads", async ({
+  page,
+}) => {
+  const state = await localWorkspace(page);
+  await page.route("**/api/v2/bootstrap", (route) =>
+    route.fulfill({
+      json: {
+        mode: "local",
+        signupEnabled: false,
+        user: null,
+        csrfToken: null,
+        collect: true,
+      },
+    }),
+  );
+  const snapshot = (id: string, activity: number): ApiContext => ({
+    ...state.context,
+    id,
+    streamId: `${id}-stream`,
+    latestContextId: id,
+    lastChangedAt: activity,
+  });
+  // The first checkouts to finish are visible before the launched checkout.
+  const active = snapshot("active", 900);
+  const launched = snapshot("launched", 100);
+  let heads = [active];
+  await page.route("**/api/v2/contexts?*", (route) =>
+    route.fulfill({ json: { contexts: heads, nextCursor: null } }),
+  );
+  const opened: string[] = [];
+  await page.route("**/api/v2/contexts/*", (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-1) ?? "";
+    opened.push(id);
+    return route.fulfill({ json: id === "active" ? active : launched });
+  });
+  let pending: Route | undefined;
+  await page.route("**/api/v2/collections*", (route) => {
+    pending = route;
+  });
+
+  await page.goto("/");
+  await expect.poll(() => pending !== undefined).toBe(true);
+  const status = page.locator("main.session-status");
+  await expect(status).toContainText("Collecting latest changes");
+  await expect(status).toHaveAttribute("aria-busy", "true");
+  await expect(
+    page.getByRole("navigation", { name: "Repos" }).locator(".stream-row"),
+  ).toHaveCount(1);
+  await expect(page).toHaveURL(/\/$/);
+  expect(opened).toEqual([]);
+  if (!pending) throw new Error("Missing initial collection");
+  heads = [active, launched];
+  await pending.fulfill({
+    json: { contexts: heads, failures: [], defaultContextId: launched.id },
+  });
+  await ready(page);
+  await expect(page).toHaveURL(/\/streams\/launched-stream$/);
+  expect(opened).toEqual(["launched"]);
+});
 
 test("unresolved navigation joins collection without reporting a missing stream", async ({
   page,
@@ -2088,7 +2150,13 @@ for (const path of ["/", "/streams/local-stream"]) {
     await expect.poll(() => collections).toBe(2);
     if (!pending) throw new Error("Missing retried collection");
     heads = [{ ...state.context, streamId: "local-stream" }];
-    await pending.fulfill({ json: { contexts: heads, failures: [] } });
+    await pending.fulfill({
+      json: {
+        contexts: heads,
+        failures: [],
+        defaultContextId: state.context.id,
+      },
+    });
     await ready(page);
     await expect(page).toHaveURL(/\/streams\/local-stream$/);
     await expect(page.getByRole("alert")).toHaveCount(0);
@@ -2119,6 +2187,7 @@ test("local startup reports failed checkouts while opening collected changes", a
       json: {
         contexts: [{ ...state.context, streamId: "local-stream" }],
         failures: [{ path: "/workspace/broken", detail: "git failed" }],
+        defaultContextId: state.context.id,
       },
     }),
   );
@@ -2173,7 +2242,7 @@ test("local live URLs sync the checkouts on every load", async ({ page }) => {
         status: 422,
         json: { detail: "Unable to collect checkouts: git failed" },
       });
-    // The root opens the newest changed head; live URLs open their own stream.
+    // Live URLs open their own stream, not the most active one.
     const other = {
       ...snapshot(`other-${collected}`),
       streamId: "other",
@@ -2181,13 +2250,15 @@ test("local live URLs sync the checkouts on every load", async ({ page }) => {
       lastSubmittedAt: 900,
     };
     heads = [
-      { ...snapshot(`collected-${collected}`), lastChangedAt: 200 },
+      { ...snapshot(`collected-${collected}`), lastChangedAt: 50 },
       other,
     ];
-    return route.fulfill({ json: { contexts: heads, failures: [] } });
+    return route.fulfill({
+      json: { contexts: heads, failures: [], defaultContextId: other.id },
+    });
   });
 
-  await page.goto("/");
+  await page.goto("/streams/local-stream");
   await ready(page);
   await expect(page.locator("#sync")).toHaveAttribute("aria-busy", "true");
   await expect(page.locator(".session-status")).toHaveCount(0);

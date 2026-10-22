@@ -199,6 +199,26 @@ func TestCollectWorkspacesCollectsEachCheckoutIndependently(t *testing.T) {
 	}
 }
 
+func TestCollectWorkspacesCanonicalizesInputWithinItsCheckout(t *testing.T) {
+	root := initialized(t, filepath.Join(t.TempDir(), "project"))
+	linked := filepath.Join(t.TempDir(), "linked")
+	git(t, root, "worktree", "add", "-b", "feature", linked)
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(linked, alias); err != nil {
+		t.Fatal(err)
+	}
+	var requests []ingestion.Request
+	if _, err := CollectWorkspaces(t.Context(), []string{alias}, 8, Options{SourceID: "machine", Hostname: "host"}, func(input ingestion.Request) error { requests = append(requests, input); return nil }); err != nil || len(requests) != 2 {
+		t.Fatalf("requests %d err %v", len(requests), err)
+	}
+	// Canonical checkout roots must contain the input to identify the launch checkout.
+	for _, request := range requests {
+		if request.Metadata.TriggerRoot != linked {
+			t.Fatalf("symlinked input %q not canonical", request.Metadata.TriggerRoot)
+		}
+	}
+}
+
 func TestCollectWorkspacesReportsFailedCheckoutWithoutBlockingOthers(t *testing.T) {
 	workspace := t.TempDir()
 	healthy := initialized(t, filepath.Join(workspace, "healthy"))

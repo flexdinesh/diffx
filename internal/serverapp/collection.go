@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -14,8 +15,8 @@ import (
 	"github.com/flexdinesh/diffx/internal/review"
 )
 
-// defaultContext is the review bare /mcp opens. It follows the newest changed
-// context of the latest explicit collection so agents see what the user synced.
+// defaultContext is the review bare /mcp opens. It follows the default of the
+// latest explicit collection so agents see what the user synced.
 type defaultContext struct {
 	mu sync.Mutex
 	id string
@@ -54,9 +55,15 @@ type Collect func(context.Context, func(ingestion.Request) error) ([]CollectionF
 type Published struct {
 	Submissions []contextservice.Submission
 	Failures    []CollectionFailure
+	// launched is the context of the deepest checkout containing its request's
+	// input path. Reused observations keep their first run's metadata.
+	launched      string
+	launchedDepth int
 }
 
 // Newest prefers current contexts with changes, then current clean contexts.
+// Among equals, the checkout containing the collection's input path wins, so
+// `diffx PATH` inside a worktree opens that worktree; then recent activity.
 // A successful collection of older observations still has an available default.
 func (published Published) Newest() (contextservice.Submission, bool) {
 	var newest, fallback contextservice.Submission
@@ -73,7 +80,7 @@ func (published Published) Newest() (contextservice.Submission, bool) {
 			continue
 		}
 		hasChanges := submitted.Context.ChangedFileCount != nil && *submitted.Context.ChangedFileCount > 0
-		if !found || hasChanges && !changed || hasChanges == changed && contextservice.CompareActivity(submitted.Context, newest.Context) < 0 {
+		if !found || hasChanges && !changed || hasChanges == changed && published.precedes(submitted.Context, newest.Context) {
 			newest, found, changed = submitted, true, hasChanges
 		}
 	}
@@ -81,6 +88,26 @@ func (published Published) Newest() (contextservice.Submission, bool) {
 		return newest, true
 	}
 	return fallback, available
+}
+
+func (published Published) precedes(left, right contextservice.Context) bool {
+	if launched := published.launched; launched != "" && (left.ID == launched) != (right.ID == launched) {
+		return left.ID == launched
+	}
+	return contextservice.CompareActivity(left, right) < 0
+}
+
+// launchDepth ranks a checkout whose root contains its trigger root, the input
+// path of local collection. Nested worktrees prefer the deepest root.
+func launchDepth(metadata ingestion.Metadata) int {
+	if metadata.Root == "" || metadata.TriggerRoot == "" {
+		return 0
+	}
+	relative, err := filepath.Rel(metadata.Root, metadata.TriggerRoot)
+	if err != nil || !filepath.IsLocal(relative) {
+		return 0
+	}
+	return len(metadata.Root)
 }
 
 // Publish selects each collected checkout into the composition's scope, then
@@ -108,6 +135,9 @@ func (published *Published) ingest(ctx context.Context, service *contextservice.
 		return err
 	}
 	published.Submissions = append(published.Submissions, submitted)
+	if depth := launchDepth(input.Metadata); depth > published.launchedDepth {
+		published.launched, published.launchedDepth = submitted.Context.ID, depth
+	}
 	return nil
 }
 
@@ -233,10 +263,12 @@ func (handler *Collections) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		applicationError(w, err)
 		return
 	}
+	newest, _ := published.Newest()
 	result := struct {
-		Contexts []contextservice.Context `json:"contexts"`
-		Failures []CollectionFailure      `json:"failures"`
-	}{make([]contextservice.Context, 0, len(published.Submissions)), make([]CollectionFailure, 0, len(published.Failures))}
+		Contexts         []contextservice.Context `json:"contexts"`
+		Failures         []CollectionFailure      `json:"failures"`
+		DefaultContextID string                   `json:"defaultContextId"`
+	}{make([]contextservice.Context, 0, len(published.Submissions)), make([]CollectionFailure, 0, len(published.Failures)), newest.Context.ID}
 	for _, submitted := range published.Submissions {
 		result.Contexts = append(result.Contexts, submitted.Context)
 	}

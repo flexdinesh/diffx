@@ -314,12 +314,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     window.addEventListener("popstate", handleNavigation);
     return () => window.removeEventListener("popstate", handleNavigation);
   }, []);
-  // Open available catalog data while local collection continues. Once selected,
-  // a snapshot stays open; collection only announces newer heads.
+  // Live URLs open available catalog data while local collection continues; the
+  // root waits for the collection's default. Once selected, a snapshot stays
+  // open; collection only announces newer heads.
   const collected = useRef<Route | null>(null);
   const [collectionResult, setCollectionResult] = useState<{
     route: Route;
     contexts: ApiContext[];
+    defaultContextId: string;
   } | null>(null);
   const resolving = route.kind !== "pinned" && !selectedId && !missing;
   const collectionFinished = collectionResult?.route === route;
@@ -334,7 +336,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setCollectError(
           `Unable to sync ${result.failures.length} ${result.failures.length === 1 ? "checkout" : "checkouts"}: ${result.failures.map((failure) => `${failure.path} (${failure.detail})`).join(", ")}`,
         );
-      setCollectionResult({ route, contexts: result?.contexts ?? [] });
+      setCollectionResult({
+        route,
+        contexts: result?.contexts ?? [],
+        defaultContextId: result?.defaultContextId ?? "",
+      });
     });
   }, [collectOnLoad, route, collectLatest]);
   useEffect(() => {
@@ -343,10 +349,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       route.kind === "live"
         ? contexts.find((context) => context.streamId === route.stream)
         : latestChangedContext(contexts);
+    const collectedHead =
+      collectionResult?.route !== route
+        ? undefined
+        : route.kind === "live"
+          ? findHead(collectionResult.contexts)
+          : findHead(
+              collectionResult.contexts.filter(
+                (context) => context.id === collectionResult.defaultContextId,
+              ),
+            );
+    // Only the finished collection names the root's default, such as the
+    // launched checkout; earlier heads are whichever checkouts finished first.
     const head =
-      (collectionResult?.route === route
-        ? findHead(collectionResult.contexts)
-        : undefined) ?? findHead(heads.contexts);
+      collectedHead ??
+      (route.kind === "root" && collectOnLoad
+        ? undefined
+        : findHead(heads.contexts));
     if (head)
       openStream(head, {
         replace: true,

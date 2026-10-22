@@ -22,8 +22,9 @@ REST and MCP until Ctrl-C. The path defaults to the current directory; repeat
 otherwise diffx searches up to `--scan-depth` levels (default 8) below it,
 stopping at each repository and skipping hidden, `node_modules` and `vendor`
 directories. Every registered worktree of each repository found is collected,
-including worktrees outside the paths. The browser opens the newest changed
-snapshot; later edits and branch switches do not change it until you sync, which
+including worktrees outside the paths. Once collection finishes, the browser
+opens the changed checkout containing the path, otherwise the most recently
+active changed snapshot; later edits and branch switches do not change it until you sync, which
 discovers the paths again and captures a new snapshot of every checkout. A
 checkout that fails to collect is reported without blocking the others and never
 substitutes an empty diff. Observations and comments persist across restarts in

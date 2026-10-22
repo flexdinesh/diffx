@@ -701,6 +701,8 @@ export interface components {
       contexts: components["schemas"]["Context"][];
       /** @description Discovered checkouts that could not be collected or ingested; their earlier snapshots remain unchanged. */
       failures: components["schemas"]["CollectionFailure"][];
+      /** @description The collected context that `/` and bare `/mcp` open. Changed current contexts come first; among them, the checkout containing the process's checkout path, then the most recently active. */
+      defaultContextId: string;
     };
     CollectionFailure: {
       path: string;

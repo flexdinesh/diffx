@@ -40,6 +40,57 @@ func TestPublishedNewestUsesActivityThenStableStreamIdentity(t *testing.T) {
 	}
 }
 
+func TestPublishedNewestPrefersCheckoutContainingInputPath(t *testing.T) {
+	store, err := reviewstore.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	owner, err := store.User("local", "Local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := contextservice.New(store, owner)
+	defer service.Close()
+	request := func(checkout, hash, root, input string, activity int64) ingestion.Request {
+		return ingestion.Request{
+			ProtocolVersion: ingestion.ProtocolVersion, SubmissionID: checkout + input, ContentHash: strings.Repeat(hash, 64),
+			Metadata: ingestion.Metadata{SourceID: "source", RepositoryKey: "repository", CheckoutKey: checkout, Branch: checkout, Root: root, TriggerRoot: input, Trigger: "manual", CollectedAt: activity, ActivityAt: activity},
+			Scopes:   []ingestion.Scope{{Snapshot: review.RepositoryDiff{Source: "local", Root: root, Branch: checkout, Mode: review.DiffAll, Revision: hash, Files: []review.ChangedFile{}}, Patches: map[string]review.FilePatch{}}},
+		}
+	}
+	collect := func(input string) (contextservice.Submission, Published) {
+		t.Helper()
+		published, err := Publish(t.Context(), service, Collection{Requests: []ingestion.Request{
+			request("other", "a", "/work/other", input, 900),
+			request("prefix", "b", "/work/repo/.worktrees/feature-old", input, 800),
+			request("main", "c", "/work/repo", input, 700),
+			request("feature", "d", "/work/repo/.worktrees/feature", input, 100),
+		}})
+		newest, ok := published.Newest()
+		if err != nil || !ok {
+			t.Fatalf("publish %s: %+v, %v", input, published, err)
+		}
+		return newest, published
+	}
+	// The first run's workspace input stays in reused observations.
+	if newest, _ := collect("/work"); newest.Context.Root == nil || *newest.Context.Root != "/work/other" {
+		t.Fatalf("workspace input did not follow activity: %+v", newest.Context)
+	}
+	newest, published := collect("/work/repo/.worktrees/feature/src")
+	if newest.Context.ID != published.Submissions[3].Context.ID {
+		t.Fatalf("launched checkout lost to activity or an enclosing checkout: %+v", newest.Context)
+	}
+	changed, clean := 1, 0
+	published = Published{launched: "launched", launchedDepth: 1, Submissions: []contextservice.Submission{
+		{Context: contextservice.Context{ID: "launched", LastChangedAt: 900, ChangedFileCount: &clean, Availability: "available"}},
+		{Context: contextservice.Context{ID: "changed", LastChangedAt: 100, ChangedFileCount: &changed, Availability: "available"}},
+	}}
+	if newest, ok := published.Newest(); !ok || newest.Context.ID != "changed" {
+		t.Fatalf("clean launched checkout displaced a changed one: %+v, %v", newest, ok)
+	}
+}
+
 func TestOlderCollectionRemainsSuccessfulWithoutRegressingStreamHead(t *testing.T) {
 	store, err := reviewstore.Open(":memory:")
 	if err != nil {
