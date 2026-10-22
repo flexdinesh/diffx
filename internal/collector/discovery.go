@@ -216,6 +216,10 @@ func discoverWorkspaces(ctx context.Context, inputs []string, depth int, sourceI
 			result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("workspace unavailable %s: not a readable directory", input))
 			continue
 		}
+		// Checkout roots are canonical; a canonical input locates its checkout.
+		if canonical, err := filepath.EvalSymlinks(input); err == nil {
+			input = canonical
+		}
 		// An explicit path may sit anywhere inside a repository.
 		source, err := diffsource.OpenRepository(ctx, input)
 		if err == nil {

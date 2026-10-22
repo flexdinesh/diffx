@@ -274,9 +274,9 @@ controls remain available when the rail is hidden; the header shows the open
 review's identity. The selected context scopes every request. The session owner exposes
 local checkout sync when bootstrap reports `collect`; loading `/` or a live
 `/streams/{streamId}` URL, the header's “Sync all checkouts” icon and Alt+R call
-`POST /api/v2/collections`. Load-time sync runs in the background while the
-first available stored head opens: the requested stream's head, or the most
-recently active changed one for `/`. Collection completion never replaces an
+`POST /api/v2/collections`. Load-time sync runs in the background while a live
+URL opens its stream's first available stored head; `/` waits for the
+collection's `defaultContextId`. Collection completion never replaces an
 open review; the newer-head notice offers “View latest”. A workspace skeleton
 with “Collecting latest changes” appears only while no review is available.
 Skeletons retain shell geometry and display preferences, hide decorative placeholders from assistive

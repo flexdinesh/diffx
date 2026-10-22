@@ -124,14 +124,16 @@ live URLs; the picker opens pinned ones; piped snapshots have no stream and stay
 pinned. A live URL resolves once, so later arrivals raise the notice instead of
 swapping the open review. With local collection enabled, loading `/` or a live
 URL syncs the checkouts in the background, joining startup on the first load
-through `POST /api/v2/collections?initial=true`. The first available catalog
-head opens immediately: the requested stream's head or, for `/`, the most
-recently active changed one. The open snapshot stays selected when collection
-finishes; a newer head raises the “Newer snapshot” notice with “View latest”.
-Without an available head, the UI waits for collection; failures remain visible
-and offer Retry. Otherwise `/` opens the most recently active changed head's
-live URL. Startup selection and the local default MCP context use the same
-activity ordering.
+through `POST /api/v2/collections?initial=true`. A live URL opens the requested
+stream's first available head immediately. `/` waits for collection, because
+heads appear as each checkout finishes, then opens the collection's default:
+current changed heads first, preferring the checkout containing the process's
+path, so `diffx .` in a worktree opens that worktree, then the most recently
+active. The open snapshot stays selected when collection finishes; a newer head
+raises the “Newer snapshot” notice with “View latest”. Without an available
+head, the UI waits for collection; failures remain visible and offer Retry.
+Otherwise `/` opens the most recently active changed head's live URL. Startup
+selection and the local default MCP context use the same collection default.
 Repos and Diff share one navigation panel beside the activity rail, aligned
 with the diff below the header. Selecting a stream loads its diff and opens the
 Diff file tree; clicking the active rail icon collapses its panel. Diff appears
