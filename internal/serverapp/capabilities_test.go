@@ -23,9 +23,9 @@ import (
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/mcpapi"
 	"github.com/flexdinesh/diffx/internal/review"
+	"github.com/flexdinesh/diffx/internal/reviewsession"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/serverapp"
-	"github.com/flexdinesh/diffx/internal/session"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -141,7 +141,7 @@ func TestLocalAndQueuedRemoteShareSnapshotContract(t *testing.T) {
 			t.Fatalf("snapshot capabilities depend on mode: %+v", context.Capabilities)
 		}
 		active := decode[struct {
-			Capabilities session.Capabilities `json:"capabilities"`
+			Capabilities reviewsession.Capabilities `json:"capabilities"`
 		}](t, request(t, test.deployment, "GET", "/api/v2/contexts/"+test.id+"/session", nil))
 		if !reflect.DeepEqual(active.Capabilities, context.Capabilities) {
 			t.Fatal("catalog/session capabilities diverged")

@@ -1,4 +1,4 @@
-package daemon
+package localserver
 
 import (
 	"context"
@@ -27,7 +27,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/webui"
 )
 
-func Run(ctx context.Context, settings Settings, runtimeDir string, initial *ingestion.Request, ready func(Status, *contextservice.Submission)) error {
+func Run(ctx context.Context, settings Settings, runtimeDir string, initial *ingestion.Request, ready func(Status, *contextservice.Publication)) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var collection Collection
@@ -38,7 +38,7 @@ func Run(ctx context.Context, settings Settings, runtimeDir string, initial *ing
 		if ready == nil {
 			return
 		}
-		var submitted *contextservice.Submission
+		var submitted *contextservice.Publication
 		if newest, ok := value.Newest(); ok {
 			submitted = &newest
 		}
@@ -164,7 +164,7 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 				logger.Printf("initial collection: %v", err)
 				return
 			}
-			logger.Printf("collected %d checkouts (%d failed)", len(published.Submissions), len(published.Failures))
+			logger.Printf("collected %d checkouts (%d failed)", len(published.Publications), len(published.Failures))
 			for _, failure := range published.Failures {
 				logger.Printf("%s: %s", failure.Path, failure.Detail)
 			}

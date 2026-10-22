@@ -14,7 +14,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/browser"
 	"github.com/flexdinesh/diffx/internal/config"
 	"github.com/flexdinesh/diffx/internal/contextservice"
-	"github.com/flexdinesh/diffx/internal/daemon"
+	"github.com/flexdinesh/diffx/internal/localserver"
 	buildversion "github.com/flexdinesh/diffx/internal/version"
 )
 
@@ -78,16 +78,16 @@ func runFixture(ctx context.Context, arguments []string, stdin *os.File, stdout,
 		go func() { _, _ = io.Copy(io.Discard, stdin); cancel() }()
 	}
 	started := time.Now()
-	return daemon.Run(ctx, settings, "", &request, func(status daemon.Status, submitted *contextservice.Submission) {
+	return localserver.Run(ctx, settings, "", &request, func(status localserver.Status, submitted *contextservice.Publication) {
 		address := status.BrowserURL + "/contexts/" + url.PathEscape(submitted.Context.ID)
-		writeStartup(stdout, submissionInput(*submitted, time.Since(started)), address)
+		writeStartup(stdout, publicationInput(*submitted, time.Since(started)), address)
 		openBrowser(values, address, stderr)
 	})
 }
-func resolvedServerSettings(values options) (daemon.Settings, error) {
+func resolvedServerSettings(values options) (localserver.Settings, error) {
 	saved, err := config.LoadFile(values.configFile)
 	if err != nil {
-		return daemon.Settings{}, err
+		return localserver.Settings{}, err
 	}
 	if values.hostSet {
 		saved.Local.Host = values.host
@@ -100,7 +100,7 @@ func resolvedServerSettings(values options) (daemon.Settings, error) {
 		if saved.Local.State == "" {
 			defaults, err := config.Default()
 			if err != nil {
-				return daemon.Settings{}, err
+				return localserver.Settings{}, err
 			}
 			saved.Local.State = defaults.Local.State
 		}

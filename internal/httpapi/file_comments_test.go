@@ -11,8 +11,8 @@ import (
 	"github.com/flexdinesh/diffx/internal/diffsource"
 	"github.com/flexdinesh/diffx/internal/review"
 	"github.com/flexdinesh/diffx/internal/reviewservice"
+	"github.com/flexdinesh/diffx/internal/reviewsession"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
-	"github.com/flexdinesh/diffx/internal/session"
 )
 
 func TestFileCommentsWithoutLineContext(t *testing.T) {
@@ -36,7 +36,7 @@ rename to new.ts
 		t.Fatal(err)
 	}
 	defer store.Close()
-	active := patchSession(t, store, source, raw, session.Policies{})
+	active := patchSession(t, store, source, raw, reviewsession.Policies{})
 	service := reviewservice.New(active, store)
 	server := httptest.NewServer(New(service, fstest.MapFS{"index.html": {Data: []byte("web")}}))
 	defer server.Close()

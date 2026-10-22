@@ -6,14 +6,14 @@ import (
 	"github.com/flexdinesh/diffx/internal/contextservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/review"
-	"github.com/flexdinesh/diffx/internal/session"
+	"github.com/flexdinesh/diffx/internal/reviewsession"
 )
 
 // ContextProvider must resolve IDs within the authenticated user's catalog.
 // Resolve validates ownership and expiry before any review storage is accessed.
 type ContextProvider interface {
 	ListFiltered(context.Context, int, string, ingestion.Filter) (contextservice.Page, error)
-	Resolve(context.Context, string) (session.Session, error)
+	Resolve(context.Context, string) (reviewsession.Session, error)
 }
 
 type Catalog struct {

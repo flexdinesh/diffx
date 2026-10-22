@@ -65,6 +65,7 @@ personal lifecycle discovery.
 - `contextservice`: owner-scoped publication, resolution and catalog.
 - `reviewservice`: shared snapshot reads, comments, marks and capability checks.
 - `reviewdata`: storage-independent identities, results and errors.
+- `reviewsession`: a resolved review and its source/policy capabilities.
 - `identityservice`: account, password, session and API-token policies.
 - `reviewstore`: SQLite transactions, identity persistence, stored reads,
   retention and queue adapter.
@@ -78,8 +79,9 @@ personal lifecycle discovery.
 - `hooks`: finite scheduling, coalescing and session-aware suppression.
 - `httpapi`, `mcpapi`: transport parsing, projection and error mapping. Both
   reach review operations through `reviewservice.Catalog` and hold no store.
-- `serverapp`: transport/task composition; `daemon`: local lifecycle;
-  `remoteserver`: remote authentication and worker composition.
+- `serverapp`: transport/task composition; `localserver`: local lifecycle;
+  `controlapi`: its private authenticated control API; `remoteserver`: remote
+  authentication and worker composition.
 - `config`, `processlock`, `browser`, `version`: configuration and private state
   paths (`StateDir`, honouring `DIFFX_RUNTIME_DIR`), process ownership,
   browser launch and build metadata; `processmetrics`: server process metrics;

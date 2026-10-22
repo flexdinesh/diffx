@@ -6,7 +6,7 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/review"
 	"github.com/flexdinesh/diffx/internal/reviewdata"
-	"github.com/flexdinesh/diffx/internal/session"
+	"github.com/flexdinesh/diffx/internal/reviewsession"
 )
 
 func (service *Service) fileVersion(ctx context.Context, mode review.DiffMode, fileID string) (reviewdata.FileVersion, error) {
@@ -14,7 +14,7 @@ func (service *Service) fileVersion(ctx context.Context, mode review.DiffMode, f
 		return reviewdata.FileVersion{}, err
 	}
 	if !service.session.Capabilities.Diff.Scopes.Allows(mode) {
-		return reviewdata.FileVersion{}, session.NotEnabled(session.DiffScopes)
+		return reviewdata.FileVersion{}, reviewsession.NotEnabled(reviewsession.DiffScopes)
 	}
 	version, err := service.store.ObservationFileVersion(ctx, service.session.User.ID, service.session.ContextID, mode, fileID)
 	if errors.Is(err, reviewdata.ErrNotFound) {
@@ -64,7 +64,7 @@ func (service *Service) CurrentPatch(ctx context.Context, mode review.DiffMode, 
 
 func (service *Service) CurrentContents(ctx context.Context, mode review.DiffMode, diffID, versionID, fileID, fileVersion string) (review.FileContents, error) {
 	if !service.session.Capabilities.Files.Contents.Enabled() {
-		return review.FileContents{}, session.NotEnabled(session.FilesContents)
+		return review.FileContents{}, reviewsession.NotEnabled(reviewsession.FilesContents)
 	}
 	patch, err := service.CurrentPatch(ctx, mode, diffID, versionID, fileID, fileVersion)
 	if err != nil {

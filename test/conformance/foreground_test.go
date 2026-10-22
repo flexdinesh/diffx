@@ -15,7 +15,7 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/config"
 	"github.com/flexdinesh/diffx/internal/contextservice"
-	"github.com/flexdinesh/diffx/internal/daemon"
+	"github.com/flexdinesh/diffx/internal/localserver"
 	"github.com/flexdinesh/diffx/internal/review"
 )
 
@@ -35,7 +35,7 @@ func TestForegroundPipedPatchAndPersistentHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	harness.environment = append(harness.environment, "DIFFX_CONFIG_PATH="+configPath, "DIFFX_REMOTE_URL=http://127.0.0.1:1", "SSH_CONNECTION=test")
-	client := &daemon.Client{RuntimeDirectory: harness.runtimeDir}
+	client := &localserver.Client{RuntimeDirectory: harness.runtimeDir}
 	// The first file alone is a different capture in the same database.
 	otherPatch := patch[:bytes.Index(patch, []byte("\ndiff --git"))+1]
 	var original review.RepositoryDiff
@@ -74,7 +74,7 @@ func TestForegroundPipedPatchAndPersistentHistory(t *testing.T) {
 			t.Cleanup(func() { _ = command.Process.Kill() })
 			done := make(chan error, 1)
 			go func() { done <- command.Wait() }()
-			var status daemon.Status
+			var status localserver.Status
 			deadline := time.Now().Add(8 * time.Second)
 			for {
 				status, err = client.Status(t.Context())
@@ -173,7 +173,7 @@ func TestForegroundRejectsPathAndPipedStdinBeforeStartup(t *testing.T) {
 			t.Fatalf("accepted conflicting input %v: %s %v", args, output, err)
 		}
 	}
-	if _, err := daemon.ReadDescriptor(harness.runtimeDir); !os.IsNotExist(err) {
+	if _, err := localserver.ReadDescriptor(harness.runtimeDir); !os.IsNotExist(err) {
 		t.Fatalf("invalid input started a service: %v", err)
 	}
 }
@@ -186,7 +186,7 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(second, "value.txt"), []byte("linked edit\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	client := &daemon.Client{RuntimeDirectory: harness.runtimeDir}
+	client := &localserver.Client{RuntimeDirectory: harness.runtimeDir}
 	start := func(path string, extra ...string) (*exec.Cmd, chan error) {
 		t.Helper()
 		args := []string{"--state", harness.state, "--port", "0", "--no-browser"}
@@ -206,7 +206,7 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 		t.Cleanup(func() { _ = command.Process.Kill() })
 		return command, done
 	}
-	await := func(previous string) daemon.Status {
+	await := func(previous string) localserver.Status {
 		t.Helper()
 		deadline := time.Now().Add(8 * time.Second)
 		for time.Now().Before(deadline) {
@@ -227,7 +227,7 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 			time.Sleep(20 * time.Millisecond)
 		}
 		t.Fatal("foreground instance unavailable")
-		return daemon.Status{}
+		return localserver.Status{}
 	}
 	original, done := start("")
 	status := await("")
@@ -311,8 +311,8 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	var result struct {
-		Contexts []contextservice.Context   `json:"contexts"`
-		Failures []daemon.CollectionFailure `json:"failures"`
+		Contexts []contextservice.Context        `json:"contexts"`
+		Failures []localserver.CollectionFailure `json:"failures"`
 	}
 	err = json.NewDecoder(response.Body).Decode(&result)
 	response.Body.Close()

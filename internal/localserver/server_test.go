@@ -1,4 +1,4 @@
-package daemon
+package localserver
 
 import (
 	"context"
@@ -65,7 +65,7 @@ func TestCheckoutServerServesBeforeCollectionAndWaitsForCollectorShutdown(t *tes
 				<-release
 				return nil, ctx.Err()
 			}, func(status Status, published Published) {
-				if len(published.Submissions) != 0 {
+				if len(published.Publications) != 0 {
 					t.Error("ready must not wait for checkout collection")
 				}
 				ready <- status
@@ -137,7 +137,7 @@ func TestRunForcesCloseWhenIdleConnectionExhaustsShutdownGrace(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		done <- Run(ctx, Settings{Host: "127.0.0.1", Port: 0, State: "memory"}, "", nil,
-			func(status Status, _ *contextservice.Submission) { ready <- status })
+			func(status Status, _ *contextservice.Publication) { ready <- status })
 	}()
 	var status Status
 	select {

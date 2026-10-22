@@ -9,15 +9,15 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/contextservice"
-	"github.com/flexdinesh/diffx/internal/daemon"
+	"github.com/flexdinesh/diffx/internal/localserver"
 	"github.com/flexdinesh/diffx/internal/remoteserver"
 )
 
 func TestBothModesPreserveIncompatibleStateAndAcceptFreshPath(t *testing.T) {
 	for name, start := range map[string]func(context.Context, string, func()) error{
 		"local": func(ctx context.Context, path string, ready func()) error {
-			return daemon.Run(ctx, daemon.Settings{Host: "127.0.0.1", Port: 0, State: path}, "", nil,
-				func(daemon.Status, *contextservice.Submission) { ready() })
+			return localserver.Run(ctx, localserver.Settings{Host: "127.0.0.1", Port: 0, State: path}, "", nil,
+				func(localserver.Status, *contextservice.Publication) { ready() })
 		},
 		"remote": func(ctx context.Context, path string, ready func()) error {
 			return remoteserver.Run(ctx, remoteserver.Settings{Listen: "127.0.0.1:0", State: path, SignupEnabled: true},
