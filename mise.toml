@@ -3,7 +3,7 @@
 idiomatic_version_file_enable_tools = ["node", "pnpm"]
 
 [tools]
-go = "1"
+go = "1.27.3"
 
 [tasks.setup]
 description = "Install dependencies, hooks, Playwright Chromium, and embedded web assets"
@@ -15,8 +15,8 @@ run = [
 ]
 
 [tasks.generate]
-description = "Generate TypeScript API types"
-run = "pnpm generate:api"
+description = "Generate TypeScript API types and build agent plugin adapters"
+run = ["pnpm generate:api", { task = "plugins:build" }]
 
 [tasks."web:build"]
 description = "Generate API types and build the web app"
@@ -85,7 +85,7 @@ run = ["mise tasks validate", "pnpm check:static"]
 description = "Check Go formatting and vet"
 shell = "bash -e -o pipefail -c"
 run = '''
-unformatted=$(gofmt -l cmd internal packages/api tools test/conformance)
+unformatted=$(git ls-files -z '*.go' | xargs -0 gofmt -l)
 if [ -n "$unformatted" ]; then
   printf '%s\n' "$unformatted"
   exit 1
@@ -117,6 +117,7 @@ fi
 description = "Lightweight CI: build, static checks, generated drift, API smoke test"
 run = [
   { task = "build" },
+  { task = "plugins:build" },
   { tasks = [
     "check:static",
     "check:go:static",
@@ -140,6 +141,7 @@ run = [
   { task = "check:ci" },
   { tasks = [
     "test:contracts:rules",
+    "docs:check",
     "test:js",
     "test:release",
     "test:go",
@@ -147,9 +149,13 @@ run = [
 ]
 
 [tasks."test:contracts"]
-description = "Build and run architecture, boundary, shared-rule and real HTTP contracts"
+description = "Build and run architecture, boundary, shared-rule, Go and real HTTP contracts"
 depends = ["build"]
-run = [{ task = "test:contracts:rules" }, "pnpm test:conformance"]
+run = [
+  { task = "test:contracts:rules" },
+  { task = "test:go" },
+  "pnpm test:conformance",
+]
 
 [tasks."check:boundaries"]
 description = "Reject unclassified packages and forbidden production dependencies"
@@ -160,13 +166,12 @@ description = "Check frontend design-token use"
 run = "node tools/check-design.ts"
 
 [tasks."test:contracts:rules"]
-description = "Run dependency, design-token, behavioral and shared-rule contracts without rebuilding"
+description = "Run dependency, design-token and shared-rule contracts; Go contract tests run with the Go suite"
 run = [
   { tasks = [
     "check:boundaries",
     "check:design",
   ] },
-  "go test ./tools/check-boundaries ./internal/review ./internal/session ./internal/contextservice ./internal/reviewservice ./internal/identityservice ./internal/reviewstore ./internal/controlapi ./internal/ingestion ./internal/ingestionqueue ./internal/submission ./internal/serverapp ./internal/remoteserver ./test/conformance",
   "node --test test/contracts/*.test.ts",
 ]
 
@@ -177,6 +182,7 @@ run = [
   { task = "check:ci" },
   { tasks = [
     "test:contracts:rules",
+    "docs:check",
     "test:js",
     "test:release",
     "test:race",

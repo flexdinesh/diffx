@@ -17,7 +17,7 @@ codex plugin add diffx@diffx
 Remove with `codex plugin remove diffx@diffx`. Runtime configuration
 comes from the same diffx config/environment as the CLI. The harness must
 have `diffx` on PATH or `DIFFX_BINARY` set to its absolute path, including
-GUI sessions. See [plugin setup](../../docs/plugins.md) for remote installation,
+GUI sessions. See [plugin setup](../../docs-website/src/pages/plugins.md) for remote installation,
 configuration and migration from the old installer.
 
 Requires remote `server` and `token` settings in diffx config. Plugins never

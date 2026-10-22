@@ -17,7 +17,7 @@ Keep the checkout at that path. Remove with `pi remove` using the same absolute
 source path. Runtime configuration comes from the same diffx
 config/environment as the CLI. The harness must have `diffx` on PATH or
 `DIFFX_BINARY` set to its absolute path. See
-[plugin setup](../../docs/plugins.md) for configuration and migration from the
+[plugin setup](../../docs-website/src/pages/plugins.md) for configuration and migration from the
 old installer.
 
 The committed `dist/index.js` is self-contained; installation needs no build,

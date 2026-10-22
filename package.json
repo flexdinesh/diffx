@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "prepare": "husky",
-    "build": "pnpm generate:api && pnpm --filter @diffx/web build && pnpm --recursive --filter '@diffx/plugin-*' --if-present build",
+    "build": "pnpm generate:api && pnpm --filter @diffx/web build",
     "dev:web": "pnpm --filter @diffx/web dev",
     "generate:api": "pnpm --filter @diffx/api generate",
-    "typecheck": "pnpm --recursive --if-present typecheck && tsc --noEmit -p test/conformance/tsconfig.json",
+    "typecheck": "pnpm --recursive --if-present typecheck && tsc --noEmit -p test/tsconfig.json",
     "test": "pnpm --recursive --if-present test",
     "test:web": "pnpm --filter @diffx/web test",
     "test:go": "go test -timeout 3m ./...",
@@ -27,8 +27,6 @@
   },
   "devDependencies": {
     "@babel/parser": "^7.29.8",
-    "@earendil-works/pi-coding-agent": "catalog:",
-    "@opencode/plugin": "catalog:",
     "@types/node": "catalog:",
     "ajv": "^8.20.0",
     "husky": "catalog:",

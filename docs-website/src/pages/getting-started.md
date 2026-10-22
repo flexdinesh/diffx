@@ -13,7 +13,7 @@ With Homebrew:
 brew install flexdinesh/tap/diffx
 ```
 
-Latest stable release with Go 1.25 or later:
+Latest stable release with Go 1.27.3 or later:
 
 ```sh
 go install github.com/flexdinesh/diffx/cmd/diffx@latest
