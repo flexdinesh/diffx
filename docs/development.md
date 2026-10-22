@@ -5,7 +5,7 @@ release binary. Node and pnpm are build and test dependencies only.
 
 ## Install development version
 
-Install the latest `main` changes that passed CI with Go 1.25 or later:
+Install the latest `main` changes that passed CI with Go 1.27.3 or later:
 
 ```sh
 go install github.com/flexdinesh/diffx/cmd/diffx@edge
