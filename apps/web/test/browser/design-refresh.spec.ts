@@ -4,9 +4,9 @@ import { resetFixtureState } from "./fixture-state.ts";
 
 test.beforeEach(async ({ request }) => resetFixtureState(request));
 
-/** Repos is the initial view; the file sidebar opens from the Diff view. */
+/** The file sidebar sits beside the review column on desktop. */
 async function showDiff(page: Page) {
-  await page.getByRole("button", { name: "Diff", exact: true }).click();
+  await expect(page.locator("#sidebar")).toBeVisible();
 }
 
 async function seedReviewComments(page: Page) {

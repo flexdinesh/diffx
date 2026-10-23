@@ -55,6 +55,7 @@ export function FileExplorerNav() {
     search,
   } = useNavigation();
   const sidebar = useSidebarState();
+  const drawerOpen = sidebar.drawer === "files";
   const review = useReviewState();
   const { isReviewed } = useReviewedFilesState();
   const commentsEnabled = capabilityEnabled(capabilities.review.comments);
@@ -101,19 +102,10 @@ export function FileExplorerNav() {
   return (
     <aside
       id="sidebar"
-      className={`sidebar${sidebar.collapsed ? " is-collapsed" : ""}${sidebar.open && sidebar.view === "diff" ? " open" : ""}`}
-      role={
-        sidebar.mobile && sidebar.open && sidebar.view === "diff"
-          ? "dialog"
-          : undefined
-      }
-      hidden={sidebar.view !== "diff"}
+      className={`sidebar${drawerOpen ? " open" : ""}`}
+      role={drawerOpen ? "dialog" : undefined}
       aria-label="Review navigation"
-      aria-modal={
-        sidebar.mobile && sidebar.open && sidebar.view === "diff"
-          ? "true"
-          : undefined
-      }
+      aria-modal={drawerOpen ? "true" : undefined}
     >
       <Tabs
         value={tab}

@@ -6,6 +6,7 @@ import { navigate } from "./identity-context.tsx";
 import { Button } from "@/components/ui/button";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { Navigation } from "./Navigation.tsx";
+import { StreamInbox } from "./StreamInbox.tsx";
 import { SyncButton, Topbar } from "./Topbar.tsx";
 import { useCatalog, useSessionShell } from "./session-context.tsx";
 
@@ -45,69 +46,72 @@ export function SessionShell({ children }: { children: ReactNode }) {
               </Topbar>
               <div className="workbench">
                 <Navigation loading={loading} />
-                <main
-                  className={`session-status${loading ? " is-loading" : ""}`}
-                  role="status"
-                  aria-busy={loading}
-                  ref={statusRef}
-                  tabIndex={-1}
-                >
-                  {loading ? (
-                    <WorkspaceLoading collecting={collectOnLoad} />
-                  ) : (
-                    <EmptyState
-                      size="page"
-                      heading="h1"
-                      title={
-                        statusError
-                          ? collectError
-                            ? "Cannot sync changes"
-                            : "Cannot load diffx"
-                          : missing
-                            ? "No current snapshot"
+                <div className="workspace">
+                  <main
+                    className={`session-status${loading ? " is-loading" : ""}`}
+                    role="status"
+                    aria-busy={loading}
+                    ref={statusRef}
+                    tabIndex={-1}
+                  >
+                    {loading ? (
+                      <WorkspaceLoading collecting={collectOnLoad} />
+                    ) : (
+                      <EmptyState
+                        size="page"
+                        heading="h1"
+                        title={
+                          statusError
+                            ? collectError
+                              ? "Cannot sync changes"
+                              : "Cannot load diffx"
+                            : missing
+                              ? "No current snapshot"
+                              : empty
+                                ? heads.contexts.length
+                                  ? "No changes to review"
+                                  : "No review contexts yet"
+                                : "Loading diffx"
+                        }
+                        description={
+                          statusError ||
+                          (missing
+                            ? "This stream's snapshots expired or were deleted. Pick current work from Reviews."
                             : empty
-                              ? heads.contexts.length
-                                ? "No changes to review"
-                                : "No review contexts yet"
-                              : "Loading diffx"
-                      }
-                      description={
-                        statusError ||
-                        (missing
-                          ? "This stream's snapshots expired or were deleted. Pick current work from Repos."
-                          : empty
-                            ? remote
-                              ? "Create a collector token in settings, then run diffx sync to publish your changes."
-                              : "Run diffx to review a checkout, or diffx sync to publish remotely."
-                            : "Reading review context…")
-                      }
-                      action={
-                        statusError || (empty && remote) ? (
-                          <>
-                            {empty && remote && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => navigate("/settings")}
-                              >
-                                Create a collector token
-                              </Button>
-                            )}
-                            {statusError && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={retry}
-                              >
-                                Retry
-                              </Button>
-                            )}
-                          </>
-                        ) : undefined
-                      }
-                    />
-                  )}
-                </main>
+                              ? remote
+                                ? "Create a collector token in settings, then run diffx sync to publish your changes."
+                                : "Run diffx to review a checkout, or diffx sync to publish remotely."
+                              : "Reading review context…")
+                        }
+                        action={
+                          statusError || (empty && remote) ? (
+                            <>
+                              {empty && remote && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => navigate("/settings")}
+                                >
+                                  Create a collector token
+                                </Button>
+                              )}
+                              {statusError && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={retry}
+                                >
+                                  Retry
+                                </Button>
+                              )}
+                            </>
+                          ) : undefined
+                        }
+                      />
+                    )}
+                  </main>
+                  <StreamInbox />
+                </div>
               </div>
             </>
           )}

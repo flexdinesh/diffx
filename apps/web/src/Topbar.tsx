@@ -10,7 +10,7 @@ import {
 } from "./ProjectsNav.tsx";
 import { useCatalog } from "./session-context.tsx";
 import { ThemeButton } from "./ThemeButton.tsx";
-import { useCompactChrome } from "./use-compact-chrome.ts";
+import { useSidebarState } from "./sidebar-context.tsx";
 
 export function CurrentContext() {
   const catalog = useCatalog();
@@ -57,25 +57,25 @@ export function Topbar({
   children,
   actions,
 }: {
-  /** Compact-only controls placed after the brand, e.g. the file sidebar toggle. */
+  /** Controls placed after the brand, e.g. the file sidebar toggle. */
   lead?: ReactNode;
   /** Content after the current context, e.g. the review heading. */
   children?: ReactNode;
   /** Actions placed before account and theme. */
   actions?: ReactNode;
 }) {
-  const compact = useCompactChrome();
+  const { mobile } = useSidebarState();
   return (
     <header className="topbar">
-      {compact && <ProjectsToggle />}
+      {mobile && <ProjectsToggle />}
       <HeaderBrand />
-      {compact && lead}
+      {lead}
       <CurrentContext />
       {children}
       <div className="header-actions">
         <NewChangesButton />
         {actions}
-        {compact && <AccountButton variant="shell" />}
+        <AccountButton variant="shell" />
         <ThemeButton />
       </div>
     </header>

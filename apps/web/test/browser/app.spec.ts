@@ -43,12 +43,13 @@ async function markReviewed(baseURL: string | undefined, except: string) {
   }
 }
 
-/** Repos opens first; file-tree tests select Diff the way a user would. */
+/** The file sidebar sits beside the review column; reopen it if collapsed. */
 async function showDiff(page: Page) {
-  const view = page.getByRole("button", { name: "Diff", exact: true });
-  await view.click();
-  await expect(view).toHaveAttribute("aria-current", "page");
-  await expect(page.locator("#sidebar")).toBeVisible();
+  const sidebar = page.locator("#sidebar");
+  await sidebar.waitFor({ state: "attached" });
+  if (!(await sidebar.isVisible()))
+    await page.getByRole("button", { name: "Show file sidebar" }).click();
+  await expect(sidebar).toBeVisible();
 }
 
 test.beforeEach(async ({ request }) => resetFixtureState(request));
@@ -1649,65 +1650,61 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
 }) => {
   await page.goto("/");
   const brand = page.locator(".topbar .brand");
-  const view = page.getByRole("button", { name: "Diff", exact: true });
+  const filesToggle = page.getByRole("button", { name: "Hide file sidebar" });
   await expect(page.locator("#file-count")).not.toHaveText("0");
   await expect(brand).toHaveText("diffx");
-  const rail = page.getByRole("navigation", { name: "Views" });
-  const railViews = rail.getByRole("listitem").getByRole("button");
-  await expect(railViews).toHaveCount(2);
-  expect(
-    await railViews.evaluateAll((buttons) =>
-      buttons.map((button) => button.getAttribute("aria-label")),
-    ),
-  ).toEqual(["Repos", "Diff"]);
+  await expect(
+    page.getByRole("navigation", { name: "Views", exact: true }),
+  ).toHaveCount(0);
   await expect(
     page.locator(".topbar .header-actions > :last-child"),
   ).toHaveAccessibleName(/^Theme:/);
-  await expect(rail.getByRole("button", { name: /^Theme:/ })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Delete snapshot", exact: true }),
   ).toHaveCount(0);
-  await expect(view).toBeVisible();
+  // Desktop shows the review column and the file sidebar together; only the
+  // file sidebar toggles from the header.
   await expect(
-    page
-      .getByRole("banner")
-      .getByRole("button", { name: /^(Show|Hide) (repos|file sidebar)$/ }),
+    page.getByRole("banner").getByRole("button", { name: /reviews$/ }),
   ).toHaveCount(0);
-  // Repos is the initial view; Diff opens the file tree on request.
-  await expect(
-    page.getByRole("button", { name: "Repos", exact: true }),
-  ).toHaveAttribute("aria-current", "page");
-  await expect(page.locator("#projects-nav")).toBeVisible();
-  await expect(page.locator("#sidebar")).toBeHidden();
-  await showDiff(page);
-  await expect(page.locator("#projects-nav")).toBeHidden();
+  await expect(filesToggle).toHaveAttribute("aria-expanded", "true");
+  const reviews = page.getByRole("navigation", { name: "Reviews" });
+  await expect(reviews).toBeVisible();
+  await expect(page.locator("#sidebar")).toBeVisible();
   const filter = page.getByRole("searchbox", { name: "Filter files" });
   await filter.fill("value");
   const before = await brand.boundingBox();
-  await page.getByRole("button", { name: "Repos", exact: true }).click();
-  await expect(page.locator("#projects-nav")).toBeVisible();
-  await expect(page.locator("#sidebar")).toBeHidden();
-  const after = await brand.boundingBox();
-  expect(after).toEqual(before);
-  const projects = await page.locator("#projects-nav").boundingBox();
   const workspace = await page.locator(".workspace").boundingBox();
-  if (!projects || !workspace) throw new Error("Missing workspace panels");
-  expect(projects.y).toBe(workspace.y);
-  expect(projects.height).toBe(workspace.height);
-  await view.click();
-  await expect(page.locator("#sidebar")).toBeVisible();
-  await expect(page.locator("#projects-nav")).toBeHidden();
+  for (const panel of ["#projects-nav", "#sidebar"]) {
+    const box = await page.locator(panel).boundingBox();
+    if (!box || !workspace) throw new Error("Missing workspace panels");
+    expect(box.y).toBe(workspace.y);
+    expect(box.height).toBe(workspace.height);
+  }
+  // Collapsing the column to its rail keeps the open review's navigation.
+  await page.getByRole("button", { name: "Collapse reviews" }).click();
+  await expect(
+    reviews.getByRole("list", { name: "Repositories" }),
+  ).toBeVisible();
   await expect(filter).toHaveValue("value");
-  await expect(view).toHaveAttribute("aria-expanded", "true");
-  await view.click();
+  expect(await brand.boundingBox()).toEqual(before);
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Expand reviews" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Expand reviews" }).click();
+  await expect(
+    page.getByRole("button", { name: "Collapse reviews" }),
+  ).toBeVisible();
+  await filesToggle.click();
   await expect(page.locator("#sidebar")).toBeHidden();
-  await expect(view).toHaveAttribute("aria-expanded", "false");
-  await view.click();
-  const files = await page.locator("#sidebar").boundingBox();
-  if (!files) throw new Error("Missing file panel");
-  expect(files.y).toBe(workspace.y);
-  expect(files.height).toBe(workspace.height);
+  const showFiles = page.getByRole("button", { name: "Show file sidebar" });
+  await expect(showFiles).toHaveAttribute("aria-expanded", "false");
+  await expect(reviews).toBeVisible();
+  await showFiles.click();
+  await expect(page.locator("#sidebar")).toBeVisible();
   await expect(page.locator('img[src="/logo.png"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "Collapse reviews" }).click();
 
   const styles = await page.evaluate(() => {
     const size = (selector: string) => {
@@ -1727,9 +1724,9 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
       if (!element) throw new Error(`Missing ${selector}`);
       return element;
     };
-    const railViewButton = find(".activity-bar [aria-current='page']");
+    const railViewButton = find("#reviews-expand");
     const themeElement = find(".topbar [aria-label^='Theme:']");
-    const rail = find(".activity-bar").getBoundingClientRect();
+    const rail = find(".stream-rail").getBoundingClientRect();
     const railView = railViewButton.getBoundingClientRect();
     const themeButton = themeElement.getBoundingClientRect();
     const indicator = getComputedStyle(tab, "::after");
@@ -1739,14 +1736,14 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
     const accent = getComputedStyle(colorProbe).color;
     colorProbe.remove();
     return {
-      identity: size(".context-identity > svg"),
+      identity: size(".context-identity svg"),
       viewOptions: size("#view-options svg"),
       refresh: size("[aria-label='Retry loading changes'] svg"),
       theme: size(".topbar [aria-label^='Theme:'] svg"),
-      view: size(".activity-bar [aria-current='page'] svg"),
+      view: size("#reviews-expand svg"),
       chromeStrokes: Array.from(
         document.querySelectorAll(
-          ".topbar button svg, .toolbar button svg, .activity-bar button svg",
+          ".topbar button svg, .toolbar button svg, .stream-rail button svg",
         ),
         (element) => getComputedStyle(element).strokeWidth,
       ),
@@ -1781,7 +1778,8 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
     headerHeight: 36,
   });
   expect(styles.identity).toBe(styles.viewOptions);
-  // The rail mirrors the header: width equals header height, items match header buttons.
+  // The collapsed review rail mirrors the header: width equals header height,
+  // items match header buttons.
   expect(styles.railWidth).toBe(styles.headerHeight);
   expect(styles.railViewSize).toEqual(styles.headerButtonSize);
   expect(styles.railViewInset).toBe(styles.headerButtonInset);
@@ -1882,61 +1880,68 @@ test("header actions show a visible hover surface in both themes", async ({
   }
 });
 
-test("shared navigation resizer preserves width across Diff and Repos", async ({
+test("review column and file sidebar resize independently and persist", async ({
   page,
 }) => {
   await page.goto("/");
-  const resizer = page.getByRole("separator", {
-    name: "Resize navigation panel",
-  });
-  const panel = page.locator(".navigation-panel");
-  await expect(resizer).toBeVisible();
+  const column = page.locator(".stream-column");
+  const files = page.locator(".navigation-panel");
+  const panes = [
+    { name: "Resize reviews column", pane: column },
+    { name: "Resize file sidebar", pane: files },
+  ];
   const paneGap = () =>
     page.locator(".workspace").evaluate((element) => {
       const navigation = document.querySelector(".navigation-island");
-      if (!navigation) throw new Error("Missing shared navigation");
+      if (!navigation) throw new Error("Missing navigation island");
       return (
         element.getBoundingClientRect().left -
         navigation.getBoundingClientRect().right
       );
     });
-  const initialWidth = Number(await resizer.getAttribute("aria-valuenow"));
-  for (const view of ["Repos", "Diff"]) {
-    if (view === "Diff") await showDiff(page);
+  const widths: number[] = [];
+  for (const { name, pane } of panes) {
+    const resizer = page.getByRole("separator", { name });
     await expect(resizer).toBeVisible();
     const before = Number(await resizer.getAttribute("aria-valuenow"));
-    await expect(panel).toHaveCSS("width", `${before}px`);
+    await expect(pane).toHaveCSS("width", `${before}px`);
     const box = await resizer.boundingBox();
-    if (!box) throw new Error("Missing navigation resizer bounds");
-    const island = await page.locator(".navigation-island").boundingBox();
-    if (!island) throw new Error("Missing navigation bounds");
-    expect(box.height).toBe(island.height);
-    expect(box.x + 3).toBe(island.x + island.width);
+    const paneBox = await pane.boundingBox();
+    if (!box || !paneBox) throw new Error(`Missing ${name} bounds`);
+    expect(box.height).toBe(paneBox.height);
+    expect(box.x + 3).toBe(paneBox.x + paneBox.width);
     await page.mouse.move(box.x + box.width / 2, box.y + 20);
     await page.mouse.down();
     await page.mouse.move(box.x + box.width / 2 + 40, box.y + 20);
     await page.mouse.up();
     await expect(resizer).toHaveAttribute("aria-valuenow", String(before + 40));
-    await expect(panel).toHaveCSS("width", `${before + 40}px`);
+    await expect(pane).toHaveCSS("width", `${before + 40}px`);
     expect(await paneGap()).toBe(6);
     await resizer.focus();
     await page.keyboard.press("ArrowLeft");
-    await expect(panel).toHaveCSS("width", `${before + 20}px`);
+    await expect(pane).toHaveCSS("width", `${before + 20}px`);
+    widths.push(before + 20);
   }
-  const resizedWidth = initialWidth + 40;
-  await page.getByRole("button", { name: "Repos", exact: true }).click();
-  await expect(panel).toHaveCSS("width", `${resizedWidth}px`);
   await page.reload();
-  await expect(resizer).toHaveAttribute("aria-valuenow", String(resizedWidth));
-  await expect(panel).toHaveCSS("width", `${resizedWidth}px`);
-  await showDiff(page);
-  await expect(panel).toHaveCSS("width", `${resizedWidth}px`);
-  await page.getByRole("button", { name: "Diff", exact: true }).click();
-  await expect(resizer).toBeHidden();
+  for (const [index, { pane }] of panes.entries())
+    await expect(pane).toHaveCSS("width", `${widths[index]}px`);
+  // The rail has no handle; collapsing either pane keeps the other's width.
+  await page.getByRole("button", { name: "Collapse reviews" }).click();
+  await expect(
+    page.getByRole("separator", { name: "Resize reviews column" }),
+  ).toBeHidden();
+  await expect(files).toHaveCSS("width", `${widths[1]}px`);
+  await page.getByRole("button", { name: "Expand reviews" }).click();
+  await page.getByRole("button", { name: "Hide file sidebar" }).click();
+  await expect(
+    page.getByRole("separator", { name: "Resize file sidebar" }),
+  ).toBeHidden();
+  await expect(column).toHaveCSS("width", `${widths[0]}px`);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Show repos" }).click();
-  await expect(page.getByRole("dialog", { name: "Repos" })).toBeVisible();
-  await expect(resizer).toBeHidden();
+  await page.getByRole("button", { name: "Show reviews" }).click();
+  await expect(page.getByRole("dialog", { name: "Reviews" })).toBeVisible();
+  for (const { name } of panes)
+    await expect(page.getByRole("separator", { name })).toBeHidden();
 });
 
 test("copy dialog reports clipboard status and restores focus", async ({
@@ -2247,7 +2252,7 @@ test("drawer aligns its header and retains desktop navigation density", async ({
   for (const width of [800, 390]) {
     await page.setViewportSize({ width, height: 844 });
     const toggle = page.getByRole("button", {
-      name: width >= 768 ? "Diff" : "Show file sidebar",
+      name: "Show file sidebar",
       exact: true,
     });
     await toggle.click();

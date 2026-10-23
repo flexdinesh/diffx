@@ -104,7 +104,7 @@
   text-box: trim-both cap alphabetic;
   padding-block: var(--space-2);
 }
-/* Compact entry point when the activity rail is hidden. */
+/* Reviews drawer entry point below 1012px, where the review column is hidden. */
 .topbar-lead {
   display: flex;
   justify-content: center;
@@ -171,56 +171,75 @@
   min-height: 0;
   display: flex;
 }
-.navigation-island,
-.workbench > .activity-bar {
+.navigation-island {
+  display: flex;
   flex-shrink: 0;
+  min-height: 0;
   border-radius: var(--radius-lg);
   background: var(--panel);
   outline: 1px solid var(--border);
 }
-.navigation-island {
+/* The review column leads the island; the file sidebar follows it. */
+.stream-column {
   display: flex;
+  flex: 0 0 var(--streams-width);
+  width: var(--streams-width);
   min-height: 0;
   position: relative;
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+}
+.stream-column.is-rail {
+  flex-basis: var(--activity-width);
+  width: var(--activity-width);
+}
+.stream-column:last-child,
+.stream-column:has(+ .navigation-panel[hidden]) {
+  border-radius: var(--radius-lg);
 }
 .navigation-panel {
   display: flex;
   flex: 0 0 var(--sidebar-width);
   width: var(--sidebar-width);
   min-height: 0;
+  position: relative;
 }
-.workspace,
-.workbench > main {
+.workspace {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
   margin-left: var(--shell-gutter);
   border-radius: var(--radius-lg);
   overflow: clip;
   background: var(--bg);
   outline: 1px solid var(--border);
 }
-.workspace {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.activity-bar {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  width: var(--activity-width);
-  /* Match the header's inset around its buttons on every edge. */
-  padding: calc((var(--activity-width) - var(--activity-item)) / 2);
-  background: transparent;
-}
-.activity-views,
-.activity-actions {
+/* Collapsed review column: header-rhythm actions, then one mark per repository. */
+.stream-rail {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-1);
+  width: 100%;
+  min-height: 0;
+  /* Match the header's inset around its buttons on every edge. */
+  padding: calc((var(--activity-width) - var(--activity-item)) / 2);
+  border-radius: inherit;
+}
+.stream-rail-divider {
+  margin-block: var(--space-1);
+}
+.stream-rail-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 0;
   margin: 0;
   padding: 0;
+  overflow: auto;
   list-style: none;
 }
 .projects-nav {
@@ -230,8 +249,40 @@
   display: flex;
   flex-direction: column;
   background: var(--panel);
-  border-left: 1px solid var(--border-muted);
-  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  border-radius: inherit;
+}
+/* Covers the review island, which stays mounted and inert underneath. */
+.stream-inbox {
+  position: absolute;
+  inset: 0;
+  z-index: var(--layer-sidebar);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.inbox-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  width: 100%;
+  max-width: var(--reading-width);
+  padding: var(--space-3) var(--page-gutter) var(--space-4);
+}
+.inbox-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.inbox-footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  min-height: var(--statusbar-height);
+  border-top: 1px solid var(--border);
+  padding: 0 var(--page-gutter);
+  background: var(--panel);
+  color: var(--muted);
+  font: var(--text-xs) var(--font-mono);
 }
 .projects-scroll {
   flex: 1;
@@ -250,7 +301,8 @@
 .stream-meta {
   padding-left: calc(var(--icon-sm) + var(--space-1-5));
 }
-.new-changes-menu {
+.new-changes-menu,
+.context-switch-menu {
   width: min(22rem, calc(100vw - 2 * var(--page-gutter)));
 }
 .sidebar {
@@ -446,8 +498,14 @@ main {
   flex-shrink: 0;
 }
 @media (max-width: 1011px) {
+  /* Both panes open as modal drawers from the header; no island remains. */
+  .navigation-island,
+  .stream-column,
   .navigation-panel:not([hidden]) {
     display: contents;
+  }
+  .workspace {
+    margin-left: 0;
   }
   .mobile-review-progress {
     display: inline;
@@ -479,13 +537,6 @@ main {
   }
 }
 @media (max-width: 767px) {
-  .navigation-island {
-    display: contents;
-  }
-  .workspace,
-  .workbench > main {
-    margin-left: 0;
-  }
   .main-footer .footer-details {
     margin-left: auto;
   }
@@ -621,12 +672,12 @@ main {
   }
 }
 
+/* Repository and branch switch triggers carry their own inset; static
+   identity (Piped, a branch outside the column) matches it. */
 .context-identity {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
   height: var(--control-height);
-  padding-inline: var(--space-3);
   max-width: min(45vw, var(--reading-width));
   min-width: 0;
   flex-shrink: 1;
@@ -638,16 +689,34 @@ main {
 .context-identity svg {
   flex-shrink: 0;
 }
+.context-identity-static {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-inline: var(--space-3);
+}
+.context-identity-repo {
+  flex-shrink: 0;
+  min-width: 0;
+  max-width: 50%;
+}
+.context-identity-stream {
+  flex-shrink: 1;
+  min-width: 0;
+}
 .context-identity-name,
 .context-identity-branch {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .context-identity-name {
-  min-width: 0;
-  flex-shrink: 0;
-  max-width: 50%;
+  color: var(--fg);
   font-weight: var(--weight-semibold);
+}
+.context-identity-worktree {
+  margin-left: var(--space-2);
 }
 .context-identity-branch {
   min-width: 0;
@@ -682,13 +751,16 @@ main {
   .context-identity {
     flex: 1;
     max-width: none;
+  }
+  .context-identity-static {
     padding-inline: var(--space-2);
   }
   .context-identity-worktree-name,
   .header-heading {
     display: none;
   }
-  .context-identity-name {
+  .context-identity-repo {
+    flex-shrink: 1;
     max-width: 40%;
   }
   .context-identity-worktree {
@@ -697,7 +769,7 @@ main {
 }
 @media (pointer: coarse) {
   /* Flush touch targets stay inside the island's rounded corners. */
-  .activity-bar {
+  .stream-rail {
     padding-block: var(--space-1);
   }
 }

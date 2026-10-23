@@ -1,6 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAppearance } from "./appearance-context.tsx";
-import { useSidebarState } from "./sidebar-context.tsx";
 
 const lines = [
   "medium",
@@ -53,13 +52,8 @@ export function DiffSkeleton() {
 }
 
 export function FileTreeSkeleton() {
-  const sidebar = useSidebarState();
   return (
-    <div
-      className="sidebar loading-sidebar"
-      hidden={sidebar.view !== "diff"}
-      aria-hidden="true"
-    >
+    <div className="sidebar loading-sidebar" aria-hidden="true">
       <div className="loading-sidebar-tabs">
         <Skeleton className="skeleton-title" />
         <Skeleton className="skeleton-title" />

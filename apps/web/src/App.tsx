@@ -9,6 +9,7 @@ import { NewerSnapshotNotice } from "./ProjectsNav.tsx";
 import { CopyDialog } from "./review.tsx";
 import { capabilityEnabled, useSession } from "./session-context.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
+import { StreamInbox } from "./StreamInbox.tsx";
 import { WebMCPTools } from "./WebMCPTools.tsx";
 
 export function App() {
@@ -25,6 +26,7 @@ export function App() {
           <NewerSnapshotNotice />
           <OutdatedCommentsNotice />
           <DiffWorkspace />
+          <StreamInbox />
         </div>
       </div>
       <ReviewCopyDialog />
@@ -34,7 +36,7 @@ export function App() {
 
 function SidebarBackdrop() {
   const sidebar = useSidebarState();
-  return sidebar.mobile && sidebar.open && sidebar.view === "diff" ? (
+  return sidebar.drawer === "files" ? (
     <Scrim label="Close review sidebar" onDismiss={sidebar.closeMobile} />
   ) : null;
 }

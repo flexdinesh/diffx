@@ -5,7 +5,12 @@ import {
   FolderTreeIcon,
   GitBranchIcon,
   HistoryIcon,
+  InboxIcon,
+  ListIcon,
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
   SearchIcon,
+  SquareTerminalIcon,
   XIcon,
 } from "lucide-react";
 import { useEffect, useState, type MouseEvent } from "react";
@@ -24,8 +29,12 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuHeader,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -42,30 +51,39 @@ import { contextActivity } from "./context-activity.ts";
 import {
   newerHead,
   projectGroups,
+  recentStreams,
   relativeAge,
+  repoMonogram,
   streamKey,
   streamMeta,
   streamTitle,
   type ProjectGroup,
+  type StreamGroupMode,
 } from "./project-nav.ts";
 import { useCatalog, useSession } from "./session-context.tsx";
 import { streamPath } from "./review-route.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
+import { useStreamNavState } from "./stream-nav-context.tsx";
 
-/** Compact entry point; desktop view controls live in the activity rail. */
+const groupModes = [
+  { value: "repo", label: "Group by repo" },
+  { value: "recent", label: "Recent first" },
+] satisfies { value: StreamGroupMode; label: string }[];
+
+/** Drawer entry point below 1012px, where the review column is hidden. */
 export function ProjectsToggle() {
   const sidebar = useSidebarState();
-  const expanded = sidebar.view === "projects" && sidebar.expanded;
+  const expanded = sidebar.drawer === "reviews";
   return (
     <div className="topbar-lead">
       <IconButton
         id="projects-toggle"
-        label={expanded ? "Hide repos" : "Show repos"}
+        label={expanded ? "Hide reviews" : "Show reviews"}
         variant="shell"
         touch
         aria-controls="projects-nav"
         aria-expanded={expanded}
-        onClick={() => sidebar.selectView("projects")}
+        onClick={sidebar.toggleReviews}
       >
         <FolderGit2Icon aria-hidden="true" />
       </IconButton>
@@ -88,7 +106,7 @@ export function HeaderBrand() {
   );
 }
 
-function useNow() {
+export function useNow() {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000);
@@ -110,51 +128,90 @@ function readCollapsedGroups() {
   }
 }
 
+/** Element ID of a repository's first row, the target when expanding from the rail. */
+function repoAnchor(id: string) {
+  return `review-repo-${id}`;
+}
+
+/** Opens a stream in place unless the click asks the browser for a new tab. */
+export function streamClick(event: MouseEvent<HTMLElement>, open: () => void) {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)
+    return;
+  event.preventDefault();
+  open();
+}
+
+/**
+ * The outermost navigation: every review stream. Desktop shows the list or a
+ * repository rail; below 1012px it is the reviews drawer.
+ */
 export function ProjectsNav() {
   const sidebar = useSidebarState();
+  const streams = useStreamNavState();
   const { heads, current, openStream, openPicker, seen, collecting } =
     useCatalog();
   const [closed, setClosed] = useState(readCollapsedGroups);
   const now = useNow();
   const groups = projectGroups(heads.contexts, seen);
   const currentStream = current ? streamKey(current) : "";
-  const expanded = sidebar.view === "projects" && sidebar.expanded;
+  const drawerOpen = sidebar.drawer === "reviews";
+  const rail = !sidebar.mobile && streams.state === "rail";
+  const { focusRepo, clearFocusRepo } = streams;
   useEffect(() => {
     save("projects-closed-groups", JSON.stringify([...closed]));
   }, [closed]);
+  useEffect(() => {
+    if (!focusRepo || rail) return;
+    setClosed((value) => {
+      if (!value.has(focusRepo)) return value;
+      const next = new Set(value);
+      next.delete(focusRepo);
+      return next;
+    });
+    requestAnimationFrame(() => {
+      const target = document.getElementById(repoAnchor(focusRepo));
+      target?.scrollIntoView({ block: "nearest" });
+      target?.focus();
+    });
+    clearFocusRepo();
+  }, [focusRepo, rail, clearFocusRepo]);
   const toggleGroup = (id: string) =>
     setClosed((value) => {
       const next = new Set(value);
       if (!next.delete(id)) next.add(id);
       return next;
     });
-  const open = (event: MouseEvent<HTMLElement>, head: ApiContext) => {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)
-      return;
-    event.preventDefault();
-    openStream(head, { preserveNavigation: true });
-  };
+  const open = (event: MouseEvent<HTMLElement>, head: ApiContext) =>
+    streamClick(event, () => openStream(head));
+  if (rail)
+    return (
+      <StreamRail
+        groups={groups}
+        currentStream={currentStream}
+        onOpenInbox={streams.openInbox}
+      />
+    );
   return (
     <>
-      {sidebar.mobile && sidebar.open && sidebar.view === "projects" && (
-        <Scrim label="Close repos" onDismiss={sidebar.closeMobile} />
+      {drawerOpen && (
+        <Scrim label="Close reviews" onDismiss={sidebar.closeMobile} />
       )}
       <div
         id="projects-nav"
-        className={
-          sidebar.open && sidebar.view === "projects"
-            ? "projects-nav open"
-            : "projects-nav"
-        }
-        aria-label="Repos"
-        role={sidebar.mobile && expanded ? "dialog" : "navigation"}
-        aria-modal={sidebar.mobile && expanded ? "true" : undefined}
-        hidden={!expanded}
+        className={drawerOpen ? "projects-nav open" : "projects-nav"}
+        aria-label="Reviews"
+        role={drawerOpen ? "dialog" : "navigation"}
+        aria-modal={drawerOpen ? "true" : undefined}
+        hidden={sidebar.mobile && !drawerOpen}
       >
         <PanelHeader
-          title="Repos"
+          title="Reviews"
           actions={
             <>
+              <GroupModeMenu
+                value={streams.group}
+                onChange={streams.setGroup}
+              />
               <IconButton
                 id="projects-browse"
                 label="Search reviews"
@@ -168,7 +225,29 @@ export function ProjectsNav() {
                 <SearchIcon aria-hidden="true" />
               </IconButton>
               <IconButton
-                label="Close repos"
+                id="inbox-open"
+                label="Open inbox"
+                touch
+                aria-expanded={streams.inboxOpen}
+                aria-controls="inbox"
+                onClick={() => {
+                  sidebar.closeMobile();
+                  streams.openInbox();
+                }}
+              >
+                <InboxIcon aria-hidden="true" />
+              </IconButton>
+              <IconButton
+                id="reviews-collapse"
+                label="Collapse reviews"
+                className="max-lg:hidden"
+                touch
+                onClick={streams.collapse}
+              >
+                <PanelLeftCloseIcon aria-hidden="true" />
+              </IconButton>
+              <IconButton
+                label="Close reviews"
                 className="lg:hidden"
                 touch
                 onClick={sidebar.closeMobile}
@@ -179,7 +258,21 @@ export function ProjectsNav() {
           }
         />
         <div className="projects-scroll">
-          {groups.length ? (
+          {!groups.length ? (
+            <ProjectsEmpty
+              loaded={heads.loaded}
+              collecting={collecting}
+              error={heads.error}
+              onRetry={heads.retry}
+            />
+          ) : streams.group === "recent" ? (
+            <RecentList
+              groups={groups}
+              currentStream={currentStream}
+              now={now}
+              onOpen={open}
+            />
+          ) : (
             <ul className="projects-list">
               {groups.map((group) => (
                 <ProjectItem
@@ -193,17 +286,123 @@ export function ProjectsNav() {
                 />
               ))}
             </ul>
-          ) : (
-            <ProjectsEmpty
-              loaded={heads.loaded}
-              collecting={collecting}
-              error={heads.error}
-              onRetry={heads.retry}
-            />
           )}
         </div>
       </div>
     </>
+  );
+}
+
+function GroupModeMenu({
+  value,
+  onChange,
+}: {
+  value: StreamGroupMode;
+  onChange: (value: StreamGroupMode) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <IconButton id="reviews-view" label="Review list view" touch>
+            <ListIcon aria-hidden="true" />
+          </IconButton>
+        }
+      />
+      <DropdownMenuContent align="end" aria-label="Review list view">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Show reviews</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            aria-label="Review grouping"
+            value={value}
+            onValueChange={(next) => {
+              if (next === "repo" || next === "recent") onChange(next);
+            }}
+          >
+            {groupModes.map((mode) => (
+              <DropdownMenuRadioItem key={mode.value} value={mode.value}>
+                {mode.label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** Collapsed column: one mark per repository, unread dots, the current repository selected. */
+function StreamRail({
+  groups,
+  currentStream,
+  onOpenInbox,
+}: {
+  groups: ProjectGroup[];
+  currentStream: string;
+  onOpenInbox: () => void;
+}) {
+  const streams = useStreamNavState();
+  return (
+    <nav id="projects-nav" className="stream-rail" aria-label="Reviews">
+      <IconButton
+        id="reviews-expand"
+        variant="rail"
+        touch
+        label="Expand reviews"
+        onClick={() => streams.expand()}
+      >
+        <PanelLeftOpenIcon aria-hidden="true" />
+      </IconButton>
+      <IconButton
+        id="inbox-open"
+        variant="rail"
+        touch
+        label="Open inbox"
+        aria-expanded={streams.inboxOpen}
+        aria-controls="inbox"
+        onClick={onOpenInbox}
+      >
+        <InboxIcon aria-hidden="true" />
+      </IconButton>
+      <Separator className="stream-rail-divider" />
+      <ul className="stream-rail-list" aria-label="Repositories">
+        {groups.map((group) => {
+          const unread = group.streams.filter((stream) => stream.unseen).length;
+          const current = group.streams.some(
+            (stream) => stream.id === currentStream,
+          );
+          return (
+            <li key={group.id}>
+              <IconButton
+                variant="rail"
+                touch
+                className="relative"
+                label={
+                  unread
+                    ? `${group.name}, ${pluralize(unread, "new stream")}`
+                    : group.name
+                }
+                aria-current={current ? "true" : undefined}
+                onClick={() => streams.expand(group.id)}
+              >
+                {group.kind === "piped" ? (
+                  <SquareTerminalIcon aria-hidden="true" />
+                ) : (
+                  <span className="text-xs font-semibold" aria-hidden="true">
+                    {repoMonogram(group.name)}
+                  </span>
+                )}
+                {unread > 0 && (
+                  <span className="absolute top-1 right-1 inline-flex">
+                    <StatusDot tone="accent" size="sm" />
+                  </span>
+                )}
+              </IconButton>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
   );
 }
 
@@ -228,6 +427,7 @@ function ProjectItem({
     <li>
       <ListRow
         type="button"
+        id={repoAnchor(group.id)}
         className="mt-1"
         aria-expanded={expanded}
         aria-controls={listId}
@@ -248,50 +448,120 @@ function ProjectItem({
       </ListRow>
       {expanded && (
         <ul id={listId} className="stream-list">
-          {group.streams.map(({ id, context, unseen: fresh }) => {
-            const current = id === currentStream;
-            return (
-              <li key={id}>
-                <ListRow
-                  depth={1}
-                  className="flex-col items-stretch"
-                  render={<a href={streamPath(context)} />}
-                  aria-current={current ? "page" : undefined}
-                  title={`${streamTitle(context)} · ${contextChangeLabel(context)}`}
-                  onClick={(event) => onOpen(event, context)}
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    {!contextIsPiped(context) && (
-                      <GitBranchIcon
-                        className={current ? undefined : "text-muted"}
-                        aria-hidden="true"
-                      />
-                    )}
-                    <span className="min-w-0 flex-1 truncate">
-                      {streamTitle(context)}
-                    </span>
-                    {fresh && !current && <NewMark />}
-                    {typeof context.changedFileCount === "number" && (
-                      <CountBadge
-                        count={context.changedFileCount}
-                        label={contextChangeLabel(context)}
-                      />
-                    )}
-                  </span>
-                  <span className="stream-meta truncate text-xs text-muted">
-                    {streamMeta(context, group.multipleHosts, now)}
-                  </span>
-                </ListRow>
-              </li>
-            );
-          })}
+          {group.streams.map(({ id, context, unseen: fresh }) => (
+            <li key={id}>
+              <StreamRow
+                context={context}
+                current={id === currentStream}
+                fresh={fresh}
+                meta={streamMeta(context, group.multipleHosts, now)}
+                depth={1}
+                onOpen={onOpen}
+              />
+            </li>
+          ))}
         </ul>
       )}
     </li>
   );
 }
 
-function NewMark() {
+/** Streams across repositories by activity; each row names its repository. */
+function RecentList({
+  groups,
+  currentStream,
+  now,
+  onOpen,
+}: {
+  groups: ProjectGroup[];
+  currentStream: string;
+  now: number;
+  onOpen: (event: MouseEvent<HTMLElement>, head: ApiContext) => void;
+}) {
+  const anchored = new Set<string>();
+  return (
+    <ul className="projects-list">
+      {recentStreams(groups).map(({ id, context, unseen, group }) => {
+        const first = !anchored.has(group.id);
+        anchored.add(group.id);
+        return (
+          <li key={id}>
+            <StreamRow
+              id={first ? repoAnchor(group.id) : undefined}
+              context={context}
+              current={id === currentStream}
+              fresh={unseen}
+              repository={group.name}
+              meta={streamMeta(context, group.multipleHosts, now)}
+              onOpen={onOpen}
+            />
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function StreamRow({
+  id,
+  context,
+  current,
+  fresh,
+  repository,
+  meta,
+  depth,
+  onOpen,
+}: {
+  id?: string | undefined;
+  context: ApiContext;
+  current: boolean;
+  fresh: boolean;
+  /** Labels rows outside a repository group. */
+  repository?: string;
+  meta: string;
+  depth?: number;
+  onOpen: (event: MouseEvent<HTMLElement>, head: ApiContext) => void;
+}) {
+  return (
+    <ListRow
+      id={id}
+      {...(depth !== undefined && { depth })}
+      className="flex-col items-stretch"
+      render={<a href={streamPath(context)} />}
+      aria-current={current ? "page" : undefined}
+      title={`${repository ? `${repository} · ` : ""}${streamTitle(context)} · ${contextChangeLabel(context)}`}
+      onClick={(event) => onOpen(event, context)}
+    >
+      <span className="flex min-w-0 items-center gap-1.5">
+        {!contextIsPiped(context) && (
+          <GitBranchIcon
+            className={current ? undefined : "text-muted"}
+            aria-hidden="true"
+          />
+        )}
+        <span className="min-w-0 flex-1 truncate">{streamTitle(context)}</span>
+        {fresh && !current && <NewMark />}
+        {typeof context.changedFileCount === "number" && (
+          <CountBadge
+            count={context.changedFileCount}
+            label={contextChangeLabel(context)}
+          />
+        )}
+      </span>
+      <span className="stream-meta truncate text-xs text-muted">
+        {repository && (
+          <span className="font-medium text-secondary">
+            {repository}
+            {meta && " · "}
+          </span>
+        )}
+        {meta}
+      </span>
+    </ListRow>
+  );
+}
+
+export function NewMark() {
   return <StatusDot tone="accent" size="sm" label="New changes" />;
 }
 
@@ -312,7 +582,7 @@ function ProjectsEmpty({
       <div role="status" aria-busy="true">
         <ProjectsSkeleton />
         <p className="visually-hidden">
-          {collecting ? "Collecting repos…" : "Loading repos…"}
+          {collecting ? "Collecting reviews…" : "Loading reviews…"}
         </p>
       </div>
     );

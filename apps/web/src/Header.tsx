@@ -14,7 +14,7 @@ export function Header() {
   const { collect, collecting } = useCatalog();
   const sidebar = useSidebarState();
   const compact = useCompactChrome();
-  const sidebarOpen = sidebar.view === "diff" && sidebar.expanded;
+  const sidebarOpen = sidebar.expanded;
   return (
     <Topbar
       lead={
@@ -25,7 +25,7 @@ export function Header() {
           label={`${sidebarOpen ? "Hide" : "Show"} file sidebar`}
           aria-controls="sidebar"
           aria-expanded={sidebarOpen}
-          onClick={() => sidebar.selectView("diff")}
+          onClick={sidebar.toggleFiles}
         >
           <ListTreeIcon aria-hidden="true" />
         </IconButton>

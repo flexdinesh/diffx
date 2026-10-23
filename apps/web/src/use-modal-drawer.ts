@@ -12,7 +12,7 @@ export function useModalDrawer(
     // The background can remount while the drawer stays open (opening a
     // review replaces <main>), so keep whichever elements are current inert.
     const background = () =>
-      document.querySelectorAll<HTMLElement>("main, .topbar, .activity-bar");
+      document.querySelectorAll<HTMLElement>("main, .topbar");
     const makeInert = () => {
       for (const element of background())
         if (!element.hasAttribute("inert")) element.setAttribute("inert", "");

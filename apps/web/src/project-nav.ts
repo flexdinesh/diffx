@@ -89,8 +89,159 @@ export function projectGroups(heads: ApiContext[], seen: SeenStreams | null) {
   });
 }
 
-function streamHost(context: ApiContext) {
+export function streamHost(context: ApiContext) {
   return context.observation?.hostname ?? context.observation?.sourceId ?? "";
+}
+
+/** The review column lists streams grouped by repository or as one recent list. */
+export type StreamGroupMode = "repo" | "recent";
+
+export type RecentStream = ProjectStream & { group: ProjectGroup };
+
+/**
+ * Every visible stream across repositories, most active first, so hopping
+ * between agents ignores repository boundaries. Piped keeps its capture order.
+ */
+export function recentStreams(groups: ProjectGroup[]): RecentStream[] {
+  return groups
+    .flatMap((group) => group.streams.map((stream) => ({ ...stream, group })))
+    .sort(
+      (left, right) =>
+        Number(left.group.kind === "piped") -
+          Number(right.group.kind === "piped") ||
+        (left.group.kind === "piped"
+          ? 0
+          : compareContextActivity(left.context, right.context)),
+    );
+}
+
+/** Persisted inbox facets; an empty facet matches every stream. */
+export type StreamFilters = {
+  repos: string[];
+  sessions: string[];
+  hosts: string[];
+  worktrees: string[];
+  unread: boolean;
+};
+
+export const defaultStreamFilters: StreamFilters = {
+  repos: [],
+  sessions: [],
+  hosts: [],
+  worktrees: [],
+  unread: false,
+};
+
+export function streamWorktree(context: ApiContext) {
+  return context.observation?.linkedWorktree
+    ? (context.worktreeName ?? context.observation.worktreeName ?? "")
+    : "";
+}
+
+/** Agent sessions that touched the stream, labeled by name and harness. */
+export function streamSessions(context: ApiContext) {
+  const sessions = [
+    ...(context.sessions ?? []),
+    ...(context.observation?.agentSession
+      ? [context.observation.agentSession]
+      : []),
+  ];
+  return [
+    ...new Set(
+      sessions.map(({ harness, name }) =>
+        name ? `${name} (${harness})` : harness,
+      ),
+    ),
+  ];
+}
+
+export function streamFacets(groups: ProjectGroup[]) {
+  const streams = groups.flatMap((group) => group.streams);
+  const values = (pick: (context: ApiContext) => string[]) =>
+    [...new Set(streams.flatMap((stream) => pick(stream.context)))].sort(
+      (left, right) => left.localeCompare(right),
+    );
+  return {
+    repos: [...new Set(groups.map((group) => group.name))],
+    sessions: values(streamSessions),
+    hosts: values((context) => [streamHost(context)].filter(Boolean)),
+    worktrees: values((context) => [streamWorktree(context)].filter(Boolean)),
+  };
+}
+
+export function streamFiltersChanged(filters: StreamFilters) {
+  return (
+    filters.unread ||
+    filters.repos.length > 0 ||
+    filters.sessions.length > 0 ||
+    filters.hosts.length > 0 ||
+    filters.worktrees.length > 0
+  );
+}
+
+/** Keeps groups and order; drops streams outside the facets or text query. */
+export function filterStreams(
+  groups: ProjectGroup[],
+  filters: StreamFilters,
+  query: string,
+): ProjectGroup[] {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = (selected: string[], values: string[]) =>
+    !selected.length || values.some((value) => selected.includes(value));
+  return groups
+    .filter((group) => matches(filters.repos, [group.name]))
+    .map((group) => ({
+      ...group,
+      streams: group.streams.filter(({ context, unseen }) => {
+        if (filters.unread && !unseen) return false;
+        const sessions = streamSessions(context);
+        const host = streamHost(context);
+        const worktree = streamWorktree(context);
+        if (!matches(filters.sessions, sessions)) return false;
+        if (!matches(filters.hosts, [host])) return false;
+        if (!matches(filters.worktrees, [worktree])) return false;
+        const text = [group.name, streamTitle(context), worktree, host]
+          .concat(sessions)
+          .join(" ")
+          .toLowerCase();
+        return terms.every((term) => text.includes(term));
+      }),
+    }))
+    .filter((group) => group.streams.length > 0);
+}
+
+export function readStreamFilters(raw: string | null): StreamFilters {
+  try {
+    const data: unknown = JSON.parse(raw ?? "{}");
+    if (typeof data !== "object" || data === null || Array.isArray(data))
+      return defaultStreamFilters;
+    const strings = (key: string) => {
+      const value: unknown = Reflect.get(data, key);
+      return Array.isArray(value)
+        ? value.filter((item) => typeof item === "string")
+        : [];
+    };
+    return {
+      repos: strings("repos"),
+      sessions: strings("sessions"),
+      hosts: strings("hosts"),
+      worktrees: strings("worktrees"),
+      unread: Reflect.get(data, "unread") === true,
+    };
+  } catch {
+    return defaultStreamFilters;
+  }
+}
+
+/** One or two letters marking a repository in the collapsed review rail. */
+export function repoMonogram(name: string) {
+  const words = name
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+  const [first = "", second = ""] = words;
+  if (second) return `${first.charAt(0)}${second.charAt(0)}`.toUpperCase();
+  return first.charAt(0).toUpperCase() + first.slice(1, 2).toLowerCase();
 }
 
 export function streamTitle(context: ApiContext) {
@@ -103,9 +254,7 @@ export function streamMeta(
   multipleHosts: boolean,
   now: number,
 ) {
-  const worktree = context.observation?.linkedWorktree
-    ? (context.worktreeName ?? context.observation.worktreeName)
-    : "";
+  const worktree = streamWorktree(context);
   const harness =
     [...(context.sessions ?? [])].sort(
       (left, right) => right.lastObservedAt - left.lastObservedAt,
