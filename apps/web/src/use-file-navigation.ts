@@ -177,8 +177,29 @@ export function useFileNavigation({
       });
     });
   }, [hideReviewed, activePath, selected, matchingFiles, selectVisibleFile]);
+  // Explicit navigation keeps its file selected until that file leaves view,
+  // even when another file is above it in the viewport.
+  const pinned = useRef<{ path: string; seen: boolean } | null>(null);
+  const followScroll = useCallback(
+    (visible: readonly string[]) => {
+      const pin = pinned.current;
+      if (pin && files.some((file) => file.path === pin.path)) {
+        if (visible.includes(pin.path)) {
+          pinned.current = { path: pin.path, seen: true };
+          return;
+        }
+        // Scrolls before the navigation lands keep the pin.
+        if (!pin.seen) return;
+      }
+      pinned.current = null;
+      const [top] = visible;
+      if (top && top !== activePath) selectVisibleFile(top);
+    },
+    [files, activePath, selectVisibleFile],
+  );
   const revealFile = useCallback(
     (path: string) => {
+      pinned.current = { path, seen: false };
       selectVisibleFile(path);
       setCollapsed((previous) => {
         if (!previous.has(path)) return previous;
@@ -358,7 +379,7 @@ export function useFileNavigation({
       filteredClosed,
       setFilteredClosed,
       selectFile,
-      selectVisibleFile,
+      followScroll,
       showOutdatedComments,
       search,
       viewer,
@@ -376,7 +397,7 @@ export function useFileNavigation({
       closed,
       filteredClosed,
       selectFile,
-      selectVisibleFile,
+      followScroll,
       showOutdatedComments,
       navigateComment,
     ],

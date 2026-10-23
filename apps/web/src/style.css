@@ -382,6 +382,13 @@ main {
 .diff-code-view {
   padding-inline: var(--diff-gutter);
 }
+.diff-scroll-end {
+  /* Lets the last file reach the top; four gutters cover its header and Pierre's bottom padding. */
+  height: max(
+    0px,
+    calc(var(--diff-viewport-height, 0px) - 4 * var(--diff-gutter))
+  );
+}
 .diff-line-metric {
   position: absolute;
   visibility: hidden;

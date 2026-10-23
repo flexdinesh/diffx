@@ -171,7 +171,10 @@ Diff file tree; clicking the active rail icon collapses its panel. Diff appears
 first, then Repos; both views share one saved width and parent resize handle. Compact
 layouts keep drawer controls in the header. The Repos magnifier opens the
 review picker; the header names the open review. An explicit local sync, like an arrival,
-raises the notice instead of replacing the open review.
+raises the notice instead of replacing the open review. Scrolling the diff
+selects its top file in the tree; a file chosen from the tree, the keyboard or a
+comment stays selected until it leaves view. Trailing space lets the last file
+scroll to the top.
 
 Activity is a producer estimate, separate from collection freshness and unread
 state. Checkout collection takes the maximum of HEAD's committer time, changed

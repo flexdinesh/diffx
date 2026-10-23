@@ -441,6 +441,65 @@ test("scrolling selects the top file only when the previous diff leaves", async 
   await expect(first).toHaveAttribute("aria-current", "true");
 });
 
+test("tree selection of the last file holds until that file leaves view", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await page.goto("/");
+  await showDiff(page);
+  const rows = page.locator("#file-tree [data-path]");
+  const first = rows.first();
+  const last = rows.last();
+  const lastPath = await last.getAttribute("data-path");
+  if (!lastPath) throw new Error("Missing last file path");
+  const header = page
+    .locator("#viewer diffs-container")
+    .filter({ hasText: lastPath })
+    .locator("[data-diffs-header]");
+  const scroller = page.locator(".diff-code-view");
+  await expect(first).toHaveAttribute("aria-current", "true");
+
+  await last.click();
+  await expect(last).toHaveAttribute("aria-current", "true");
+  // Trailing space lets even the last file align to the top.
+  await expect
+    .poll(async () => {
+      const [viewerBox, headerBox] = await Promise.all([
+        page.locator("#viewer").boundingBox(),
+        header.boundingBox(),
+      ]);
+      if (!viewerBox || !headerBox) return Number.POSITIVE_INFINITY;
+      return Math.abs(headerBox.y - viewerBox.y);
+    })
+    .toBeLessThanOrEqual(1);
+  const lastTop = await scroller.evaluate((element) => element.scrollTop);
+
+  // The previous file's body now tops the viewport, but the selection holds.
+  await scroller.evaluate((element, top) => {
+    element.scrollTop = top;
+  }, lastTop - 40);
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  await expect(last).toHaveAttribute("aria-current", "true");
+
+  // Once the selected file leaves view, the top file is selected again.
+  await scroller.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await expect(first).toHaveAttribute("aria-current", "true");
+  await scroller.evaluate((element, top) => {
+    element.scrollTop = top;
+  }, lastTop - 40);
+  await expect(rows.nth((await rows.count()) - 2)).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+});
+
 test("scroll selection preserves collapsed diffs and works with filtered files", async ({
   page,
 }) => {
@@ -463,7 +522,17 @@ test("scroll selection preserves collapsed diffs and works with filtered files",
     .click();
   await button.click();
   await expect(button).toHaveAttribute("aria-current", "true");
-  await page.locator(".diff-code-view").evaluate((element) => {
+  const scroller = page.locator(".diff-code-view");
+  await scroller.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  // The chosen file stays selected while it remains in view.
+  await expect(button).toHaveAttribute("aria-current", "true");
+  await scroller.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(button).toHaveAttribute("aria-current", "false");
+  await scroller.evaluate((element) => {
     element.scrollTop = 0;
   });
   await expect(badge).toHaveAttribute("aria-current", "true");

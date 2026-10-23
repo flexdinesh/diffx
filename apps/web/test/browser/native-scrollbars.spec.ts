@@ -122,11 +122,11 @@ test("diff tracks fill frames and headers align with their gutters", async ({
       await expect
         .poll(() =>
           files.last().evaluate((element) => {
-            const scroller = document.querySelector(".diff-code-view");
-            if (!scroller) throw new Error("Missing diff scroller");
+            // Trailing scroll space follows the gutter below the last file.
+            const end = document.querySelector(".diff-scroll-end");
+            if (!end) throw new Error("Missing diff scroll end");
             return (
-              scroller.getBoundingClientRect().top +
-              scroller.clientHeight -
+              end.getBoundingClientRect().top -
               element.getBoundingClientRect().bottom
             );
           }),
