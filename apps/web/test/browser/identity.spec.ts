@@ -207,6 +207,27 @@ test("token form chooses access and expiry from labeled selects", async ({
   expect(body).toEqual({ name: "Agent", purpose: "api", expiresInDays: 365 });
 });
 
+test("token list load failure retries with the shared Retry action", async ({
+  page,
+}) => {
+  await remote(page);
+  let failed = true;
+  await page.route("**/api/v2/account/tokens", (route) =>
+    route.fulfill(
+      failed
+        ? { status: 503, json: { detail: "Tokens unavailable" } }
+        : { json: { tokens: [] } },
+    ),
+  );
+  await page.goto("/settings");
+  await expect(page.getByRole("alert")).toContainText("Tokens unavailable");
+  await expect(page.getByLabel("Token name")).toHaveCount(0);
+  failed = false;
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByLabel("Token name")).toBeVisible();
+});
+
 test("expired account requests remove workspace identity and return to sign in", async ({
   page,
 }) => {

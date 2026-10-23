@@ -7,12 +7,15 @@ export function ErrorState({
   message,
   onRetry,
   busy = false,
+  touch = false,
   className,
   ...props
 }: Omit<ComponentProps<"div">, "role"> & {
   message: string;
   onRetry?: () => void;
   busy?: boolean;
+  /** 44px Retry on narrow or coarse-pointer screens (Button `touch`). */
+  touch?: boolean;
 }) {
   return (
     <div
@@ -30,6 +33,7 @@ export function ErrorState({
           type="button"
           variant="outline"
           size="sm"
+          touch={touch}
           disabled={busy}
           aria-busy={busy}
           onClick={onRetry}

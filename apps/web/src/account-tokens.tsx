@@ -144,20 +144,20 @@ export function AccountTokens() {
         Connect collectors or review API clients to your account. Secrets appear
         once.
       </p>
-      {error && <ErrorState message={error} className="mb-4" />}
+      {error && (
+        <ErrorState
+          message={error}
+          className="mb-4"
+          touch
+          {...(!loaded && {
+            onRetry: () => setAttempt((value) => value + 1),
+          })}
+        />
+      )}
       {!loaded && !error && (
         <p className={prose} role="status">
           Loading tokens…
         </p>
-      )}
-      {!loaded && error && (
-        <Button
-          variant="outline"
-          touch
-          onClick={() => setAttempt((value) => value + 1)}
-        >
-          Retry loading tokens
-        </Button>
       )}
       {loaded && (
         <>
