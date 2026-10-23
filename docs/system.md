@@ -136,11 +136,11 @@ new comparison does not migrate review state. Catalog change counts count
 distinct paths across every captured scope, so staged edits cancelled by
 unstaged edits do not disappear with an empty Combined diff.
 
-Navigation is project-driven. The Repos drawer queries
+Navigation is project-driven. The Reviews column queries
 `/api/v2/contexts?latest=true`, which omits stale snapshots, and groups stream
 heads by repository. A stream is one owner, source, repository, checkout, branch
 and comparison policy; every context carries its opaque `streamId` and the
-stream's current `latestContextId`. The drawer hides clean, unavailable and
+stream's current `latestContextId`. The column hides clean, unavailable and
 unknown-status heads, orders streams by recent code activity and repositories by
 their most active visible stream, and marks heads this account has not opened in
 this browser.
@@ -150,7 +150,8 @@ existing heads as seen; opening a head clears its mark. Ingestion events reload
 the heads; when the viewed context's stream has a newer head, a notice offers it
 without replacing the open review. URLs are live or pinned: `/streams/{streamId}`
 opens the stream's latest head when loaded or navigated to, while
-`/contexts/{contextId}` pins one snapshot. Repos rows and “View latest” open
+`/contexts/{contextId}` pins one snapshot. Review rows, header and inbox
+choices, and “View latest” open
 live URLs; the picker opens pinned ones; piped snapshots have no stream and stay
 pinned. A live URL resolves once, so later arrivals raise the notice instead of
 swapping the open review. With local collection enabled, loading `/` or a live
@@ -165,12 +166,18 @@ raises the “Newer snapshot” notice with “View latest”. Without an availa
 head, the UI waits for collection; failures remain visible and offer Retry.
 Otherwise `/` opens the most recently active changed head's live URL. Startup
 selection and the local default MCP context use the same collection default.
-Repos and Diff share one navigation panel beside the activity rail, aligned
-with the diff below the header. Selecting a stream loads its diff and opens the
-Diff file tree; clicking the active rail icon collapses its panel. Diff appears
-first, then Repos; both views share one saved width and parent resize handle. Compact
-layouts keep drawer controls in the header. The Repos magnifier opens the
-review picker; the header names the open review. An explicit local sync, like an arrival,
+The Reviews column leads the navigation island, beside the open review's file
+sidebar, aligned with the diff below the header. Switching streams replaces
+everything to its right and keeps the column. It collapses to a rail of
+repository marks or extends over the review as the inbox, an unrouted overlay
+that filters every current stream by text and by repository, session, worktree,
+host and unread facets; the review stays mounted underneath. The column lists
+streams grouped by repository or as one recent-first list. List or rail state,
+grouping, inbox facets and each pane's width persist per browser. The header
+names the open review as repository and branch menus that switch streams.
+Compact layouts open the column and file sidebar as drawers from header
+toggles; choosing a stream closes the drawer. The column's magnifier opens the
+review picker. An explicit local sync, like an arrival,
 raises the notice instead of replacing the open review. Scrolling the diff
 selects its top file in the tree; a file chosen from the tree, the keyboard or a
 comment stays selected until it leaves view. Trailing space lets the last file
@@ -197,7 +204,7 @@ head selection. Unchanged submissions can update ordering without producing an
 unread-content indicator. Piped history and the full catalog retain their
 existing collection/submission chronology.
 
-The review picker, opened by Cmd/Ctrl+K or the Repos “Search reviews”
+The review picker, opened by Cmd/Ctrl+K or the Reviews “Search reviews”
 action, loads the full catalog only while open. It selects a
 repository, then an observation identified by worktree, branch, source, run and time. Distinct
 content from the same worktree remains independently selectable; unchanged

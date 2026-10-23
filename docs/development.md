@@ -279,15 +279,16 @@ navigation, draft, review, reviewed files, and collapse state. Collapsed diff
 files (per stream and scope), closed tree folders and Hide reviewed files (per
 stream) persist in `sessionStorage`, so reloads and newer snapshots keep them within a tab; piped
 snapshots key by context. One draft persists
-across scopes. Context selection uses the Repos view and the popup picker (Cmd/Ctrl+K
-or the Repos “Search reviews” magnifier). Repos and Diff share the panel
-beside the activity rail, with Repos first and selected initially; selecting a
-stream in Repos loads its diff and keeps Repos open. Clicking the active view
-toggles the panel. `use-sidebar.ts` owns
-view selection, visibility, shared width and mobile drawer focus.
-`Navigation.tsx` owns the common frame and resize handle for both views. Compact header
-controls remain available when the rail is hidden; the header shows the open
-review's identity. The selected context scopes every request. The session owner exposes
+across scopes. Context selection uses the Reviews column (`ProjectsNav.tsx`),
+its inbox overlay (`StreamInbox.tsx`), the header repository and branch menus
+(`ContextIdentity.tsx`) and the popup picker (Cmd/Ctrl+K or the column's
+“Search reviews” magnifier); `project-nav.ts` owns their grouping, ordering and
+facet rules. Selecting a stream keeps the column and file sidebar open.
+`use-stream-nav.ts`, provided by `stream-nav-context.tsx`, owns the column's
+rail/list state, width, grouping, inbox visibility and filters.
+`use-sidebar.ts` owns file sidebar visibility and width and which mobile drawer
+is open, with its focus. `Navigation.tsx` owns the island and both resize
+handles. The selected context scopes every request. The session owner exposes
 local checkout sync when bootstrap reports `collect`; loading `/` or a live
 `/streams/{streamId}` URL, the header's “Sync all checkouts” icon and Alt+R call
 `POST /api/v2/collections`. Load-time sync runs in the background while a live
