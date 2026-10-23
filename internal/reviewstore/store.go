@@ -53,27 +53,10 @@ func OpenWithRetention(path string, retention time.Duration) (*Store, error) {
 	name := ":memory:"
 	var lock *processlock.Lock
 	if path != "" && path != ":memory:" {
-		absolute, err := filepath.Abs(path)
+		var err error
+		name, lock, err = acquireState(path)
 		if err != nil {
 			return nil, err
-		}
-		if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
-			return nil, err
-		}
-		// Canonicalize aliases before selecting the database ownership lock.
-		parent, err := filepath.EvalSymlinks(filepath.Dir(absolute))
-		if err != nil {
-			return nil, err
-		}
-		name = filepath.Join(parent, filepath.Base(absolute))
-		if existing, err := filepath.EvalSymlinks(name); err == nil {
-			name = existing
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return nil, err
-		}
-		lock, err = processlock.TryAcquire(name + ".lock")
-		if err != nil {
-			return nil, fmt.Errorf("state database is already in use or unavailable: %w", err)
 		}
 	}
 	success := false
@@ -111,6 +94,32 @@ func OpenWithRetention(path string, retention time.Duration) (*Store, error) {
 	return store, nil
 }
 
+// acquireState canonicalizes aliases before taking the database ownership lock.
+func acquireState(path string) (string, *processlock.Lock, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
+		return "", nil, err
+	}
+	parent, err := filepath.EvalSymlinks(filepath.Dir(absolute))
+	if err != nil {
+		return "", nil, err
+	}
+	name := filepath.Join(parent, filepath.Base(absolute))
+	if existing, err := filepath.EvalSymlinks(name); err == nil {
+		name = existing
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", nil, err
+	}
+	lock, err := processlock.TryAcquire(name + ".lock")
+	if err != nil {
+		return "", nil, fmt.Errorf("state database is already in use or unavailable: %w", err)
+	}
+	return name, lock, nil
+}
+
 func validateStateFile(path string) error {
 	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -128,11 +137,35 @@ func validateStateFile(path string) error {
 	if count == 0 || string(header) == "SQLite format 3\x00" {
 		return nil
 	}
-	return stateRecoveryError(path, "unrecognized or unsupported diffx state file; check that --state selects the intended SQLite database")
+	return &StateError{Path: path, reason: "unrecognized or unsupported diffx state file; check that --state selects the intended SQLite database"}
 }
 
-func stateRecoveryError(path, reason string) error {
-	return fmt.Errorf("state database %q: %s\n  Existing data preserved; automatic reset is disabled.\n  To start fresh: stop processes using this database, back up %q (including SQLite sidecar files), then retry your command with --state /path/to/new-state.db (choose an unused path).\n  Fresh state has no saved reviews or server accounts.", path, reason, filepath.Dir(path))
+// StateError reports state this binary refuses to open. Version is the stored
+// schema; it is zero for unversioned or unrecognized files.
+type StateError struct {
+	Path    string
+	Version int
+	reason  string
+}
+
+// Older reports diffx state written by an earlier schema.
+func (failure *StateError) Older() bool {
+	return failure.Version > 0 && failure.Version < schemaVersion
+}
+
+// Supported is the schema this binary opens.
+func (failure *StateError) Supported() int { return schemaVersion }
+
+func (failure *StateError) Error() string {
+	return fmt.Sprintf("state database %q: %s\n  Existing data preserved; automatic reset is disabled.\n  To start fresh: stop processes using this database, back up %q (including SQLite sidecar files), then retry your command with --state /path/to/new-state.db (choose an unused path).\n  Fresh state has no saved reviews or server accounts.", failure.Path, failure.reason, filepath.Dir(failure.Path))
+}
+
+func newerStateError(path string, version int) error {
+	return &StateError{Path: path, Version: version, reason: fmt.Sprintf("diffx state schema %d is newer than supported schema %d; to keep existing data, use a diffx binary supporting schema %d", version, schemaVersion, version)}
+}
+
+func unversionedStateError(path string) error {
+	return &StateError{Path: path, reason: "unversioned state database; check that --state selects the intended diffx database"}
 }
 
 func (store *Store) initialize(path string) error {
@@ -141,10 +174,10 @@ func (store *Store) initialize(path string) error {
 		return err
 	}
 	if version > schemaVersion {
-		return stateRecoveryError(path, fmt.Sprintf("diffx state schema %d is newer than supported schema %d; to keep existing data, use a diffx binary supporting schema %d", version, schemaVersion, version))
+		return newerStateError(path, version)
 	}
 	if version > 0 && version < schemaVersion {
-		return stateRecoveryError(path, fmt.Sprintf("diffx state schema %d is older than supported schema %d; to keep existing data, use a diffx binary supporting schema %d", version, schemaVersion, version))
+		return &StateError{Path: path, Version: version, reason: fmt.Sprintf("diffx state schema %d is older than supported schema %d; to keep existing data, use a diffx binary supporting schema %d", version, schemaVersion, version)}
 	}
 	if _, err := store.db.Exec("PRAGMA foreign_keys=OFF"); err != nil {
 		return err
@@ -159,7 +192,7 @@ func (store *Store) initialize(path string) error {
 		var existing string
 		err := transaction.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' LIMIT 1`).Scan(&existing)
 		if err == nil {
-			return stateRecoveryError(path, "unversioned state database; check that --state selects the intended diffx database")
+			return unversionedStateError(path)
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
 			return err

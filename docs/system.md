@@ -285,7 +285,8 @@ stream's comments and marks while another snapshot of the stream remains; the
 same transaction deletes them with the stream's last snapshot. Compact replay
 identities and stream heads survive deletion and expiry, preventing replay
 resurrection and regression of freshness. Incompatible schemas are refused without resetting data;
-see architecture.md for the explicit fresh-state procedure.
+only local `diffx` can back up older state and start fresh, after confirmation or
+`--reset-state`. See architecture.md for the fresh-state procedures.
 
 ## Freshness and delivery
 

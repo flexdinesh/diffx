@@ -50,7 +50,7 @@ func runSync(ctx context.Context, arguments []string, stdin *os.File, stdout, st
 	if err != nil {
 		return err
 	}
-	if values.hostSet || values.portSet || values.stateSet || values.webDirSet || values.retentionDaysSet || values.replace || values.fixture != "" {
+	if values.hostSet || values.portSet || values.stateSet || values.webDirSet || values.retentionDaysSet || values.replace || values.resetState || values.fixture != "" {
 		return errors.New("sync is remote-only and does not accept local server options")
 	}
 	if err := values.singleCheckout(); err != nil {

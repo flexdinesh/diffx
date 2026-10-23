@@ -27,7 +27,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/webui"
 )
 
-func Run(ctx context.Context, settings Settings, runtimeDir string, initial *ingestion.Request, ready func(Status, *contextservice.Publication)) error {
+func Run(ctx context.Context, settings Settings, runtimeDir string, initial *ingestion.Request, reset StateReset, ready func(Status, *contextservice.Publication)) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var collection Collection
@@ -61,14 +61,61 @@ func Run(ctx context.Context, settings Settings, runtimeDir string, initial *ing
 		}
 		defer output.Close()
 		logger := log.New(output, "diffx: ", log.LstdFlags)
-		return runServer(ctx, cancel, settings, runtimeDir, instanceID, collection, nil, published, logger)
+		return runServer(ctx, cancel, settings, runtimeDir, instanceID, collection, nil, reset, published, logger)
 	}
-	return runServer(ctx, cancel, settings, "", instanceID, collection, nil, published, log.New(os.Stderr, "diffx: ", log.LstdFlags))
+	return runServer(ctx, cancel, settings, "", instanceID, collection, nil, reset, published, log.New(os.Stderr, "diffx: ", log.LstdFlags))
+}
+
+// StateReset is an entry point's decision to replace local state. Remote
+// composition has none, so its incompatible state is always refused.
+type StateReset struct {
+	// Force backs up current or older state before opening.
+	Force bool
+	// Confirm is asked when older diffx state would otherwise be refused.
+	Confirm func(*reviewstore.StateError) (bool, error)
+	// Saved reports the backup of replaced state.
+	Saved func(backup string)
+}
+
+// openState applies the reset decision; reviewstore revalidates the state
+// under its ownership lock before moving it. Without a decision,
+// incompatible state is refused unchanged.
+func openState(path string, retention time.Duration, reset StateReset) (*reviewstore.Store, error) {
+	if reset.Force {
+		if err := resetState(path, reset); err != nil {
+			return nil, err
+		}
+		return reviewstore.OpenWithRetention(path, retention)
+	}
+	store, err := reviewstore.OpenWithRetention(path, retention)
+	var failure *reviewstore.StateError
+	if err == nil || reset.Confirm == nil || !errors.As(err, &failure) || !failure.Older() {
+		return store, err
+	}
+	accepted, confirmErr := reset.Confirm(failure)
+	if confirmErr != nil {
+		return nil, confirmErr
+	}
+	if !accepted {
+		return nil, err
+	}
+	if err := resetState(path, reset); err != nil {
+		return nil, err
+	}
+	return reviewstore.OpenWithRetention(path, retention)
+}
+
+func resetState(path string, reset StateReset) error {
+	backup, err := reviewstore.Reset(path)
+	if backup != "" && reset.Saved != nil {
+		reset.Saved(backup)
+	}
+	return err
 }
 
 // runServer scopes reads to the capture or discovered checkouts. Checkout
 // discovery and collection start after serving, with an initially empty scope.
-func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings, runtimeDir, instanceID string, initial Collection, collect Collect, ready func(Status, Published), logger *log.Logger) error {
+func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings, runtimeDir, instanceID string, initial Collection, collect Collect, reset StateReset, ready func(Status, Published), logger *log.Logger) error {
 	settings = normalizeSettings(settings)
 	if settings.RetentionDays < 1 || settings.RetentionDays > 106751 {
 		return errors.New("retention-days must be between 1 and 106751")
@@ -84,7 +131,7 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 	if statePath == "memory" {
 		statePath = ""
 	}
-	store, err := reviewstore.OpenWithRetention(statePath, time.Duration(settings.RetentionDays)*24*time.Hour)
+	store, err := openState(statePath, time.Duration(settings.RetentionDays)*24*time.Hour, reset)
 	if err != nil {
 		return err
 	}
