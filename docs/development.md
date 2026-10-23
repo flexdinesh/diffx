@@ -128,9 +128,11 @@ must not register inputs in the personal service. `DIFFX_EXIT_ON_STDIN_CLOSE`
 is a foreground development-process lifecycle hook.
 
 Stop running processes before upgrading. Current schema 11 databases survive
-restart; incompatible schemas are refused without resetting data. To start
-fresh, back up the state directory while stopped and explicitly choose a new
-database path. In-memory state does not survive restart. Local `local.retentionDays` defaults to seven; fresh
+restart; incompatible schemas are refused without resetting data. Local
+`diffx` offers to back up older state and start fresh on a terminal;
+`--reset-state` does so without asking, keeping only the newest backup beside
+the database. Server state never resets: back up the state directory while
+stopped and explicitly choose a new database path. In-memory state does not survive restart. Local `local.retentionDays` defaults to seven; fresh
 submissions apply the current setting, while exact retries preserve expiry.
 
 For isolated production-user tests, start `diffx-server` with a temporary

@@ -17,6 +17,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/collector"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/localserver"
+	"github.com/flexdinesh/diffx/internal/reviewstore"
 )
 
 func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, stderr io.Writer) error {
@@ -57,33 +58,19 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 		}
 		selected = localserver.Input{Collection: localserver.Collection{Requests: []ingestion.Request{request}}}
 	}
-	return localserver.RunForeground(ctx, settings, selected, func(status localserver.Status) (bool, error) {
+	reset, err := localStateReset(ctx, values, settings, stdin, stderr)
+	if err != nil {
+		return err
+	}
+	return withResetHint(localserver.RunForeground(ctx, settings, selected, func(status localserver.Status) (bool, error) {
 		if values.replace {
 			return true, nil
 		}
 		if stdin == nil || !isatty.IsTerminal(stdin.Fd()) {
 			return false, fmt.Errorf("diffx already running (PID %d); use --replace to restart here", status.PID)
 		}
-		fmt.Fprintf(stderr, "diffx is running (PID %d).\nStop it and open %s? [y/N] ", status.PID, label)
-		type response struct {
-			answer string
-			err    error
-		}
-		answers := make(chan response, 1)
-		go func() {
-			answer, err := bufio.NewReader(stdin).ReadString('\n')
-			answers <- response{answer, err}
-		}()
-		select {
-		case <-ctx.Done():
-			return false, ctx.Err()
-		case reply := <-answers:
-			if reply.err != nil && !errors.Is(reply.err, io.EOF) {
-				return false, reply.err
-			}
-			return strings.EqualFold(strings.TrimSpace(reply.answer), "y") || strings.EqualFold(strings.TrimSpace(reply.answer), "yes"), nil
-		}
-	}, func(status localserver.Status, published localserver.Published) {
+		return askYes(ctx, stdin, stderr, fmt.Sprintf("diffx is running (PID %d).\nStop it and open %s? [y/N] ", status.PID, label))
+	}, reset, func(status localserver.Status, published localserver.Published) {
 		if input.Kind == "worktree" {
 			address := status.BrowserURL + "/"
 			writeStartup(stdout, loadedInput{mode: "git", directory: label, collecting: true, processed: time.Since(started), mcpURL: status.BrowserURL + "/mcp"}, address)
@@ -103,7 +90,56 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 		loaded.contextID, loaded.mcpURL = submitted.Context.ID, status.BrowserURL+"/mcp"
 		writeStartup(stdout, loaded, address)
 		openBrowser(values, address, stderr)
-	})
+	}))
+}
+
+// localStateReset composes the local reset decision: --reset-state consents up
+// front; otherwise older state is confirmed only on an interactive terminal.
+func localStateReset(ctx context.Context, values options, settings localserver.Settings, stdin *os.File, stderr io.Writer) (localserver.StateReset, error) {
+	if values.resetState && settings.State == "memory" {
+		return localserver.StateReset{}, errors.New("reset-state requires persistent state; remove --state memory")
+	}
+	reset := localserver.StateReset{Force: values.resetState, Saved: func(backup string) {
+		fmt.Fprintf(stderr, "diffx: started fresh; old state saved at %s\n", backup)
+	}}
+	if stdin != nil && isatty.IsTerminal(stdin.Fd()) {
+		reset.Confirm = func(failure *reviewstore.StateError) (bool, error) {
+			return askYes(ctx, stdin, stderr, fmt.Sprintf("diffx: saved state uses schema %d; this version needs schema %d.\n  State: %s\n  Saved reviews, comments and reviewed marks will not carry over.\n  Old state moves to a backup beside it.\nBack up old state and start fresh? [y/N] ", failure.Version, failure.Supported(), failure.Path))
+		}
+	}
+	return reset, nil
+}
+
+// withResetHint adds the local recovery to refused older state.
+func withResetHint(err error) error {
+	var failure *reviewstore.StateError
+	if errors.As(err, &failure) && failure.Older() {
+		return fmt.Errorf("%w\n  Or rerun with --reset-state to back it up beside the database and start fresh.", err)
+	}
+	return err
+}
+
+// askYes asks on the terminal; anything but y or yes declines.
+func askYes(ctx context.Context, stdin *os.File, stderr io.Writer, question string) (bool, error) {
+	fmt.Fprint(stderr, question)
+	type response struct {
+		answer string
+		err    error
+	}
+	answers := make(chan response, 1)
+	go func() {
+		answer, err := bufio.NewReader(stdin).ReadString('\n')
+		answers <- response{answer, err}
+	}()
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	case reply := <-answers:
+		if reply.err != nil && !errors.Is(reply.err, io.EOF) {
+			return false, reply.err
+		}
+		return strings.EqualFold(strings.TrimSpace(reply.answer), "y") || strings.EqualFold(strings.TrimSpace(reply.answer), "yes"), nil
+	}
 }
 
 // collectWorkspaces collects every checkout discovered under the selected

@@ -1,7 +1,10 @@
 package reviewstore
 
 import (
+	"bytes"
 	"database/sql"
+	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -117,5 +120,153 @@ func TestUnversionedDatabaseRefusedWithRecoveryGuidance(t *testing.T) {
 	var value string
 	if err := db.QueryRow("SELECT value FROM unrelated").Scan(&value); err != nil || value != "retain" {
 		t.Fatalf("unversioned data changed: %q %v", value, err)
+	}
+}
+
+func writeSchema(t *testing.T, path, statements string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(statements); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResetBacksUpOlderStateBesideItAndKeepsLatestBackup(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.db")
+	writeSchema(t, path, "CREATE TABLE legacy(value TEXT); INSERT INTO legacy VALUES('retain'); PRAGMA user_version=10")
+	if err := os.WriteFile(path+"-shm", []byte("sidecar"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unrelated := filepath.Join(dir, "state.db.notes")
+	if err := os.WriteFile(unrelated, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first, err := Reset(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(first) != dir || !strings.HasPrefix(filepath.Base(first), "state.db.schema10-") || !strings.HasSuffix(first, ".bak") {
+		t.Fatalf("unexpected backup path %q", first)
+	}
+	for _, moved := range []string{path, path + "-shm"} {
+		if _, err := os.Stat(moved); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("%s remained after reset: %v", moved, err)
+		}
+	}
+	if data, err := os.ReadFile(first + "-shm"); err != nil || string(data) != "sidecar" {
+		t.Fatalf("sidecar not moved with backup: %q %v", data, err)
+	}
+	backup, err := sql.Open("sqlite", first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value string
+	var version int
+	if err := backup.QueryRow("SELECT value FROM legacy").Scan(&value); err != nil || value != "retain" {
+		t.Fatalf("backup lost data: %q %v", value, err)
+	}
+	if err := backup.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 10 {
+		t.Fatalf("backup schema changed: %d %v", version, err)
+	}
+	backup.Close()
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("fresh state did not open: %v", err)
+	}
+	store.Close()
+	second, err := Reset(path)
+	if err != nil {
+		t.Fatalf("current schema not reset: %v", err)
+	}
+	if !strings.HasPrefix(filepath.Base(second), "state.db.schema11-") {
+		t.Fatalf("unexpected backup path %q", second)
+	}
+	for _, pruned := range []string{first, first + "-shm"} {
+		if _, err := os.Stat(pruned); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("earlier backup %s kept: %v", pruned, err)
+		}
+	}
+	for _, kept := range []string{second, unrelated} {
+		if _, err := os.Stat(kept); err != nil {
+			t.Fatalf("%s removed: %v", kept, err)
+		}
+	}
+}
+
+func TestResetRefusesAmbiguousStateUnchanged(t *testing.T) {
+	for name, prepare := range map[string]func(t *testing.T, path string){
+		"newer": func(t *testing.T, path string) {
+			writeSchema(t, path, "CREATE TABLE future(value TEXT); PRAGMA user_version=999")
+		},
+		"unversioned": func(t *testing.T, path string) { writeSchema(t, path, "CREATE TABLE unrelated(value TEXT)") },
+		"foreign": func(t *testing.T, path string) {
+			if err := os.WriteFile(path, []byte("not a database file"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "state.db")
+			prepare(t, path)
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			backup, err := Reset(path)
+			var failure *StateError
+			if backup != "" || !errors.As(err, &failure) || failure.Older() || !strings.Contains(err.Error(), "--state /path/to/new-state.db") {
+				t.Fatalf("reset accepted ambiguous state: %q %v", backup, err)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatalf("ambiguous state changed: %v", err)
+			}
+			entries, err := os.ReadDir(filepath.Dir(path))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, entry := range entries {
+				if strings.Contains(entry.Name(), ".bak") {
+					t.Fatalf("backup created for refused state: %s", entry.Name())
+				}
+			}
+		})
+	}
+}
+
+func TestResetWithoutStateAndWhileOwned(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	if backup, err := Reset(path); backup != "" || err != nil {
+		t.Fatalf("missing state: %q %v", backup, err)
+	}
+	if _, err := Reset(""); err == nil {
+		t.Fatal("reset accepted in-memory state")
+	}
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if backup, err := Reset(path); err == nil || backup != "" {
+		t.Fatalf("reset state owned by an open store: %q %v", backup, err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("owned state moved: %v", err)
+	}
+}
+
+func TestOpenReportsTypedStateError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	writeSchema(t, path, "CREATE TABLE legacy(value TEXT); PRAGMA user_version=10")
+	_, err := Open(path)
+	var failure *StateError
+	if !errors.As(err, &failure) || !failure.Older() || failure.Version != 10 || failure.Supported() != schemaVersion || failure.Path != path {
+		t.Fatalf("older state not reported as resettable: %#v %v", failure, err)
 	}
 }

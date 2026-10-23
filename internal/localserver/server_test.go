@@ -64,7 +64,7 @@ func TestCheckoutServerServesBeforeCollectionAndWaitsForCollectorShutdown(t *tes
 				close(collectionCanceled)
 				<-release
 				return nil, ctx.Err()
-			}, func(status Status, published Published) {
+			}, StateReset{}, func(status Status, published Published) {
 				if len(published.Publications) != 0 {
 					t.Error("ready must not wait for checkout collection")
 				}
@@ -136,7 +136,7 @@ func TestRunForcesCloseWhenIdleConnectionExhaustsShutdownGrace(t *testing.T) {
 	ready := make(chan Status, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, Settings{Host: "127.0.0.1", Port: 0, State: "memory"}, "", nil,
+		done <- Run(ctx, Settings{Host: "127.0.0.1", Port: 0, State: "memory"}, "", nil, StateReset{},
 			func(status Status, _ *contextservice.Publication) { ready <- status })
 	}()
 	var status Status

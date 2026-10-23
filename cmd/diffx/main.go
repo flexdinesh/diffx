@@ -77,12 +77,17 @@ func runFixture(ctx context.Context, arguments []string, stdin *os.File, stdout,
 		ctx = child
 		go func() { _, _ = io.Copy(io.Discard, stdin); cancel() }()
 	}
+	// Fixture stdin carries input and the exit-on-close hook, so dev never prompts.
+	reset, err := localStateReset(ctx, values, settings, nil, stderr)
+	if err != nil {
+		return err
+	}
 	started := time.Now()
-	return localserver.Run(ctx, settings, "", &request, func(status localserver.Status, submitted *contextservice.Publication) {
+	return withResetHint(localserver.Run(ctx, settings, "", &request, reset, func(status localserver.Status, submitted *contextservice.Publication) {
 		address := status.BrowserURL + "/contexts/" + url.PathEscape(submitted.Context.ID)
 		writeStartup(stdout, publicationInput(*submitted, time.Since(started)), address)
 		openBrowser(values, address, stderr)
-	})
+	}))
 }
 func resolvedServerSettings(values options) (localserver.Settings, error) {
 	saved, err := config.LoadFile(values.configFile)

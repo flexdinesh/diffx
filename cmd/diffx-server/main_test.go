@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"io"
 	"os"
 	"path/filepath"
@@ -188,5 +189,28 @@ func TestBootstrapSecretsCannotBeFlags(t *testing.T) {
 		if _, _, err := parseSettings([]string{name, "secret"}, io.Discard); err == nil {
 			t.Fatalf("secret flag accepted: %s", name)
 		}
+	}
+}
+
+func TestServerNeverResetsState(t *testing.T) {
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	if _, _, err := parseSettings([]string{"--reset-state"}, io.Discard); err == nil {
+		t.Fatal("server accepted --reset-state")
+	}
+	path := filepath.Join(t.TempDir(), "state.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE TABLE legacy(value TEXT); PRAGMA user_version=10"); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	err = manageUser([]string{"create", "--username", "alice", "--state", path, "--password-stdin"}, strings.NewReader("correct horse battery staple"), io.Discard, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "schema 10 is older") || strings.Contains(err.Error(), "--reset-state") {
+		t.Fatalf("older state must be refused without a local reset hint: %v", err)
+	}
+	if matches, _ := filepath.Glob(path + ".schema*"); len(matches) != 0 {
+		t.Fatalf("server administration backed up state: %v", matches)
 	}
 }

@@ -16,7 +16,7 @@ import (
 func TestBothModesPreserveIncompatibleStateAndAcceptFreshPath(t *testing.T) {
 	for name, start := range map[string]func(context.Context, string, func()) error{
 		"local": func(ctx context.Context, path string, ready func()) error {
-			return localserver.Run(ctx, localserver.Settings{Host: "127.0.0.1", Port: 0, State: path}, "", nil,
+			return localserver.Run(ctx, localserver.Settings{Host: "127.0.0.1", Port: 0, State: path}, "", nil, localserver.StateReset{},
 				func(localserver.Status, *contextservice.Publication) { ready() })
 		},
 		"remote": func(ctx context.Context, path string, ready func()) error {

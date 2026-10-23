@@ -35,9 +35,13 @@ Local data lives in `$XDG_STATE_HOME/diffx/state.db`, or
 `~/.local/state/diffx/state.db`. An isolated `DIFFX_RUNTIME_DIR` moves the
 default database, manual sync and hook state, and config into that directory.
 `--state memory` disables persistence.
-Current schema 11 state persists across restarts. Older, newer or unrecognized
-databases are refused without an automatic reset. To start fresh, stop the
-server, back up its state directory, and explicitly choose a new database path.
+Current schema 11 state persists across restarts. When local state comes from
+an older diffx, `diffx` asks before moving it to a backup beside the database
+and starting fresh; scripts pass `--reset-state`, which backs up and resets
+current state too. Only the newest backup is kept. Newer or unrecognized
+databases are refused unchanged. Servers never reset automatically: to start
+fresh, stop the server, back up its state directory, and explicitly choose a new
+database path.
 Legacy commands and pending producer payloads are retired.
 Stop older processes before upgrading. Local service lifecycle uses a private
 authenticated loopback control listener; its token does not authenticate the

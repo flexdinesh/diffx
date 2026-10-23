@@ -30,7 +30,7 @@ type Input struct {
 
 // RunForeground serializes discovery, replacement and publication. Shutdown
 // uses the authenticated control endpoint, never an unverified operating-system PID.
-func RunForeground(ctx context.Context, settings Settings, input Input, confirm func(Status) (bool, error), ready func(Status, Published)) error {
+func RunForeground(ctx context.Context, settings Settings, input Input, confirm func(Status) (bool, error), reset StateReset, ready func(Status, Published)) error {
 	client, err := NewClient()
 	if err != nil {
 		return err
@@ -65,7 +65,7 @@ func RunForeground(ctx context.Context, settings Settings, input Input, confirm 
 	defer RemoveDescriptor(client.RuntimeDirectory, id)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	return runServer(ctx, cancel, settings, client.RuntimeDirectory, id, input.Collection, input.Collect, func(status Status, published Published) {
+	return runServer(ctx, cancel, settings, client.RuntimeDirectory, id, input.Collection, input.Collect, reset, func(status Status, published Published) {
 		_ = lifecycle.Close()
 		if ready != nil {
 			ready(status, published)

@@ -186,12 +186,20 @@ name, independent of the checkout directory.
 Schema 11 preserves current state across starts. It moved review state from
 each snapshot scope to its stream and scope, because comments and reviewed marks
 must survive new collections and snapshot deletion. Older, future and unrecognized
-schemas are refused; opening a database never resets it. Durable server volumes
-require an explicit reset decision: stop the owner, back up its state directory,
-then select a fresh database path. No automatic schema migration is implemented.
-State errors identify the database and backup directory, name the compatible
-schema, and show the `--state` override for explicitly selecting fresh state.
-Fresh state has no saved reviews or server accounts.
+schemas are refused; opening a database never resets it. No automatic schema
+migration is implemented. `reviewstore.Reset` is the only reset: under the
+ownership lock it moves current or older diffx state and its SQLite sidecars to
+a timestamped backup beside the database, keeping only the newest backup, and
+refuses newer or unrecognized files. Only local composition decides to call it,
+because local state is one developer's re-collectable workspace: `diffx` asks on
+a terminal for older state, and `--reset-state` (also on `diffx dev`) consents
+up front for any wipe-safe state. Durable server volumes require an operator
+decision, so `diffx-server` never resets: stop the owner, back up its state
+directory, then select a fresh database path. State errors identify the
+database and backup directory, name the compatible schema, and show the
+`--state` override for explicitly selecting fresh state; local refusals of older
+state also suggest `--reset-state`. Fresh state has no saved reviews or server
+accounts.
 Upgrade server and collectors together.
 Install the server first when adding optional protocol 4 metadata: older servers
 reject unknown request fields. Activity metadata is optional, so existing saved

@@ -14,6 +14,7 @@ var errHelp = errors.New("help requested")
 
 type options struct {
 	replace          bool
+	resetState       bool
 	print            bool
 	debug            bool
 	retry            bool
@@ -106,13 +107,14 @@ func parseOptionsMode(arguments []string, stderr io.Writer, allowHost bool) (opt
 	flags.StringVar(&values.state, "state", "", "state database path; memory disables persistence")
 	flags.StringVar(&values.webDir, "web-dir", "", "serve web assets from a directory")
 	flags.BoolVar(&values.replace, "replace", false, "replace an existing foreground local instance")
+	flags.BoolVar(&values.resetState, "reset-state", false, "back up local state beside it and start fresh; refuses newer or unrecognized state")
 	flags.BoolVar(&values.print, "print", false, "print only the configured server URL after sync")
 	flags.BoolVar(&values.debug, "debug", false, "show sync progress on stderr")
 	flags.BoolVar(&values.retry, "retry", false, "retry saved sync submissions without collecting")
 	flags.BoolVar(&values.noBrowser, "no-browser", false, "do not open a browser")
 	flags.BoolVar(&values.version, "version", false, "print version and exit")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "  Usage: diffx [PATH] [--host IP] [--replace]")
+		fmt.Fprintln(stderr, "  Usage: diffx [PATH] [--host IP] [--replace] [--reset-state]")
 		fmt.Fprintln(stderr, "         diffx --path DIR [--path DIR...] [--scan-depth N]")
 		fmt.Fprintln(stderr, "         git diff | diffx [options]")
 		fmt.Fprintln(stderr, "         diffx sync [--path DIRECTORY] [--print] [--debug] [--retry]")
