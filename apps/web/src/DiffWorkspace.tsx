@@ -155,6 +155,11 @@ function itemVersions() {
   };
 }
 
+// Trailing space lets any file, including the last, scroll to the top.
+function renderScrollEnd() {
+  return <div className="diff-scroll-end" aria-hidden="true" />;
+}
+
 // Keep Pierre's annotation versions and event callbacks local to its renderer.
 export function DiffWorkspace() {
   const {
@@ -172,8 +177,7 @@ export function DiffWorkspace() {
   const { collapsed, setCollapsed } = useDiffCollapse();
   const {
     files,
-    activePath,
-    selectVisibleFile,
+    followScroll,
     filter,
     setFilter,
     matchingFiles,
@@ -212,11 +216,16 @@ export function DiffWorkspace() {
     if (!element) return;
     const measure = () => {
       const scroller = viewport.current;
-      if (scroller)
+      if (scroller) {
         document.documentElement.style.setProperty(
           "--diff-viewport-inset",
           `${scroller.offsetWidth - scroller.clientWidth}px`,
         );
+        document.documentElement.style.setProperty(
+          "--diff-viewport-height",
+          `${scroller.clientHeight}px`,
+        );
+      }
       const { height, width } = element.getBoundingClientRect();
       setViewerMetrics((current) =>
         current?.lineHeight === height && current.spacing === width
@@ -231,6 +240,7 @@ export function DiffWorkspace() {
     return () => {
       observer.disconnect();
       document.documentElement.style.removeProperty("--diff-viewport-inset");
+      document.documentElement.style.removeProperty("--diff-viewport-height");
     };
   }, []);
   const versionFor = useMemo(itemVersions, []);
@@ -701,8 +711,8 @@ export function DiffWorkspace() {
             onScroll={(scrollTop, instance) => {
               const height = viewport.current?.clientHeight ?? 0;
               // Use Pierre's full item offsets, including unmounted files.
-              // Keep the top file until its body (not just its header) leaves.
-              const visible = items.find((item, index) => {
+              // A file stays visible until its body (not just its header) leaves.
+              const visible = items.filter((item, index) => {
                 const top = instance.getTopForItem(item.id);
                 const next = items[index + 1];
                 const nextTop = next
@@ -716,11 +726,11 @@ export function DiffWorkspace() {
                   bottom > scrollTop
                 );
               });
-              if (visible && visible.id !== activePath)
-                selectVisibleFile(visible.id);
+              followScroll(visible.map((item) => item.id));
             }}
             options={options}
             style={{ height: "100%", width: "100%", overflow: "auto" }}
+            renderCodeViewFooter={renderScrollEnd}
             renderHeaderPrefix={(item) => (
               <span className="diff-collapse-gutter">
                 <IconButton
