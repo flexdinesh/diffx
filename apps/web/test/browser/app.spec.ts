@@ -2126,7 +2126,9 @@ test("copy dialog reports clipboard status and restores focus", async ({
   await expect(reviewDialog).toBeHidden();
   await expect(copyOptions).toBeFocused();
 
-  await page.getByRole("button", { name: "WebMCP instructions" }).click();
+  await page
+    .getByRole("button", { name: "WebMCP instruction", exact: true })
+    .click();
   const instructionDialog = page.getByRole("dialog", {
     name: "Copy WebMCP instruction",
   });

@@ -165,7 +165,11 @@ export function FileExplorerNav() {
             )}
           </TabsList>
         </PanelHeader>
-        <TabsContent value="files" id="file-panel" className="file-panel">
+        <TabsContent
+          value="files"
+          id="file-panel"
+          className="file-panel min-h-0"
+        >
           <div className="file-filter-row">
             <SearchField
               ref={search}
@@ -185,6 +189,7 @@ export function FileExplorerNav() {
                   <Toggle
                     id="hide-reviewed"
                     variant="outline"
+                    size="icon"
                     aria-label="Hide reviewed files"
                     pressed={hideReviewed}
                     onPressedChange={setHideReviewed}

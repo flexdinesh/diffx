@@ -4,7 +4,6 @@
 .file-panel {
   /* Keep navigation reachable when enlarged text makes the shell scroll. */
   flex: 1 0 calc(4 * var(--space-12));
-  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -149,11 +148,9 @@
   padding: var(--space-2) var(--page-gutter);
   border-bottom: 1px solid var(--border-muted);
 }
-#comments-panel {
+.comments-panel {
   flex: 1 0 calc(4 * var(--space-12));
-  min-height: 0;
   overflow: auto;
-  padding: 0 var(--space-4) var(--space-3);
 }
 .comment-empty {
   color: var(--muted);
@@ -193,13 +190,5 @@
   }
   .sidebar-resizer {
     display: none;
-  }
-}
-
-/* Enlarge app chrome, never Pierre's measured header or code-row slots. */
-@media (max-width: 767px), (pointer: coarse) {
-  [data-slot="button"][data-size="icon"]:not(.tree-control) {
-    min-height: var(--touch-target);
-    min-width: var(--touch-target);
   }
 }

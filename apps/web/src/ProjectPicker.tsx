@@ -170,7 +170,7 @@ export function ProjectPicker({
 
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogContent className="project-picker" initialFocus={searchRef}>
+      <DialogContent variant="command" initialFocus={searchRef}>
         <DialogTitle className="sr-only">Switch review</DialogTitle>
         <DialogDescription className="sr-only">
           Choose a repository or Piped, then a collected snapshot. Search
@@ -337,7 +337,7 @@ export function ProjectPicker({
                   if (available) setHighlightedId(entry.id);
                 }}
               >
-                <ContextIcon piped={pipedContext} className="size-icon" />
+                <ContextIcon piped={pipedContext} size="md" />
                 <span className="min-w-0 flex-1">
                   <span className="flex min-w-0 items-center gap-2">
                     <span

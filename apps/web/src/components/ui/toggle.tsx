@@ -16,6 +16,7 @@ const toggleVariants = cva(
         default: "h-control min-w-control px-2",
         sm: "h-control-small min-w-control-small px-2",
         xs: "h-control-compact min-w-control-compact px-2",
+        icon: "size-control p-0",
         "icon-sm": "size-control-small p-0",
       },
       touch: {

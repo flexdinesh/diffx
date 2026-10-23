@@ -15,7 +15,7 @@ export function ContextIdentity({ current }: { current: ApiContext }) {
   const piped = contextIsPiped(current);
   return (
     <div className="context-identity" title={contextDiagnostics(current)}>
-      <ContextIcon piped={piped} className="size-icon" />
+      <ContextIcon piped={piped} size="md" />
       <span className="context-identity-name">
         {piped ? "Piped" : current.name}
       </span>

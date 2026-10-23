@@ -194,10 +194,10 @@ test("mobile sidebar behaves as a modal drawer and restores focus", async ({
   await expect(page.locator("main")).toHaveAttribute("inert", "");
   await expect(page.locator(".topbar")).toHaveAttribute("inert", "");
   await expect(drawer.locator(":focus")).toHaveCount(1);
-  await expect(page.locator(".sidebar-backdrop")).toBeVisible();
+  await expect(page.locator('[data-slot="scrim"]')).toBeVisible();
 
   await page
-    .locator(".sidebar-backdrop")
+    .locator('[data-slot="scrim"]')
     .click({ position: { x: 380, y: 800 } });
   await expect(drawer).toBeHidden();
   await expect(trigger).toBeFocused();
@@ -231,7 +231,7 @@ test("review actions use progressive disclosure, status filters, and confirmed d
     (button) => getComputedStyle(button).borderTopLeftRadius,
   );
   await expect(
-    page.getByRole("button", { name: "WebMCP instructions" }),
+    page.getByRole("button", { name: "WebMCP instruction" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Copy options" }).click();
   const options = page.getByRole("menu", { name: "Copy options" });

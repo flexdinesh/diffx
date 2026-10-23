@@ -6,6 +6,7 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
+import { cn } from "@/lib/utils";
 import { formatShortcut, type Shortcut } from "../format.ts";
 
 /** The one search/filter field: icon, input, optional shortcut and actions. */
@@ -26,7 +27,9 @@ export function SearchField({
   actions?: ReactNode;
 }) {
   return (
-    <InputGroup className={className}>
+    // Search shares the quiet --border-muted boundary of the toolbar controls
+    // beside it; forms keep the stronger control boundary.
+    <InputGroup className={cn("border-separator", className)}>
       <InputGroupAddon>
         {leading ?? <SearchIcon aria-hidden="true" />}
       </InputGroupAddon>

@@ -176,12 +176,6 @@
 .loading-project:nth-child(2) .loading-project-name .skeleton-name {
   width: 44%;
 }
-#empty.is-loading {
-  display: flex;
-  align-items: stretch;
-  justify-content: start;
-  padding: 0;
-}
 /* Referenced by the Skeleton primitive's animate-skeleton utility. */
 @keyframes skeleton-pulse {
   50% {

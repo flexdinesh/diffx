@@ -807,8 +807,10 @@ export function DiffWorkspace() {
           role="status"
           hidden={files.length > 0}
           className={cn(
-            "absolute inset-0 flex flex-col items-center justify-center p-(--page-gutter)",
-            loadingChanges && "is-loading",
+            "absolute inset-0 flex flex-col",
+            loadingChanges
+              ? "items-stretch justify-start"
+              : "items-center justify-center p-(--page-gutter)",
           )}
           aria-busy={loadingChanges}
         >

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
@@ -37,20 +38,33 @@ function DialogOverlay({
 }
 
 // Every dialog keeps a visible title and explicit actions; no corner close.
+const dialogContentVariants = cva(
+  "fixed top-1/2 left-1/2 z-(--layer-popover) grid max-h-[calc(100dvh-2*var(--page-gutter))] w-[min(var(--reading-width),calc(100%-2*var(--page-gutter)))] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-auto rounded-lg border border-border bg-raised p-6 text-md text-fg shadow-overlay outline-none",
+  {
+    variants: {
+      variant: {
+        default: "",
+        // A command palette anchored below the header: search, list, footer.
+        command:
+          "top-[calc(var(--topbar-height)+var(--space-6))] max-h-[calc(100dvh-var(--topbar-height)-var(--space-6)-var(--page-gutter))] w-[min(35rem,calc(100%-2*var(--page-gutter)))] translate-y-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 max-md:top-4 max-md:max-h-[calc(100dvh-var(--space-4)-var(--page-gutter))]",
+      },
+    },
+    defaultVariants: { variant: "default" },
+  },
+);
+
 function DialogContent({
   className,
+  variant,
   children,
   ...props
-}: DialogPrimitive.Popup.Props) {
+}: DialogPrimitive.Popup.Props & VariantProps<typeof dialogContentVariants>) {
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
-        className={cn(
-          "fixed top-1/2 left-1/2 z-(--layer-popover) grid max-h-[calc(100dvh-2*var(--page-gutter))] w-[min(var(--reading-width),calc(100%-2*var(--page-gutter)))] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-auto rounded-lg border border-border bg-raised p-6 text-md text-fg shadow-overlay outline-none",
-          className,
-        )}
+        className={cn(dialogContentVariants({ variant }), className)}
         {...props}
       >
         {children}

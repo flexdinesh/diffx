@@ -91,7 +91,7 @@ export function ReviewTools() {
                 }}
               >
                 <CopyIcon aria-hidden="true" />
-                WebMCP instructions
+                WebMCP instruction
               </Button>
             </>
           )}

@@ -18,6 +18,7 @@ import { IconButton } from "@/components/icon-button";
 import { ListRow } from "@/components/list-row";
 import { Notice } from "@/components/notice";
 import { PanelHeader } from "@/components/panel-header";
+import { Scrim } from "@/components/scrim";
 import { StatusDot } from "@/components/status-dot";
 import { Button } from "@/components/ui/button";
 import {
@@ -78,7 +79,11 @@ export function HeaderBrand() {
       <a className="brand" href="/" aria-label="diffx home">
         <span>diffx</span>
       </a>
-      <Separator className="header-divider" orientation="vertical" />
+      <Separator
+        variant="chrome"
+        orientation="vertical"
+        className="header-divider"
+      />
     </>
   );
 }
@@ -132,13 +137,7 @@ export function ProjectsNav() {
   return (
     <>
       {sidebar.mobile && sidebar.open && sidebar.view === "projects" && (
-        <button
-          type="button"
-          className="sidebar-backdrop"
-          aria-label="Close repos"
-          tabIndex={-1}
-          onClick={sidebar.closeMobile}
-        />
+        <Scrim label="Close repos" onDismiss={sidebar.closeMobile} />
       )}
       <div
         id="projects-nav"
@@ -238,7 +237,7 @@ function ProjectItem({
         <span className="inline-flex text-muted">
           <DisclosureIcon open={expanded} />
         </span>
-        <ContextIcon piped={group.kind === "piped"} className="text-muted" />
+        <ContextIcon piped={group.kind === "piped"} tone="muted" />
         <span className="min-w-0 flex-1 truncate font-medium">
           {group.name}
         </span>

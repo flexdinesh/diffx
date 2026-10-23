@@ -121,13 +121,6 @@
   letter-spacing: var(--tracking-heading);
   white-space: nowrap;
 }
-.header-divider {
-  width: 1px;
-  height: var(--space-4);
-  align-self: center;
-  background: var(--border);
-  flex-shrink: 0;
-}
 .header-heading {
   display: flex;
   align-items: center;
@@ -351,31 +344,6 @@ main {
   padding-right: calc(var(--diff-gutter) + var(--diff-viewport-inset, 0px));
   border-bottom: 1px solid var(--border);
 }
-.segmented {
-  margin: 0;
-  min-width: 0;
-  display: inline-flex;
-  min-height: var(--control-small);
-  border: 1px solid var(--border-muted);
-  border-radius: var(--radius-control);
-  /* Optical inset inside the shared compact control height. */
-  padding: 1px;
-  gap: 1px;
-  background: var(--panel);
-  white-space: nowrap;
-}
-.segmented button {
-  padding: 0 var(--space-2);
-  min-height: var(--control-compact);
-  border-radius: var(--radius-control);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  color: var(--text-secondary);
-}
-.segmented button[aria-pressed="true"] {
-  color: var(--accent);
-  background: var(--accent-bg);
-}
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -469,13 +437,6 @@ main {
   align-items: center;
   gap: var(--space-3);
   flex-shrink: 0;
-}
-.sidebar-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: var(--layer-backdrop);
-  border: 0;
-  background: var(--backdrop);
 }
 @media (max-width: 1011px) {
   .navigation-panel:not([hidden]) {
@@ -704,18 +665,6 @@ main {
     display: none;
   }
 }
-.project-picker {
-  width: min(35rem, calc(100% - 2 * var(--page-gutter)));
-  top: calc(var(--topbar-height) + var(--space-6));
-  translate: -50% 0;
-  max-height: calc(
-    100dvh - var(--topbar-height) - var(--space-6) - var(--page-gutter)
-  );
-  padding: 0;
-  gap: 0;
-  overflow: hidden;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-}
 @media (max-width: 767px) {
   .context-identity {
     flex: 1;
@@ -731,10 +680,6 @@ main {
   }
   .context-identity-worktree {
     flex-shrink: 0;
-  }
-  .project-picker {
-    top: var(--space-4);
-    max-height: calc(100dvh - var(--space-4) - var(--page-gutter));
   }
 }
 @media (pointer: coarse) {

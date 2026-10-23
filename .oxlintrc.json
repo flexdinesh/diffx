@@ -23,6 +23,38 @@
     {
       "files": ["apps/web/test/browser/**"],
       "rules": { "react/rules-of-hooks": "off" }
+    },
+    {
+      "files": ["apps/web/src/**/*.tsx"],
+      "rules": {
+        "react/forbid-elements": [
+          "error",
+          {
+            "forbid": [
+              {
+                "element": "button",
+                "message": "use Button, IconButton or ListRow from @/components"
+              },
+              {
+                "element": "input",
+                "message": "use Input, SearchField or Checkbox from @/components"
+              },
+              {
+                "element": "select",
+                "message": "use Select from @/components/ui/select"
+              },
+              {
+                "element": "textarea",
+                "message": "use Textarea from @/components/ui/textarea"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/web/src/components/**"],
+      "rules": { "react/forbid-elements": "off" }
     }
   ],
   "ignorePatterns": ["**/dist/**", "**/.agents/**"]

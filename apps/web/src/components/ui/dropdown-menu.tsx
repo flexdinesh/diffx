@@ -128,7 +128,7 @@ function DropdownMenuRadioItem({
       data-slot="dropdown-menu-radio-item"
       className={cn(
         dropdownMenuItemClassName,
-        indicator === "start" && "pr-1 pl-7",
+        indicator === "start" && "pr-1 pl-8",
         className,
       )}
       {...props}
