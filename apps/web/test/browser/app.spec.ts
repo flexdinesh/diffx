@@ -1,4 +1,5 @@
 import { type Page } from "@playwright/test";
+import { createApiClient } from "@diffx/api";
 import { expect, test } from "./fixtures.ts";
 import { resetFixtureState } from "./fixture-state.ts";
 
@@ -14,6 +15,32 @@ async function resolvedRadius(
     probe.remove();
     return radius;
   }, token);
+}
+
+/** Stores review marks the way the diff's review buttons do. */
+async function markReviewed(baseURL: string | undefined, except: string) {
+  if (!baseURL) throw new Error("Missing test URL");
+  const client = createApiClient({ baseUrl: baseURL });
+  const catalog = await client.GET("/api/v2/contexts");
+  const contextId = catalog.data?.contexts[0]?.id;
+  if (!contextId) throw new Error("Missing fixture context");
+  const scope = "all";
+  const { data } = await client.GET(
+    "/api/v2/contexts/{contextId}/diffs/current",
+    { params: { path: { contextId }, query: { scope } } },
+  );
+  if (!data) throw new Error("Missing fixture diff");
+  for (const file of data.files) {
+    if (file.path === except) continue;
+    const { error } = await client.PUT(
+      "/api/v2/contexts/{contextId}/review-marks/{fileId}",
+      {
+        params: { path: { contextId, fileId: file.id }, query: { scope } },
+        body: { fileVersion: file.fingerprint, versionId: data.versionId },
+      },
+    );
+    if (error) throw new Error(`Unable to mark ${file.path} reviewed`);
+  }
 }
 
 /** Repos opens first; file-tree tests select Diff the way a user would. */
@@ -891,12 +918,29 @@ test("hide reviewed files filters the tree and diff together", async ({
   await showDiff(page);
   await expect(hide).toHaveAttribute("aria-pressed", "true");
   await expect(rows).toHaveCount(10);
+});
 
-  const unreviewed = page.locator("#viewer .review-button[aria-pressed=false]");
-  for (let remaining = 10; remaining > 0; remaining -= 1) {
-    await unreviewed.first().click();
-    await expect(rows).toHaveCount(remaining - 1);
-  }
+test("hiding the last unreviewed file shows the all-reviewed state", async ({
+  page,
+  baseURL,
+}) => {
+  // Seed marks through the API; per-file hiding is covered above, and one
+  // click per file overruns the timeout on a loaded machine.
+  await markReviewed(baseURL, "scripts/release.sh");
+  await page.setViewportSize({ width: 1280, height: 4_000 });
+  await page.goto("/");
+  await showDiff(page);
+
+  const hide = page.getByRole("button", { name: "Hide reviewed files" });
+  const rows = page.locator("#file-tree .file-row");
+  const headers = page.locator("#viewer diffs-container");
+  await expect(page.locator("#review-count")).toHaveText("11 of 12 reviewed");
+  await hide.click();
+  await expect(rows).toHaveCount(1);
+  await page
+    .locator("#viewer .review-button[aria-pressed=false]")
+    .first()
+    .click();
   await expect(page.locator("#review-count")).toHaveText("12 of 12 reviewed");
   await expect(rows).toHaveCount(0);
   await expect(page.locator("#file-tree")).toHaveText("All files reviewed");
