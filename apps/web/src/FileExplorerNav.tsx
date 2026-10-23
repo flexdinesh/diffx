@@ -107,11 +107,7 @@ export function FileExplorerNav() {
         className="contents"
       >
         <div className="sidebar-tabs">
-          <TabsList
-            variant="line"
-            className="sidebar-tab-list"
-            aria-label="Sidebar view"
-          >
+          <TabsList className="sidebar-tab-list" aria-label="Sidebar view">
             <TabsTrigger id="files-tab" value="files">
               <span className="sidebar-tab-label">Changes</span>
               <span id="file-count" className="count">

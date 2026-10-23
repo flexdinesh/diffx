@@ -1,34 +1,41 @@
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 
 const badgeVariants = cva(
-  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-[var(--space-1)] overflow-hidden whitespace-nowrap rounded-[var(--radius-sm)] border border-transparent px-[var(--space-2)] py-0.5 text-[length:var(--text-xs)] font-[var(--weight-medium)] [&>svg]:pointer-events-none [&>svg:not([class*='size-'])]:size-(--icon-sm)",
+  "group/badge inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-sm border text-xs [&>svg]:pointer-events-none [&>svg:not([class*='size-'])]:size-icon-sm",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
-        secondary:
-          "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80",
-        destructive:
-          "bg-destructive/10 text-destructive dark:bg-destructive/20 [a]:hover:bg-destructive/20",
-        outline:
-          "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
-        ghost:
-          "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
-        link: "text-primary underline-offset-4 hover:underline",
+        // Numeric counts: tabs, filters, menus and file rows.
+        count:
+          "min-w-icon border-border bg-count px-1 font-mono leading-ui text-muted tabular-nums",
+        // Labeled state with an optional icon: Open, Resolved, Outdated.
+        status: "h-control-compact border-border bg-raised px-1.5 font-medium",
+      },
+      tone: {
+        neutral: "",
+        accent: "text-accent",
+        success: "text-success",
+        warning: "text-warning",
+        error: "text-error",
       },
     },
+    compoundVariants: [
+      { variant: "status", tone: "neutral", className: "text-secondary" },
+    ],
     defaultVariants: {
-      variant: "default",
+      variant: "count",
+      tone: "neutral",
     },
   },
 );
 
 function Badge({
   className,
-  variant = "default",
+  variant = "count",
+  tone = "neutral",
   render,
   ...props
 }: useRender.ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
@@ -36,7 +43,7 @@ function Badge({
     defaultTagName: "span",
     props: mergeProps<"span">(
       {
-        className: cn(badgeVariants({ variant }), className),
+        className: cn(badgeVariants({ variant, tone }), className),
       },
       props,
     ),

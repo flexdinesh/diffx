@@ -117,7 +117,7 @@ export function CommentsPanel() {
                 }
               >
                 {filterLabel(filter)}
-                <Badge variant="outline" className="comment-filter-count">
+                <Badge variant="count" className="comment-filter-count">
                   {activeCount}
                 </Badge>
                 <ChevronDownIcon aria-hidden="true" />
@@ -147,7 +147,7 @@ export function CommentsPanel() {
                       className="comment-filter-option"
                     >
                       <span>{filterLabel(value)}</span>
-                      <Badge variant="outline" className="comment-filter-count">
+                      <Badge variant="count" className="comment-filter-count">
                         {value === "all"
                           ? review.comments.length
                           : counts[value]}
@@ -199,10 +199,7 @@ export function CommentsPanel() {
                         onClick={() => setDeleteSelection(value)}
                       >
                         <span>{filterLabel(value)}</span>
-                        <Badge
-                          variant="outline"
-                          className="comment-filter-count"
-                        >
+                        <Badge variant="count" className="comment-filter-count">
                           {count}
                         </Badge>
                       </DropdownMenuItem>
@@ -269,10 +266,7 @@ export function CommentsPanel() {
           if (!open) setDeleteSelection(null);
         }}
       >
-        <DialogContent
-          className="delete-comment-dialog"
-          showCloseButton={false}
-        >
+        <DialogContent className="delete-comment-dialog">
           <DialogTitle>
             Delete{" "}
             {deleteSelection ? filterLabel(deleteSelection).toLowerCase() : ""}{" "}

@@ -49,9 +49,8 @@ export function DiffToolbar() {
         className="segmented modes"
         aria-label="Diff scope"
         hidden={!capabilityEnabled(scopes) || scopes.values.length < 2}
-        spacing={0}
-        variant="default"
-        size="sm"
+        variant="segmented"
+        size="xs"
         value={[mode]}
         onValueChange={(values) => {
           const value = values[0];
@@ -81,9 +80,8 @@ export function DiffToolbar() {
       <ToggleGroup
         className="segmented layout-control"
         aria-label="Diff layout"
-        spacing={0}
-        variant="default"
-        size="sm"
+        variant="segmented"
+        size="xs"
         value={[layout]}
         onValueChange={(values) => {
           const value = values[0];

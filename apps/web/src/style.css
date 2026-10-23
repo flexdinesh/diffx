@@ -4,25 +4,71 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-:root {
-  font-family: var(--font-sans);
-  color: var(--fg);
-  background: var(--bg);
-  font-synthesis: none;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
+/* Element defaults sit in the base layer so primitive utilities override them. */
+@layer base {
+  :root {
+    font-family: var(--font-sans);
+    color: var(--fg);
+    background: var(--bg);
+    font-synthesis: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    height: 100dvh;
+    overflow: hidden;
+    font-size: var(--text-base);
+    line-height: var(--leading-ui);
+  }
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+  :focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-offset);
+  }
+  button[aria-busy="true"] {
+    cursor: progress;
+    opacity: 0.7;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--muted);
+    opacity: 1;
+  }
+  svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: var(--icon-stroke);
+    flex-shrink: 0;
+  }
+  svg:not([class*="size-"]) {
+    width: var(--icon-base);
+    height: var(--icon-base);
+  }
+  kbd {
+    font: var(--text-xs) var(--font-mono);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 1px var(--space-1);
+    color: var(--muted);
+  }
+  h2 {
+    font-size: var(--text-xl);
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-ui);
+    letter-spacing: var(--tracking-heading);
+    margin: 0;
+  }
 }
-* {
-  box-sizing: border-box;
-}
-body {
-  margin: 0;
-  height: 100dvh;
-  overflow: hidden;
-  font-size: var(--text-base);
-  line-height: var(--leading-ui);
-}
+
 .session-status {
   display: grid;
   place-content: center;
@@ -38,19 +84,6 @@ body {
   margin-top: var(--space-2);
   color: var(--muted);
 }
-input,
-select,
-textarea {
-  font: inherit;
-}
-:focus-visible {
-  outline: var(--focus-ring);
-  outline-offset: var(--focus-offset);
-}
-button[aria-busy="true"] {
-  cursor: progress;
-  opacity: 0.7;
-}
 @media (prefers-reduced-motion: no-preference) {
   #refresh[aria-busy="true"] svg,
   #sync[aria-busy="true"] svg,
@@ -63,30 +96,8 @@ button[aria-busy="true"] {
     transform: rotate(360deg);
   }
 }
-input::placeholder,
-textarea::placeholder {
-  color: var(--muted);
-  opacity: 1;
-}
-svg {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: var(--icon-stroke);
-  flex-shrink: 0;
-}
-svg:not([class*="size-"]) {
-  width: var(--icon-base);
-  height: var(--icon-base);
-}
 .control-radius-shape {
   rx: var(--radius-control);
-}
-kbd {
-  font: var(--text-xs) var(--font-mono);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 1px var(--space-1);
-  color: var(--muted);
 }
 .positive {
   color: var(--success);
@@ -919,7 +930,7 @@ main {
   color: var(--success);
 }
 .review-checkbox {
-  font-size: var(--icon-sm);
+  font-size: var(--icon-base);
   width: 1em;
   height: 1em;
   stroke-linecap: round;
@@ -937,13 +948,6 @@ main {
   justify-content: center;
   text-align: center;
   padding: var(--page-gutter);
-}
-h2 {
-  font-size: var(--text-xl);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-ui);
-  letter-spacing: var(--tracking-heading);
-  margin: 0;
 }
 #empty p {
   color: var(--text-secondary);
@@ -1254,6 +1258,7 @@ h2 {
   --spacing-control-large: var(--control-large);
   --spacing-touch: var(--touch-target);
   --spacing-panel-header: var(--panel-header-height);
+  --spacing-topbar: var(--topbar-height);
   --spacing-icon-sm: var(--icon-sm);
   --spacing-icon: var(--icon-base);
   --spacing-icon-lg: var(--icon-lg);
@@ -1261,63 +1266,46 @@ h2 {
   --font-weight-medium: var(--weight-medium);
   --font-weight-semibold: var(--weight-semibold);
 
+  /* One color vocabulary; shadcn's background/primary/... aliases are not
+     registered. Generated primitives are rewritten to these names. */
   --color-bg: var(--bg);
   --color-fg: var(--fg);
   --color-panel: var(--panel);
   --color-shell: var(--shell-canvas);
   --color-shell-hover: var(--shell-hover);
   --color-raised: var(--surface-raised);
+  --color-secondary: var(--text-secondary);
+  --color-muted: var(--muted);
   --color-hover: var(--hover);
   --color-count: var(--count-bg);
+  --color-border: var(--border);
   --color-separator: var(--border-muted);
   --color-control: var(--border-control);
+  --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-selected: var(--accent-bg);
   --color-on-accent: var(--on-accent);
+  --color-success: var(--success);
   --color-success-bg: var(--success-bg);
   --color-success-border: var(--success-border);
+  --color-warning: var(--warning);
   --color-warning-bg: var(--warning-bg);
   --color-warning-border: var(--warning-border);
   --color-error: var(--error);
+  --color-error-hover: var(--error-hover);
   --color-error-bg: var(--error-bg);
   --color-error-border: var(--error-border);
-
-  --color-background: var(--bg);
-  --color-foreground: var(--fg);
-  --color-card: var(--panel);
-  --color-card-foreground: var(--fg);
-  --color-popover: var(--surface-raised);
-  --color-popover-foreground: var(--fg);
-  --color-primary: var(--accent);
-  --color-primary-foreground: var(--on-accent);
-  --color-secondary: var(--panel);
-  --color-secondary-foreground: var(--fg);
-  --color-muted: var(--hover);
-  --color-muted-foreground: var(--muted);
-  --color-accent: var(--accent-bg);
-  --color-accent-foreground: var(--accent);
-  --color-destructive: var(--error);
-  --color-border: var(--border);
-  --color-input: var(--border-control);
-  --color-ring: var(--accent);
-  --color-success: var(--success);
-  --color-warning: var(--warning);
-  --color-sidebar: var(--panel);
-  --color-sidebar-foreground: var(--fg);
-  --color-sidebar-primary: var(--accent);
-  --color-sidebar-primary-foreground: var(--on-accent);
-  --color-sidebar-accent: var(--accent-bg);
-  --color-sidebar-accent-foreground: var(--accent);
-  --color-sidebar-border: var(--border);
-  --color-sidebar-ring: var(--accent);
+  --color-backdrop: var(--backdrop);
+  --animate-spinner: refresh-spin var(--duration-spin) linear infinite;
+  --animate-skeleton: skeleton-pulse var(--duration-pulse) ease-in-out infinite;
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-accent/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-bg text-fg;
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {

@@ -264,7 +264,40 @@ function baseUtility(token: string): string {
   return token.slice(lastVariant + 1).replace(/^!|!$/g, "");
 }
 
-function utilityInvalid(path: string, original: string, context = ""): boolean {
+// Utilities registered by style.css's theme bridge resolve to canonical tokens.
+function themeUtilities(sources: readonly DesignSource[]): Set<string> {
+  const utilities = new Set<string>();
+  const prefixes: ReadonlyArray<readonly [RegExp, string]> = [
+    [/^--text-([\w-]+)$/, "text-"],
+    [/^--font-weight-([\w-]+)$/, "font-"],
+    [/^--font-([\w-]+)$/, "font-"],
+    [/^--leading-([\w-]+)$/, "leading-"],
+    [/^--tracking-([\w-]+)$/, "tracking-"],
+    [/^--radius-([\w-]+)$/, "rounded-"],
+    [/^--shadow-([\w-]+)$/, "shadow-"],
+  ];
+  for (const source of sources) {
+    if (source.path !== "style.css") continue;
+    cssDeclarations(source.text, (selector, property, value) => {
+      if (!selector.startsWith("@theme") || value.trim() === "initial") return;
+      for (const [pattern, prefix] of prefixes) {
+        const name = pattern.exec(property)?.[1];
+        if (name && !name.includes("--")) {
+          utilities.add(prefix + name);
+          break;
+        }
+      }
+    });
+  }
+  return utilities;
+}
+
+function utilityInvalid(
+  path: string,
+  original: string,
+  context = "",
+  registered: ReadonlySet<string> = new Set(),
+): boolean {
   const token = baseUtility(original);
   const property = /^\[([\w-]+):(.+)\]$/.exec(token);
   if (property?.[1] && property[2])
@@ -283,13 +316,6 @@ function utilityInvalid(path: string, original: string, context = ""): boolean {
     const value = arbitrary[2]
       .replace(/^(?:length|color):/, "")
       .replaceAll("_", " ");
-    if (
-      path === "components/ui/tabs.tsx" &&
-      token === "p-[3px]" &&
-      context ===
-        "group/tabs-list inline-flex w-fit items-center justify-center rounded-[var(--radius-control)] p-[3px] text-muted-foreground group-data-horizontal/tabs:h-[var(--control-height)] group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none"
-    )
-      return false;
     const cssProperty = prefix.startsWith("rounded")
       ? "border-radius"
       : prefix === "font"
@@ -320,19 +346,8 @@ function utilityInvalid(path: string, original: string, context = ""): boolean {
       token,
     )
   ) {
-    return (
-      !(
-        path === "components/ui/tabs.tsx" &&
-        original ===
-          "group-data-[variant=default]/tabs-list:data-active:shadow-sm"
-      ) &&
-      !(
-        path === "components/ui/dialog.tsx" &&
-        token === "leading-none" &&
-        context ===
-          "font-heading text-[length:var(--text-base)] leading-none font-[var(--weight-medium)]"
-      )
-    );
+    const rounded = /^rounded(?:-[trblse]{1,2})?-(.+)$/.exec(token);
+    return !registered.has(rounded?.[1] ? `rounded-${rounded[1]}` : token);
   }
   return false;
 }
@@ -341,6 +356,7 @@ export function checkDesign(
   sources: readonly DesignSource[],
 ): DesignViolation[] {
   const violations: DesignViolation[] = [];
+  const registered = themeUtilities(sources);
   for (const source of sources) {
     const add = (property: string, value: string, offset: number) =>
       violations.push({
@@ -353,7 +369,7 @@ export function checkDesign(
       cssDeclarations(text, (selector, property, value, at) => {
         if (property === "@apply") {
           for (const token of utilityTokens(value))
-            if (utilityInvalid(source.path, token))
+            if (utilityInvalid(source.path, token, value, registered))
               add("utility", token, offset + at);
         } else if (invalidValue(source.path, selector, property, value))
           add(property, value, offset + at);
@@ -578,7 +594,7 @@ export function checkDesign(
       ) {
         const text = literal(node) ?? "";
         for (const token of utilityTokens(text))
-          if (utilityInvalid(source.path, token, text))
+          if (utilityInvalid(source.path, token, text, registered))
             add("utility", token, offset);
       }
       for (const [key, value] of Object.entries(node))

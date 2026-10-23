@@ -31,6 +31,8 @@
   --error: #b73840;
   --error-bg: #ffebe9;
   --error-border: #d45a60;
+  /* Filled destructive interaction; mixes toward the theme's surface. */
+  --error-hover: color-mix(in srgb, var(--error) 88%, var(--bg));
   /* File-kind hints only; never use these as UI action/status colors. */
   --file-code: #236a9f;
   --file-data: #85620f;

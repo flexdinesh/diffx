@@ -63,7 +63,6 @@ export function DeleteContextButton() {
       </DialogTrigger>
       <DialogContent
         className="delete-dialog"
-        showCloseButton={false}
         initialFocus={() => cancelRef.current}
       >
         <DialogTitle>{label}?</DialogTitle>

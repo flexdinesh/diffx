@@ -181,7 +181,7 @@ export function CommentEditor({
         saveComment();
       }}
     >
-      <Card size="sm" className="comment-editor">
+      <Card active className="comment-editor">
         <CardHeader className="comment-editor-header">
           <CardTitle className="comment-editor-title">
             <small>{draftLocation(draft)}</small>
@@ -301,7 +301,7 @@ export function CommentCard({
   return (
     <article data-comment-id={comment.id}>
       <Card
-        size="sm"
+        density={sidebar ? "panel" : "inline"}
         className={`comment-card${resolved ? " resolved" : ""}${stale ? " stale" : ""}`}
         data-expanded={expanded}
         data-diff-layout={sidebar ? undefined : layout}
@@ -347,7 +347,8 @@ export function CommentCard({
           </CardTitle>
           <CardAction>
             <Badge
-              variant="outline"
+              variant="status"
+              tone={stale ? "warning" : resolved ? "success" : "neutral"}
               className="comment-state"
               title={`Lifecycle: ${comment.status}; applicability: ${applicability}`}
             >
@@ -439,10 +440,7 @@ export function CommentCard({
         </div>
       </Card>
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <DialogContent
-          className="delete-comment-dialog"
-          showCloseButton={false}
-        >
+        <DialogContent className="delete-comment-dialog">
           <DialogTitle>Delete comment?</DialogTitle>
           <DialogDescription>
             This permanently removes the comment. This cannot be undone.
@@ -497,7 +495,6 @@ export function CopyDialog({
     >
       <DialogContent
         className="copy-dialog"
-        showCloseButton={false}
         initialFocus={content.clipboard === "manual" ? input : undefined}
       >
         <DialogTitle id="copy-dialog-title">{content.title}</DialogTitle>
