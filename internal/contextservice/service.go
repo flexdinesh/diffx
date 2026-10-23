@@ -30,6 +30,7 @@ type Context struct {
 	CreatedAt        int64                           `json:"createdAt"`
 	LastSubmittedAt  int64                           `json:"lastSubmittedAt"`
 	LastChangedAt    int64                           `json:"lastChangedAt"`
+	ScopeSummaries   []review.ScopeSummary           `json:"scopeSummaries,omitempty"`
 	ChangedFileCount *int                            `json:"changedFileCount"`
 	ExpiresAt        *int64                          `json:"expiresAt"`
 	SubmittedFrom    *string                         `json:"submittedFrom"`
@@ -278,21 +279,15 @@ func (service *Service) Count(ctx context.Context) (int, error) {
 func (service *Service) present(ctx context.Context, item reviewdata.ContextInfo) (Context, error) {
 	if item.Kind == "observation" && item.Metadata != nil {
 		m := item.Metadata
-		binding, err := service.store.ContextBinding(ctx, service.user.ID, item.ID, time.Now())
-		scopes := []review.DiffMode{}
-		if err != nil {
-			return Context{}, requestError(err)
-		}
-		for _, mode := range []review.DiffMode{review.DiffAll, review.DiffStaged, review.DiffUnstaged} {
-			if _, ok := binding.DiffIDs[mode]; ok {
-				scopes = append(scopes, mode)
-			}
+		scopes := make([]review.DiffMode, 0, len(item.ScopeSummaries))
+		for _, summary := range item.ScopeSummaries {
+			scopes = append(scopes, summary.Scope)
 		}
 		name := review.RemoteRepositoryName(m.RemoteURL, m.RepositoryName)
 		if name == "" {
 			name = "Piped"
 		}
-		value := Context{Source: item.Source, Stale: item.Stale, ID: item.ID, Kind: "observation", Name: name, Root: &m.Root, RepositoryID: item.RepositoryID, CreatedAt: item.CreatedAt, LastSubmittedAt: item.LastSubmittedAt, LastChangedAt: item.ActivityAt, ExpiresAt: item.ExpiresAt, ChangedFileCount: item.ChangedFileCount, SubmittedFrom: item.SubmittedFrom, Observation: m, Sessions: item.Sessions, Branch: &m.Branch, WorktreeName: &m.WorktreeName, StreamID: item.StreamID, LatestContextID: item.LatestContextID, Availability: "available", Capabilities: storedCapabilities(scopes, item.Source == "local")}
+		value := Context{ScopeSummaries: item.ScopeSummaries, Source: item.Source, Stale: item.Stale, ID: item.ID, Kind: "observation", Name: name, Root: &m.Root, RepositoryID: item.RepositoryID, CreatedAt: item.CreatedAt, LastSubmittedAt: item.LastSubmittedAt, LastChangedAt: item.ActivityAt, ExpiresAt: item.ExpiresAt, ChangedFileCount: item.ChangedFileCount, SubmittedFrom: item.SubmittedFrom, Observation: m, Sessions: item.Sessions, Branch: &m.Branch, WorktreeName: &m.WorktreeName, StreamID: item.StreamID, LatestContextID: item.LatestContextID, Availability: "available", Capabilities: storedCapabilities(scopes, item.Source == "local")}
 		if item.Source == "stdin" {
 			value.Name, value.Stale = "Piped", false
 			value.Root, value.RepositoryID, value.Branch, value.WorktreeName = nil, nil, nil, nil

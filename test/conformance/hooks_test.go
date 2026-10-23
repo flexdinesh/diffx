@@ -203,7 +203,8 @@ func TestHookReturnsBeforeRemoteIngestionAndSkipsUnchangedUploads(t *testing.T) 
 	promptHook(t, harness, hookInput(t, path), "--harness", "claude")
 	select {
 	case input := <-requests:
-		if len(input.Scopes) != 3 || input.Metadata.Root != path {
+		requireBranchComparisons(t, input)
+		if input.Metadata.Root != path {
 			t.Fatalf("wrong checkout request: %#v", input)
 		}
 	case <-time.After(10 * time.Second):
@@ -477,9 +478,10 @@ func TestCollectorRetryDeliversCaptureAfterHealthOutageAndCheckoutRemoval(t *tes
 	var captured struct {
 		Request ingestion.Request `json:"request"`
 	}
-	if err := json.Unmarshal(data, &captured); err != nil || captured.Request.SubmissionID == "" || len(captured.Request.Scopes) != 3 {
+	if err := json.Unmarshal(data, &captured); err != nil || captured.Request.SubmissionID == "" {
 		t.Fatalf("invalid durable capture: %v %s", err, data)
 	}
+	requireBranchComparisons(t, captured.Request)
 	if err := os.RemoveAll(root); err != nil {
 		t.Fatal(err)
 	}
@@ -527,6 +529,28 @@ func TestCollectorRetryDeliversCaptureAfterHealthOutageAndCheckoutRemoval(t *tes
 	for _, activity := range collectorActivities(t, harness) {
 		if strings.Contains(activity.Error, "isolated-token") || strings.Contains(activity.Destination, "isolated-token") {
 			t.Fatalf("collector activity leaked token: %+v", activity)
+		}
+	}
+}
+
+func requireBranchComparisons(t *testing.T, input ingestion.Request) {
+	t.Helper()
+	expected := map[review.DiffMode]review.ComparisonKind{
+		review.DiffAll:         review.ComparisonCombined,
+		review.DiffStaged:      review.ComparisonStaged,
+		review.DiffUnstaged:    review.ComparisonUnstaged,
+		review.DiffUncommitted: review.ComparisonUncommitted,
+		review.DiffCommitted:   review.ComparisonCommitted,
+	}
+	if err := ingestion.Validate(input); err != nil {
+		t.Fatalf("invalid captured comparisons: %v", err)
+	}
+	if len(input.Scopes) != len(expected) {
+		t.Fatalf("captured %d scopes, want five branch comparisons", len(input.Scopes))
+	}
+	for _, scope := range input.Scopes {
+		if scope.Snapshot.ComparisonKind != expected[scope.Snapshot.Mode] {
+			t.Fatalf("comparison %s: %s, want %s", scope.Snapshot.Mode, scope.Snapshot.ComparisonKind, expected[scope.Snapshot.Mode])
 		}
 	}
 }

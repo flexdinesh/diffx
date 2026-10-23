@@ -121,17 +121,6 @@ func isGitExitFailure(err error) bool {
 	}
 }
 
-func gitDiffArgs(mode review.DiffMode, base string) []string {
-	args := []string{"-c", "diff.autoRefreshIndex=false", "diff", "--no-ext-diff", "--no-textconv", "--ignore-submodules=none", "--find-renames"}
-	args = append(args, patchFormat...)
-	if mode == review.DiffStaged {
-		args = append(args, "--cached", base)
-	} else if mode == review.DiffAll {
-		args = append(args, base)
-	}
-	return args
-}
-
 func parseRaw(raw string) (map[string]*review.ChangedFile, error) {
 	entries := strings.Split(raw, "\x00")
 	files := make(map[string]*review.ChangedFile)
@@ -324,8 +313,12 @@ func (source *gitSource) Support() Support {
 	if source.objectsOnly() {
 		return Support{Scopes: []review.DiffMode{review.DiffAll}, FileContents: true}
 	}
+	scopes := []review.DiffMode{review.DiffAll, review.DiffStaged, review.DiffUnstaged}
+	if source.comparison != nil {
+		scopes = append(scopes, review.DiffUncommitted, review.DiffCommitted)
+	}
 	return Support{
-		Scopes:          []review.DiffMode{review.DiffAll, review.DiffStaged, review.DiffUnstaged},
+		Scopes:          scopes,
 		Refresh:         true,
 		StagingMetadata: true,
 		FileContents:    true,
@@ -409,9 +402,6 @@ type fingerprintContent struct {
 }
 
 func (source *gitSource) Snapshot(ctx context.Context, mode review.DiffMode) (review.RepositoryDiff, error) {
-	if source.objectsOnly() && mode != review.DiffAll {
-		return review.RepositoryDiff{}, Error(400, "Committed branches have no staged or unstaged scope")
-	}
 	if err := source.verifyComparison(ctx); err != nil {
 		return review.RepositoryDiff{}, err
 	}
@@ -419,7 +409,11 @@ func (source *gitSource) Snapshot(ctx context.Context, mode review.DiffMode) (re
 	if err != nil {
 		return review.RepositoryDiff{}, err
 	}
-	args := source.diffArgs(mode, base)
+	endpoints, err := source.endpoints(mode, base)
+	if err != nil {
+		return review.RepositoryDiff{}, err
+	}
+	args := endpoints.diffArgs()
 	raw, err := runGit(ctx, source.root, 16*1024*1024, append(args, "--raw", "--no-abbrev", "-z", "--")...)
 	if err != nil {
 		return review.RepositoryDiff{}, err
@@ -429,7 +423,7 @@ func (source *gitSource) Snapshot(ctx context.Context, mode review.DiffMode) (re
 		return review.RepositoryDiff{}, err
 	}
 	untracked := ""
-	if mode != review.DiffStaged && !source.objectsOnly() {
+	if endpoints.after.kind == worktreeEndpoint {
 		untracked, err = runGit(ctx, source.root, 16*1024*1024, "ls-files", "--others", "--exclude-standard", "-z")
 		if err != nil {
 			return review.RepositoryDiff{}, err
@@ -445,7 +439,7 @@ func (source *gitSource) Snapshot(ctx context.Context, mode review.DiffMode) (re
 		}
 	}
 	statusOutput := ""
-	if !source.objectsOnly() {
+	if !endpoints.objectsOnly() {
 		statusOutput, err = runGit(ctx, source.root, 16*1024*1024, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none", "--renames")
 		if err != nil {
 			return review.RepositoryDiff{}, err
@@ -457,8 +451,8 @@ func (source *gitSource) Snapshot(ctx context.Context, mode review.DiffMode) (re
 	}
 	applyStats(files, stats)
 	headPaths := make(map[string]bool)
-	if mode == review.DiffAll && head != nil && untracked != "" {
-		paths, pathError := runGit(ctx, source.root, 16*1024*1024, "ls-tree", "-r", "--name-only", "-z", source.comparisonBase(mode, *head))
+	if endpoints.before.kind == objectEndpoint && head != nil && untracked != "" {
+		paths, pathError := runGit(ctx, source.root, 16*1024*1024, "ls-tree", "-r", "--name-only", "-z", endpoints.before.revision)
 		if pathError != nil {
 			return review.RepositoryDiff{}, pathError
 		}
@@ -475,7 +469,7 @@ func (source *gitSource) Snapshot(ctx context.Context, mode review.DiffMode) (re
 			if file == nil {
 				continue
 			}
-			preview, previewError := source.recreatedContents(ctx, path, source.comparisonBase(mode, *head))
+			preview, previewError := source.recreatedContents(ctx, path, endpoints.before.revision)
 			if previewError != nil {
 				return review.RepositoryDiff{}, previewError
 			}
@@ -505,7 +499,7 @@ func (source *gitSource) Snapshot(ctx context.Context, mode review.DiffMode) (re
 	for _, file := range files {
 		content := fingerprintContent{ID: file.ID, Path: file.Path, OldPath: file.OldPath, Status: file.Status, Additions: file.Additions, Deletions: file.Deletions, Binary: file.Binary, Fingerprint: file.Fingerprint, Recreated: file.Recreated}
 		var size, modified, changed any
-		if mode != review.DiffStaged && !source.objectsOnly() {
+		if endpoints.after.kind == worktreeEndpoint {
 			path := filepath.Join(source.root, filepath.FromSlash(file.Path))
 			if stat, statError := os.Lstat(path); statError == nil {
 				size = stat.Size()
@@ -516,7 +510,7 @@ func (source *gitSource) Snapshot(ctx context.Context, mode review.DiffMode) (re
 				}
 			}
 		}
-		rawFingerprint, _ := json.Marshal([]any{mode, head, source.comparisonBase(mode, base), content, size, modified, changed})
+		rawFingerprint, _ := json.Marshal([]any{mode, head, endpoints.before.revision, content, size, modified, changed})
 		file.Fingerprint = digest(string(rawFingerprint))
 	}
 	statuses := parseStatus(statusOutput)
@@ -526,22 +520,28 @@ func (source *gitSource) Snapshot(ctx context.Context, mode review.DiffMode) (re
 		if !ok && file.OldPath != nil {
 			status, ok = statuses[*file.OldPath]
 		}
-		if ok {
+		if endpoints.objectsOnly() {
+			file.IndexStatus, file.WorktreeStatus = "", ""
+		} else if ok {
 			file.IndexStatus, file.WorktreeStatus = status.indexStatus, status.worktreeStatus
 		}
 		result = append(result, *file)
 	}
 	sort.Slice(result, func(left, right int) bool { return result[left].Path < result[right].Path })
-	revisionData, _ := json.Marshal([]any{head, branch, source.comparisonBase(mode, base), result})
+	revisionData, _ := json.Marshal([]any{head, branch, endpoints.before.revision, result})
 	return review.RepositoryDiff{
 		Source: "local", Root: source.root, Name: filepath.Base(source.root), Branch: branch,
-		Head: head, Mode: mode, Files: result, Revision: digest(string(revisionData)),
+		Head: head, Mode: mode, ComparisonKind: endpoints.kind, Files: result, Revision: digest(string(revisionData)),
 	}, nil
 }
 
 func (source *gitSource) Patch(ctx context.Context, mode review.DiffMode, file review.ChangedFile, head *string) (review.FilePatch, error) {
+	endpoints, err := source.previewEndpoints(ctx, mode, head)
+	if err != nil {
+		return review.FilePatch{}, err
+	}
 	if file.Recreated && head != nil {
-		return source.recreatedContents(ctx, file.Path, source.comparisonBase(mode, *head))
+		return source.recreatedContents(ctx, file.Path, endpoints.before.revision)
 	}
 	if file.Binary {
 		return review.FilePatch{Message: Message("Binary file changed. No text preview available.")}, nil
@@ -549,8 +549,8 @@ func (source *gitSource) Patch(ctx context.Context, mode review.DiffMode, file r
 	if file.Status == "U" {
 		return review.FilePatch{Message: Message("Unresolved merge conflict. Resolve this file in your editor; the viewer is read-only.")}, nil
 	}
-	if source.objectsOnly() {
-		submodule, err := source.objectSubmodule(ctx, file)
+	if endpoints.objectsOnly() {
+		submodule, err := source.objectSubmodule(ctx, endpoints, file)
 		if err != nil {
 			return review.FilePatch{}, err
 		}
@@ -558,7 +558,7 @@ func (source *gitSource) Patch(ctx context.Context, mode review.DiffMode, file r
 			return review.FilePatch{Message: Message("Submodule or directory changed. Open its repository to review the contents.")}, nil
 		}
 	}
-	if mode != review.DiffStaged && !source.objectsOnly() {
+	if endpoints.after.kind == worktreeEndpoint {
 		if stat, err := os.Lstat(filepath.Join(source.root, filepath.FromSlash(file.Path))); err == nil {
 			if stat.IsDir() {
 				return review.FilePatch{Message: Message("Submodule or directory changed. Open its repository to review the contents.")}, nil
@@ -571,17 +571,13 @@ func (source *gitSource) Patch(ctx context.Context, mode review.DiffMode, file r
 			}
 		}
 	}
-	_, base, err := source.headAndBase(ctx)
-	if err != nil {
-		return review.FilePatch{}, err
-	}
 	var args []string
 	if file.Status == "?" {
 		args = []string{"diff", "--no-index", "--no-ext-diff", "--no-textconv"}
 		args = append(args, patchFormat...)
 		args = append(args, "--", "/dev/null", file.Path)
 	} else {
-		args = append(source.diffArgs(mode, base), "--patch", "--unified=5", "--")
+		args = append(endpoints.diffArgs(), "--patch", "--unified=5", "--")
 		if file.OldPath != nil {
 			args = append(args, *file.OldPath)
 		}
@@ -611,6 +607,10 @@ func (source *gitSource) Patch(ctx context.Context, mode review.DiffMode, file r
 }
 
 func (source *gitSource) Contents(ctx context.Context, mode review.DiffMode, file review.ChangedFile, head *string) (review.FileContents, error) {
+	endpoints, err := source.previewEndpoints(ctx, mode, head)
+	if err != nil {
+		return review.FileContents{}, err
+	}
 	if file.Binary || file.Status == "U" {
 		return review.FileContents{}, Error(400, "Full text is unavailable for this file")
 	}
@@ -626,19 +626,14 @@ func (source *gitSource) Contents(ctx context.Context, mode review.DiffMode, fil
 		}
 		return output, err
 	}
-	beforeRevision := ""
-	if mode != review.DiffUnstaged && head != nil {
-		beforeRevision = source.comparisonBase(mode, *head)
-	}
-	before, err := readBlob(beforeRevision, previousPath, beforeRevision == "" || file.Status == "A" || file.Status == "?")
+	beforeRevision := endpoints.before.revision
+	before, err := readBlob(beforeRevision, previousPath, endpoints.before.kind == indexEndpoint || file.Status == "A" || file.Status == "?")
 	if err != nil {
 		return review.FileContents{}, err
 	}
 	after := ""
-	if source.objectsOnly() {
-		after, err = readBlob(source.comparison.HeadOID, file.Path, file.Status == "D")
-	} else if mode == review.DiffStaged {
-		after, err = readBlob("", file.Path, file.Status == "D")
+	if endpoints.after.kind != worktreeEndpoint {
+		after, err = readBlob(endpoints.after.revision, file.Path, file.Status == "D")
 	} else if file.Status != "D" {
 		path := filepath.Join(source.root, filepath.FromSlash(file.Path))
 		stat, statError := os.Lstat(path)

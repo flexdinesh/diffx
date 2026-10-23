@@ -14,8 +14,12 @@ func ContentIdentity(request Request) (string, error) {
 	if len(request.Scopes) == 0 {
 		return "", errors.New("observation scopes required")
 	}
+	kinds := make([]string, 0, len(request.Scopes))
 	modes := make([]string, 0, len(request.Scopes))
 	for _, scope := range request.Scopes {
+		if scope.Snapshot.ComparisonKind != "" {
+			kinds = append(kinds, string(scope.Snapshot.Mode)+":"+string(scope.Snapshot.ComparisonKind))
+		}
 		modes = append(modes, string(scope.Snapshot.Mode))
 		if request.ContentHash == "" && len(scope.Snapshot.Files) != 0 {
 			return "", nil
@@ -31,6 +35,11 @@ func ContentIdentity(request Request) (string, error) {
 	// Keep legacy HEAD identity hashes; branch policies have separate reviews.
 	if policy := ComparisonPolicy(metadata); policy != "" {
 		parts = append(parts, policy)
+	}
+	// Omitted kinds preserve protocol 4 identity, including already queued requests.
+	if len(kinds) > 0 {
+		sort.Strings(kinds)
+		parts = append(parts, kinds)
 	}
 	encoded, err := json.Marshal(parts)
 	if err != nil {

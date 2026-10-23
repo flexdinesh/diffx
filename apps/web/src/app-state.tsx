@@ -17,6 +17,7 @@ import {
   capabilityEnabled,
   useCatalog,
   useSession,
+  useSessionScope,
 } from "./session-context.tsx";
 import type { SyncSummary } from "./use-collection.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
@@ -37,6 +38,8 @@ interface DiffSource {
   repository: ReturnType<typeof useDiff>["repository"];
   mode: DiffMode;
   piped: boolean;
+  scopeAvailable: boolean;
+  requestedScope: string;
   changeMode: (mode: DiffMode) => void;
   /** Syncs local checkouts when the process supports it, else reloads. */
   refresh: () => void;
@@ -72,15 +75,21 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
     collect !== null || capabilityEnabled(capabilities.diff.refresh);
   const commentsEnabled = capabilityEnabled(capabilities.review.comments);
   const scopes = capabilities.diff.scopes.values;
-  const [mode, setMode] = useState<DiffMode>("all");
+  const { mode, changeMode, scopeAvailable, requestedScope } =
+    useSessionScope();
   const [draft, setDraft] = useState<ReviewComment | null>(null);
   const [collapsed, setCollapsed] = useState(() =>
-    sessionPaths(collapsedKey(stream, "all")),
+    sessionPaths(collapsedKey(stream, mode)),
   );
+  const [collapsedMode, setCollapsedMode] = useState(mode);
+  if (collapsedMode !== mode) {
+    setCollapsedMode(mode);
+    setCollapsed(sessionPaths(collapsedKey(stream, mode)));
+  }
   useEffect(() => {
-    saveSessionPaths(collapsedKey(stream, mode), collapsed);
-  }, [stream, mode, collapsed]);
-  const diff = useDiff(contextId, mode);
+    saveSessionPaths(collapsedKey(stream, collapsedMode), collapsed);
+  }, [stream, collapsedMode, collapsed]);
+  const diff = useDiff(contextId, mode, scopeAvailable);
   const repository = diff.repository;
   const review = useReview(
     contextId,
@@ -99,14 +108,6 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, [collect, reload, setFeedback]);
   const reviewed = useReviewedFiles(contextId, repository, mode, setCollapsed);
   const { show: showSidebar, closeMobile } = useSidebarState();
-  const changeMode = useCallback(
-    (value: DiffMode) => {
-      if (value === mode || !scopes.includes(value)) return;
-      setMode(value);
-      setCollapsed(sessionPaths(collapsedKey(stream, value)));
-    },
-    [stream, mode, scopes],
-  );
   const navigation = useFileNavigation({
     stream,
     repository,
@@ -132,11 +133,23 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
       repository,
       mode,
       piped,
+      scopeAvailable,
+      requestedScope,
       changeMode,
       refresh,
       refreshEnabled,
     }),
-    [diff, repository, mode, piped, changeMode, refresh, refreshEnabled],
+    [
+      diff,
+      repository,
+      mode,
+      piped,
+      scopeAvailable,
+      requestedScope,
+      changeMode,
+      refresh,
+      refreshEnabled,
+    ],
   );
   const draftState = useMemo(() => ({ draft, setDraft }), [draft]);
   const collapse = useMemo(() => ({ collapsed, setCollapsed }), [collapsed]);

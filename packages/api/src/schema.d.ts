@@ -555,7 +555,7 @@ export interface components {
       /** @description Unix milliseconds. */
       expiresAt: number;
     };
-    /** @description Immutable Git comparison facts captured by the producer and stored with the observation. Applies to the all scope; staged always compares HEAD to index and unstaged compares index to working tree. Missing comparison metadata retains legacy HEAD semantics. */
+    /** @description Immutable Git comparison facts captured by the producer and stored with the observation. Defines the all and committed baselines; uncommitted compares HEAD to working changes, staged compares HEAD to index, and unstaged compares index to working tree. Missing comparison metadata retains legacy HEAD semantics. */
     Comparison: {
       /**
        * @description Working-tree compares HEAD to working changes. Branch compares the default or explicit base ref's merge base to the checkout, including committed and working changes; object-only branch recovery compares that merge base to HEAD.
@@ -566,7 +566,7 @@ export interface components {
       baseRef: string;
       /** @description Resolved baseline tip at collection time. Absent for unborn checkouts. */
       baseCommit?: string;
-      /** @description Full commit ID actually used as the all-scope baseline. For branch comparisons this is the merge base of baseCommit and observation.head, which may differ from the base ref tip. For working-tree comparisons it equals the captured HEAD; absent for unborn checkouts. */
+      /** @description Full commit ID used as the all and committed scope baseline. For branch comparisons this is the merge base of baseCommit and observation.head, which may differ from the base ref tip. For working-tree comparisons it equals the captured HEAD; absent for unborn checkouts. */
       mergeBase?: string;
     };
     AgentSession: {
@@ -638,7 +638,7 @@ export interface components {
     };
     IngestionRequest: {
       /**
-       * @description Current producers send 2. Legacy version 1 remains accepted for ingestion and replay.
+       * @description Protocol 4 only. Install the server before collectors that send new scopes or optional comparisonKind metadata; legacy protocol 4 submissions remain replayable.
        * @enum {integer}
        */
       protocolVersion: 4;
@@ -683,7 +683,9 @@ export interface components {
        * @description Approximate code activity in Unix milliseconds. Current heads use the winning submission activity; historical snapshots retain captured activity. Missing activity falls back to the original collection time.
        */
       lastChangedAt: number;
-      /** @description Unique files with staged, unstaged, or untracked changes, independent of the selected scope. Captures use their snapshot file count. Null when change metadata is unknown. */
+      /** @description Captured comparisons and stored file counts, independent of live checkout availability. */
+      scopeSummaries?: components["schemas"]["ScopeSummary"][];
+      /** @description Distinct changed paths across all captured scopes, independent of the selected scope. Null when change metadata is unknown. */
       changedFileCount: number | null;
       /** Format: int64 */
       expiresAt: number | null;
@@ -713,7 +715,20 @@ export interface components {
       cpuUsage: number;
     };
     /** @enum {string} */
-    DiffMode: "all" | "staged" | "unstaged";
+    DiffMode: "all" | "staged" | "unstaged" | "uncommitted" | "committed";
+    /** @enum {string} */
+    ComparisonKind:
+      | "combined"
+      | "uncommitted"
+      | "staged"
+      | "unstaged"
+      | "committed"
+      | "patch";
+    ScopeSummary: {
+      scope: components["schemas"]["DiffMode"];
+      comparisonKind: components["schemas"]["ComparisonKind"];
+      fileCount: number;
+    };
     /** @enum {string} */
     CapabilityState: "enabled" | "disabled" | "unavailable";
     Capability: {
@@ -771,6 +786,7 @@ export interface components {
       branch: string;
       head: string | null;
       mode: components["schemas"]["DiffMode"];
+      comparisonKind?: components["schemas"]["ComparisonKind"];
       files: components["schemas"]["ChangedFile"][];
       revision: string;
     };

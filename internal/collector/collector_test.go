@@ -84,7 +84,7 @@ func TestCollectGitScopesAndFullContents(t *testing.T) {
 	write(t, root, "tracked", "working\n")
 	write(t, root, "untracked", "new\n")
 	request := collect(t, root)
-	if len(request.Scopes) != 3 {
+	if len(request.Scopes) != 5 {
 		t.Fatalf("scopes: %d", len(request.Scopes))
 	}
 	if request.Metadata.Branch != "main" || request.Metadata.RepositoryName != "project" || request.Metadata.RemoteURL != "https://example.com/org/project.git" || request.Metadata.Head == nil || request.Metadata.CollectedAt <= 0 {

@@ -32,7 +32,15 @@ func ContentHash(ctx context.Context, source Source, snapshots []review.Reposito
 	}
 	// Stage records preserve every conflict blob as well as staged contents.
 	index := ""
-	if !git.objectsOnly() {
+	usesIndex := false
+	for _, snapshot := range snapshots {
+		endpoints, err := git.endpoints(snapshot.Mode, base)
+		if err != nil {
+			return "", err
+		}
+		usesIndex = usesIndex || !endpoints.objectsOnly()
+	}
+	if usesIndex {
 		index, err = runGit(ctx, git.root, 16<<20, "ls-files", "--stage", "-z")
 		if err != nil {
 			return "", err
@@ -53,7 +61,11 @@ func ContentHash(ctx context.Context, source Source, snapshots []review.Reposito
 	sort.Slice(scopes, func(i, j int) bool { return scopes[i].Mode < scopes[j].Mode })
 	contents := make(map[string][]string)
 	for _, snapshot := range scopes {
-		raw, err := runGit(ctx, git.root, 16<<20, append(git.diffArgs(snapshot.Mode, base), "--raw", "--no-abbrev", "-z", "--")...)
+		endpoints, err := git.endpoints(snapshot.Mode, base)
+		if err != nil {
+			return "", err
+		}
+		raw, err := runGit(ctx, git.root, 16<<20, append(endpoints.diffArgs(), "--raw", "--no-abbrev", "-z", "--")...)
 		if err != nil {
 			return "", err
 		}
@@ -64,6 +76,12 @@ func ContentHash(ctx context.Context, source Source, snapshots []review.Reposito
 		if err := encoder.Encode(snapshot.Mode); err != nil {
 			return "", err
 		}
+		// Absent descriptors retain legacy identity bytes for saved captures.
+		if snapshot.ComparisonKind != "" {
+			if err := encoder.Encode(snapshot.ComparisonKind); err != nil {
+				return "", err
+			}
+		}
 		ordered := append([]review.ChangedFile(nil), snapshot.Files...)
 		sort.Slice(ordered, func(i, j int) bool { return ordered[i].Path < ordered[j].Path })
 		for _, file := range ordered {
@@ -71,19 +89,19 @@ func ContentHash(ctx context.Context, source Source, snapshots []review.Reposito
 			if rawFile := files[file.Path]; rawFile != nil {
 				header = rawFile.Fingerprint
 				fields := strings.Fields(header)
-				if len(fields) < 5 || !git.objectsOnly() && (fields[0] == ":160000" || fields[1] == "160000") {
+				if len(fields) < 5 || !endpoints.objectsOnly() && (fields[0] == ":160000" || fields[1] == "160000") {
 					return "", nil
 				}
 				// Without index refresh, a stat-dirty working path can have an
 				// unknown raw target OID even when status proved it matches the
 				// index. Restore the known OID to preserve existing content hashes.
-				if target, ok := indexed[file.Path]; ok && snapshot.Mode != review.DiffStaged && file.WorktreeStatus == " " && !file.Recreated && fields[1] == target.mode && strings.Trim(fields[3], "0") == "" {
+				if target, ok := indexed[file.Path]; ok && endpoints.after.kind == worktreeEndpoint && file.WorktreeStatus == " " && !file.Recreated && fields[1] == target.mode && strings.Trim(fields[3], "0") == "" {
 					fields[3] = target.oid
 					header = strings.Join(fields, " ")
 				}
 			}
 			var content []string
-			if !git.objectsOnly() && snapshot.Mode != review.DiffStaged && (file.Status != "D" || file.Recreated) {
+			if endpoints.after.kind == worktreeEndpoint && (file.Status != "D" || file.Recreated) {
 				var found bool
 				content, found = contents[file.Path]
 				if !found {

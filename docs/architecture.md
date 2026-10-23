@@ -20,6 +20,11 @@ canonical record of package boundaries and architectural decisions.
 Source support and review policy resolve snapshot capabilities. A mode never
 invents contents, scopes or refresh support. Queue presence at the composition
 root enables remote admission; no queue means no admission routes.
+Captured comparison kinds describe endpoints independently of the producer and
+deployment mode. Collection owns Git endpoints; ingestion owns semantic
+validation and legacy interpretation; context queries expose stored scope
+summaries. Selecting a comparison reads the same immutable observation and never
+triggers collection or resolves the latest stream head.
 Manual sync and hook producers collect only the selected checkout. A local
 checkout process discovers every repository under its paths (bounded depth,
 stopping at repositories, skipping hidden directories) and collects all of their
@@ -200,10 +205,12 @@ database and backup directory, name the compatible schema, and show the
 `--state` override for explicitly selecting fresh state; local refusals of older
 state also suggest `--reset-state`. Fresh state has no saved reviews or server
 accounts.
-Upgrade server and collectors together.
 Install the server first when adding optional protocol 4 metadata: older servers
-reject unknown request fields. Activity metadata is optional, so existing saved
-submissions remain replayable and schema 11 state needs no reset.
+reject unknown request fields and new diff scopes. Captured comparison kinds,
+the `uncommitted` and `committed` scopes, and activity metadata retain protocol 4.
+Existing saved submissions remain replayable and schema 11 state needs no reset.
+Legacy comparison kinds are interpreted on read; stored payloads and their retry
+identities are not rewritten. Upgrade collectors after the server.
 Versioned producer directories ignore old manual/hook pending payloads.
 Stop old binaries before upgrading.
 

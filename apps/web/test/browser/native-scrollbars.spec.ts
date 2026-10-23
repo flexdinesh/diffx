@@ -138,7 +138,9 @@ test("diff tracks fill frames and headers align with their gutters", async ({
     const theme = await page
       .getByRole("button", { name: /^Theme:/ })
       .boundingBox();
-    expect(toolbar?.height).toBe(header?.height);
+    if (!header) throw new Error("Missing header");
+    // The wrapping toolbar keeps a 44px control row plus its bottom border.
+    expect(toolbar?.height).toBe(header.height + 1);
     for (const id of ["#view-options", "#toggle-all-files"]) {
       const button = await page.locator(id).boundingBox();
       expect(button?.width).toBe(theme?.width);

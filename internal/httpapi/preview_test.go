@@ -25,11 +25,13 @@ func TestStoredPreviewReferences(t *testing.T) {
 	// Both scopes share a file identity but have independent stored versions.
 	input.Metadata.RepositoryKey, input.Metadata.CheckoutKey = "repo", "checkout"
 	input.Scopes[0].Snapshot.Source = "local"
+	input.Scopes[0].Snapshot.ComparisonKind = review.ComparisonUncommitted
 	input.Metadata.Root = input.Scopes[0].Snapshot.Root
 	input.Metadata.Branch = input.Scopes[0].Snapshot.Branch
 	input.Metadata.Head = input.Scopes[0].Snapshot.Head
 	staged := input.Scopes[0]
 	staged.Snapshot.Mode = review.DiffStaged
+	staged.Snapshot.ComparisonKind = review.ComparisonStaged
 	file := staged.Snapshot.Files[0]
 	staged.Patches = map[string]review.FilePatch{file.ID: {Patch: raw}}
 	preview := input.Scopes[0].Patches[file.ID]

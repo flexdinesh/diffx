@@ -64,8 +64,8 @@ func Validate(input Request) error {
 			return fmt.Errorf("metadata value exceeds 32 KiB")
 		}
 	}
-	if len(input.Scopes) < 1 || len(input.Scopes) > 3 {
-		return fmt.Errorf("one to three scopes required")
+	if len(input.Scopes) < 1 || len(input.Scopes) > 5 {
+		return fmt.Errorf("one to five scopes required")
 	}
 	seen := make(map[review.DiffMode]bool)
 	for _, scope := range input.Scopes {
@@ -73,6 +73,16 @@ func Validate(input Request) error {
 			return fmt.Errorf("invalid or repeated scope")
 		}
 		seen[scope.Snapshot.Mode] = true
+		kind := scope.Snapshot.ComparisonKind
+		newScope := scope.Snapshot.Mode == review.DiffUncommitted || scope.Snapshot.Mode == review.DiffCommitted
+		if newScope && kind == "" {
+			return fmt.Errorf("comparisonKind required for %s scope", scope.Snapshot.Mode)
+		}
+		if kind != "" {
+			if err := validateComparisonKind(scope.Snapshot, input.Metadata); err != nil {
+				return err
+			}
+		}
 		if scope.Snapshot.Source != "local" && scope.Snapshot.Source != "stdin" {
 			return fmt.Errorf("snapshot source must be local or stdin")
 		}
@@ -106,6 +116,37 @@ func Validate(input Request) error {
 	}
 	if !seen[review.DiffAll] {
 		return fmt.Errorf("all scope required")
+	}
+	return nil
+}
+
+// Explicit kinds describe endpoints independently of which other views a
+// producer captured. Only legacy interpretation depends on the collected set.
+func validateComparisonKind(snapshot review.RepositoryDiff, metadata Metadata) error {
+	kind := snapshot.ComparisonKind
+	branch := metadata.Comparison != nil && metadata.Comparison.Kind == "branch"
+	valid := false
+	if snapshot.Source == "stdin" {
+		valid = snapshot.Mode == review.DiffAll && kind == review.ComparisonPatch
+	} else {
+		switch snapshot.Mode {
+		case review.DiffAll:
+			valid = !branch && kind == review.ComparisonUncommitted || branch && (kind == review.ComparisonCombined || kind == review.ComparisonCommitted)
+		case review.DiffUncommitted:
+			valid = kind == review.ComparisonUncommitted
+		case review.DiffStaged:
+			valid = kind == review.ComparisonStaged
+		case review.DiffUnstaged:
+			valid = kind == review.ComparisonUnstaged
+		case review.DiffCommitted:
+			valid = branch && kind == review.ComparisonCommitted
+		}
+	}
+	if !valid {
+		return fmt.Errorf("comparisonKind does not match captured scope and baseline")
+	}
+	if kind == review.ComparisonCommitted && (snapshot.Head == nil || *snapshot.Head == "") {
+		return fmt.Errorf("committed comparison requires captured HEAD")
 	}
 	return nil
 }

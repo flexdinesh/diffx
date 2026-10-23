@@ -114,7 +114,11 @@ const labels: Record<string, string> = {
 };
 
 // Keep change type distinct from staging: a modified file can occupy both layers.
-export function gitDecoration(file: ChangedFile) {
+export function gitDecoration(file: ChangedFile, stagingMetadata = true) {
+  if (!stagingMetadata) {
+    const label = labels[file.status] ?? "Changed";
+    return { code: file.status, state: "change", label, details: label };
+  }
   if (file.indexStatus === "" && file.worktreeStatus === "") {
     const label = `${labels[file.status] ?? "Changed"} · Piped`;
     return { code: file.status, state: "patch", label, details: label };

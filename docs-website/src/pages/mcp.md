@@ -81,7 +81,12 @@ returned `nextCursor` as `cursor` for another page.
 ### `get_diff`
 
 Returns the stored diff manifest and changed-file IDs. `scope` defaults to
-`all`; `staged` and `unstaged` require a collected scope.
+`all`; `uncommitted`, `committed`, `staged`, and `unstaged` require a collected
+scope. Context `scopeSummaries` lists captured scopes and file counts; manifest
+`comparisonKind` identifies the endpoints. `all` means Combined for a branch
+checkout, Uncommitted for HEAD-only captures, Branch changes for object-only
+captures, or the supplied patch for piped input. Scope selection never collects
+new data.
 
 ```json
 {

@@ -38,7 +38,7 @@ func TestBranchComparisonIncludesCommitsAndPreservesStagingScopes(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(request.Scopes) != 3 || request.Metadata.Branch != "feature" {
+	if len(request.Scopes) != 5 || request.Metadata.Branch != "feature" {
 		t.Fatalf("branch collection: %+v", request)
 	}
 	for _, expectation := range []struct {
@@ -46,6 +46,8 @@ func TestBranchComparisonIncludesCommitsAndPreservesStagingScopes(t *testing.T) 
 		before, after string
 	}{
 		{review.DiffAll, "original\n", "working\n"},
+		{review.DiffUncommitted, "committed\n", "working\n"},
+		{review.DiffCommitted, "original\n", "committed\n"},
 		{review.DiffStaged, "committed\n", "staged\n"},
 		{review.DiffUnstaged, "staged\n", "working\n"},
 	} {

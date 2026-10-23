@@ -266,7 +266,26 @@ export function useReview(
     setFeedback("Saving comment…");
     try {
       const existing = comments.some((comment) => comment.id === draft.id);
-      const file = repository.files.find(
+      let original = repository;
+      if (!existing && repository.mode !== draft.scope) {
+        const { data, error } = await api.GET(
+          "/api/v2/contexts/{contextId}/diffs/current",
+          {
+            params: { path: { contextId }, query: { scope: draft.scope } },
+            signal: request.signal,
+          },
+        );
+        if (!request.isCurrent()) return;
+        if (!data)
+          throw new Error(
+            errorDetail(
+              error,
+              "Unable to load the draft’s original comparison",
+            ),
+          );
+        original = data;
+      }
+      const file = original.files.find(
         (entry) =>
           entry.path === draft.path && entry.fingerprint === draft.fingerprint,
       );
@@ -280,8 +299,8 @@ export function useReview(
           ? await api.POST("/api/v2/contexts/{contextId}/comments", {
               params: { path: { contextId } },
               body: {
-                diffId: repository.id,
-                versionId: repository.versionId,
+                diffId: original.id,
+                versionId: original.versionId,
                 fileId: file.id,
                 scope: draft.scope,
                 fileVersion: draft.fingerprint,

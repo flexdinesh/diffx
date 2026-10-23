@@ -12,7 +12,11 @@ import {
 } from "react";
 import { useIdentity } from "./identity-context.tsx";
 import { latestChangedContext } from "./context-activity.ts";
-import { unseenChangedHeads, type SeenStreams } from "./project-nav.ts";
+import {
+  streamKey,
+  unseenChangedHeads,
+  type SeenStreams,
+} from "./project-nav.ts";
 import { useSeenStreams } from "./use-seen-streams.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
 import {
@@ -22,10 +26,25 @@ import {
 import {
   contextPath,
   routeFromUrl,
+  sameRoute,
   streamPath,
   type Route,
 } from "./review-route.ts";
 import { useCollection, type SyncSummary } from "./use-collection.ts";
+
+import { selectedScope, type DiffMode } from "./diff-mode.ts";
+import { saveSessionValue, sessionValue } from "./preferences.ts";
+
+const ScopeContext = createContext<
+  | (ReturnType<typeof selectedScope> & {
+      changeMode: (mode: DiffMode) => void;
+    })
+  | null
+>(null);
+const scopeFromUrl = () =>
+  new URLSearchParams(window.location.search).get("scope");
+const scopeKey = (context: ApiContext, owner: string) =>
+  `diff-scope:${owner}:${streamKey(context)}`;
 
 type LoadState =
   | { status: "loading" }
@@ -87,6 +106,8 @@ export function capabilityEnabled(capability: { state: string }) {
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const { state: identity } = useIdentity();
+  const preferenceOwner =
+    identity.status === "ready" ? (identity.bootstrap.user?.id ?? "local") : "";
   const remote =
     identity.status === "ready" && identity.bootstrap.mode === "remote";
   const collectEnabled =
@@ -94,6 +115,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     identity.bootstrap.mode === "local" &&
     identity.bootstrap.collect;
   const [route, setRoute] = useState(routeFromUrl);
+  const [requestedScope, setRequestedScope] = useState(scopeFromUrl);
   const [selectedId, setSelectedId] = useState(() =>
     route.kind === "pinned" ? route.id : "",
   );
@@ -125,6 +147,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       },
     ) => {
       if (!options?.preserveNavigation) openDiff();
+      // Initial live/root resolution retains an explicit scope. Selecting a new
+      // snapshot uses that stream's saved preference.
+      if (!selectedRef.current) path += window.location.search;
+      else setRequestedScope(null);
       if (options?.replace || path === window.location.pathname)
         window.history.replaceState(null, "", path);
       else window.history.pushState(null, "", path);
@@ -213,6 +239,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const handleNavigation = () => {
       const next = routeFromUrl();
+      setRequestedScope(scopeFromUrl());
+      if (sameRoute(route, next)) return;
       setRoute(next);
       setMissing(false);
       setSelectedId(next.kind === "pinned" ? next.id : "");
@@ -220,7 +248,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("popstate", handleNavigation);
     return () => window.removeEventListener("popstate", handleNavigation);
-  }, []);
+  }, [route]);
   // Live URLs open available catalog data while local collection continues; the
   // root waits for the collection's default. Once selected, a snapshot stays
   // open; collection only announces newer heads.
@@ -321,6 +349,46 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const current = ready
     ? state.session
     : heads.contexts.find((context) => context.id === selectedId);
+  const scope = ready
+    ? selectedScope(
+        state.session,
+        requestedScope,
+        sessionValue(scopeKey(state.session, preferenceOwner)),
+      )
+    : null;
+  const changeMode = useCallback(
+    (mode: DiffMode) => {
+      if (
+        state.status !== "ready" ||
+        !state.session.capabilities.diff.scopes.values.includes(mode)
+      )
+        return;
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("scope") === mode) return;
+      // Pin the previous implicit choice in history before adding a new one.
+      // Back must restore that choice, not the preference saved by this click.
+      if (!url.searchParams.has("scope")) {
+        const previous = selectedScope(
+          state.session,
+          requestedScope,
+          sessionValue(scopeKey(state.session, preferenceOwner)),
+        );
+        url.searchParams.set("scope", previous.requestedScope);
+        window.history.replaceState(null, "", url);
+      }
+      url.searchParams.set("scope", mode);
+      window.history.pushState(null, "", url);
+      setRequestedScope(mode);
+    },
+    [state, requestedScope, preferenceOwner],
+  );
+  const scopeMode = scope?.mode;
+  const scopeAvailable = scope?.scopeAvailable;
+  useEffect(() => {
+    if (ready && scopeAvailable && scopeMode)
+      saveSessionValue(scopeKey(state.session, preferenceOwner), scopeMode);
+  }, [ready, state, scopeMode, scopeAvailable, preferenceOwner]);
+  const scopeState = scope ? { ...scope, changeMode } : null;
   const seen = useSeenStreams(
     identity.status === "ready" ? (identity.bootstrap.user?.id ?? null) : null,
     heads.contexts,
@@ -429,7 +497,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     <CatalogContext value={catalog}>
       <SessionShellContext value={shell}>
         <SessionContext value={ready ? state.session : null}>
-          {children}
+          <ScopeContext value={scopeState}>{children}</ScopeContext>
         </SessionContext>
       </SessionShellContext>
     </CatalogContext>
@@ -458,4 +526,11 @@ export function useDeleteContext() {
   const catalog = useContext(CatalogContext);
   if (!catalog) throw new Error("Context deletion requires SessionProvider");
   return catalog.deleteContext;
+}
+
+export function useSessionScope() {
+  const scope = useContext(ScopeContext);
+  if (!scope)
+    throw new Error("Scope consumers require a ready SessionProvider");
+  return scope;
 }

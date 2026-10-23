@@ -40,7 +40,9 @@ diffx
 ```
 
 Your browser opens the captured changes. Use the file list to navigate, switch
-between all, staged, and unstaged changes, and add comments as you review.
+between Uncommitted, Branch changes, and Combined, and add comments as you review.
+Uncommitted also offers All, Staged, and Unstaged views. Available comparisons
+depend on what the snapshot captured.
 
 To review another repository:
 

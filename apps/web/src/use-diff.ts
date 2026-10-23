@@ -59,8 +59,10 @@ const initialState: DiffState = {
 
 // Observations are immutable. Scope changes abort stale requests; retries reload
 // the same stored snapshot and preserve successfully loaded previews.
-export function useDiff(contextId: string, mode: DiffMode) {
+export function useDiff(contextId: string, mode: DiffMode, enabled = true) {
   const [state, setState] = useState<DiffState>(initialState);
+  const key = `${contextId}:${mode}:${enabled}`;
+  const [loadedKey, setLoadedKey] = useState("");
   const cache = useRef(new Map<string, Preview>());
   const refreshRef = useRef<() => void>(() => {});
   const refresh = useCallback(() => refreshRef.current(), []);
@@ -69,6 +71,11 @@ export function useDiff(contextId: string, mode: DiffMode) {
     let controller = new AbortController();
     cache.current.clear();
     setState(initialState);
+    setLoadedKey(key);
+    if (!enabled) {
+      refreshRef.current = () => {};
+      return;
+    }
     async function load() {
       if (disposed) return;
       controller.abort();
@@ -252,6 +259,8 @@ export function useDiff(contextId: string, mode: DiffMode) {
       disposed = true;
       controller.abort();
     };
-  }, [contextId, mode]);
-  return useMemo(() => ({ ...state, refresh }), [state, refresh]);
+  }, [contextId, mode, enabled, key]);
+  // Never expose the previous scope during the render before effect cleanup.
+  const current = loadedKey === key ? state : initialState;
+  return useMemo(() => ({ ...current, refresh }), [current, refresh]);
 }

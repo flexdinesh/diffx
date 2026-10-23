@@ -995,7 +995,7 @@ components:
           description: Unix milliseconds.
     Comparison:
       type: object
-      description: Immutable Git comparison facts captured by the producer and stored with the observation. Applies to the all scope; staged always compares HEAD to index and unstaged compares index to working tree. Missing comparison metadata retains legacy HEAD semantics.
+      description: Immutable Git comparison facts captured by the producer and stored with the observation. Defines the all and committed baselines; uncommitted compares HEAD to working changes, staged compares HEAD to index, and unstaged compares index to working tree. Missing comparison metadata retains legacy HEAD semantics.
       additionalProperties: false
       required: [kind, baseRef]
       properties:
@@ -1011,7 +1011,7 @@ components:
           description: Resolved baseline tip at collection time. Absent for unborn checkouts.
         mergeBase:
           type: string
-          description: Full commit ID actually used as the all-scope baseline. For branch comparisons this is the merge base of baseCommit and observation.head, which may differ from the base ref tip. For working-tree comparisons it equals the captured HEAD; absent for unborn checkouts.
+          description: Full commit ID used as the all and committed scope baseline. For branch comparisons this is the merge base of baseCommit and observation.head, which may differ from the base ref tip. For working-tree comparisons it equals the captured HEAD; absent for unborn checkouts.
     AgentSession:
       type: object
       additionalProperties: false
@@ -1154,7 +1154,7 @@ components:
         protocolVersion:
           type: integer
           enum: [4]
-          description: Current producers send 2. Legacy version 1 remains accepted for ingestion and replay.
+          description: Protocol 4 only. Install the server before collectors that send new scopes or optional comparisonKind metadata; legacy protocol 4 submissions remain replayable.
         submissionId:
           type: string
           minLength: 1
@@ -1168,7 +1168,7 @@ components:
         scopes:
           type: array
           minItems: 1
-          maxItems: 3
+          maxItems: 5
           items:
             $ref: "#/components/schemas/IngestionScope"
     ContextPage:
@@ -1246,10 +1246,15 @@ components:
           type: integer
           format: int64
           description: Approximate code activity in Unix milliseconds. Current heads use the winning submission activity; historical snapshots retain captured activity. Missing activity falls back to the original collection time.
+        scopeSummaries:
+          type: array
+          description: Captured comparisons and stored file counts, independent of live checkout availability.
+          items:
+            $ref: "#/components/schemas/ScopeSummary"
         changedFileCount:
           type: [integer, "null"]
           minimum: 0
-          description: Unique files with staged, unstaged, or untracked changes, independent of the selected scope. Captures use their snapshot file count. Null when change metadata is unknown.
+          description: Distinct changed paths across all captured scopes, independent of the selected scope. Null when change metadata is unknown.
         expiresAt:
           type: [integer, "null"]
           format: int64
@@ -1310,7 +1315,22 @@ components:
           maximum: 100
     DiffMode:
       type: string
-      enum: [all, staged, unstaged]
+      enum: [all, staged, unstaged, uncommitted, committed]
+    ComparisonKind:
+      type: string
+      enum: [combined, uncommitted, staged, unstaged, committed, patch]
+    ScopeSummary:
+      type: object
+      additionalProperties: false
+      required: [scope, comparisonKind, fileCount]
+      properties:
+        scope:
+          $ref: "#/components/schemas/DiffMode"
+        comparisonKind:
+          $ref: "#/components/schemas/ComparisonKind"
+        fileCount:
+          type: integer
+          minimum: 0
     CapabilityState:
       type: string
       enum: [enabled, disabled, unavailable]
@@ -1462,6 +1482,8 @@ components:
           type: [string, "null"]
         mode:
           $ref: "#/components/schemas/DiffMode"
+        comparisonKind:
+          $ref: "#/components/schemas/ComparisonKind"
         files:
           type: array
           items:

@@ -1,3 +1,4 @@
+import { emptyComparison } from "./diff-mode.ts";
 import { DiffSkeleton } from "./WorkspaceLoading.tsx";
 import type {
   CodeViewItem,
@@ -156,8 +157,17 @@ function itemVersions() {
 
 // Keep Pierre's annotation versions and event callbacks local to its renderer.
 export function DiffWorkspace() {
-  const { diff, repository, piped, mode, refreshEnabled } = useDiffSource();
-  const { id: contextId, capabilities } = useSession();
+  const {
+    diff,
+    repository,
+    piped,
+    mode,
+    refreshEnabled,
+    scopeAvailable,
+    requestedScope,
+  } = useDiffSource();
+  const session = useSession();
+  const { id: contextId, capabilities } = session;
   const { theme, diffTheme, lineDiffType, layout, wrap } = useAppearance();
   const { collapsed, setCollapsed } = useDiffCollapse();
   const {
@@ -638,33 +648,34 @@ export function DiffWorkspace() {
     ],
   );
 
-  const loadingChanges = !repository && !diff.notice;
+  const loadingChanges = scopeAvailable && !repository && !diff.notice;
   // Matching files with none visible were all hidden as reviewed.
   const allReviewedHidden = matchingFiles.length > 0;
-  const emptyTitle = !repository
-    ? "Cannot load changes"
-    : allReviewedHidden
-      ? filter
-        ? "All matching files reviewed"
-        : "All files reviewed"
-      : filter
-        ? "No matching files"
-        : piped
-          ? "No file changes in this input"
-          : mode === "staged"
-            ? "Nothing staged"
-            : "No changes in this snapshot";
-  const emptyDescription = !repository
-    ? "Check that the server is running, then refresh."
-    : allReviewedHidden
-      ? "Reviewed files are hidden."
-      : filter
-        ? "Try a different filename or clear the filter."
-        : piped
-          ? "Run a command that emits a Git patch, then pipe it into diffx."
-          : mode === "staged"
-            ? "No staged changes were collected in this snapshot."
-            : "No changes in this snapshot. Collect another snapshot with diffx or diffx sync.";
+  const empty = emptyComparison(session, mode);
+  const emptyTitle = !scopeAvailable
+    ? "Comparison unavailable"
+    : !repository
+      ? "Cannot load changes"
+      : allReviewedHidden
+        ? filter
+          ? "All matching files reviewed"
+          : "All files reviewed"
+        : filter
+          ? "No matching files"
+          : piped
+            ? "No file changes in this input"
+            : empty.title;
+  const emptyDescription = !scopeAvailable
+    ? `The “${requestedScope}” scope was not collected in this snapshot. Choose an available comparison above.`
+    : !repository
+      ? "Check that the server is running, then refresh."
+      : allReviewedHidden
+        ? "Reviewed files are hidden."
+        : filter
+          ? "Try a different filename or clear the filter."
+          : piped
+            ? "Run a command that emits a Git patch, then pipe it into diffx."
+            : empty.description;
   return (
     <main>
       <DiffToolbar />

@@ -278,16 +278,20 @@ func (store *Store) ClearMarks(ctx context.Context, contextID string, scope revi
 }
 
 func (store *Store) StoredVersion(ctx context.Context, ownerID, diffID, versionID string, now time.Time) (review.RepositoryDiff, error) {
-	var raw string
-	err := store.db.QueryRowContext(ctx, `SELECT v.manifest FROM diff_versions v JOIN diffs d ON d.id=v.diff_id WHERE d.owner_id=? AND d.id=? AND v.id=? AND (d.expires_at IS NULL OR d.expires_at>?)`, ownerID, diffID, versionID, now.UnixMilli()).Scan(&raw)
+	var raw, metadata, scopes string
+	err := store.db.QueryRowContext(ctx, `SELECT v.manifest,o.metadata,
+	 (SELECT json_group_array(mode) FROM observation_scopes WHERE context_id=o.context_id)
+	 FROM diff_versions v JOIN diffs d ON d.id=v.diff_id
+	 JOIN observation_scopes s ON s.diff_id=d.id JOIN observations o ON o.context_id=s.context_id
+	 WHERE d.owner_id=? AND d.id=? AND v.id=? AND (d.expires_at IS NULL OR d.expires_at>?)`, ownerID, diffID, versionID, now.UnixMilli()).Scan(&raw, &metadata, &scopes)
 	if errors.Is(err, sql.ErrNoRows) {
 		return review.RepositoryDiff{}, ErrNotFound
 	}
 	if err != nil {
 		return review.RepositoryDiff{}, err
 	}
-	var snapshot review.RepositoryDiff
-	if err := json.Unmarshal([]byte(raw), &snapshot); err != nil {
+	snapshot, err := decodeSnapshot(raw, metadata, scopes)
+	if err != nil {
 		return review.RepositoryDiff{}, fmt.Errorf("invalid stored diff version: %w", err)
 	}
 	return snapshot, nil
