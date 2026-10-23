@@ -239,7 +239,7 @@ export function FileExplorerNav() {
               <StatusDot size="md" fill="ring" />
               Unstaged
             </span>
-            <span title="Untracked file">U Untracked</span>
+            <span>U Untracked</span>
           </div>
         </TabsContent>
         {commentsEnabled && <CommentsPanel />}

@@ -225,21 +225,21 @@ test("review actions use progressive disclosure, status filters, and confirmed d
   await expect(
     page.getByRole("button", { name: "Hide review tools" }),
   ).toBeVisible();
-  const copyReview = page.getByRole("button", { name: "Copy Review" });
+  const copyReview = page.getByRole("button", { name: "Copy review" });
   await expect(copyReview).toBeVisible();
   const controlRadius = await copyReview.evaluate(
     (button) => getComputedStyle(button).borderTopLeftRadius,
   );
   await expect(
-    page.getByRole("button", { name: "WebMCP Instruction" }),
+    page.getByRole("button", { name: "WebMCP instructions" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Copy options" }).click();
   const options = page.getByRole("menu", { name: "Copy options" });
   await expect(
-    options.getByRole("menuitem", { name: "Open Comments" }),
+    options.getByRole("menuitem", { name: "Open comments" }),
   ).toBeVisible();
   await expect(
-    options.getByRole("menuitem", { name: "All Comments" }),
+    options.getByRole("menuitem", { name: "All comments" }),
   ).toBeVisible();
   await expect(options.getByRole("menuitem")).toHaveCount(2);
   await page.keyboard.press("Escape");
@@ -358,7 +358,7 @@ test("bulk comment deletion selects a status and defaults to all", async ({
   const remove = panel.locator(".bulk-delete-primary");
   const removeOptions = panel.getByRole("button", { name: "Delete options" });
   const controlRadius = await page
-    .locator("#copy-review")
+    .getByRole("button", { name: "Copy review" })
     .evaluate((button) => getComputedStyle(button).borderTopLeftRadius);
   await expect(remove).toHaveAttribute("data-variant", "destructive");
   await expect(remove).toHaveCSS("height", "24px");

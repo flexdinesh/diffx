@@ -127,7 +127,9 @@ test("disabled comments issue no requests and expose no comment UI", async ({
   await expect(page.locator("#file-count")).toHaveText("12");
   await expect(page.locator("#comments-tab")).toHaveCount(0);
   await expect(page.locator("#comments-panel")).toHaveCount(0);
-  await expect(page.locator("#copy-review")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Copy review" })).toHaveCount(
+    0,
+  );
   await expect(
     page.getByRole("button", { name: "Add review comment" }),
   ).toHaveCount(0);
@@ -1432,7 +1434,7 @@ test("inline comments use a distinct structured surface while sidebar comments r
     sidebarActionSpacing.editToResolve,
   );
 
-  const copyReview = page.locator("#copy-review");
+  const copyReview = page.getByRole("button", { name: "Copy review" });
   await expect(copyReview).toHaveAttribute("data-size", "sm");
   await expect(copyReview).toHaveAttribute("data-variant", "outline");
   await expect(copyReview).toHaveCSS("height", "28px");
@@ -2048,7 +2050,7 @@ test("copy dialog reports clipboard status and restores focus", async ({
       }),
     });
   });
-  const copyReview = page.getByRole("button", { name: "Copy Review" });
+  const copyReview = page.getByRole("button", { name: "Copy review" });
   await copyReview.click();
   const reviewDialog = page.getByRole("dialog", {
     name: "Copy review comments",
@@ -2066,7 +2068,7 @@ test("copy dialog reports clipboard status and restores focus", async ({
 
   const copyOptions = page.getByRole("button", { name: "Copy options" });
   await copyOptions.click();
-  await page.getByRole("menuitem", { name: "All Comments" }).click();
+  await page.getByRole("menuitem", { name: "All comments" }).click();
   await expect(reviewDialog).toBeVisible();
   query = new URLSearchParams(exportQueries.at(-1) ?? "");
   expect(query.get("includeResolved")).toBe("true");
@@ -2095,7 +2097,7 @@ test("copy dialog reports clipboard status and restores focus", async ({
   await expect(reviewDialog).toBeHidden();
   await expect(copyOptions).toBeFocused();
 
-  await page.getByRole("button", { name: "WebMCP Instruction" }).click();
+  await page.getByRole("button", { name: "WebMCP instructions" }).click();
   const instructionDialog = page.getByRole("dialog", {
     name: "Copy WebMCP instruction",
   });

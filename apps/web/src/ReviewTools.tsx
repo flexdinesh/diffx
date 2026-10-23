@@ -48,7 +48,6 @@ export function ReviewTools() {
           {commentsEnabled && !!review.comments.length && (
             <>
               <SplitButton
-                id="copy-review"
                 touch
                 className="w-full"
                 menuLabel="Copy options"
@@ -64,20 +63,20 @@ export function ReviewTools() {
                         void review.copy(false);
                       }}
                     >
-                      Open Comments
+                      Open comments
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => {
                         void review.copy(true);
                       }}
                     >
-                      All Comments
+                      All comments
                     </DropdownMenuItem>
                   </>
                 }
               >
                 <CopyIcon aria-hidden="true" />
-                Copy Review
+                Copy review
               </SplitButton>
               <Button
                 type="button"
@@ -92,7 +91,7 @@ export function ReviewTools() {
                 }}
               >
                 <CopyIcon aria-hidden="true" />
-                WebMCP Instruction
+                WebMCP instructions
               </Button>
             </>
           )}
@@ -203,7 +202,6 @@ export function ChangeSummary() {
             size="xs"
             disabled={reviewedCount === 0 || pending.has("*")}
             aria-busy={pending.has("*")}
-            title="Clear all reviewed files"
             onClick={resetReviewed}
           >
             Reset reviewed
