@@ -21,8 +21,9 @@ const buttonVariants = cva(
         // Ghost actions on the shell canvas, where --hover is indistinguishable.
         shell:
           "text-secondary hover:bg-shell-hover hover:text-fg data-popup-open:bg-shell-hover [&_svg]:[stroke-width:var(--icon-stroke-chrome)]",
-        // Activity rail views on the panel; the current view keeps the accent fill.
-        rail: "text-secondary hover:bg-hover hover:text-fg aria-[current=page]:bg-selected aria-[current=page]:text-accent [&_svg]:[stroke-width:var(--icon-stroke-chrome)]",
+        // Review rail actions and repository marks on the panel; the current
+        // repository keeps the accent fill.
+        rail: "text-secondary hover:bg-hover hover:text-fg aria-[current=page]:bg-selected aria-[current=page]:text-accent aria-[current=true]:bg-selected aria-[current=true]:text-accent [&_svg]:[stroke-width:var(--icon-stroke-chrome)]",
         // Tertiary controls such as disclosure toggles and collapse arrows.
         subtle: "text-muted hover:bg-hover hover:text-fg",
         destructive: "text-error hover:bg-hover data-popup-open:bg-hover",

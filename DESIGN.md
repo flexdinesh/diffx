@@ -216,9 +216,8 @@ such detail into a token. New layout spacing must use the scale.
   The diff receives all width remaining after navigation.
 - Inset the shell by `--shell-gutter` (6px). Use the same gutter between
   islands, `--radius-lg` outer corners, and a 1px neutral outline without
-  elevation. The activity rail and file sidebar form one continuous navigation
+  elevation. The review column and file sidebar form one continuous navigation
   island; notices, toolbar, viewer, and status bar form the review island.
-  Repos and Diff share the navigation panel beside the activity rail.
   Keep these frames outside Pierre's measured file geometry. At compact widths,
   remove the empty navigation island and retain the inset review surface;
   modal drawers use the same inset and corners without clipping focus or menus.
@@ -251,40 +250,48 @@ such detail into a token. New layout spacing must use the scale.
   checkouts” action (folder-sync icon) that never swaps the open review.
 - Header text uses cap-height trimming with token padding to center UI and
   monospace labels without clipping ascenders or descenders.
-- Header lead: brand and divider identify the app. Desktop navigation controls
-  live in the activity rail. Below 768px, Repos and file-sidebar controls
-  remain in the header because the rail is hidden.
-- Activity bar: a fixed `--activity-width` column equal to `--topbar-height`
-  (36px; 44px for coarse pointers), spanning the workbench below the header to
-  the shell's bottom inset. The rail mirrors the header rotated: items match
-  header icon buttons (32px desktop, 44px touch) with the header's inset (2px
-  desktop, flush touch); coarse pointers add a 4px block inset so flush items
-  clear the island corners.
-  Repos (repository icon) followed by Diff (file-diff icon) select one shared panel.
-  Repos is the initial view.
-  Clicking the active view toggles its panel; clicking another view opens it.
-  Keep the rail and selected panel in one rounded island, separated by a 1px
-  `--border-muted` edge. Views use `--activity-item` square ghost buttons,
-  16px icons, 1.7px strokes and `--radius-control`, like header actions;
-  selection uses accent text on `--accent-bg` with `aria-current="page"`, while `aria-expanded` describes panel visibility.
-  Account actions sit at the bottom. Below 768px account actions move
-  into the header before the rightmost theme control. Below 1012px navigation panels become modal drawers.
-- Repos panel: shared navigation width on `--panel`, sharing the file tree
-  and diff's top and bottom edges below the header. Its header matches
-  the compact sidebar tabs and display toolbar and holds the “Repos” title (UI label size, medium,
-  secondary text), a ghost magnifier labeled “Search reviews” that opens the
-  existing picker, and a close action in the modal drawer only. Search is
-  available through that popup or Cmd/Ctrl+K. Selecting a stream loads its diff
-  and keeps Repos selected, including the open modal drawer; people switch to
-  Diff themselves for the file tree.
+- Header lead: brand and divider identify the app. The file-sidebar toggle
+  leads the review toolbar. Below 1012px a “Show reviews” toggle in the header
+  opens the review column as a drawer. Account actions sit in the header
+  before the rightmost theme control in every layout.
+- Review column: the leading pane of the navigation island, titled “Reviews”,
+  on `--panel`, sharing the file tree and diff's top and bottom edges below the
+  header. Switching streams changes everything to its right; the column stays.
+  It has three states: list, rail, and the inbox overlay. List and rail persist
+  per browser; there is no auto-collapse.
+  Its header matches the compact sidebar tabs and display toolbar and holds the
+  title (UI label size, medium, secondary text) and ghost actions: “Review list
+  view” (Group by repo / Recent first, persisted, default by repo), “Search
+  reviews” (opens the picker), “Open inbox”, and “Collapse reviews” on desktop
+  or “Close reviews” in the drawer. Selecting a stream loads its diff and keeps
+  the column and file sidebar open.
   Repositories sort by their most active visible stream. Streams sort by
   estimated code activity, with captured collection time as fallback and stable
-  identity ties. Rows retain compact tree density, truncation, ages and metadata.
+  identity ties. Recent first is one flat activity-ordered list labeling each
+  row with its repository; Piped stays last. Rows retain compact tree density,
+  truncation, ages and metadata.
   Show only current heads with changes. The current stream uses `--accent-bg`,
   accent text and `aria-current="page"`. Unopened arrivals show a small accent
   dot labeled “New changes”; collapsed repositories carry their streams' dots.
-  Repository collapse state persists per browser. Switching views preserves
-  the open diff and review state; both views share one user-controlled width.
+  Repository collapse state persists per browser.
+- Review rail: the collapsed column is a fixed `--activity-width` column equal
+  to `--topbar-height` (36px; 44px for coarse pointers). Items match header icon
+  buttons (32px desktop, 44px touch) with the header's inset; coarse pointers add
+  a 4px block inset so flush items clear the island corners. “Expand reviews”
+  and “Open inbox” lead a separator, then one `rail` button per repository
+  showing a two-letter monogram (terminal icon for Piped), an accent dot for
+  unopened streams, and `aria-current="true"` with accent text on `--selected`
+  for the open review's repository. A mark expands the list scrolled to and
+  focused on that repository.
+- Inbox: “Open inbox” extends the column over the review island as an overlay,
+  not a route. The review stays mounted, inert and unscrolled underneath.
+  Filter text, Repository / Session / Worktree / Host facets (OR within a facet,
+  AND across), and Unread only; facets show only with values and persist per
+  browser; text does not. Rows show repository / branch, new mark, count and
+  age, with worktree, session and host below in muted monospace. Content is
+  bounded by `--reading-width`; a footer counts shown reviews. Escape or “Close
+  inbox” restores focus to the opener; choosing a row opens it and focuses the
+  column's current stream.
 - A newer head for the viewed stream shows a one-line `--accent-bg` notice below
   the header with an outline-muted “View latest” action. Never swap the open review.
 - A compact header action counts unopened changed heads across projects and
@@ -293,7 +300,7 @@ such detail into a token. New layout spacing must use the scale.
   activity order and show repository name (medium, primary text) with age, then
   branch with changed-file count, then the linked worktree name or “Primary
   checkout” (secondary metadata, single-line truncation). Choosing a row opens
-  that stream. Share the drawer's per-browser seen state,
+  that stream. Share the review column's per-browser seen state,
   baseline existing heads on first visit, and clear a head's mark when opened.
   Keep the same-stream notice available. Unchanged submissions must not create
   unread prompts. Use existing ghost-button typography, icons and accessible
@@ -306,9 +313,12 @@ such detail into a token. New layout spacing must use the scale.
   titled by the state, with a “Diffx server process” section listing CPU and RAM.
   Add future system details as further sections in the same popover.
 - The diff display toolbar uses `--panel`, matching the header and status bar.
-- Desktop navigation panel: `--sidebar-width` defaults to 330px. `Navigation.tsx` owns
-  the shared frame and resize handle for Diff and Repos; `use-sidebar.ts` owns
-  the user's pixel width, bounded to 200–520px and available viewport space.
+- Desktop navigation widths: `--streams-width` defaults to 240px and
+  `--sidebar-width` to 330px. `Navigation.tsx` owns the island and one resize
+  handle per pane; `use-stream-nav.ts` owns the review column width (200–400px)
+  and `use-sidebar.ts` the file sidebar width (200–520px), both bounded by
+  available viewport space. The header file-sidebar toggle hides and reopens
+  the file sidebar.
   Do not add competing CSS defaults or override a saved width at tablet sizes.
 - Sidebar interiors share a 16px inset. Tree rows use 8px base padding plus
   16px per nesting level; file and folder names align to the same icon column.
@@ -321,9 +331,8 @@ such detail into a token. New layout spacing must use the scale.
   Column gaps use the spacing scale. Do not turn every grouping into a card.
 - Keep overlays anchored to their owning region. Sidebar/resizer layering uses
   `--layer-sidebar` / `--layer-resizer`; modal dialogs use the native top layer.
-  The resize handle overlaps the navigation island's trailing edge and adds no
-  layout width. Drag distance changes the shared navigation panel width, regardless of
-  view switches or shell insets. The shell gutter separates navigation from
+  Each resize handle overlaps its pane's trailing edge and adds no layout
+  width. Drag distance changes that pane's width, regardless of shell insets. The shell gutter separates navigation from
   the review island; the measured 12px diff gutter remains inside that island.
 
 ### Pierre boundary
@@ -494,18 +503,21 @@ at `/design.html` (see `docs/development.md`).
 
 ### Overlays
 
-- The header identifies the open review after the brand divider with static,
-  non-interactive text at control height: a semibold repository name, quieter
-  branch, and repository icon. Give the repository name priority when long context labels truncate.
-  Piped reviews use a terminal icon, “Piped”, and collection time; omit repository,
-  branch, worktree, and directory identity.
-  Switching lives in the repos drawer; never add a dropdown chevron.
-  Cmd/Ctrl+K and the drawer's browse action open the searchable “Switch review”
+- The header identifies the open review after the brand divider at control
+  height as two ghost menu triggers, repo ▾ / branch ▾: a semibold repository
+  name with repository icon, then a quieter branch. Give the repository name
+  priority when long context labels truncate; hide the chevrons below 768px.
+  The repository menu opens a repository's most active stream; the branch menu
+  lists the open repository's streams with new marks, counts and metadata.
+  Both focus the column's current stream after switching. Worktree stays static.
+  Piped reviews use static text: a terminal icon, “Piped”, and collection time;
+  omit repository, branch, worktree, and directory identity.
+  Cmd/Ctrl+K and the column's search action open the searchable “Switch review”
   dialog. Position it at
   `--topbar-height` plus `--space-6` on desktop (64px default), `--space-4` on
   mobile (16px default). Bound picker width to 35rem and viewport gutters. The
   picker owns focus and stays available during context errors. Choosing a
-  review moves focus to the drawer's current stream.
+  review moves focus to the column's current stream.
 - Search leads the picker; keep “Switch review” as its screen-reader title.
   Label global search “Search reviews” and Piped history search “Search Piped”.
   Use the shared `SearchField` (32px) with close at its right edge and the
@@ -561,11 +573,9 @@ Do not add motion for decoration. New animation must honor
 
 ### Loading
 
-- Keep the real shell, Repos navigation and theme actions available while review
-  data loads. Reserve the shared navigation panel width and split/unified layout
-  with neutral skeletons for repo rows, file rows, the toolbar and diff frames.
-  Keep Diff disabled until a review is ready; Repos shows its own placeholders
-  in the same panel, and switching to Diff shows the file placeholders.
+- Keep the real shell, review column and theme actions available while review
+  data loads. Reserve both navigation widths and split/unified layout
+  with neutral skeletons for review rows, file rows, the toolbar and diff frames.
   Narrow screens hide the placeholder file sidebar and follow the narrow layout.
 - Skeletons use `--border-muted`, existing spacing and radius tokens, and a gentle
   shared opacity pulse. Disable animation under `prefers-reduced-motion`. Keep
@@ -602,8 +612,9 @@ Do not add motion for decoration. New animation must honor
   Keep the linked-worktree icon visible when its text label is hidden.
 - Collapse navigation to the toggle-controlled modal drawer; its width is
   `min(320px, 88vw)`. Keep file selection, comments, and export reachable there.
-  The repos drawer follows the same modal pattern from its own toggle; opening
-  it closes the file drawer. Choosing a stream keeps it open.
+  The review column becomes a drawer with the same modal pattern from its own
+  header toggle; opening it closes the file drawer. Choosing a stream closes it
+  and shows the diff. The inbox fills the review island.
   Its tab strip matches `--topbar-height`, including the tablet header height.
   File/folder rows, filter, summary toggle, and review progress retain desktop
   control heights and spacing; do not apply the general mobile enlargement here.

@@ -9,7 +9,7 @@ function subscribe(change: () => void) {
   return () => media.removeEventListener("change", change);
 }
 
-/** Compact chrome hides the activity bar; its actions move into the header. */
+/** Compact chrome drops visible action text and enlarges header targets. */
 export function useCompactChrome() {
   return useSyncExternalStore(subscribe, () => matchMedia(query).matches);
 }

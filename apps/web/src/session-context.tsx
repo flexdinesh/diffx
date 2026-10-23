@@ -62,8 +62,8 @@ interface Catalog {
   /** Pins one snapshot. */
   select: (id: string, options?: { restoreFocus?: boolean }) => void;
   /**
-   * Follows a stream's latest head; piped snapshots stay pinned. Opens the Diff
-   * view unless navigation is preserved.
+   * Follows a stream's latest head; piped snapshots stay pinned. Closes any
+   * navigation drawer to show the diff unless navigation is preserved.
    */
   openStream: (
     head: ApiContext,
@@ -99,6 +99,17 @@ export interface SessionShellState {
 const CatalogContext = createContext<Catalog | null>(null);
 const SessionContext = createContext<ApiContext | null>(null);
 const SessionShellContext = createContext<SessionShellState | null>(null);
+
+/** Focuses the opened stream in the review column, else the file sidebar toggle. */
+function focusCurrentReview() {
+  const selected = document.querySelector<HTMLElement>(
+    '#projects-nav [aria-current="page"], #projects-nav [aria-current="true"]',
+  );
+  const target = selected?.getClientRects().length
+    ? selected
+    : document.querySelector<HTMLElement>("#sidebar-toggle");
+  target?.focus();
+}
 
 export function capabilityEnabled(capability: { state: string }) {
   return capability.state === "enabled";
@@ -158,11 +169,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setMissing(false);
       if (id === selectedRef.current) {
         if (options?.restoreFocus !== false)
-          requestAnimationFrame(() =>
-            document
-              .querySelector<HTMLElement>("#diff-view, #sidebar-toggle")
-              ?.focus(),
-          );
+          requestAnimationFrame(focusCurrentReview);
         return;
       }
       restorePickerFocus.current = options?.restoreFocus ?? true;
@@ -442,15 +449,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return;
     restorePickerFocus.current = false;
     if (empty) statusRef.current?.focus();
-    else {
-      const selected = document.querySelector<HTMLElement>(
-        '#projects-nav [aria-current="page"]',
-      );
-      const target = selected?.getClientRects().length
-        ? selected
-        : document.querySelector<HTMLElement>("#diff-view, #sidebar-toggle");
-      target?.focus();
-    }
+    else focusCurrentReview();
   }, [state, empty]);
   const retry = useCallback(() => {
     setState({ status: "loading" });

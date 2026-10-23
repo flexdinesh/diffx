@@ -2,15 +2,21 @@ import { useCallback, useEffect, useState } from "react";
 import { save, saved } from "./preferences.ts";
 import { useModalDrawer } from "./use-modal-drawer.ts";
 
-export type WorkspaceView = "projects" | "diff";
+/** Below the 1012px breakpoint, navigation opens as one modal drawer at a time. */
+export type NavigationDrawer = "reviews" | "files";
 
-// One owner for workspace views, desktop preferences and mobile overlays.
+const drawers = {
+  reviews: { drawer: "#projects-nav", toggle: "#projects-toggle" },
+  files: { drawer: "#sidebar", toggle: "#sidebar-toggle" },
+} satisfies Record<NavigationDrawer, { drawer: string; toggle: string }>;
+
+// Owns the file sidebar's desktop preferences and both mobile drawers; the
+// review column's desktop state lives in use-stream-nav.ts.
 export function useSidebar() {
   const [mobile, setMobile] = useState(
     () => matchMedia("(max-width: 1011px)").matches,
   );
-  const [view, setView] = useState<WorkspaceView>("projects");
-  const [open, setOpen] = useState(false);
+  const [drawer, setDrawer] = useState<NavigationDrawer | null>(null);
   const [collapsed, setCollapsed] = useState(
     () => saved("sidebar-collapsed") === "true",
   );
@@ -22,11 +28,11 @@ export function useSidebar() {
     const media = matchMedia("(max-width: 1011px)");
     const update = () => {
       setMobile(media.matches);
-      setOpen(false);
+      setDrawer(null);
     };
     media.addEventListener("change", update);
     const onEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") setDrawer(null);
     };
     document.addEventListener("keydown", onEscape);
     return () => {
@@ -34,13 +40,8 @@ export function useSidebar() {
       document.removeEventListener("keydown", onEscape);
     };
   }, []);
-  useModalDrawer(
-    mobile && open,
-    view === "projects" ? "#projects-nav" : "#sidebar",
-    view === "projects"
-      ? "#projects-toggle, #projects-view"
-      : "#sidebar-toggle, #diff-view",
-  );
+  const modal = drawers[drawer ?? "files"];
+  useModalDrawer(mobile && drawer !== null, modal.drawer, modal.toggle);
   useEffect(() => {
     save("sidebar-collapsed", String(collapsed));
   }, [collapsed]);
@@ -55,34 +56,32 @@ export function useSidebar() {
     [],
   );
   const show = useCallback(() => {
-    setView("diff");
-    if (mobile) setOpen(true);
+    if (mobile) setDrawer("files");
     else setCollapsed(false);
   }, [mobile]);
-  const openDiff = useCallback(() => {
-    setView("diff");
-    setOpen(false);
-    setCollapsed(false);
-  }, []);
-  const closeMobile = useCallback(() => setOpen(false), []);
+  // Opening a review shows its diff: any drawer closes; desktop panes stay.
+  const openDiff = useCallback(() => setDrawer(null), []);
+  const closeMobile = useCallback(() => setDrawer(null), []);
   return {
     mobile,
-    view,
-    open,
+    drawer: mobile ? drawer : null,
     collapsed,
     width,
     show,
     closeMobile,
-    expanded: mobile ? open : !collapsed,
-    selectView: (next: WorkspaceView) => {
-      setView(next);
-      if (mobile) setOpen(view === next ? !open : true);
-      else setCollapsed(view === next ? !collapsed : false);
-    },
     openDiff,
-    setWidth: (next: number) =>
+    /** Whether the file sidebar is visible: its drawer, or the desktop pane. */
+    expanded: mobile ? drawer === "files" : !collapsed,
+    toggleFiles: () => {
+      if (mobile) setDrawer((value) => (value === "files" ? null : "files"));
+      else setCollapsed((value) => !value);
+    },
+    toggleReviews: () =>
+      setDrawer((value) => (value === "reviews" ? null : "reviews")),
+    /** `reserved` is the review column's width, kept beside a 320px diff. */
+    setWidth: (next: number, reserved: number) =>
       setWidthState(
-        Math.max(200, Math.min(520, window.innerWidth - 320, next)),
+        Math.max(200, Math.min(520, window.innerWidth - 320 - reserved, next)),
       ),
   };
 }

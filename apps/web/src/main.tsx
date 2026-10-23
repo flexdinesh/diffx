@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import { AppearanceProvider } from "./appearance-context.tsx";
 import { SidebarProvider } from "./sidebar-context.tsx";
+import { StreamNavProvider } from "./stream-nav-context.tsx";
 import { AppProvider } from "./app-state.tsx";
 import { highlighterOptions, poolOptions } from "./diff-workers.ts";
 import { SessionProvider } from "./session-context.tsx";
@@ -66,13 +67,15 @@ function ApplicationRoutes() {
 createRoot(root).render(
   <StrictMode>
     <SidebarProvider>
-      <AppearanceProvider>
-        <IdentityProvider>
-          <TooltipProvider>
-            <ApplicationRoutes />
-          </TooltipProvider>
-        </IdentityProvider>
-      </AppearanceProvider>
+      <StreamNavProvider>
+        <AppearanceProvider>
+          <IdentityProvider>
+            <TooltipProvider>
+              <ApplicationRoutes />
+            </TooltipProvider>
+          </IdentityProvider>
+        </AppearanceProvider>
+      </StreamNavProvider>
     </SidebarProvider>
   </StrictMode>,
 );

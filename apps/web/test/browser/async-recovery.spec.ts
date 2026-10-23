@@ -60,9 +60,9 @@ function commentFor(
   };
 }
 
-// Repos is the initial view; file navigation lives in Diff.
+// The file sidebar sits beside the review column on desktop.
 async function showDiff(page: Page) {
-  await page.getByRole("button", { name: "Diff", exact: true }).click();
+  await expect(page.locator("#sidebar")).toBeVisible();
 }
 
 async function openWorkspace(page: Page) {

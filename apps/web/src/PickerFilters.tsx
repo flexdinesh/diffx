@@ -56,7 +56,8 @@ function filterTrigger(label: string) {
   );
 }
 
-function MultiFilter({
+/** A facet menu of checkable values; the trigger counts the selection. */
+export function MultiFilter({
   label,
   options,
   selected,

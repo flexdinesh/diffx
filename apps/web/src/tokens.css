@@ -78,8 +78,10 @@
   --diff-gutter: var(--space-3);
   --shell-gutter: var(--space-1-5);
   --sidebar-width: 330px;
+  --streams-width: 240px;
   --drawer-width: min(320px, 88vw);
-  /* Rail mirrors the header: its width is the header height, items are header buttons. */
+  /* The collapsed review rail mirrors the header: its width is the header
+     height, items are header buttons. */
   --activity-item: var(--control-height);
   --activity-width: var(--topbar-height);
   --reading-width: 42.5rem;

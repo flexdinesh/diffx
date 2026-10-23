@@ -3,12 +3,20 @@ import { test } from "node:test";
 import type { ApiContext } from "@diffx/api";
 import {
   baselineSeen,
+  defaultStreamFilters,
+  filterStreams,
   newerHead,
   projectGroups,
   readSeen,
+  readStreamFilters,
+  recentStreams,
   relativeAge,
+  repoMonogram,
+  streamFacets,
+  streamFiltersChanged,
   streamMeta,
   unseenChangedHeads,
+  type StreamFilters,
 } from "../src/project-nav.ts";
 import {
   compareContextActivity,
@@ -314,4 +322,172 @@ test("stream metadata names worktree, harness, host only when ambiguous, and age
   assert.equal(relativeAge(now, now), "now");
   assert.equal(relativeAge(0, now), "3h");
   assert.equal(relativeAge(0, 49 * 60 * 60_000), "2d");
+});
+
+function observed(
+  id: string,
+  repositoryId: string,
+  activity: number,
+  {
+    hostname = "laptop",
+    worktree = "",
+    sessions = [],
+  }: {
+    hostname?: string;
+    worktree?: string;
+    sessions?: { harness: string; name?: string }[];
+  } = {},
+): ApiContext {
+  return head(id, repositoryId, activity, {
+    worktreeName: worktree || null,
+    observation: {
+      sourceId: `source-${hostname}`,
+      hostname,
+      runId: "",
+      agent: "",
+      remoteUrl: "",
+      head: null,
+      repositoryKey: repositoryId,
+      repositoryName: repositoryId,
+      checkoutKey: id,
+      linkedWorktree: worktree !== "",
+      root: `/repos/${id}`,
+      worktreeName: worktree,
+      branch: `branch-${id}`,
+      collectedAt: 1,
+      collectorVersion: "test",
+      trigger: "agent-hook",
+    },
+    sessions: sessions.map((session, index) => ({
+      sourceId: `source-${hostname}`,
+      id: `${id}-${index}`,
+      firstObservedAt: 1,
+      lastObservedAt: 1,
+      ...session,
+    })),
+  });
+}
+
+test("recent streams interleave repositories by activity, piped still last", () => {
+  const groups = projectGroups(
+    [
+      head("api-old", "api", 10),
+      head("web-new", "web", 30),
+      head("api-new", "api", 20),
+      head("pipe", "", 99, { source: "stdin", streamId: null }),
+    ],
+    null,
+  );
+  assert.deepEqual(
+    groups.map((group) => group.id),
+    ["web", "api", "piped"],
+  );
+  assert.deepEqual(
+    recentStreams(groups).map(({ context, group }) => [context.id, group.id]),
+    [
+      ["web-new", "web"],
+      ["api-new", "api"],
+      ["api-old", "api"],
+      ["pipe", "piped"],
+    ],
+  );
+});
+
+test("recent stream activity ties keep stable stream identity order", () => {
+  const groups = projectGroups(
+    [head("b", "web", 5), head("a", "api", 5), head("c", "api", 5)],
+    null,
+  );
+  assert.deepEqual(
+    recentStreams(groups).map(({ context }) => context.id),
+    ["a", "b", "c"],
+  );
+});
+
+test("inbox facets list repositories, sessions, hosts and worktrees once", () => {
+  const groups = projectGroups(
+    [
+      observed("auth", "api", 3, {
+        worktree: "wt-auth",
+        sessions: [
+          { harness: "claude", name: "fix auth" },
+          { harness: "codex" },
+        ],
+      }),
+      observed("main", "api", 2, { hostname: "ci" }),
+      observed("site", "web", 1, { sessions: [{ harness: "codex" }] }),
+    ],
+    null,
+  );
+  assert.deepEqual(streamFacets(groups), {
+    repos: ["api", "web"],
+    sessions: ["codex", "fix auth (claude)"],
+    hosts: ["ci", "laptop"],
+    worktrees: ["wt-auth"],
+  });
+});
+
+test("inbox filters match within each facet and across facets", () => {
+  const seen = { "stream-main": "main", "stream-site": "site" };
+  const groups = projectGroups(
+    [
+      observed("auth", "api", 3, {
+        worktree: "wt-auth",
+        sessions: [{ harness: "claude", name: "fix auth" }],
+      }),
+      observed("main", "api", 2, { hostname: "ci" }),
+      observed("site", "web", 1, { sessions: [{ harness: "codex" }] }),
+    ],
+    seen,
+  );
+  const ids = (filters: Partial<StreamFilters>, query = "") =>
+    filterStreams(groups, { ...defaultStreamFilters, ...filters }, query).map(
+      (group) => [group.id, group.streams.map((stream) => stream.context.id)],
+    );
+  assert.deepEqual(ids({}), [
+    ["api", ["auth", "main"]],
+    ["web", ["site"]],
+  ]);
+  assert.deepEqual(ids({ repos: ["web"] }), [["web", ["site"]]]);
+  assert.deepEqual(ids({ sessions: ["codex", "fix auth (claude)"] }), [
+    ["api", ["auth"]],
+    ["web", ["site"]],
+  ]);
+  assert.deepEqual(ids({ repos: ["api"], hosts: ["laptop"] }), [
+    ["api", ["auth"]],
+  ]);
+  assert.deepEqual(ids({ worktrees: ["wt-auth"] }), [["api", ["auth"]]]);
+  assert.deepEqual(ids({ unread: true }), [["api", ["auth"]]]);
+  assert.deepEqual(ids({}, "CI branch-main"), [["api", ["main"]]]);
+  assert.deepEqual(ids({}, "fix"), [["api", ["auth"]]]);
+  assert.deepEqual(ids({ repos: ["web"] }, "auth"), []);
+  assert.equal(streamFiltersChanged(defaultStreamFilters), false);
+  assert.equal(
+    streamFiltersChanged({ ...defaultStreamFilters, unread: true }),
+    true,
+  );
+});
+
+test("saved inbox filters keep only known string and flag values", () => {
+  assert.deepEqual(readStreamFilters(null), defaultStreamFilters);
+  assert.deepEqual(readStreamFilters("not json"), defaultStreamFilters);
+  assert.deepEqual(readStreamFilters("[]"), defaultStreamFilters);
+  assert.deepEqual(
+    readStreamFilters(
+      '{"repos":["api",1],"sessions":"codex","hosts":["ci"],"unread":"yes"}',
+    ),
+    { ...defaultStreamFilters, repos: ["api"], hosts: ["ci"] },
+  );
+  assert.deepEqual(readStreamFilters('{"unread":true}'), {
+    ...defaultStreamFilters,
+    unread: true,
+  });
+});
+
+test("repository marks use word initials or the name's first letters", () => {
+  assert.equal(repoMonogram("diffx"), "Di");
+  assert.equal(repoMonogram("agent-skills"), "AS");
+  assert.equal(repoMonogram("tokenInsights"), "TI");
+  assert.equal(repoMonogram("x"), "X");
+  assert.equal(repoMonogram("Piped"), "Pi");
 });
