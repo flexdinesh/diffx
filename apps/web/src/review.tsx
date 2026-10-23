@@ -425,33 +425,21 @@ export function CommentCard({
               label={`Copy comment at ${location(comment, placement)}`}
               size={sidebar ? "icon-xs" : "icon-sm"}
               touch
-              className={sidebar ? undefined : "mr-auto"}
               onClick={() => onCopy(comment)}
             >
               <CopyIcon aria-hidden="true" />
             </IconButton>
-            {sidebar ? (
-              <IconButton
-                label="Edit"
-                size="icon-xs"
-                touch
-                className="mr-auto"
-                onClick={() => onEdit(comment)}
-              >
-                <PencilIcon aria-hidden="true" />
-              </IconButton>
-            ) : (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                touch
-                onClick={() => onEdit(comment)}
-              >
-                <PencilIcon aria-hidden="true" />
-                Edit
-              </Button>
-            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size={sidebar ? "xs" : "sm"}
+              touch
+              className="mr-auto"
+              onClick={() => onEdit(comment)}
+            >
+              <PencilIcon aria-hidden="true" />
+              Edit
+            </Button>
             <Button
               type="button"
               variant="outline"

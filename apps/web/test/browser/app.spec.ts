@@ -1249,6 +1249,7 @@ test("inline comments use a distinct structured surface while sidebar comments r
     .locator('[data-slot="card-footer"]')
     .getByRole("button");
   await expect(commentActions).toHaveCount(4);
+  await expect(commentActions).toHaveText(["", "Edit", "Resolve", "Delete"]);
   await expect(
     inline.getByRole("button", {
       name: "Copy comment at src/components/Badge.tsx:2–4",
@@ -1418,6 +1419,8 @@ test("inline comments use a distinct structured surface while sidebar comments r
     .locator('[data-slot="card-footer"]')
     .getByRole("button");
   await expect(sidebarActions).toHaveCount(4);
+  // Sidebar and inline cards offer the same labeled actions.
+  await expect(sidebarActions).toHaveText(["", "Edit", "Resolve", "Delete"]);
   await expect(
     sidebar.getByRole("button", {
       name: "Copy comment at src/value.ts:3",
@@ -1432,7 +1435,7 @@ test("inline comments use a distinct structured surface while sidebar comments r
   );
   expect(sidebarActionMetrics.map(({ size }) => size)).toEqual([
     "icon-xs",
-    "icon-xs",
+    "xs",
     "xs",
     "xs",
   ]);

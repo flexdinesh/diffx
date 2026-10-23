@@ -373,7 +373,9 @@ test("bulk comment deletion selects a status and defaults to all", async ({
   const controlRadius = await page
     .getByRole("button", { name: "Copy review" })
     .evaluate((button) => getComputedStyle(button).borderTopLeftRadius);
-  await expect(remove).toHaveAttribute("data-variant", "destructive-solid");
+  // Bulk delete rests quiet; the confirm dialog carries the destructive fill.
+  await expect(remove).toHaveAttribute("data-variant", "destructive");
+  await expect(remove).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(remove).toHaveCSS("height", "24px");
   await expect(remove).toHaveCSS("border-top-left-radius", controlRadius);
   await expect(remove).toHaveCSS("border-top-right-radius", "0px");

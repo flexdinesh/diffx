@@ -156,7 +156,7 @@ export function CommentsPanel() {
               </DropdownMenuContent>
             </DropdownMenu>
             <SplitButton
-              variant="destructive-solid"
+              variant="destructive"
               size="xs"
               touch
               className="ml-auto"
