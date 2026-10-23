@@ -25,7 +25,7 @@ const buttonVariants = cva(
         rail: "text-secondary hover:bg-hover hover:text-fg aria-[current=page]:bg-selected aria-[current=page]:text-accent [&_svg]:[stroke-width:var(--icon-stroke-chrome)]",
         // Tertiary controls such as disclosure toggles and collapse arrows.
         subtle: "text-muted hover:bg-hover hover:text-fg",
-        destructive: "text-error hover:bg-hover",
+        destructive: "text-error hover:bg-hover data-popup-open:bg-hover",
         "destructive-solid":
           "bg-error text-on-accent hover:bg-error-hover active:bg-error-hover",
         link: "text-accent underline-offset-(--space-1) hover:underline",

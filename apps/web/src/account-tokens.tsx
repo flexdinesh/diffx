@@ -6,6 +6,7 @@ import {
   type ApiAccountToken,
 } from "@diffx/api";
 import { useEffect, useState, type FormEvent } from "react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ErrorState } from "@/components/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +47,8 @@ export function AccountTokens() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
+  const [revoking, setRevoking] = useState<ApiAccountToken | null>(null);
+  const [revokeError, setRevokeError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
     setError("");
@@ -95,7 +98,7 @@ export function AccountTokens() {
   }
   async function revoke(id: string) {
     setBusy(true);
-    setError("");
+    setRevokeError("");
     try {
       const { response, error } = await api.DELETE(
         "/api/v2/account/tokens/{tokenId}",
@@ -107,8 +110,11 @@ export function AccountTokens() {
         );
       setTokens((value) => value.filter((token) => token.id !== id));
       if (created?.token.id === id) setCreated(null);
+      setRevoking(null);
     } catch (failure: unknown) {
-      setError(errorDetail(failure, "Unable to revoke token. Try again."));
+      setRevokeError(
+        errorDetail(failure, "Unable to revoke token. Try again."),
+      );
     } finally {
       setBusy(false);
     }
@@ -194,7 +200,10 @@ export function AccountTokens() {
                     touch
                     disabled={busy}
                     aria-label={`Revoke ${token.name}`}
-                    onClick={() => void revoke(token.id)}
+                    onClick={() => {
+                      setRevokeError("");
+                      setRevoking(token);
+                    }}
                   >
                     Revoke
                   </Button>
@@ -202,6 +211,21 @@ export function AccountTokens() {
               ))}
             </ul>
           )}
+          <ConfirmDialog
+            open={revoking !== null}
+            onOpenChange={(open) => {
+              if (!open) setRevoking(null);
+            }}
+            title={`Revoke ${revoking?.name ?? "token"}?`}
+            description="Clients using this token lose access immediately. This cannot be undone."
+            error={revokeError}
+            confirmLabel="Revoke token"
+            busyLabel="Revoking…"
+            busy={busy}
+            onConfirm={() => {
+              if (revoking) void revoke(revoking.id);
+            }}
+          />
           <form className="account-form" onSubmit={create}>
             <label htmlFor="token-name">Token name</label>
             <Input

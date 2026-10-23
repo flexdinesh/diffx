@@ -163,7 +163,42 @@ test("collector token secret appears once, with owner CSRF and revocation", asyn
   await expect(heading).toHaveCount(0);
   await expect(page.getByText("Laptop", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Revoke Laptop" }).click();
+  const confirm = page.getByRole("dialog", { name: "Revoke Laptop?" });
+  await expect(confirm.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+  await expect(confirm).toBeHidden();
+  await expect(page.getByText("Laptop", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Revoke Laptop" }).click();
+  await confirm.getByRole("button", { name: "Revoke token" }).click();
+  await expect(confirm).toBeHidden();
   await expect(page.getByText("Laptop", { exact: true })).toHaveCount(0);
+});
+
+test("a failed revoke keeps the confirmation open with the error", async ({
+  page,
+}) => {
+  await remote(page);
+  const token = {
+    id: "token-c",
+    name: "Desktop",
+    purpose: "api",
+    createdAt: Date.now(),
+    lastUsedAt: null,
+    expiresAt: Date.now() + 90 * 86_400_000,
+  };
+  await page.route("**/api/v2/account/tokens", (route) =>
+    route.fulfill({ json: { tokens: [token] } }),
+  );
+  await page.route("**/api/v2/account/tokens/token-c", (route) =>
+    route.fulfill({ status: 500, json: { detail: "Revocation failed." } }),
+  );
+  await page.goto("/settings");
+  await page.getByRole("button", { name: "Revoke Desktop" }).click();
+  const confirm = page.getByRole("dialog", { name: "Revoke Desktop?" });
+  await confirm.getByRole("button", { name: "Revoke token" }).click();
+  await expect(confirm.getByRole("alert")).toHaveText(/./);
+  await expect(confirm).toBeVisible();
+  await expect(page.getByText("Desktop", { exact: true })).toBeVisible();
 });
 
 test("token form chooses access and expiry from labeled selects", async ({

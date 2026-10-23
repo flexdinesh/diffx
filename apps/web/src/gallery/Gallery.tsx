@@ -253,7 +253,7 @@ function Components() {
             Copy review
           </SplitButton>
           <SplitButton
-            variant="outline-muted"
+            variant="destructive"
             size="xs"
             menuLabel="Delete options"
             menu={<DropdownMenuItem>Delete resolved</DropdownMenuItem>}
