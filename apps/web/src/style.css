@@ -1247,6 +1247,7 @@ main {
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
   --radius-control: var(--radius-control);
+  --radius-round: var(--radius-round);
   --shadow-overlay: var(--shadow-overlay);
 }
 

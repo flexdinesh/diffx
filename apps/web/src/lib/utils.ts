@@ -18,7 +18,7 @@ export const cn = createCn({
         "icon-sm",
         "icon-lg",
       ],
-      radius: ["control"],
+      radius: ["control", "round"],
       leading: ["ui", "copy", "tree"],
       tracking: ["heading", "label"],
       shadow: ["overlay"],

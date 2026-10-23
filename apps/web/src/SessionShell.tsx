@@ -1,26 +1,13 @@
 import type { ReactNode } from "react";
 import { LoaderCircleIcon } from "lucide-react";
-import { AccountButton } from "./account.tsx";
-import { ThemeButton } from "./ThemeButton.tsx";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WorkspaceLoading } from "./WorkspaceLoading.tsx";
 import { navigate } from "./identity-context.tsx";
 import { Button } from "@/components/ui/button";
-import { ContextIdentity } from "./ContextIdentity.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { Navigation } from "./Navigation.tsx";
-import {
-  HeaderBrand,
-  NewChangesButton,
-  ProjectsToggle,
-} from "./ProjectsNav.tsx";
-import { useCompactChrome } from "./use-compact-chrome.ts";
+import { Topbar } from "./Topbar.tsx";
 import { useCatalog, useSessionShell } from "./session-context.tsx";
-
-export function CurrentContext() {
-  const catalog = useCatalog();
-  return catalog.current ? <ContextIdentity current={catalog.current} /> : null;
-}
 
 /**
  * Presents the selected review once ready, or the loading, empty and failure
@@ -43,7 +30,6 @@ export function SessionShell({ children }: { children: ReactNode }) {
     history,
     setPickerOpen,
   } = useSessionShell();
-  const compact = useCompactChrome();
   return (
     <>
       <div className="app-shell">
@@ -52,16 +38,9 @@ export function SessionShell({ children }: { children: ReactNode }) {
             children
           ) : (
             <>
-              <header className="topbar">
-                {compact && <ProjectsToggle />}
-                <HeaderBrand />
-                <CurrentContext />
-                {loading && !current && (
-                  <Skeleton className="loading-identity" />
-                )}
-                <div className="header-actions">
-                  <NewChangesButton />
-                  {collecting && (
+              <Topbar
+                actions={
+                  collecting && (
                     <Button
                       type="button"
                       id="sync"
@@ -77,11 +56,13 @@ export function SessionShell({ children }: { children: ReactNode }) {
                         aria-hidden="true"
                       />
                     </Button>
-                  )}
-                  {compact && <AccountButton />}
-                  <ThemeButton />
-                </div>
-              </header>
+                  )
+                }
+              >
+                {loading && !current && (
+                  <Skeleton className="loading-identity" />
+                )}
+              </Topbar>
               <div className="workbench">
                 <Navigation loading={loading} />
                 <main
