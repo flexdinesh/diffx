@@ -19,14 +19,14 @@
 .tree-control svg {
   width: 1em;
   height: 1em;
-  stroke-width: 1.6;
+  stroke-width: var(--icon-stroke-chrome);
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 .sidebar-tabs {
   display: flex;
   align-items: stretch;
-  height: calc(var(--control-small) + 2 * var(--space-1));
+  height: var(--panel-header-height);
   flex-shrink: 0;
   border: 0;
   border-bottom: 1px solid var(--border);
@@ -75,14 +75,6 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-#file-panel[hidden],
-#diff-scope[hidden],
-#git-legend[hidden],
-#refresh[hidden],
-#comments-panel[hidden],
-#sidebar-resizer[hidden] {
-  display: none;
 }
 .tree-list {
   list-style: none;
@@ -279,12 +271,6 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-#review-tools-content[hidden] {
-  display: none;
-}
-#summary-content[hidden] {
-  display: none;
-}
 .summary-section .sidebar-bottom {
   border-top: 0;
   padding-top: var(--space-1);
@@ -470,7 +456,7 @@
   align-items: center;
   color: var(--muted);
   font-size: var(--text-sm);
-  min-height: calc(var(--control-small) + 2 * var(--space-1));
+  min-height: var(--panel-header-height);
   padding: var(--space-0-5) var(--space-2);
   background: var(--panel);
   border-bottom: 1px solid var(--border);
@@ -500,11 +486,8 @@
 }
 @media (prefers-reduced-motion: no-preference) {
   .comment-collapse svg {
-    transition: transform 200ms ease-out;
+    transition: transform var(--duration-base) var(--ease-standard);
   }
-}
-.comment-collapse-panel[hidden] {
-  display: none;
 }
 .comment-card-title {
   display: inline-flex;
@@ -548,7 +531,7 @@
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-1-5);
-  min-height: calc(var(--control-small) + 2 * var(--space-1));
+  min-height: var(--panel-header-height);
   padding: var(--space-0-5) var(--space-2);
   background: var(--panel);
   border-top: 1px solid var(--border);
@@ -600,7 +583,7 @@
 .comment-editor-header {
   display: flex;
   align-items: center;
-  min-height: calc(var(--control-small) + 2 * var(--space-1));
+  min-height: var(--panel-header-height);
   padding: var(--space-1) var(--space-2);
   background: var(--accent-bg);
   border-bottom: 1px solid var(--border);
@@ -757,7 +740,6 @@
 }
 
 @media (max-width: 767px) {
-  .sidebar-bottom .summary-label,
   .sidebar-bottom .summary-row:not(.summary-files-row),
   .sidebar-bottom .change-bar {
     display: none;

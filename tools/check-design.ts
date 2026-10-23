@@ -41,6 +41,10 @@ const exceptions = new Set([
   "review.css|.comment-filter-count|line-height|1",
   "review.css|#sidebar-resizer|margin|0 -2px 0 -3px",
   "style.css|#viewer|--diff-gutter-divider-width|2px",
+  // Tailwind resolves breakpoints at build time, so they cannot reference
+  // tokens; they mirror the 768px and 1012px queries.
+  "style.css|@theme|--breakpoint-md|48rem",
+  "style.css|@theme|--breakpoint-lg|63.25rem",
 ]);
 
 function normalize(value: string): string {

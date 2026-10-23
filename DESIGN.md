@@ -100,8 +100,8 @@ measured elements or replace the application tokens with framework defaults.
 | Muted text                    | `--muted`           | Paths, counts, captions; still readable, never disabled by default |
 | Separator                     | `--border-muted`    | Pane dividers and low-emphasis grouping                            |
 | Control boundary              | `--border-control`  | Inputs and controls requiring stronger boundaries                  |
-| Emphasized boundary           | `--border-strong`   | Rare boundaries requiring emphasis beyond focus or error styling   |
-| Neutral hover                 | `--hover`           | Available controls under the pointer, compact count surfaces       |
+| Neutral hover                 | `--hover`           | Available controls under the pointer                               |
+| Count fill                    | `--count-bg`        | Static count and badge surfaces; never hover feedback              |
 | Shell hover                   | `--shell-hover`     | Hover/expanded header controls on `--shell-canvas`                 |
 | Accent                        | `--accent`          | Selection, focus, navigation links, primary commit action          |
 | Accent interaction            | `--accent-hover`    | Hover/active on filled primary actions                             |
@@ -347,14 +347,15 @@ such detail into a token. New layout spacing must use the scale.
   file-filter field share this token.
   Text, icons, hover and focus identify these actions; avoid per-button colors.
 - Use 1px `--border-muted` for separators and `--border-control` for interactive
-  boundaries requiring 3:1 contrast. Reserve `--border-strong` for exceptional
-  emphasis; focus and errors use their semantic tokens. Do not stack a card
+  boundaries requiring 3:1 contrast. `--border` frames islands, files and
+  cards; focus and errors use their semantic tokens. Do not stack a card
   border inside another bordered panel unless it
   represents an independent review object.
-- `--radius-sm` (3) is for rows, badges, and compact controls;
-  `--radius-md` (6) for standard controls; `--radius-lg` (12) for sidebar comments
-  and dialogs. Inline review annotations remain square. Circles are reserved for
-  dots and small status marks.
+- `--radius-xs` (2) is for skeleton bars. `--radius-sm` (4), aliased as
+  `--radius-control`, is for rows, badges, and compact controls; `--radius-md`
+  (6) for inline comment cards, file frames and picker rows; `--radius-lg` (8)
+  for shell islands, sidebar comments and dialogs. Inline review annotations
+  remain square. Circles are reserved for dots and small status marks.
 - `--shadow-overlay` is the single elevation treatment for drawers/dialogs.
   Use `--backdrop` for modal separation. Whitespace and surface changes do the
   grouping work in the rest of the app.
@@ -372,7 +373,7 @@ such detail into a token. New layout spacing must use the scale.
 - Standard control height is `--control-height` (32). Compact header-slot
   controls use `--control-compact` (24); segmented groups share the 32px outer size.
 - Outlined buttons use regular borders, medium UI text, 12px horizontal padding,
-  and `--radius-md`. Quiet buttons use secondary text and no resting border.
+  and `--radius-control`. Quiet buttons use secondary text and no resting border.
 - Standard buttons and button-like header statuses use the 32px control height.
   Compact sizing is reserved for subordinate icon and metadata controls. Shared
   variants own hover, active, border, and background styling.
@@ -384,7 +385,7 @@ such detail into a token. New layout spacing must use the scale.
 ### Forms
 
 - Reuse the shared shadcn `Input`, `Select`, and `Textarea` primitives. They use
-  `--bg` or `--panel`, `--border`, and `--radius-md`. Textareas share the
+  `--bg` or `--panel`, `--border-control`, and `--radius-control`. Textareas share the
   review body style and 8px/12px padding.
 - Label every control. Placeholders are hints, not labels. Keep label-to-control
   spacing at 8px, including the heading above a comment editor.
