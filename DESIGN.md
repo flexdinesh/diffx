@@ -135,6 +135,8 @@ measured elements or replace the application tokens with framework defaults.
   file-kind hints. They are a bounded categorical palette, not extra UI accents.
 - Status always includes text, a sign, an icon, or a shape. Preserve staging's
   empty/half/full dot distinction; its half-fill is information, not decoration.
+  Committed comparisons omit staging dots, legend, tooltip staging details,
+  and staging descriptions in accessible file names.
 - CPU and RAM in the status bar describe the Diffx server process, not
   the browser or whole machine. Keep that scope explicit in the status popup.
 - Pierre owns syntax colors, changed-line fills, word highlights, line selection,
@@ -226,10 +228,11 @@ such detail into a token. New layout spacing must use the scale.
   desktop controls at 32px, header icons at 16px, the divider at 16px, and group
   spacing at 6px so the header recedes into the editor chrome. Toolbar and sidebar
   tabs share the compact 36px desktop rhythm (`--control-small` plus two
-  `--space-1` insets). The narrow toolbar matches the 44px page header;
-  its icon buttons match the header's 44px touch targets and 16px icons. Scope
-  controls fill the row without adding border/padding height; abbreviate the
-  visible “All changes” label to “All”, retaining its full accessible name.
+  `--space-1` insets). The narrow toolbar uses 44px rows matching the page header;
+  its icon buttons match the header's 44px touch targets and 16px icons.
+  Uncommitted's subcontrol occupies a second row below the comparison picker
+  and display actions. Its items fill that row without extra border/padding
+  height; “All” retains the accessible name “All changes”.
 - Header and display-toolbar icon actions share borderless ghost buttons,
   16px icons, and 1.7px strokes, including menu and dialog triggers. Hover and
   expanded states use the same neutral surface feedback. On mobile, both rows
@@ -582,7 +585,15 @@ Do not add motion for decoration. New animation must honor
 
 - Use 1012px for drawer navigation/tighter gutters and 768px for compact mobile
   chrome. Synchronize drawer behavior with `use-sidebar.ts`.
-- Keep scope and desktop layout choice visible. View options and collapse/expand
+- The compact comparison menu offers only captured choices: Uncommitted,
+  Branch changes, Combined, or Piped patch. Selection closes the menu.
+  Uncommitted exposes All / Staged / Unstaged in that semantic order when
+  captured. The footer describes the selected comparison's captured baseline.
+  An unavailable URL scope remains selected with an explanation and the
+  available choices; do not silently substitute an empty comparison.
+  Empty net comparisons point to captured changes in other scopes, including
+  staged and unstaged changes that cancel in Uncommitted All.
+- Keep comparison and desktop layout choice visible. View options and collapse/expand
   all are adjacent icon buttons with action titles. Put wrap, inline detail,
   code theme, and narrow layout choice in View options.
 - Mobile retains the review identity's repository/branch or Piped/time context; truncate long
@@ -603,7 +614,7 @@ Do not add motion for decoration. New animation must honor
 - At mobile widths or coarse pointers, app-owned controls target 44px hit heights;
   icon controls also reach 44px width. Text-input sizing uses `--text-input-touch`.
   The compact View options and collapse/expand icons match the theme control's
-  44px size within the narrow 44px toolbar, matching the header touch targets.
+  44px size within the narrow toolbar’s first row, matching the header touch targets.
   Drawer navigation and summary controls retain desktop density, per the same brief.
 - Pierre code rows and header slots retain measured geometry. Larger library
   gutter/header targets need a coordinated renderer-metric change, not a CSS override.

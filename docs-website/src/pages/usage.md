@@ -63,9 +63,18 @@ and plugins require a remote URL and bearer token; they never bootstrap a local
 server. `diffx remote status` checks the destination, credential and protocol,
 and reports agent-hook deliveries still waiting.
 
-The all scope includes branch changes from the default branch's nearest merge base
-(local or remote-tracking) plus working changes. Staged/unstaged retain HEAD/index semantics.
-`--base HEAD` selects working changes only. Collection never fetches Git refs.
+Choose **Uncommitted** to review your edits before committing, **Branch changes**
+to review commits against the captured merge base, or **Combined** to review both
+together. Within Uncommitted, choose **All**, **Staged**, or **Unstaged**. These
+views use one captured snapshot; switching never stages files or reads newer Git
+state. Comments and reviewed marks belong to their comparison.
+
+Without a saved selection or explicit URL scope, captured staged or unstaged
+edits open Uncommitted; otherwise Branch changes opens when available. Combined
+uses the default branch's nearest merge base (local or remote-tracking), plus
+working changes. `--base HEAD`, or an unavailable branch baseline, provides only
+Uncommitted with its staging views. Older snapshots show the comparisons they
+actually captured. Collection never fetches Git refs.
 Matching captures reuse review state. Retention defaults to seven days after the
 last fresh submission; retries do not extend it.
 

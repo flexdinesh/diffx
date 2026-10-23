@@ -37,3 +37,12 @@ export function streamPath(head: ApiContext) {
     ? `/streams/${encodeURIComponent(head.streamId)}`
     : contextPath(head.id);
 }
+
+/** Scope history never re-resolves a live route's selected snapshot. */
+export function sameRoute(left: Route, right: Route) {
+  return left.kind === "root"
+    ? right.kind === "root"
+    : left.kind === "pinned"
+      ? right.kind === "pinned" && left.id === right.id
+      : right.kind === "live" && left.stream === right.stream;
+}

@@ -76,7 +76,7 @@ and review operations. Their lifecycle and submission delivery differ.
 
 ### Collect and ingest
 
-Collection resolves the baseline and all/staged/unstaged scopes together with
+Collection resolves the baseline and all supported comparison scopes together with
 full-content identity and bounded immutable previews. It never fetches refs.
 Sync and hook collection select one checkout, resolving nested paths to its
 root; their other registered worktrees are not collected. Local collection
@@ -85,6 +85,26 @@ scan depth, stopping at repositories and skipping hidden, `node_modules` and
 `vendor` directories, then collects every registered worktree of each repository
 found, at most 256 checkouts from 4096 directories. Each checkout gets its own
 submission ID. Explicit `--branch` recovery remains available for remote collection.
+
+A checkout with a resolved branch baseline captures five scopes atomically:
+
+| Scope         | Captured endpoints         | UI label               |
+| ------------- | -------------------------- | ---------------------- |
+| `all`         | Merge base to working tree | Combined               |
+| `committed`   | Merge base to HEAD         | Branch changes         |
+| `uncommitted` | HEAD to working tree       | Uncommitted / All      |
+| `staged`      | HEAD to index              | Uncommitted / Staged   |
+| `unstaged`    | Index to working tree      | Uncommitted / Unstaged |
+
+HEAD-only collection retains `all`, `staged`, and `unstaged`; its `all` means
+Uncommitted. Object-only branch recovery and piped patches retain only `all`,
+meaning Branch changes and supplied patch respectively. Every new manifest
+declares `comparisonKind`; old manifests receive a read-time interpretation
+without changing stored data. Unsupported scopes are unavailable, not empty.
+The 16 MiB aggregate preview budget is divided equally across captured scopes;
+this prevents one comparison consuming the others' previews, at the cost of
+earlier truncation within a large scope. Full-content identity remains independent
+of preview truncation.
 
 Local composition calls `contextservice.Ingest` directly as each checkout finishes
 collection. Discovery feeds up to four concurrent Git reads, while one serial
@@ -105,6 +125,16 @@ state after reconnecting. Queue workers may execute out of order, but stream
 freshness follows collection time and acceptance sequence.
 
 ### Browse and review
+
+The comparison selector reads scopes of the open observation. It does not
+collect Git state, advance to a newer observation, or mutate the index. Explicit
+URL scope wins over the saved per-stream selection. Otherwise, captured staged
+or unstaged edits select Uncommitted; a clean checkout selects Branch changes
+when collected. Scope history preserves the open snapshot and comment draft.
+Comments and reviewed marks remain separate per stream and scope; choosing a
+new comparison does not migrate review state. Catalog change counts count
+distinct paths across every captured scope, so staged edits cancelled by
+unstaged edits do not disappear with an empty Combined diff.
 
 Navigation is project-driven. The Repos drawer queries
 `/api/v2/contexts?latest=true`, which omits stale snapshots, and groups stream
@@ -219,7 +249,7 @@ user
     observations from any number of sources and checkouts
       captured metadata
       submissions and observing sessions
-      immutable scopes: all / staged / unstaged
+      immutable captured scopes, each with explicit comparison semantics
         manifest, patches, available contents
     review stream (source/checkout/branch/comparison, or one piped capture)
       mutable review state per scope, spanning its observations
@@ -304,7 +334,9 @@ Replay identity is **account + source ID + submission ID**. The server hashes
 the validated request representation. A matching replay returns the original
 context; different content under the same identity fails with a conflict.
 A separate identity uses account, source, repository, checkout, branch, HEAD,
-source kind, scopes, comparison policy and producer content hash to reuse unexpired snapshots.
+source kind, scopes, explicit comparison kinds, comparison policy and producer
+content hash to reuse unexpired snapshots. Absent comparison kinds preserve the
+legacy identity algorithm for queued submissions.
 The hash covers full content before preview truncation, including binary and
 untracked files, modes, renames and staged/unstaged state; mtime and ctime are
 excluded. Unsupported full identities fail closed and remain independent.

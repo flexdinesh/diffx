@@ -1,7 +1,11 @@
 import { type Page, type Route } from "@playwright/test";
 import { expect, fileToggle, test } from "./fixtures.ts";
 import type { ApiContext, ApiRepositoryDiff } from "@diffx/api";
-import { isDiffMode, type DiffMode } from "../../src/diff-mode.ts";
+import {
+  comparisonKind,
+  isDiffMode,
+  type DiffMode,
+} from "../../src/diff-mode.ts";
 import type { ReviewComment } from "../../src/review-comments.ts";
 
 async function openReviewPicker(page: Page) {
@@ -17,6 +21,7 @@ async function localWorkspace(page: Page) {
   const state = {
     version: 1,
     failPatch: false,
+    emptyScopes: new Set<DiffMode>(),
     holdScopes: new Set<DiffMode>(),
     scopes: new Array<DiffMode>(),
     pendingScopes: new Array<{ route: Route; repository: ApiRepositoryDiff }>(),
@@ -66,21 +71,24 @@ async function localWorkspace(page: Page) {
       branch: "main",
       head: "head",
       mode,
+      comparisonKind: comparisonKind(session, mode),
       revision: `${mode}-v${state.version}`,
-      files: [
-        {
-          id: "value-file",
-          path: "src/value.ts",
-          oldPath: null,
-          status: "M",
-          indexStatus: "M",
-          worktreeStatus: "M",
-          additions: 1,
-          deletions: 1,
-          binary: false,
-          fingerprint: `${mode}-v${state.version}`,
-        },
-      ],
+      files: state.emptyScopes.has(mode)
+        ? []
+        : [
+            {
+              id: "value-file",
+              path: "src/value.ts",
+              oldPath: null,
+              status: "M",
+              indexStatus: "M",
+              worktreeStatus: "M",
+              additions: 1,
+              deletions: 1,
+              binary: false,
+              fingerprint: `${mode}-v${state.version}`,
+            },
+          ],
     };
   }
   await page.route("**/api/v2/contexts?*", (route) =>
@@ -174,7 +182,7 @@ async function showDiff(page: Page) {
 test("comparison uses the captured merge base and follows the selected scope", async ({
   page,
 }) => {
-  const state = await localWorkspace(page);
+  const state = await capturedWorkspace(page);
   const head = "a".repeat(40);
   const baseCommit = "b".repeat(40);
   const mergeBase = "c".repeat(40);
@@ -202,7 +210,7 @@ test("comparison uses the captured merge base and follows the selected scope", a
       mergeBase,
     },
   };
-  await page.goto("/contexts/local-review");
+  await page.goto("/contexts/local-review?scope=all");
   await ready(page);
   const trigger = page.getByRole("button", { name: /^Diff comparison:/ });
   await expect(trigger).toContainText(
@@ -217,6 +225,7 @@ test("comparison uses the captured merge base and follows the selected scope", a
     await expect(popup.getByText(value, { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
+  await chooseComparison(page, "Uncommitted");
   await page.getByRole("button", { name: "Staged", exact: true }).click();
   await expect(trigger).toContainText("HEAD → index");
   await trigger.click();
@@ -233,7 +242,7 @@ test("comparison uses the captured merge base and follows the selected scope", a
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 844 });
     await expect(page.locator(".topbar")).toHaveCSS("height", "44px");
-    await expect(page.locator(".toolbar")).toHaveCSS("height", "44px");
+    await expect(page.locator(".toolbar")).toHaveCSS("height", "89px");
     for (const name of ["All changes", "Staged", "Unstaged", "View options"]) {
       const control = page.getByRole("button", { name, exact: true });
       await expect(control).toBeVisible();
@@ -247,6 +256,7 @@ test("comparison uses the captured merge base and follows the selected scope", a
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(trigger).toBeVisible();
   await expect(trigger).toContainText("Comparison");
+  await chooseComparison(page, "Combined");
   await trigger.click();
   await expect(popup.getByText(mergeBase, { exact: true })).toBeVisible();
   const bounds = await popup.boundingBox();
@@ -1024,11 +1034,11 @@ test("empty contexts remain accessible through the picker and direct URLs", asyn
   await dialog.getByRole("option").click();
   await expect(page).toHaveURL(/\/contexts\/local-review$/);
   await expect(
-    page.getByRole("heading", { name: "No changes in this snapshot" }),
+    page.getByRole("heading", { name: "No net uncommitted changes" }),
   ).toBeVisible();
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "No changes in this snapshot" }),
+    page.getByRole("heading", { name: "No net uncommitted changes" }),
   ).toBeVisible();
   await expect(page).toHaveURL(/\/contexts\/local-review$/);
 });
@@ -2483,4 +2493,328 @@ test("each remote account baselines its own seen heads", async ({ page }) => {
   expect(
     await page.evaluate(() => localStorage.getItem("projects-seen:account-b")),
   ).toContain("web-head");
+});
+
+async function capturedWorkspace(page: Page) {
+  const state = await localWorkspace(page);
+  state.context.streamId = "captured-stream";
+  state.context.capabilities.diff.scopes.values = [
+    "all",
+    "staged",
+    "unstaged",
+    "uncommitted",
+    "committed",
+  ];
+  state.context.scopeSummaries = [
+    { scope: "all", comparisonKind: "combined", fileCount: 1 },
+    { scope: "staged", comparisonKind: "staged", fileCount: 1 },
+    { scope: "unstaged", comparisonKind: "unstaged", fileCount: 1 },
+    { scope: "uncommitted", comparisonKind: "uncommitted", fileCount: 1 },
+    { scope: "committed", comparisonKind: "committed", fileCount: 1 },
+  ];
+  return state;
+}
+
+async function chooseComparison(page: Page, label: string) {
+  await page.getByRole("button", { name: /^Comparison:/ }).click();
+  await page.getByRole("menuitemradio", { name: label, exact: true }).click();
+  await expect(
+    page.getByRole("menuitemradio", { name: label, exact: true }),
+  ).toBeHidden();
+}
+
+test("captured comparison default, saved stream choice, and explicit URL precedence", async ({
+  page,
+}) => {
+  const state = await capturedWorkspace(page);
+  await page.goto("/contexts/local-review");
+  await ready(page, "uncommitted-v1");
+  expect(state.scopes).toEqual(["uncommitted"]);
+  await expect(
+    page.getByRole("group", { name: "Uncommitted scope" }).getByRole("button"),
+  ).toHaveText(["All", "Staged", "Unstaged"]);
+  await chooseComparison(page, "Branch changes");
+  await ready(page, "committed-v1");
+  await showDiff(page);
+  await expect(
+    page.locator('#file-tree [data-path="src/value.ts"]'),
+  ).toHaveAttribute("aria-label", "src/value.ts, Modified");
+  await expect(page.locator(".git-legend")).toBeHidden();
+  await page.reload();
+  await ready(page, "committed-v1");
+  await page.goto("/contexts/local-review");
+  await ready(page, "committed-v1");
+  await page.goto("/contexts/local-review?scope=staged");
+  await ready(page, "staged-v1");
+  await page.evaluate(() => sessionStorage.clear());
+  state.context.scopeSummaries =
+    state.context.scopeSummaries?.map((summary) => ({
+      ...summary,
+      fileCount: summary.comparisonKind === "committed" ? 1 : 0,
+    })) ?? [];
+  await page.goto("/contexts/local-review");
+  await ready(page, "committed-v1");
+});
+
+test("scope history keeps live snapshot and draft through newer heads, then follows cross-route navigation", async ({
+  page,
+}) => {
+  const state = await capturedWorkspace(page);
+  await page.route("**/api/v2/bootstrap", (route) =>
+    route.fulfill({
+      json: {
+        mode: "local",
+        signupEnabled: false,
+        user: null,
+        csrfToken: null,
+        collect: true,
+      },
+    }),
+  );
+  let collections = 0;
+  let head: ApiContext = {
+    ...state.context,
+    id: "first",
+    latestContextId: "first",
+  };
+  const opened: string[] = [];
+  await page.route("**/api/v2/collections*", (route) => {
+    collections++;
+    return route.fulfill({
+      json: { contexts: [head], failures: [], defaultContextId: head.id },
+    });
+  });
+  await page.route("**/api/v2/contexts?*", (route) =>
+    route.fulfill({ json: { contexts: [head], nextCursor: null } }),
+  );
+  await page.route("**/api/v2/contexts/*", (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-1) ?? "";
+    opened.push(id);
+    return route.fulfill({ json: { ...head, id } });
+  });
+  await page.goto("/streams/captured-stream?scope=uncommitted");
+  await ready(page, "uncommitted-v1");
+  await expect.poll(() => collections).toBe(1);
+  await page.getByRole("button", { name: "Staged", exact: true }).click();
+  await ready(page, "staged-v1");
+  head = { ...head, id: "second", latestContextId: "second", lastChangedAt: 2 };
+  await page.evaluate(() =>
+    document.dispatchEvent(new Event("visibilitychange")),
+  );
+  await page.getByRole("button", { name: "View latest" }).click();
+  await ready(page, "staged-v1");
+  expect(opened).toEqual(["first", "second"]);
+  await page
+    .getByRole("button", {
+      name: "Leave review comment on file src/value.ts",
+      exact: true,
+    })
+    .click();
+  const draft = page
+    .locator("#viewer")
+    .getByRole("textbox", { name: "Review comment" });
+  await draft.fill("Keep staged draft on captured second");
+  await chooseComparison(page, "Branch changes");
+  await ready(page, "committed-v1");
+  head = { ...head, id: "third", latestContextId: "third", lastChangedAt: 3 };
+  await page.evaluate(() =>
+    document.dispatchEvent(new Event("visibilitychange")),
+  );
+  await page.goBack();
+  await ready(page, "staged-v1");
+  await expect(draft).toHaveValue("Keep staged draft on captured second");
+  await page.goBack();
+  await ready(page, "uncommitted-v1");
+  await page.goForward();
+  await ready(page, "staged-v1");
+  await expect(draft).toHaveValue("Keep staged draft on captured second");
+  await page.goForward();
+  await ready(page, "committed-v1");
+  expect(collections).toBe(1);
+  expect(opened).toEqual(["first", "second"]);
+  // A different route intentionally starts a new session. Returning follows
+  // the stream's new head once; subsequent scope history stays there.
+  await page.evaluate(() => {
+    window.history.pushState(null, "", "/contexts/other?scope=all");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await ready(page, "all-v1");
+  await page.goBack();
+  await ready(page, "committed-v1");
+  await expect.poll(() => collections).toBe(2);
+  expect(opened).toEqual(["first", "second", "other", "third"]);
+  await page.goBack();
+  await ready(page, "staged-v1");
+  expect(opened).toEqual(["first", "second", "other", "third"]);
+  expect(collections).toBe(2);
+});
+
+test("unavailable explicit scope stays explained without requesting it, including stale responses", async ({
+  page,
+}) => {
+  const state = await capturedWorkspace(page);
+  state.context.capabilities.diff.scopes.values = ["all", "staged", "unstaged"];
+  state.context.scopeSummaries = [
+    { scope: "all", comparisonKind: "uncommitted", fileCount: 1 },
+    { scope: "staged", comparisonKind: "staged", fileCount: 1 },
+    { scope: "unstaged", comparisonKind: "unstaged", fileCount: 1 },
+  ];
+  await page.goto("/contexts/local-review?scope=committed");
+  await expect(
+    page.getByText("Comparison unavailable", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/The “committed” scope was not collected/),
+  ).toBeVisible();
+  expect(state.scopes).toEqual([]);
+  await chooseComparison(page, "Uncommitted");
+  await ready(page);
+  state.holdScopes.add("staged");
+  await page.getByRole("button", { name: "Staged", exact: true }).click();
+  await expect.poll(() => state.pendingScopes.length).toBe(1);
+  await page.goBack();
+  await ready(page);
+  await page.goBack();
+  await expect(
+    page.getByText("Comparison unavailable", { exact: true }),
+  ).toBeVisible();
+  const pending = state.pendingScopes.shift();
+  if (!pending) throw new Error("Missing delayed staged response");
+  await pending.route.fulfill({ json: pending.repository });
+  await expect(
+    page.getByText("Comparison unavailable", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator("#viewer")
+      .getByText('export const value = "staged-v1";', { exact: true }),
+  ).toHaveCount(0);
+  expect(state.scopes).not.toContain("committed");
+  await page.goto("/contexts/local-review?scope=unknown");
+  await expect(
+    page.getByText(/The “unknown” scope was not collected/),
+  ).toBeVisible();
+});
+
+test("empty net comparisons expose staged and unstaged changes that cancel", async ({
+  page,
+}) => {
+  const state = await capturedWorkspace(page);
+  state.emptyScopes.add("uncommitted");
+  state.emptyScopes.add("all");
+  state.context.scopeSummaries =
+    state.context.scopeSummaries?.map((summary) => ({
+      ...summary,
+      fileCount: state.emptyScopes.has(summary.scope) ? 0 : 1,
+    })) ?? [];
+  await page.goto("/contexts/local-review");
+  await expect(
+    page.getByText("No net uncommitted changes", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Captured changes are available in Staged, Unstaged/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Staged", exact: true }).click();
+  await ready(page, "staged-v1");
+  await chooseComparison(page, "Combined");
+  await expect(
+    page.getByText("No net combined changes", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      /Captured changes are available in Staged, Unstaged, Branch changes/,
+    ),
+  ).toBeVisible();
+});
+
+test("saving a draft from another comparison uses its original scope and diff identity", async ({
+  page,
+}) => {
+  await capturedWorkspace(page);
+  let submitted: unknown;
+  await page.route("**/api/v2/contexts/*/comments", (route) => {
+    if (route.request().method() !== "POST")
+      return route.fulfill({ json: { comments: [] } });
+    submitted = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        id: "saved",
+        diffId: "diff-uncommitted",
+        versionId: "uncommitted-v1",
+        path: "src/value.ts",
+        scope: "uncommitted",
+        fingerprint: "uncommitted-v1",
+        target: "file",
+        side: "additions",
+        start: 0,
+        end: 0,
+        code: "",
+        body: "Original scope",
+        status: "open",
+        createdAt: 1,
+      },
+    });
+  });
+  await page.goto("/contexts/local-review");
+  await ready(page, "uncommitted-v1");
+  await page
+    .getByRole("button", {
+      name: "Leave review comment on file src/value.ts",
+      exact: true,
+    })
+    .click();
+  await page
+    .locator("#viewer")
+    .getByRole("textbox", { name: "Review comment" })
+    .fill("Original scope");
+  await chooseComparison(page, "Branch changes");
+  await ready(page, "committed-v1");
+  await showDiff(page);
+  await page.getByRole("tab", { name: /Review/ }).click();
+  await page
+    .locator("#comments-panel")
+    .getByRole("button", { name: "Save comment" })
+    .click();
+  await expect
+    .poll(() => submitted)
+    .toEqual({
+      diffId: "diff-uncommitted",
+      versionId: "uncommitted-v1",
+      fileId: "value-file",
+      scope: "uncommitted",
+      fileVersion: "uncommitted-v1",
+      target: "file",
+      side: "additions",
+      start: 0,
+      end: 0,
+      body: "Original scope",
+    });
+});
+
+test("saved comparison preferences belong to the active account", async ({
+  page,
+}) => {
+  await capturedWorkspace(page);
+  let account = "first-account";
+  await page.route("**/api/v2/bootstrap", (route) =>
+    route.fulfill({
+      json: {
+        mode: "remote",
+        signupEnabled: false,
+        user: { id: account, username: account },
+        csrfToken: "test",
+        collect: false,
+      },
+    }),
+  );
+  await page.goto("/contexts/local-review");
+  await ready(page, "uncommitted-v1");
+  await chooseComparison(page, "Branch changes");
+  await ready(page, "committed-v1");
+  account = "second-account";
+  await page.goto("/contexts/local-review");
+  await ready(page, "uncommitted-v1");
+  account = "first-account";
+  await page.goto("/contexts/local-review");
+  await ready(page, "committed-v1");
 });

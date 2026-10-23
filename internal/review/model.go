@@ -9,19 +9,39 @@ import (
 type DiffMode string
 
 const (
-	DiffAll      DiffMode = "all"
-	DiffStaged   DiffMode = "staged"
-	DiffUnstaged DiffMode = "unstaged"
+	DiffAll         DiffMode = "all"
+	DiffStaged      DiffMode = "staged"
+	DiffUnstaged    DiffMode = "unstaged"
+	DiffUncommitted DiffMode = "uncommitted"
+	DiffCommitted   DiffMode = "committed"
 )
 
 func ParseDiffMode(value string) (DiffMode, error) {
 	mode := DiffMode(value)
 	switch mode {
-	case DiffAll, DiffStaged, DiffUnstaged:
+	case DiffAll, DiffStaged, DiffUnstaged, DiffUncommitted, DiffCommitted:
 		return mode, nil
 	default:
 		return "", errors.New("invalid diff scope")
 	}
+}
+
+// ComparisonKind describes captured endpoints independently of deployment or scope aliases.
+type ComparisonKind string
+
+const (
+	ComparisonCombined    ComparisonKind = "combined"
+	ComparisonUncommitted ComparisonKind = "uncommitted"
+	ComparisonStaged      ComparisonKind = "staged"
+	ComparisonUnstaged    ComparisonKind = "unstaged"
+	ComparisonCommitted   ComparisonKind = "committed"
+	ComparisonPatch       ComparisonKind = "patch"
+)
+
+type ScopeSummary struct {
+	Scope          DiffMode       `json:"scope"`
+	ComparisonKind ComparisonKind `json:"comparisonKind"`
+	FileCount      int            `json:"fileCount"`
 }
 
 type ChangedFile struct {
@@ -39,18 +59,19 @@ type ChangedFile struct {
 }
 
 type RepositoryDiff struct {
-	ID           string        `json:"id"`
-	VersionID    string        `json:"versionId"`
-	LocationID   *string       `json:"locationId"`
-	RepositoryID *string       `json:"repositoryId"`
-	Source       string        `json:"source"`
-	Root         string        `json:"root"`
-	Name         string        `json:"name"`
-	Branch       string        `json:"branch"`
-	Head         *string       `json:"head"`
-	Mode         DiffMode      `json:"mode"`
-	Files        []ChangedFile `json:"files"`
-	Revision     string        `json:"revision"`
+	ID             string         `json:"id"`
+	VersionID      string         `json:"versionId"`
+	LocationID     *string        `json:"locationId"`
+	RepositoryID   *string        `json:"repositoryId"`
+	Source         string         `json:"source"`
+	Root           string         `json:"root"`
+	Name           string         `json:"name"`
+	Branch         string         `json:"branch"`
+	Head           *string        `json:"head"`
+	Mode           DiffMode       `json:"mode"`
+	ComparisonKind ComparisonKind `json:"comparisonKind,omitempty"`
+	Files          []ChangedFile  `json:"files"`
+	Revision       string         `json:"revision"`
 }
 
 type FileContents struct {

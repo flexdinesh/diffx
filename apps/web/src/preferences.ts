@@ -81,3 +81,19 @@ export function saveSessionPaths(key: string, paths: ReadonlySet<string>) {
     // Storage is optional.
   }
 }
+
+export function sessionValue(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+export function saveSessionValue(key: string, value: string) {
+  try {
+    sessionStorage.setItem(key, value);
+  } catch {
+    // Storage is optional.
+  }
+}

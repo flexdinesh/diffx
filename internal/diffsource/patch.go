@@ -97,7 +97,7 @@ func OpenPatch(input string) (Source, error) {
 		root: root,
 		manifest: review.RepositoryDiff{
 			Source: "stdin", Root: root, Name: "Piped diff", Branch: "stdin",
-			Mode: review.DiffAll, Files: files, Revision: revision,
+			Mode: review.DiffAll, ComparisonKind: review.ComparisonPatch, Files: files, Revision: revision,
 		},
 		previews: previews,
 	}, nil

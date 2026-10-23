@@ -17,8 +17,14 @@ import { useSession } from "./session-context.tsx";
 
 export function DiffComparison() {
   const session = useSession();
-  const { mode, repository } = useDiffSource();
-  const comparison = diffComparison(session, mode, repository?.head);
+  const { mode, repository, scopeAvailable } = useDiffSource();
+  if (!scopeAvailable) return null;
+  const comparison = diffComparison(
+    session,
+    mode,
+    repository?.head,
+    repository?.comparisonKind,
+  );
   return (
     <Popover key={mode}>
       <PopoverTrigger

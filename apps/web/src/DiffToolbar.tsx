@@ -16,7 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useDiffSource, useDiffCollapse, useNavigation } from "./app-state.tsx";
+import { useDiffCollapse, useNavigation } from "./app-state.tsx";
 import { useAppearance } from "./appearance-context.tsx";
 import {
   DIFF_THEMES,
@@ -24,7 +24,7 @@ import {
   readDiffTheme,
   readLineDiffType,
 } from "./display-options.ts";
-import { capabilityEnabled, useSession } from "./session-context.tsx";
+import { ComparisonPicker } from "./ComparisonPicker.tsx";
 
 const LAYOUTS = [
   { value: "split", label: "Split" },
@@ -32,8 +32,6 @@ const LAYOUTS = [
 ] as const;
 
 export function DiffToolbar() {
-  const { mode, changeMode } = useDiffSource();
-  const { capabilities } = useSession();
   const {
     layout,
     setLayout,
@@ -46,33 +44,11 @@ export function DiffToolbar() {
   } = useAppearance();
   const { collapsed, setCollapsed } = useDiffCollapse();
   const { files } = useNavigation();
-  const scopes = capabilities.diff.scopes;
   const allCollapsed =
     files.length > 0 && files.every((file) => collapsed.has(file.path));
   return (
     <div className="toolbar [&_svg]:[stroke-width:var(--icon-stroke-chrome)]">
-      <SegmentedControl
-        label="Diff scope"
-        hidden={!capabilityEnabled(scopes) || scopes.values.length < 2}
-        touch
-        flush
-        options={scopes.values.map((value) =>
-          value === "all"
-            ? {
-                value,
-                // Narrow toolbars abbreviate the label; the name stays whole.
-                label: (
-                  <>
-                    All<span className="max-md:hidden"> changes</span>
-                  </>
-                ),
-                ariaLabel: "All changes",
-              }
-            : { value, label: value === "staged" ? "Staged" : "Unstaged" },
-        )}
-        value={mode}
-        onValueChange={changeMode}
-      />
+      <ComparisonPicker />
       <div className="min-w-0 flex-1" />
       <SegmentedControl
         label="Diff layout"

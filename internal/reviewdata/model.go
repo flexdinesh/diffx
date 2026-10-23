@@ -50,6 +50,7 @@ type ContextInfo struct {
 	CreatedAt        int64
 	LastSubmittedAt  int64
 	ExpiresAt        *int64
+	ScopeSummaries   []review.ScopeSummary
 	ChangedFileCount *int
 
 	// ActivityAt is the winning submission activity for heads; captured activity otherwise.

@@ -3,7 +3,7 @@ import type {
   FileDiffMetadata,
   SelectedLineRange,
 } from "@pierre/diffs";
-import type { DiffMode } from "./diff-mode.ts";
+import { isDiffMode as diffMode } from "./diff-mode.ts";
 
 import type { ApiReviewComment, ApiReviewMark } from "@diffx/api";
 export type ReviewComment = ApiReviewComment;
@@ -75,10 +75,6 @@ export type ReviewMark = ApiReviewMark;
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function diffMode(value: unknown): value is DiffMode {
-  return value === "all" || value === "staged" || value === "unstaged";
 }
 
 function validOrigin(value: unknown): value is ReviewOrigin {

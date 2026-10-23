@@ -2,6 +2,7 @@ package contextservice
 
 import (
 	"context"
+	"slices"
 	"sync"
 
 	"github.com/flexdinesh/diffx/internal/ingestion"
@@ -46,7 +47,7 @@ func (source *storedSource) Root() string { return source.metadata.Root }
 func (source *storedSource) Kind() string { return source.kind }
 func (source *storedSource) Support() review.Support {
 	scopes := []review.DiffMode{}
-	for _, mode := range []review.DiffMode{review.DiffAll, review.DiffStaged, review.DiffUnstaged} {
+	for _, mode := range []review.DiffMode{review.DiffAll, review.DiffStaged, review.DiffUnstaged, review.DiffUncommitted, review.DiffCommitted} {
 		if _, ok := source.binding.DiffIDs[mode]; ok {
 			scopes = append(scopes, mode)
 		}
@@ -83,7 +84,7 @@ func storedCapabilities(scopes []review.DiffMode, contents bool) reviewsession.C
 }
 
 func storedSupport(scopes []review.DiffMode, contents bool) review.Support {
-	return review.Support{Scopes: scopes, StagingMetadata: len(scopes) > 1, FileContents: contents}
+	return review.Support{Scopes: scopes, StagingMetadata: slices.Contains(scopes, review.DiffStaged) || slices.Contains(scopes, review.DiffUnstaged), FileContents: contents}
 }
 
 func valueOrEmpty(value *string) string {

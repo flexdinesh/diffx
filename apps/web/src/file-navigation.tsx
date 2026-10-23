@@ -67,7 +67,7 @@ function StatusBadge({
   file: ChangedFile;
   stagingMetadata: boolean;
 }) {
-  const decoration = gitDecoration(file);
+  const decoration = gitDecoration(file, stagingMetadata);
   return (
     <span
       className="file-status"
@@ -183,7 +183,7 @@ export function FileNavigation({
           }
           const file = node.file;
           const viewed = isReviewed(file);
-          const decoration = gitDecoration(file);
+          const decoration = gitDecoration(file, stagingMetadata);
           const { current: count, outdated } = commentCounts.get(file.path) ?? {
             current: 0,
             outdated: 0,

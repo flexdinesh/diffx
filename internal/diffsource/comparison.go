@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strings"
 
 	"github.com/flexdinesh/diffx/internal/review"
@@ -258,17 +259,88 @@ func (source *gitSource) verifyComparison(ctx context.Context) error {
 	return nil
 }
 
-func (source *gitSource) comparisonBase(mode review.DiffMode, headBase string) string {
-	if mode == review.DiffAll && source.comparison != nil {
-		return source.comparison.BaseOID
-	}
-	return headBase
+type endpointKind uint8
+
+const (
+	objectEndpoint endpointKind = iota
+	indexEndpoint
+	worktreeEndpoint
+)
+
+type gitEndpoint struct {
+	kind     endpointKind
+	revision string
 }
 
-func (source *gitSource) diffArgs(mode review.DiffMode, headBase string) []string {
-	args := gitDiffArgs(mode, source.comparisonBase(mode, headBase))
-	if source.objectsOnly() {
-		args = append(args, source.comparison.HeadOID)
+// comparisonEndpoints owns scope semantics for manifests, previews and identity.
+// An empty object revision is never an index: unborn HEAD uses the empty tree.
+type comparisonEndpoints struct {
+	before, after gitEndpoint
+	kind          review.ComparisonKind
+}
+
+func (source *gitSource) endpoints(mode review.DiffMode, headBase string) (comparisonEndpoints, error) {
+	if !slices.Contains(source.Support().Scopes, mode) {
+		return comparisonEndpoints{}, Error(400, "Unsupported comparison scope: %s", mode)
+	}
+	endpoints := comparisonEndpoints{
+		before: gitEndpoint{kind: objectEndpoint, revision: headBase},
+		after:  gitEndpoint{kind: worktreeEndpoint},
+		kind:   review.ComparisonUncommitted,
+	}
+	switch mode {
+	case review.DiffAll:
+		if source.comparison != nil {
+			endpoints.before.revision = source.comparison.BaseOID
+			endpoints.kind = review.ComparisonCombined
+			if source.objectsOnly() {
+				endpoints.after = gitEndpoint{kind: objectEndpoint, revision: source.comparison.HeadOID}
+				endpoints.kind = review.ComparisonCommitted
+			}
+		}
+	case review.DiffCommitted:
+		endpoints.before.revision = source.comparison.BaseOID
+		endpoints.after = gitEndpoint{kind: objectEndpoint, revision: source.comparison.HeadOID}
+		endpoints.kind = review.ComparisonCommitted
+	case review.DiffStaged:
+		endpoints.after = gitEndpoint{kind: indexEndpoint}
+		endpoints.kind = review.ComparisonStaged
+	case review.DiffUnstaged:
+		endpoints.before = gitEndpoint{kind: indexEndpoint}
+		endpoints.kind = review.ComparisonUnstaged
+	}
+	return endpoints, nil
+}
+
+func (endpoints comparisonEndpoints) objectsOnly() bool {
+	return endpoints.before.kind == objectEndpoint && endpoints.after.kind == objectEndpoint
+}
+
+func (source *gitSource) previewEndpoints(ctx context.Context, mode review.DiffMode, head *string) (comparisonEndpoints, error) {
+	if err := ctx.Err(); err != nil {
+		return comparisonEndpoints{}, err
+	}
+	if head != nil {
+		return source.endpoints(mode, *head)
+	}
+	_, base, err := source.headAndBase(ctx)
+	if err != nil {
+		return comparisonEndpoints{}, err
+	}
+	return source.endpoints(mode, base)
+}
+
+func (endpoints comparisonEndpoints) diffArgs() []string {
+	args := []string{"-c", "diff.autoRefreshIndex=false", "diff", "--no-ext-diff", "--no-textconv", "--ignore-submodules=none", "--find-renames"}
+	args = append(args, patchFormat...)
+	if endpoints.after.kind == indexEndpoint {
+		args = append(args, "--cached")
+	}
+	if endpoints.before.kind == objectEndpoint {
+		args = append(args, endpoints.before.revision)
+	}
+	if endpoints.after.kind == objectEndpoint {
+		args = append(args, endpoints.after.revision)
 	}
 	return args
 }
@@ -277,12 +349,12 @@ func (source *gitSource) objectsOnly() bool {
 	return source.comparison != nil && source.comparison.ObjectsOnly
 }
 
-func (source *gitSource) objectSubmodule(ctx context.Context, file review.ChangedFile) (bool, error) {
+func (source *gitSource) objectSubmodule(ctx context.Context, endpoints comparisonEndpoints, file review.ChangedFile) (bool, error) {
 	previous := file.Path
 	if file.OldPath != nil {
 		previous = *file.OldPath
 	}
-	for _, object := range []struct{ revision, path string }{{source.comparison.BaseOID, previous}, {source.comparison.HeadOID, file.Path}} {
+	for _, object := range []struct{ revision, path string }{{endpoints.before.revision, previous}, {endpoints.after.revision, file.Path}} {
 		mode, err := runGit(ctx, source.root, 1024, "ls-tree", "--format=%(objectmode)", object.revision, "--", object.path)
 		if err != nil {
 			return false, err

@@ -98,7 +98,37 @@ func TestAdmissionCapabilitiesMatchHealthAndRoutes(t *testing.T) {
 }
 
 func TestLocalAndQueuedRemoteShareSnapshotContract(t *testing.T) {
-	input := collectGit(t)
+	root := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		if raw, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, raw)
+		}
+	}
+	git("init", "--initial-branch=main")
+	write := func(value string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte(value+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("base")
+	git("add", ".")
+	git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "base")
+	git("switch", "-c", "feature")
+	write("committed")
+	git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-am", "feature")
+	write("staged")
+	git("add", ".")
+	write("working")
+	input, err := collector.Collect(t.Context(), root, collector.Options{SourceID: "machine", Base: "auto"})
+	if err != nil || len(input.Scopes) != 5 {
+		t.Fatalf("branch capture: %d scopes, %v", len(input.Scopes), err)
+	}
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", t.TempDir())
 	input.Metadata.Trigger, input.Metadata.RunID = "manual", ""
 	store, err := reviewstore.Open(":memory:")
 	if err != nil {
@@ -140,6 +170,9 @@ func TestLocalAndQueuedRemoteShareSnapshotContract(t *testing.T) {
 		if !reflect.DeepEqual(context.Capabilities, submitted.Context.Capabilities) || context.Capabilities.Diff.Refresh.Enabled() {
 			t.Fatalf("snapshot capabilities depend on mode: %+v", context.Capabilities)
 		}
+		if !reflect.DeepEqual(context.ScopeSummaries, submitted.Context.ScopeSummaries) || len(context.ScopeSummaries) != 5 {
+			t.Fatalf("captured summaries depend on mode: %+v", context.ScopeSummaries)
+		}
 		active := decode[struct {
 			Capabilities reviewsession.Capabilities `json:"capabilities"`
 		}](t, request(t, test.deployment, "GET", "/api/v2/contexts/"+test.id+"/session", nil))
@@ -148,7 +181,7 @@ func TestLocalAndQueuedRemoteShareSnapshotContract(t *testing.T) {
 		}
 		for _, scope := range input.Scopes {
 			snapshot := decode[review.RepositoryDiff](t, request(t, test.deployment, "GET", "/api/v2/contexts/"+test.id+"/diffs/current?scope="+string(scope.Snapshot.Mode), nil))
-			if snapshot.Revision != scope.Snapshot.Revision || snapshot.Branch != scope.Snapshot.Branch || !reflect.DeepEqual(snapshot.Files, scope.Snapshot.Files) {
+			if snapshot.Revision != scope.Snapshot.Revision || snapshot.Branch != scope.Snapshot.Branch || snapshot.ComparisonKind != scope.Snapshot.ComparisonKind || !reflect.DeepEqual(snapshot.Files, scope.Snapshot.Files) {
 				t.Fatalf("snapshot contract diverged: %+v", snapshot)
 			}
 		}

@@ -142,8 +142,8 @@ func collectRepositoryChanged(ctx context.Context, source diffsource.Source, opt
 	observation.ContentHash = contentHash
 	fingerprint := Fingerprint(observation)
 	unchanged := fingerprint != "" && fingerprint == previousFingerprint
-	remaining := previewBudget
 	for index, snapshot := range snapshots {
+		remaining := previewBudget / len(snapshots)
 		if unchanged {
 			break
 		}
@@ -213,7 +213,11 @@ func Fingerprint(request ingestion.Request) string {
 	}
 	scopes := make([]string, 0, len(request.Scopes))
 	for _, scope := range request.Scopes {
-		scopes = append(scopes, scope.Snapshot.Source+":"+string(scope.Snapshot.Mode))
+		identity := scope.Snapshot.Source + ":" + string(scope.Snapshot.Mode)
+		if scope.Snapshot.ComparisonKind != "" {
+			identity += ":" + string(scope.Snapshot.ComparisonKind)
+		}
+		scopes = append(scopes, identity)
 	}
 	sort.Strings(scopes)
 	identity := struct {
@@ -237,7 +241,7 @@ func collectScope(ctx context.Context, source diffsource.Source, snapshot review
 			return ingestion.Scope{}, err
 		}
 		if *remaining == 0 {
-			patches[file.ID] = review.FilePatch{Message: diffsource.Message("Snapshot exceeds the 16 MiB aggregate preview limit.")}
+			patches[file.ID] = review.FilePatch{Message: diffsource.Message("Comparison exceeds its share of the 16 MiB aggregate preview limit.")}
 			continue
 		}
 		patch, err := source.Patch(ctx, snapshot.Mode, file, snapshot.Head)
@@ -275,11 +279,11 @@ func applyBudget(patch *review.FilePatch, remaining *int) {
 	}
 	if size > *remaining {
 		patch.Contents = nil
-		patch.Message = diffsource.Message("Full contents unavailable: snapshot exceeds the 16 MiB aggregate preview limit.")
+		patch.Message = diffsource.Message("Full contents unavailable: comparison exceeds its share of the 16 MiB aggregate preview limit.")
 		size = len(patch.Patch)
 		if size > *remaining {
 			patch.Patch = ""
-			patch.Message = diffsource.Message("Snapshot exceeds the 16 MiB aggregate preview limit.")
+			patch.Message = diffsource.Message("Comparison exceeds its share of the 16 MiB aggregate preview limit.")
 			size = 0
 		}
 	}
@@ -329,7 +333,7 @@ func CollectPatch(ctx context.Context, raw, directory string, options Options) (
 		return ingestion.Request{}, err
 	}
 	observation := request(metadata, []ingestion.Scope{scope}, options)
-	observation.ContentHash = hash("piped-content-v1", raw)
+	observation.ContentHash = hash("piped-content-v1", raw, string(snapshot.ComparisonKind))
 	return observation, nil
 }
 

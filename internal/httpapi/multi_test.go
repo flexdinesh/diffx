@@ -296,7 +296,15 @@ func TestComparisonMetadataSurvivesRestartWithoutGit(t *testing.T) {
 	gitCommand(t, root, "checkout", "main")
 	commit("main-advanced")
 	gitCommand(t, root, "checkout", "feature")
+	if err := os.WriteFile(filepath.Join(root, "feature"), []byte("staged\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitCommand(t, root, "add", "feature")
+	if err := os.WriteFile(filepath.Join(root, "feature"), []byte("working\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	expected := make(map[string]ingestion.Metadata)
+	expectedScopes := make(map[string][]ingestion.Scope)
 	for _, base := range []string{"auto", "HEAD"} {
 		input, err := collector.Collect(t.Context(), root, collector.Options{SourceID: "machine", SubmissionID: base, Base: base})
 		if err != nil {
@@ -310,6 +318,7 @@ func TestComparisonMetadataSurvivesRestartWithoutGit(t *testing.T) {
 			t.Fatal(err)
 		}
 		expected[target.Context.ID] = input.Metadata
+		expectedScopes[target.Context.ID] = input.Scopes
 	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
@@ -335,6 +344,26 @@ func TestComparisonMetadataSurvivesRestartWithoutGit(t *testing.T) {
 		for _, got := range []*ingestion.Metadata{listed.Observation, retained.Observation} {
 			if got == nil || !reflect.DeepEqual(got.Comparison, want.Comparison) || !reflect.DeepEqual(got.Head, want.Head) {
 				t.Fatalf("stored comparison changed: want %+v, got %+v", want, got)
+			}
+		}
+		baseURL := server.URL + "/api/v2/contexts/" + listed.ID
+		for _, scope := range expectedScopes[listed.ID] {
+			snapshot := decode[review.RepositoryDiff](t, request(t, server.Client(), http.MethodGet, baseURL+"/diffs/current?scope="+string(scope.Snapshot.Mode), nil))
+			if snapshot.ComparisonKind != scope.Snapshot.ComparisonKind || snapshot.ComparisonKind == "" || !reflect.DeepEqual(snapshot.Files, scope.Snapshot.Files) {
+				t.Fatalf("stored scope changed without checkout: want %+v, got %+v", scope.Snapshot, snapshot)
+			}
+			for _, file := range snapshot.Files {
+				patch := decode[review.FilePatch](t, request(t, server.Client(), http.MethodGet, baseURL+"/diffs/"+snapshot.ID+"/files/"+file.ID+"/patch?scope="+string(snapshot.Mode)+"&versionId="+snapshot.VersionID+"&fileVersion="+file.Fingerprint, nil))
+				if !reflect.DeepEqual(patch, scope.Patches[file.ID]) {
+					t.Fatalf("stored preview changed for %s/%s", snapshot.Mode, file.Path)
+				}
+				created := decode[review.ReviewComment](t, request(t, server.Client(), http.MethodPost, baseURL+"/comments", reviewservice.CreateCommentInput{
+					DiffID: snapshot.ID, VersionID: snapshot.VersionID, FileID: file.ID, Scope: snapshot.Mode,
+					FileVersion: file.Fingerprint, Target: "file", Side: "additions", Body: "Review " + string(snapshot.Mode),
+				}))
+				if created.Scope != snapshot.Mode || created.DiffID != snapshot.ID {
+					t.Fatalf("comment escaped comparison: %+v", created)
+				}
 			}
 		}
 	}

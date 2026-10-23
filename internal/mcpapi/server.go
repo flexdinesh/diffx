@@ -140,7 +140,7 @@ type listContextsInput struct {
 }
 type getDiffInput struct {
 	ContextID string `json:"context_id,omitempty" jsonschema:"Context ID; required on global MCP."`
-	Scope     string `json:"scope,omitempty" jsonschema:"all, staged, or unstaged; defaults to all."`
+	Scope     string `json:"scope,omitempty" jsonschema:"all, uncommitted, committed, staged, or unstaged; must be collected; defaults to all. Inspect comparisonKind for the captured endpoints."`
 }
 
 func registerCatalogTools(server *mcp.Server, catalog *reviewservice.Catalog, scopedID string) {
@@ -192,6 +192,6 @@ func registerCatalogTools(server *mcp.Server, catalog *reviewservice.Catalog, sc
 
 type getFilePatchInput struct {
 	ContextID string `json:"context_id,omitempty" jsonschema:"Context ID; required on global MCP."`
-	Scope     string `json:"scope,omitempty" jsonschema:"all, staged, or unstaged; defaults to all."`
+	Scope     string `json:"scope,omitempty" jsonschema:"all, uncommitted, committed, staged, or unstaged; must be collected; defaults to all. Inspect comparisonKind for the captured endpoints."`
 	FileID    string `json:"file_id" jsonschema:"Changed-file ID returned by get_diff."`
 }

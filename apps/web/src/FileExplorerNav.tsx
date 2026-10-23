@@ -1,3 +1,4 @@
+import { comparisonKind } from "./diff-mode.ts";
 import { useMemo } from "react";
 import {
   ChevronsDownUpIcon,
@@ -34,7 +35,8 @@ import { capabilityEnabled, useSession } from "./session-context.tsx";
 
 export function FileExplorerNav() {
   const { repository, diff, mode } = useDiffSource();
-  const { capabilities } = useSession();
+  const session = useSession();
+  const { capabilities } = session;
   const {
     tab,
     setTab,
@@ -57,9 +59,11 @@ export function FileExplorerNav() {
   const { isReviewed } = useReviewedFilesState();
   const commentsEnabled = capabilityEnabled(capabilities.review.comments);
   const refreshEnabled = capabilityEnabled(capabilities.diff.refresh);
-  const stagingMetadataEnabled = capabilityEnabled(
-    capabilities.diff.stagingMetadata,
-  );
+  const kind = repository?.comparisonKind ?? comparisonKind(session, mode);
+  const stagingMetadataEnabled =
+    kind !== "committed" &&
+    kind !== "patch" &&
+    capabilityEnabled(capabilities.diff.stagingMetadata);
   const allFiles = repository?.files ?? [];
   const folderPaths = useMemo(
     () => [...new Set(files.flatMap((file) => ancestorPaths(file.path)))],

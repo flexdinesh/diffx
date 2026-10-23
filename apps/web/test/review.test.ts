@@ -567,3 +567,11 @@ test("exports file selections without synthetic code or line anchors", () => {
     /selection="file".*applicability="outdated" stale="true"/,
   );
 });
+
+test("saved comments retain the new captured comparison scopes", () => {
+  const comments = [
+    { ...comment, scope: "uncommitted" },
+    { ...comment, scope: "committed" },
+  ];
+  assert.deepEqual(parseComments(JSON.stringify(comments)), comments);
+});
