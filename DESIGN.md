@@ -45,6 +45,10 @@ chrome competing with additions, deletions, syntax, or selected lines.
   navigation, and viewer boundary.
 - `apps/web/src/components/ui`: repository-owned shadcn/Base UI primitives and
   shared variants.
+- `apps/web/src/components`: shared composites built from those primitives
+  (see [Component inventory](#component-inventory)).
+- `apps/web/design.html` and `apps/web/src/gallery`: the dev-only gallery of
+  every primitive and composite variant; its goldens are visual contracts.
 - `apps/web/src/review.css`: review/sidebar composition and touch adaptations.
 - `apps/web/src/DiffWorkspace.tsx`: Pierre options, React slots, measured metrics.
 - `apps/web/src/display-options.ts`: supported Pierre syntax-theme pairs.
@@ -66,20 +70,31 @@ system for Tailwind or shadcn.
 - Prefer a shared shadcn primitive and its variants for standard controls. Use
   authored CSS for shell/responsive composition, dynamic tree depth, resizing,
   measured geometry, status graphics, and Pierre integration.
+- **Primitives own visuals.** Color, border, radius, padding, height, type and
+  icon size live in a primitive or composite variant. Feature code arranges
+  components (layout, gap, margin, flex/grid, visibility) and may style its own
+  intrinsic elements with token utilities; it never restyles a component through
+  `className`, a hook class, `[data-slot]` or an ID. A missing look is a new
+  semantic variant on the owning component, used everywhere it applies.
 
-The global stylesheet maps shadcn/Tailwind theme roles to existing tokens:
+`style.css` exposes each semantic token as a Tailwind utility under its own
+name, so markup and tokens share one vocabulary. Default Tailwind scales are
+cleared; only these exist:
 
-| Tailwind/shadcn role     | Canonical token                   |
-| ------------------------ | --------------------------------- |
-| Background / foreground  | `--bg` / `--fg`                   |
-| Card / secondary surface | `--panel`                         |
-| Popover                  | `--surface-raised`                |
-| Primary / focus ring     | `--accent`                        |
-| Primary foreground       | `--on-accent`                     |
-| Border / input           | `--border`                        |
-| Destructive              | `--error`                         |
-| Muted foreground         | `--muted`                         |
-| Radius / typography      | Existing geometry and type tokens |
+| Utility family                     | Examples                                                                         | Token                                            |
+| ---------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Surfaces (`bg-*`)                  | `bg-bg`, `bg-panel`, `bg-raised`, `bg-hover`, `bg-selected`, `bg-shell`          | `--bg`, `--panel`, `--surface-raised`, …         |
+| Text (`text-*`)                    | `text-fg`, `text-secondary`, `text-muted`, `text-accent`, `text-error`           | `--fg`, `--text-secondary`, `--muted`, …         |
+| Borders (`border-*`)               | `border-border`, `border-separator`, `border-control`                            | `--border`, `--border-muted`, `--border-control` |
+| Status                             | `*-success`, `*-warning`, `*-error`, `*-success-bg`, …                           | Semantic status pairs                            |
+| Spacing (`p-*`, `gap-*`, `m-*`)    | `0.5`, `1`, `1.5`, `2`, `3`, `4`, `6`, `8`, `12`, `16`                           | `--space-*` (4px rhythm)                         |
+| Sizes (`h-*`, `size-*`, `min-h-*`) | `control`, `control-small`, `control-compact`, `touch`, `icon`, `icon-sm`        | Control, touch and icon tokens                   |
+| Type                               | `text-xs`…`text-xl`, `text-code`, `leading-ui`, `tracking-label`                 | `typography.css`                                 |
+| Radius / elevation                 | `rounded-control`, `rounded-md`, `rounded-lg`, `rounded-round`, `shadow-overlay` | Radius and overlay tokens                        |
+
+Use the utility when one exists; `bg-(--panel)` or `p-[var(--space-2)]` for a
+token that already has a utility is rejected. 2px (`*-0.5`) steps are optical
+insets reserved for `components/`.
 
 Dark mode continues to use `[data-theme="dark"]`; do not add independent
 theme state. Tailwind Preflight and utility use must not override Pierre's
@@ -343,8 +358,8 @@ such detail into a token. New layout spacing must use the scale.
 ## Borders, radii, and shadows
 
 - Use the shared `outline-muted` Button variant (`--border-muted`) for compact
-  file-level diff actions and reset reviewed. Segmented layout controls and the grouped
-  file-filter field share this token.
+  file-level diff actions and reset reviewed. Segmented layout controls and
+  every `SearchField` (file filter and picker search) share this token.
   Text, icons, hover and focus identify these actions; avoid per-button colors.
 - Use 1px `--border-muted` for separators and `--border-control` for interactive
   boundaries requiring 3:1 contrast. `--border` frames islands, files and
@@ -355,7 +370,8 @@ such detail into a token. New layout spacing must use the scale.
   `--radius-control`, is for rows, badges, and compact controls; `--radius-md`
   (6) for inline comment cards, file frames and picker rows; `--radius-lg` (8)
   for shell islands, sidebar comments and dialogs. Inline review annotations
-  remain square. Circles are reserved for dots and small status marks.
+  remain square. Circles (`--radius-round`, `rounded-round`) are reserved for
+  dots and small status marks; use `StatusDot` rather than a new circle.
 - `--shadow-overlay` is the single elevation treatment for drawers/dialogs.
   Use `--backdrop` for modal separation. Whitespace and surface changes do the
   grouping work in the rest of the app.
@@ -364,6 +380,36 @@ such detail into a token. New layout spacing must use the scale.
   use a 20px pitch and remain visible only outside file surfaces.
 
 ## Components
+
+### Component inventory
+
+Reach for these before writing markup or CSS. Each owns its visuals; extend it
+with a semantic variant instead of overriding it.
+
+| Need                                   | Component (`apps/web/src/components`)                                                                                                    |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Action, link-styled trigger            | `ui/button` (variants: default, outline, outline-muted, outline-check, ghost, shell, rail, subtle, destructive, destructive-solid, link) |
+| Icon-only action                       | `icon-button` (label is name and tooltip)                                                                                                |
+| Primary action plus menu               | `split-button`                                                                                                                           |
+| Pressed state / single choice          | `ui/toggle`, `segmented-control`                                                                                                         |
+| Search or filter input                 | `search-field`                                                                                                                           |
+| Text input, select, textarea, checkbox | `ui/input`, `ui/select`, `ui/textarea`, `ui/checkbox`                                                                                    |
+| Tree, nav or picker row                | `list-row` (sans/mono font, depth, `option`)                                                                                             |
+| Panel title row                        | `panel-header`; tabs in `ui/tabs`                                                                                                        |
+| Collapsible sidebar section            | `collapsible-section`, `disclosure` chevron                                                                                              |
+| Count, status label, status dot        | `count-badge`, `ui/badge` (status tones), `status-dot`                                                                                   |
+| Label/value pairs                      | `key-value-list`                                                                                                                         |
+| Banner, empty, error                   | `notice`, `empty-state`, `error-state`                                                                                                   |
+| Destructive confirmation               | `confirm-dialog`; other dialogs `ui/dialog`                                                                                              |
+| Menus, popovers, tooltips              | `ui/dropdown-menu`, `ui/popover`, `ui/tooltip`                                                                                           |
+| Keyboard hint                          | `shortcut` (formats per platform), `ui/kbd`                                                                                              |
+| Loading placeholder                    | `ui/skeleton` (shapes mirror real geometry)                                                                                              |
+| Divider, drawer backdrop               | `ui/separator` (`chrome` for the header), `scrim`                                                                                        |
+| Review context icon                    | `context-icon`                                                                                                                           |
+
+Feature files may not render raw `<button>`, `<input>`, `<select>` or
+`<textarea>`; lint points to the component. Review every variant in both themes
+at `/design.html` (see `docs/development.md`).
 
 ### Buttons and toggles
 
@@ -389,7 +435,9 @@ such detail into a token. New layout spacing must use the scale.
   review body style and 8px/12px padding.
 - Label every control. Placeholders are hints, not labels. Keep label-to-control
   spacing at 8px, including the heading above a comment editor.
-- Search shows its focus ring around the entire grouped field. Selects and
+- Every search or filter input is the shared `SearchField`: 32px
+  (`--control-height`), leading search icon, optional shortcut hint and trailing
+  actions. It shows its focus ring around the entire grouped field. Selects and
   textareas retain the shared visible focus ring.
 - Keep Base UI values validated at application boundaries. New validation must
   pair `--error` with explanatory text and `aria-invalid` / `aria-describedby`.
@@ -457,8 +505,9 @@ such detail into a token. New layout spacing must use the scale.
   review moves focus to the drawer's current stream.
 - Search leads the picker; keep “Switch review” as its screen-reader title.
   Label global search “Search reviews” and Piped history search “Search Piped”.
-  Use one integrated field (36px input) with close at its right edge and the
-  focus ring around its entire boundary.
+  Use the shared `SearchField` (32px) with close at its right edge and the
+  focus ring around its entire boundary. The dialog is `DialogContent`'s
+  `command` variant.
   Use a flat, scrollable result list with changed checkouts first, then recency
   within each group; search preserves that order, using match strength to break
   recency ties. Compact rows (about 48px) put repository name and branch on
@@ -605,19 +654,28 @@ including new nested files, static utilities, inline style objects, SVG colors
 and Pierre's `unsafeCSS`. Local `mise run check` and pre-push run the guard
 and its contracts. It rejects literal palettes outside `tokens.css` definitions,
 independent typography, literal radii/elevation, and arbitrary padding/margin/gap
-lengths. Existing ordinary Tailwind numeric spacing utilities remain allowed;
-their relationship to the spacing scale needs review. Compose authored values
-from the canonical tokens. Zero, automatic spacing
-and 1px optical insets remain valid; dimensions, breakpoints and dynamic measured
-geometry require review rather than a blanket literal-value ban.
+lengths. Spacing utilities stay on the `--space-*` scale; 2px steps stay in
+`components/`. Arbitrary values that name a token with its own utility must use
+that utility. Compose authored values from the canonical tokens. Zero, automatic
+spacing and 1px optical insets remain valid; dimensions, breakpoints and dynamic
+measured geometry require review rather than a blanket literal-value ban.
 
-The guard has exact exceptions for status circles (including the projects
-drawer's new-changes dot), SVG monogram units, icon line
-boxes, compact comment counts, the overlapping sidebar resizer, and Pierre's
-line-surface mixes/inset strokes. Existing generated tabs' 3px inset and active
-shadow, and the dialog title's unit line-height, are bounded legacy exceptions;
-do not copy them into new controls. Changes to exceptions need a concrete role,
-rationale and contract test in the same PR. Do not exempt entire components.
+The guard also enforces component ownership. Feature CSS may not select
+`[data-slot]` or style by ID (except the `#viewer` Pierre anchor), and may not
+set visual properties (color, background, border, padding, height, font,
+outline, shadow, opacity) on a hook class that feature code passes to a
+component. Feature `className`s on components may only arrange them. oxlint's
+`react/forbid-elements` rejects raw form controls outside `components/`.
+
+The guard has exact exceptions for the reviewed-file check circle, SVG monogram
+units, icon line boxes, the Pierre gutter divider, Tailwind breakpoints, and
+Pierre's line-surface mixes/inset strokes. Changes to exceptions need a concrete
+role, rationale and contract test in the same PR. Do not exempt entire
+components.
+
+Gallery goldens (`apps/web/test/gallery`) are exact Chromium/Linux screenshots
+of every variant in both themes, plus a 390px touch check. They run with the
+local browser suite; an intended visual change regenerates them in the same PR.
 
 Static checks cannot prove responsive behavior, accessibility, visual hierarchy
 or correctness of styles assembled at runtime. Use existing browser tests and
