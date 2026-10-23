@@ -12,6 +12,7 @@ import { formatShortcut, type Shortcut } from "../format.ts";
 export function SearchField({
   label,
   shortcut,
+  leading,
   actions,
   className,
   ...input
@@ -19,13 +20,15 @@ export function SearchField({
   /** Accessible name; placeholders are hints, not labels. */
   label: string;
   shortcut?: Shortcut;
+  /** Replaces the search icon, e.g. a back action in a drilled-in list. */
+  leading?: ReactNode;
   /** Trailing icon buttons, e.g. filters or close. */
   actions?: ReactNode;
 }) {
   return (
     <InputGroup className={className}>
       <InputGroupAddon>
-        <SearchIcon aria-hidden="true" />
+        {leading ?? <SearchIcon aria-hidden="true" />}
       </InputGroupAddon>
       <InputGroupInput type="search" aria-label={label} {...input} />
       {(shortcut || actions) && (

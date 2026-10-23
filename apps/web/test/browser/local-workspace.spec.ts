@@ -1333,9 +1333,12 @@ test("picker combines filters before grouping and preserves them across navigati
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await openReviewPicker(page);
   await expect(dialog.getByRole("option")).toContainText("1 snapshot");
-  await expect(dialog.locator(".project-picker-filter-summary")).toContainText(
-    "Host: host-a · Host: host-b · Branch: feature · Worktree: tree-b",
-  );
+  await expect(
+    dialog.getByText(
+      "Latest snapshots · With changes · Host: host-a · Host: host-b · Branch: feature · Worktree: tree-b",
+      { exact: true },
+    ),
+  ).toBeVisible();
   await page.setViewportSize({ width: 360, height: 640 });
   const bounds = await dialog.boundingBox();
   if (!bounds) throw new Error("Missing picker bounds");

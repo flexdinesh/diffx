@@ -148,21 +148,63 @@ test("collector token secret appears once, with owner CSRF and revocation", asyn
   await page.goto("/settings");
   await page.getByLabel("Token name").fill("Laptop");
   await page.getByRole("button", { name: "Create token", exact: true }).click();
-  await expect(page.locator(".token-secret pre")).toContainText(
-    "one-time-secret",
-  );
-  const configuration: unknown = JSON.parse(
-    await page.locator(".token-secret pre").innerText(),
-  );
+  const heading = page.getByRole("heading", { name: "Save your token now" });
+  const secret = page
+    .getByRole("status")
+    .filter({ has: heading })
+    .locator("pre");
+  await expect(secret).toContainText("one-time-secret");
+  const configuration: unknown = JSON.parse(await secret.innerText());
   expect(configuration).toEqual({
     remote: { url: new URL(page.url()).origin, token: "one-time-secret" },
   });
   await page.getByRole("button", { name: "Reviews", exact: true }).click();
   await page.getByRole("button", { name: "Account settings" }).click();
-  await expect(page.locator(".token-secret")).toHaveCount(0);
+  await expect(heading).toHaveCount(0);
   await expect(page.getByText("Laptop", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Revoke Laptop" }).click();
   await expect(page.getByText("Laptop", { exact: true })).toHaveCount(0);
+});
+
+test("token form chooses access and expiry from labeled selects", async ({
+  page,
+}) => {
+  await remote(page);
+  let body: unknown;
+  await page.route("**/api/v2/account/tokens", (route) => {
+    if (route.request().method() !== "POST")
+      return route.fulfill({ json: { tokens: [] } });
+    body = route.request().postDataJSON();
+    return route.fulfill({
+      status: 201,
+      json: {
+        token: {
+          id: "token-b",
+          name: "Agent",
+          purpose: "api",
+          createdAt: Date.now(),
+          lastUsedAt: null,
+          expiresAt: Date.now() + 365 * 86_400_000,
+        },
+        secret: "api-secret",
+      },
+    });
+  });
+  await page.goto("/settings");
+  await page.getByLabel("Token name").fill("Agent");
+  await page.getByLabel("Access", { exact: true }).click();
+  await page.getByRole("option", { name: "Review API / MCP" }).click();
+  await expect(page.getByLabel("Access", { exact: true })).toContainText(
+    "Review API / MCP",
+  );
+  await expect(
+    page.getByText("Read and update your reviews through the API or MCP."),
+  ).toBeVisible();
+  await page.getByLabel("Expires after", { exact: true }).click();
+  await page.getByRole("option", { name: "365 days" }).click();
+  await page.getByRole("button", { name: "Create token", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Copy token" })).toBeVisible();
+  expect(body).toEqual({ name: "Agent", purpose: "api", expiresInDays: 365 });
 });
 
 test("expired account requests remove workspace identity and return to sign in", async ({

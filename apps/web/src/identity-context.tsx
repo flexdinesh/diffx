@@ -14,6 +14,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 
 type IdentityState =
@@ -124,18 +125,22 @@ export function useIdentity() {
 export function IdentityStatus() {
   const { state, reload } = useIdentity();
   return (
-    <main className="session-status identity-status" role="status">
-      <h1>
-        {state.status === "error" ? "Cannot load diffx" : "Loading diffx"}
-      </h1>
-      <p>
-        {state.status === "error" ? state.detail : "Connecting to your server…"}
-      </p>
-      {state.status === "error" && (
-        <Button variant="outline" onClick={reload}>
-          Retry
-        </Button>
-      )}
+    <main className="grid h-dvh place-content-center" role="status">
+      <EmptyState
+        size="page"
+        heading="h1"
+        title={state.status === "error" ? "Cannot load diffx" : "Loading diffx"}
+        description={
+          state.status === "error" ? state.detail : "Connecting to your server…"
+        }
+        action={
+          state.status === "error" ? (
+            <Button variant="outline" onClick={reload}>
+              Retry
+            </Button>
+          ) : undefined
+        }
+      />
     </main>
   );
 }

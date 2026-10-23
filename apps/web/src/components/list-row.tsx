@@ -12,8 +12,15 @@ const listRowVariants = cva(
         sans: "leading-ui",
         mono: "font-mono leading-tree whitespace-pre",
       },
+      variant: {
+        default: "",
+        // Two-line dialog results (review picker): roomier insets and muted
+        // leading/trailing icons; touch-height rows on coarse pointers.
+        option:
+          "gap-2 rounded-md px-3 py-1.5 text-base max-md:px-2 pointer-coarse:min-h-touch [&>svg]:text-muted",
+      },
     },
-    defaultVariants: { font: "sans" },
+    defaultVariants: { font: "sans", variant: "default" },
   },
 );
 
@@ -24,6 +31,7 @@ const listRowVariants = cva(
  */
 function ListRow({
   font,
+  variant,
   depth,
   className,
   style,
@@ -35,7 +43,7 @@ function ListRow({
     defaultTagName: "button",
     props: mergeProps<"button">(
       {
-        className: cn(listRowVariants({ font }), className),
+        className: cn(listRowVariants({ font, variant }), className),
         style:
           depth === undefined
             ? style
