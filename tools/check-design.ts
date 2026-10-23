@@ -35,7 +35,7 @@ const exceptions = new Set([
   "style.css|.new-mark > span|border-radius|50%",
   "review.css|.file-reviewed-check|border-radius|50%",
   "review.css|.staging-dot|border-radius|50%",
-  "review.css|.file-row .file-icon|line-height|1",
+  "review.css|.file-icon|line-height|1",
   "review.css|.monogram-icon text|font|700 9px ui-monospace, monospace",
   "review.css|.comment-filter-count|font-size|calc(var(--text-xs) - 1px)",
   "review.css|.comment-filter-count|line-height|1",

@@ -1,9 +1,22 @@
 import { useMemo } from "react";
-import { EyeOffIcon, XIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import {
+  ChevronsDownUpIcon,
+  ChevronsUpDownIcon,
+  EyeOffIcon,
+  XIcon,
+} from "lucide-react";
+import { CountBadge } from "@/components/count-badge";
+import { IconButton } from "@/components/icon-button";
+import { PanelHeader } from "@/components/panel-header";
+import { SearchField } from "@/components/search-field";
+import { StatusDot } from "@/components/status-dot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toggle } from "@/components/ui/toggle";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   togglePath,
   useDiffSource,
@@ -106,92 +119,82 @@ export function FileExplorerNav() {
         }}
         className="contents"
       >
-        <div className="sidebar-tabs">
-          <TabsList className="sidebar-tab-list" aria-label="Sidebar view">
+        <PanelHeader
+          className="mb-2"
+          actions={
+            <>
+              <IconButton
+                label={`${foldersCollapsed ? "Expand" : "Collapse"} all folders`}
+                variant="subtle"
+                size="icon-sm"
+                disabled={folderPaths.length === 0}
+                onClick={() => {
+                  const paths = new Set(foldersCollapsed ? [] : folderPaths);
+                  if (filter) setFilteredClosed(paths);
+                  else setClosed(paths);
+                }}
+              >
+                {foldersCollapsed ? (
+                  <ChevronsUpDownIcon aria-hidden="true" />
+                ) : (
+                  <ChevronsDownUpIcon aria-hidden="true" />
+                )}
+              </IconButton>
+              <IconButton
+                label="Close review sidebar"
+                variant="subtle"
+                size="icon-sm"
+                className="lg:hidden"
+                onClick={sidebar.closeMobile}
+              >
+                <XIcon aria-hidden="true" />
+              </IconButton>
+            </>
+          }
+        >
+          <TabsList aria-label="Sidebar view">
             <TabsTrigger id="files-tab" value="files">
-              <span className="sidebar-tab-label">Changes</span>
-              <span id="file-count" className="count">
-                {allFiles.length}
-              </span>
+              <span className="truncate">Changes</span>
+              <CountBadge id="file-count" count={allFiles.length} />
             </TabsTrigger>
             {commentsEnabled && (
               <TabsTrigger id="comments-tab" value="comments">
-                <span className="sidebar-tab-label">Review</span>
-                <span id="comment-count" className="count">
-                  {review.comments.length}
-                </span>
+                <span className="truncate">Review</span>
+                <CountBadge id="comment-count" count={review.comments.length} />
               </TabsTrigger>
             )}
           </TabsList>
-          <Button
-            type="button"
-            id="tree-toggle"
-            className="tree-control"
-            variant="ghost"
-            size="icon"
-            aria-label={`${foldersCollapsed ? "Expand" : "Collapse"} all folders`}
-            title={`${foldersCollapsed ? "Expand" : "Collapse"} all folders`}
-            disabled={folderPaths.length === 0}
-            onClick={() => {
-              const paths = new Set(foldersCollapsed ? [] : folderPaths);
-              if (filter) setFilteredClosed(paths);
-              else setClosed(paths);
-            }}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <rect
-                className="control-radius-shape"
-                x="3"
-                y="3"
-                width="15"
-                height="15"
-              />
-              <path d="M7 10.5h7M21 7v12a2 2 0 0 1-2 2H7" />
-              {foldersCollapsed && <path d="M10.5 7v7" />}
-            </svg>
-          </Button>
-          <Button
-            type="button"
-            className="tree-control mobile-only"
-            variant="ghost"
-            size="icon"
-            aria-label="Close review sidebar"
-            onClick={sidebar.closeMobile}
-          >
-            <XIcon aria-hidden="true" />
-          </Button>
-        </div>
-        <TabsContent value="files" id="file-panel">
+        </PanelHeader>
+        <TabsContent value="files" id="file-panel" className="file-panel">
           <div className="file-filter-row">
-            <div className="search-box">
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <circle cx="7" cy="7" r="4.5" />
-                <path d="m10.5 10.5 3 3" />
-              </svg>
-              <Input
-                ref={search}
-                id="search"
-                type="search"
-                placeholder="Filter files…"
-                aria-label="Filter files"
-                value={filter}
-                onChange={(event) => {
-                  setFilter(event.target.value);
-                  setFilteredClosed(new Set());
-                }}
-              />
-              <kbd>Alt+/</kbd>
-            </div>
-            <Toggle
-              id="hide-reviewed"
-              className="hide-reviewed-toggle"
-              aria-label="Hide reviewed files"
-              title="Hide reviewed files"
-              pressed={hideReviewed}
-              onPressedChange={setHideReviewed}
-            >
-              <EyeOffIcon aria-hidden="true" />
-            </Toggle>
+            <SearchField
+              ref={search}
+              label="Filter files"
+              placeholder="Filter files…"
+              shortcut={{ alt: true, key: "/" }}
+              className="flex-1"
+              value={filter}
+              onChange={(event) => {
+                setFilter(event.target.value);
+                setFilteredClosed(new Set());
+              }}
+            />
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Toggle
+                    id="hide-reviewed"
+                    variant="outline"
+                    aria-label="Hide reviewed files"
+                    pressed={hideReviewed}
+                    onPressedChange={setHideReviewed}
+                  />
+                }
+              >
+                <EyeOffIcon aria-hidden="true" />
+              </TooltipTrigger>
+              <TooltipContent>Hide reviewed files</TooltipContent>
+            </Tooltip>
           </div>
           <p className="visually-hidden" role="status" aria-live="polite">
             {filter || hideReviewed
@@ -220,21 +223,20 @@ export function FileExplorerNav() {
             onSelect={selectFile}
           />
           <div
-            id="git-legend"
             className="git-legend"
             title="Git staging indicators"
             hidden={!stagingMetadataEnabled}
           >
-            <span>
-              <i className="staging-dot staged" aria-hidden="true" />
+            <span className="inline-flex items-center gap-1">
+              <StatusDot size="md" fill="solid" />
               Staged
             </span>
-            <span>
-              <i className="staging-dot both" aria-hidden="true" />
+            <span className="inline-flex items-center gap-1">
+              <StatusDot size="md" fill="half" />
               Both
             </span>
-            <span>
-              <i className="staging-dot unstaged" aria-hidden="true" />
+            <span className="inline-flex items-center gap-1">
+              <StatusDot size="md" fill="ring" />
               Unstaged
             </span>
             <span title="Untracked file">U Untracked</span>
@@ -244,7 +246,7 @@ export function FileExplorerNav() {
       </Tabs>
       {tab === "comments" ? <ReviewTools /> : <ChangeSummary />}
       <div className="sidebar-footer">
-        <span className="live-dot" />
+        <StatusDot tone="success" size="sm" />
         <span id="connection">{connection}</span>
         <span className="read-only">Git unchanged</span>
       </div>

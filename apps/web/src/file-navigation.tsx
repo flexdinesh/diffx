@@ -1,7 +1,14 @@
 import type { ApiChangedFile as ChangedFile } from "@diffx/api";
-import { MessageSquareIcon } from "lucide-react";
+import {
+  FolderIcon as Folder,
+  FolderOpenIcon,
+  MessageSquareIcon,
+} from "lucide-react";
 import type { KeyboardEvent } from "react";
-import { Button } from "@/components/ui/button";
+import { DisclosureIcon } from "@/components/disclosure";
+import { EmptyState } from "@/components/empty-state";
+import { ListRow } from "@/components/list-row";
+import { StatusDot } from "@/components/status-dot";
 import {
   fileKind,
   gitDecoration,
@@ -15,16 +22,13 @@ import {
 } from "./file-tree.ts";
 
 function FolderIcon({ open }: { open: boolean }) {
+  const Icon = open ? FolderOpenIcon : Folder;
   return (
-    <svg
-      viewBox="0 0 20 20"
-      className="folder-icon"
+    <Icon
+      className="size-icon text-muted"
       aria-hidden="true"
       focusable="false"
-    >
-      <path d="M2 16V5a1 1 0 0 1 1-1h4l2 2h7a1 1 0 0 1 1 1v2" />
-      <path d={open ? "M2 16l3-7h13l-3 7Z" : "M2 8h15v8H2Z"} />
-    </svg>
+    />
   );
 }
 function FileIcon({ path, reviewed }: { path: string; reviewed: boolean }) {
@@ -74,12 +78,13 @@ function StatusBadge({
     >
       <span>{decoration.code}</span>
       {stagingMetadata &&
-        ["staged", "unstaged", "both"].includes(decoration.state) && (
-          <span
-            className={`staging-dot ${decoration.state}`}
-            aria-hidden="true"
-          />
-        )}
+        (decoration.state === "staged" ? (
+          <StatusDot size="md" fill="solid" />
+        ) : decoration.state === "both" ? (
+          <StatusDot size="md" fill="half" />
+        ) : decoration.state === "unstaged" ? (
+          <StatusDot size="md" fill="ring" />
+        ) : null)}
     </span>
   );
 }
@@ -150,19 +155,14 @@ export function FileNavigation({
     return (
       <ul className="tree-list">
         {nodes.map((node) => {
-          const style = {
-            paddingLeft: `calc(var(--space-1) + ${depth} * var(--space-3))`,
-          };
           if (node.kind === "folder") {
             const open = !closed.has(node.path);
             return (
               <li key={node.path}>
-                <Button
+                <ListRow
                   type="button"
-                  className="tree-folder"
-                  variant="ghost"
-                  size="sm"
-                  style={style}
+                  font="mono"
+                  depth={depth}
                   data-tree-path={node.path}
                   tabIndex={-1}
                   title={node.path}
@@ -171,14 +171,12 @@ export function FileNavigation({
                   onClick={() => onToggle(node.path)}
                   onKeyDown={onKeyDown}
                 >
-                  <span className="tree-chevron" aria-hidden="true">
-                    <svg viewBox="0 0 16 16">
-                      <path d={open ? "m4 6 4 4 4-4" : "m6 4 4 4-4 4"} />
-                    </svg>
+                  <span className="inline-flex text-muted">
+                    <DisclosureIcon open={open} />
                   </span>
                   <FolderIcon open={open} />
-                  <span className="file-name">{node.name}</span>
-                </Button>
+                  <span className="min-w-0 flex-1 truncate">{node.name}</span>
+                </ListRow>
                 {open && renderNodes(node.children, depth + 1)}
               </li>
             );
@@ -192,12 +190,10 @@ export function FileNavigation({
           };
           return (
             <li key={node.path}>
-              <Button
+              <ListRow
                 type="button"
-                className={`file-row${viewed ? " reviewed" : ""}`}
-                variant="ghost"
-                size="sm"
-                style={style}
+                font="mono"
+                depth={depth}
                 data-path={file.path}
                 data-tree-path={file.path}
                 tabIndex={selected === file.path ? 0 : -1}
@@ -208,7 +204,7 @@ export function FileNavigation({
                 onKeyDown={onKeyDown}
               >
                 <FileIcon path={file.path} reviewed={viewed} />
-                <span className="file-name">{node.name}</span>
+                <span className="min-w-0 flex-1 truncate">{node.name}</span>
                 {count > 0 && (
                   <span
                     className="file-comment-count"
@@ -226,7 +222,7 @@ export function FileNavigation({
                   </span>
                 )}
                 <StatusBadge file={file} stagingMetadata={stagingMetadata} />
-              </Button>
+              </ListRow>
             </li>
           );
         })}
@@ -234,11 +230,15 @@ export function FileNavigation({
     );
   }
   return (
-    <nav id="file-tree" aria-label="Changed file navigation">
+    <nav
+      id="file-tree"
+      className="file-tree"
+      aria-label="Changed file navigation"
+    >
       {files.length ? (
         renderNodes(buildFileTree(files), 0)
       ) : (
-        <p className="tree-folder">{emptyMessage}</p>
+        <EmptyState heading="p" title={emptyMessage} />
       )}
     </nav>
   );

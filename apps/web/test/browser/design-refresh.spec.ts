@@ -152,9 +152,9 @@ test("interactive controls share the semantic control radius", async ({
     (control) => getComputedStyle(control).borderTopLeftRadius,
   );
   const controls = [
-    page.locator("#file-panel .search-box"),
-    page.locator(".tree-folder").first(),
-    page.locator(".file-row").first(),
+    page.getByRole("searchbox", { name: "Filter files" }).locator(".."),
+    page.getByRole("button", { name: /^Collapse folder / }).first(),
+    page.locator("#file-tree [data-path]").first(),
     page.locator(".layout-control"),
     page.getByRole("button", { name: "Split", exact: true }),
     viewOptions,
@@ -538,7 +538,7 @@ test("diff header actions use shared muted borders and collapse files directly",
       const expected = getComputedStyle(probe).borderColor;
       const actual = Array.from(
         document.querySelectorAll(
-          ".search-box, .layout-control, .review-button, .file-comment-button, #reset-reviewed",
+          ".layout-control, .review-button, .file-comment-button, #reset-reviewed",
         ),
         (element) => getComputedStyle(element).borderTopColor,
       );

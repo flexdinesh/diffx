@@ -34,7 +34,7 @@ function NavigationResizer({ hidden }: { hidden: boolean }) {
   const drag = useRef({ x: 0, width: sidebar.width });
   return (
     <hr
-      id="sidebar-resizer"
+      className="sidebar-resizer"
       aria-label="Resize navigation panel"
       aria-orientation="vertical"
       aria-valuemin={200}

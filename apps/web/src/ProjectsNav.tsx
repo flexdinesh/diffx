@@ -1,24 +1,35 @@
 import { ProjectsSkeleton } from "./WorkspaceLoading.tsx";
 import type { ApiContext } from "@diffx/api";
 import {
-  ChevronRightIcon,
   FolderGit2Icon,
   FolderTreeIcon,
   GitBranchIcon,
   HistoryIcon,
   SearchIcon,
-  SquareTerminalIcon,
   XIcon,
 } from "lucide-react";
 import { useEffect, useState, type MouseEvent } from "react";
+import { ContextIcon } from "@/components/context-icon";
+import { CountBadge } from "@/components/count-badge";
+import { DisclosureIcon } from "@/components/disclosure";
+import { EmptyState } from "@/components/empty-state";
+import { ErrorState } from "@/components/error-state";
+import { IconButton } from "@/components/icon-button";
+import { ListRow } from "@/components/list-row";
+import { Notice } from "@/components/notice";
+import { PanelHeader } from "@/components/panel-header";
+import { StatusDot } from "@/components/status-dot";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuHeader,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
+import { pluralize } from "./format.ts";
 import { save, saved } from "./preferences.ts";
 import {
   contextChangeLabel,
@@ -40,28 +51,23 @@ import { useCatalog, useSession } from "./session-context.tsx";
 import { streamPath } from "./review-route.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
 
-const shortcut = navigator.platform.includes("Mac") ? "⌘K" : "Ctrl K";
-
 /** Compact entry point; desktop view controls live in the activity rail. */
 export function ProjectsToggle() {
   const sidebar = useSidebarState();
   const expanded = sidebar.view === "projects" && sidebar.expanded;
-  const action = expanded ? "Hide repos" : "Show repos";
   return (
     <div className="topbar-lead">
-      <Button
-        type="button"
+      <IconButton
         id="projects-toggle"
-        variant="ghost"
-        size="icon"
+        label={expanded ? "Hide repos" : "Show repos"}
+        variant="shell"
+        touch
         aria-controls="projects-nav"
         aria-expanded={expanded}
-        aria-label={action}
-        title={action}
         onClick={() => sidebar.selectView("projects")}
       >
-        <FolderGit2Icon className="size-(--icon-base)" />
-      </Button>
+        <FolderGit2Icon aria-hidden="true" />
+      </IconButton>
     </div>
   );
 }
@@ -117,7 +123,7 @@ export function ProjectsNav() {
       if (!next.delete(id)) next.add(id);
       return next;
     });
-  const open = (event: MouseEvent<HTMLAnchorElement>, head: ApiContext) => {
+  const open = (event: MouseEvent<HTMLElement>, head: ApiContext) => {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)
       return;
     event.preventDefault();
@@ -146,33 +152,33 @@ export function ProjectsNav() {
         aria-modal={sidebar.mobile && expanded ? "true" : undefined}
         hidden={!expanded}
       >
-        <div className="projects-nav-header">
-          <h2 className="projects-heading">Repos</h2>
-          <Button
-            type="button"
-            id="projects-browse"
-            variant="ghost"
-            size="icon"
-            aria-label="Search reviews"
-            title={`Search reviews (${shortcut})`}
-            onClick={() => {
-              sidebar.closeMobile();
-              openPicker();
-            }}
-          >
-            <SearchIcon aria-hidden="true" />
-          </Button>
-          <Button
-            type="button"
-            className="mobile-only"
-            variant="ghost"
-            size="icon"
-            aria-label="Close repos"
-            onClick={sidebar.closeMobile}
-          >
-            <XIcon aria-hidden="true" />
-          </Button>
-        </div>
+        <PanelHeader
+          title="Repos"
+          actions={
+            <>
+              <IconButton
+                id="projects-browse"
+                label="Search reviews"
+                shortcut={{ mod: true, key: "K" }}
+                touch
+                onClick={() => {
+                  sidebar.closeMobile();
+                  openPicker();
+                }}
+              >
+                <SearchIcon aria-hidden="true" />
+              </IconButton>
+              <IconButton
+                label="Close repos"
+                className="lg:hidden"
+                touch
+                onClick={sidebar.closeMobile}
+              >
+                <XIcon aria-hidden="true" />
+              </IconButton>
+            </>
+          }
+        />
         <div className="projects-scroll">
           {groups.length ? (
             <ul className="projects-list">
@@ -215,65 +221,71 @@ function ProjectItem({
   onToggle: () => void;
   currentStream: string;
   now: number;
-  onOpen: (event: MouseEvent<HTMLAnchorElement>, head: ApiContext) => void;
+  onOpen: (event: MouseEvent<HTMLElement>, head: ApiContext) => void;
 }) {
   const unseen = group.streams.some((stream) => stream.unseen);
-  const Icon = group.kind === "piped" ? SquareTerminalIcon : FolderGit2Icon;
   const listId = `project-${group.id}`;
   return (
     <li>
-      <button
+      <ListRow
         type="button"
-        className="project-row"
+        className="mt-1"
         aria-expanded={expanded}
         aria-controls={listId}
         title={group.name}
         onClick={onToggle}
       >
-        <ChevronRightIcon
-          className="project-chevron size-(--icon-sm)"
-          aria-hidden="true"
-        />
-        <Icon className="size-(--icon-sm)" aria-hidden="true" />
-        <span className="project-name">{group.name}</span>
+        <span className="inline-flex text-muted">
+          <DisclosureIcon open={expanded} />
+        </span>
+        <ContextIcon piped={group.kind === "piped"} className="text-muted" />
+        <span className="min-w-0 flex-1 truncate font-medium">
+          {group.name}
+        </span>
         {unseen && !expanded && <NewMark />}
-        <span className="project-age">
+        <span className="shrink-0 font-mono text-xs text-muted tabular-nums">
           {relativeAge(group.lastActivity, now)}
         </span>
-      </button>
+      </ListRow>
       {expanded && (
         <ul id={listId} className="stream-list">
-          {group.streams.map(({ id, context, unseen: fresh }) => (
-            <li key={id}>
-              <a
-                className="stream-row"
-                href={streamPath(context)}
-                aria-current={id === currentStream ? "page" : undefined}
-                title={`${streamTitle(context)} · ${contextChangeLabel(context)}`}
-                onClick={(event) => onOpen(event, context)}
-              >
-                <span className="stream-title">
-                  {!contextIsPiped(context) && (
-                    <GitBranchIcon
-                      className="size-(--icon-sm)"
-                      aria-hidden="true"
-                    />
-                  )}
-                  <span className="stream-name">{streamTitle(context)}</span>
-                  {fresh && id !== currentStream && <NewMark />}
-                  <span
-                    className="stream-count"
-                    aria-label={contextChangeLabel(context)}
-                  >
-                    {context.changedFileCount}
+          {group.streams.map(({ id, context, unseen: fresh }) => {
+            const current = id === currentStream;
+            return (
+              <li key={id}>
+                <ListRow
+                  depth={1}
+                  className="flex-col items-stretch"
+                  render={<a href={streamPath(context)} />}
+                  aria-current={current ? "page" : undefined}
+                  title={`${streamTitle(context)} · ${contextChangeLabel(context)}`}
+                  onClick={(event) => onOpen(event, context)}
+                >
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {!contextIsPiped(context) && (
+                      <GitBranchIcon
+                        className={current ? undefined : "text-muted"}
+                        aria-hidden="true"
+                      />
+                    )}
+                    <span className="min-w-0 flex-1 truncate">
+                      {streamTitle(context)}
+                    </span>
+                    {fresh && !current && <NewMark />}
+                    {typeof context.changedFileCount === "number" && (
+                      <CountBadge
+                        count={context.changedFileCount}
+                        label={contextChangeLabel(context)}
+                      />
+                    )}
                   </span>
-                </span>
-                <span className="stream-meta">
-                  {streamMeta(context, group.multipleHosts, now)}
-                </span>
-              </a>
-            </li>
-          ))}
+                  <span className="stream-meta truncate text-xs text-muted">
+                    {streamMeta(context, group.multipleHosts, now)}
+                  </span>
+                </ListRow>
+              </li>
+            );
+          })}
         </ul>
       )}
     </li>
@@ -281,11 +293,7 @@ function ProjectItem({
 }
 
 function NewMark() {
-  return (
-    <span className="new-mark" role="img" aria-label="New changes">
-      <span aria-hidden="true" />
-    </span>
-  );
+  return <StatusDot tone="accent" size="sm" label="New changes" />;
 }
 
 function ProjectsEmpty({
@@ -299,18 +307,10 @@ function ProjectsEmpty({
   error: string;
   onRetry: () => void;
 }) {
-  if (error)
-    return (
-      <div className="projects-empty" role="alert">
-        <p>{error}</p>
-        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-          Retry
-        </Button>
-      </div>
-    );
+  if (error) return <ErrorState message={error} onRetry={onRetry} />;
   if (collecting || !loaded)
     return (
-      <div className="projects-loading" role="status" aria-busy="true">
+      <div role="status" aria-busy="true">
         <ProjectsSkeleton />
         <p className="visually-hidden">
           {collecting ? "Collecting repos…" : "Loading repos…"}
@@ -318,12 +318,13 @@ function ProjectsEmpty({
       </div>
     );
   return (
-    <div className="projects-empty" role="status" aria-busy={false}>
-      <p>No current changes</p>
-      <p className="projects-empty-hint">
-        Agent hooks and diffx sync publish changed checkouts here.
-      </p>
-    </div>
+    <EmptyState
+      role="status"
+      aria-busy={false}
+      heading="p"
+      title="No current changes"
+      description="Agent hooks and diffx sync publish changed checkouts here."
+    />
   );
 }
 
@@ -333,7 +334,6 @@ export function NewChangesButton() {
   const now = useNow();
   if (!unreadHeads.length) return null;
   const count = unreadHeads.length;
-  const label = `New changes (${count} ${count === 1 ? "stream" : "streams"})`;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -341,10 +341,10 @@ export function NewChangesButton() {
           <Button
             type="button"
             id="new-changes"
-            variant="ghost"
+            variant="shell"
             size="sm"
-            aria-label={label}
-            title={label}
+            touch
+            aria-label={`New changes (${pluralize(count, "stream")})`}
           />
         }
       >
@@ -360,9 +360,8 @@ export function NewChangesButton() {
         className="new-changes-menu"
         aria-label="New changes"
       >
-        <div className="new-changes-header" aria-hidden="true">
-          New changes
-        </div>
+        <DropdownMenuHeader aria-hidden="true">New changes</DropdownMenuHeader>
+        <DropdownMenuSeparator />
         {unreadHeads.map((context) => (
           <NewChangeItem
             key={context.id}
@@ -394,10 +393,9 @@ function NewChangeItem({
       ? "Primary checkout"
       : "";
   const age = relativeAge(contextActivity(context), now);
-  const Icon = piped ? SquareTerminalIcon : FolderGit2Icon;
   return (
     <DropdownMenuItem
-      className="new-changes-item"
+      className="flex-col items-stretch gap-0"
       aria-label={[
         repository,
         branch,
@@ -409,22 +407,26 @@ function NewChangeItem({
         .join(", ")}
       onClick={onOpen}
     >
-      <span className="new-changes-line">
-        <Icon className="size-(--icon-sm)" aria-hidden="true" />
-        <span className="new-changes-repo">{repository}</span>
-        <span className="new-changes-age">{age}</span>
+      <span className="flex min-w-0 items-center gap-1.5">
+        <ContextIcon piped={piped} />
+        <span className="min-w-0 flex-1 truncate font-medium">
+          {repository}
+        </span>
+        <span className="shrink-0 font-mono text-xs text-muted tabular-nums">
+          {age}
+        </span>
       </span>
-      <span className="new-changes-line new-changes-detail">
-        {!piped && (
-          <GitBranchIcon className="size-(--icon-sm)" aria-hidden="true" />
+      <span className="flex min-w-0 items-center gap-1.5 text-xs text-secondary">
+        {!piped && <GitBranchIcon aria-hidden="true" />}
+        <span className="min-w-0 flex-1 truncate">{branch}</span>
+        {typeof context.changedFileCount === "number" && (
+          <CountBadge count={context.changedFileCount} />
         )}
-        <span className="new-changes-text">{branch}</span>
-        <span className="new-changes-count">{context.changedFileCount}</span>
       </span>
       {worktree && (
-        <span className="new-changes-line new-changes-detail">
-          <FolderTreeIcon className="size-(--icon-sm)" aria-hidden="true" />
-          <span className="new-changes-text">{worktree}</span>
+        <span className="flex min-w-0 items-center gap-1.5 text-xs text-secondary">
+          <FolderTreeIcon aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">{worktree}</span>
         </span>
       )}
     </DropdownMenuItem>
@@ -438,14 +440,11 @@ export function NewerSnapshotNotice() {
   const newer = newerHead(session, heads.contexts);
   const now = useNow();
   return (
-    <div className="snapshot-notice" role="status" hidden={!newer}>
-      {newer && (
-        <>
-          <HistoryIcon className="size-(--icon-sm)" aria-hidden="true" />
-          <p>
-            Newer snapshot of {streamTitle(newer)} · {contextChangeLabel(newer)}{" "}
-            · {relativeAge(contextActivity(newer), now)}
-          </p>
+    <Notice
+      hidden={!newer}
+      icon={newer && <HistoryIcon aria-hidden="true" />}
+      action={
+        newer && (
           <Button
             type="button"
             variant="outline-muted"
@@ -454,8 +453,11 @@ export function NewerSnapshotNotice() {
           >
             View latest
           </Button>
-        </>
-      )}
-    </div>
+        )
+      }
+    >
+      {newer &&
+        `Newer snapshot of ${streamTitle(newer)} · ${contextChangeLabel(newer)} · ${relativeAge(contextActivity(newer), now)}`}
+    </Notice>
   );
 }

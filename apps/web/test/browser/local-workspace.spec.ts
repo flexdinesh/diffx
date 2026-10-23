@@ -1444,7 +1444,9 @@ test("repos drawer lists current changed streams and announces newer snapshots",
   await expect(
     nav.getByRole("link", { name: /feat\/rate-limit/ }),
   ).toHaveAttribute("href", "/streams/stream-feat%2Frate-limit");
-  await expect(page.locator(".snapshot-notice")).toBeHidden();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Newer snapshot" }),
+  ).toBeHidden();
 
   const newer = {
     ...stream("rate-2", "acme-api", "feat/rate-limit", 40),
@@ -1453,7 +1455,7 @@ test("repos drawer lists current changed streams and announces newer snapshots",
   contexts.set(newer.id, newer);
   heads = [newer, ...heads.filter((context) => context.id !== viewed.id)];
   await page.evaluate(() => window.dispatchEvent(new Event("test-ingestion")));
-  const notice = page.locator(".snapshot-notice");
+  const notice = page.getByRole("status").filter({ hasText: "Newer snapshot" });
   await expect(notice).toContainText("Newer snapshot of feat/rate-limit");
   await expect(notice).toContainText("3 changed files");
   await expect(page).toHaveURL(/\/contexts\/rate-1$/);
@@ -1580,16 +1582,18 @@ test("live stream URLs open the latest head on load and keep it until navigation
 
   heads = [snapshot("main-2", 20)];
   await page.evaluate(() => window.dispatchEvent(new Event("test-ingestion")));
-  await expect(page.locator(".snapshot-notice")).toContainText(
-    "Newer snapshot",
-  );
+  await expect(
+    page.getByRole("status").filter({ hasText: "Newer snapshot" }),
+  ).toContainText("Newer snapshot");
   expect(opened.at(-1)).toBe("main-1");
 
   await page.reload();
   await ready(page);
   await expect(page).toHaveURL(/\/streams\/stream-main$/);
   expect(opened.at(-1)).toBe("main-2");
-  await expect(page.locator(".snapshot-notice")).toBeHidden();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Newer snapshot" }),
+  ).toBeHidden();
 
   await page.goto("/contexts/main-1");
   await ready(page);
@@ -1677,7 +1681,10 @@ for (const mode of ["local", "remote"]) {
     await expect(global).toHaveCount(0);
     const nav = page.getByRole("navigation", { name: "Repos" });
     await expect(nav).toBeVisible();
-    await expect(nav.locator(".project-name")).toHaveText(["api", "web"]);
+    await expect(nav.getByRole("listitem").getByRole("button")).toHaveText([
+      /^api/,
+      /^web/,
+    ]);
 
     const newerApi = snapshot("api-new", "api", 200, 900);
     const newerWeb = {
@@ -1693,10 +1700,13 @@ for (const mode of ["local", "remote"]) {
     );
     await expect(global).toHaveAccessibleName("New changes (2 streams)");
     await expect(global).toHaveText("2 new");
-    await expect(nav.locator(".project-name")).toHaveText(["web", "api"]);
-    await expect(page.locator(".snapshot-notice")).toContainText(
-      "Newer snapshot",
-    );
+    await expect(nav.getByRole("listitem").getByRole("button")).toHaveText([
+      /^web/,
+      /^api/,
+    ]);
+    await expect(
+      page.getByRole("status").filter({ hasText: "Newer snapshot" }),
+    ).toContainText("Newer snapshot");
     await expect(page).toHaveURL(/\/contexts\/viewed$/);
     await page.clock.fastForward(5 * 60_000);
     expect(collections).toBe(0);
@@ -1722,7 +1732,9 @@ for (const mode of ["local", "remote"]) {
     await expect(page).toHaveURL(/\/streams\/stream-api$/);
     await expect(menu).toBeHidden();
     await expect(global).toHaveAccessibleName("New changes (1 stream)");
-    await expect(page.locator(".snapshot-notice")).toBeHidden();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Newer snapshot" }),
+    ).toBeHidden();
     await expect(
       page.getByRole("button", { name: "Diff", exact: true }),
     ).toBeFocused();
@@ -1762,7 +1774,10 @@ for (const mode of ["local", "remote"]) {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.emulateMedia({ colorScheme: "light" });
     await page.getByRole("button", { name: "Repos", exact: true }).click();
-    await expect(nav.locator(".project-name")).toHaveText(["api", "web"]);
+    await expect(nav.getByRole("listitem").getByRole("button")).toHaveText([
+      /^api/,
+      /^web/,
+    ]);
     await expect(global).toHaveCount(0);
     expect(collections).toBe(0);
 
@@ -2006,7 +2021,7 @@ test("local root waits for collection to open its default over earlier heads", a
   await expect(status).toContainText("Collecting latest changes");
   await expect(status).toHaveAttribute("aria-busy", "true");
   await expect(
-    page.getByRole("navigation", { name: "Repos" }).locator(".stream-row"),
+    page.getByRole("navigation", { name: "Repos" }).getByRole("link"),
   ).toHaveCount(1);
   await expect(page).toHaveURL(/\/$/);
   expect(opened).toEqual([]);
@@ -2288,9 +2303,9 @@ test("local live URLs sync the checkouts on every load", async ({ page }) => {
   await expect(page).toHaveURL(/\/streams\/local-stream$/);
   expect(collected).toBe(1);
   expect(opened).toEqual(["stored"]);
-  await expect(page.locator(".snapshot-notice")).toContainText(
-    "Newer snapshot",
-  );
+  await expect(
+    page.getByRole("status").filter({ hasText: "Newer snapshot" }),
+  ).toContainText("Newer snapshot");
   await page.getByRole("button", { name: "View latest" }).click();
   await expect.poll(() => opened.at(-1)).toBe("collected-1");
   await ready(page);
@@ -2390,9 +2405,9 @@ test("local sync collects every checkout without replacing the open review", asy
     "Synced 3 checkouts · 2 updated · 1 failed: /work/broken (git failed)",
   );
   // Like distributed arrivals, the newer head is announced, never swapped in.
-  await expect(page.locator(".snapshot-notice")).toContainText(
-    "Newer snapshot",
-  );
+  await expect(
+    page.getByRole("status").filter({ hasText: "Newer snapshot" }),
+  ).toContainText("Newer snapshot");
   await expect(page).toHaveURL(/\/contexts\/local-review$/);
   expect(collections).toEqual(["POST"]);
   await page.keyboard.press("Alt+r");
@@ -2451,8 +2466,11 @@ test("each remote account baselines its own seen heads", async ({ page }) => {
   await page.goto("/contexts/api-head");
   await ready(page);
   await expect(
-    page.getByRole("navigation", { name: "Repos" }).locator(".project-name"),
-  ).toHaveText(["api", "web"]);
+    page
+      .getByRole("navigation", { name: "Repos" })
+      .getByRole("listitem")
+      .getByRole("button"),
+  ).toHaveText([/^api/, /^web/]);
   await expect(page.getByRole("button", { name: /^New changes/ })).toHaveCount(
     0,
   );

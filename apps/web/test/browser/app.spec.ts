@@ -1,4 +1,4 @@
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import { createApiClient } from "@diffx/api";
 import { expect, test } from "./fixtures.ts";
 import { resetFixtureState } from "./fixture-state.ts";
@@ -84,7 +84,10 @@ test("file summary counts change types across filtering and mobile", async ({
   await expect(
     summary.getByRole("img", { name: "1 file renamed" }),
   ).toBeVisible();
-  const row = summary.locator(".summary-files-row");
+  const row = summary
+    .getByRole("term")
+    .filter({ hasText: "Files changed" })
+    .locator("..");
   expect(
     await row.evaluate((element) => element.scrollWidth <= element.clientWidth),
   ).toBe(true);
@@ -223,50 +226,55 @@ test("renders and filters a piped diff", async ({ page }) => {
   await expect(files).toHaveCount(12);
   await expect(files.first()).toHaveCSS("height", "28px");
   await expect(files.first()).toHaveCSS("font-size", "13px");
-  const treeAlignment = await page.evaluate(() => {
-    const center = (element: Element | null) => {
-      if (!element) throw new Error("Missing tree element");
-      const box = element.getBoundingClientRect();
-      return box.top + box.height / 2;
-    };
-    return {
-      folder:
-        center(document.querySelector(".tree-folder .folder-icon")) -
-        center(document.querySelector(".tree-folder .file-name")),
-      chevron:
-        center(document.querySelector(".tree-folder .tree-chevron svg")) -
-        center(document.querySelector(".tree-folder .file-name")),
-      file:
-        center(document.querySelector(".file-row .file-type-icon")) -
-        center(document.querySelector(".file-row .file-name")),
-    };
+  const center = async (locator: Locator) => {
+    const box = await locator.boundingBox();
+    if (!box) throw new Error("Missing tree element");
+    return box.y + box.height / 2;
+  };
+  const folderRow = page.getByRole("button", {
+    name: "Collapse folder config",
   });
-  expect(Math.abs(treeAlignment.folder)).toBeLessThanOrEqual(0.5);
-  expect(Math.abs(treeAlignment.chevron)).toBeLessThanOrEqual(0.5);
-  expect(Math.abs(treeAlignment.file)).toBeLessThanOrEqual(0.5);
+  const folderName = await center(
+    folderRow.getByText("config", { exact: true }),
+  );
+  const fileRow = files.first();
+  // Disclosure chevron, folder icon, then the file-kind icon and name.
+  expect(
+    Math.abs((await center(folderRow.locator("svg").nth(1))) - folderName),
+  ).toBeLessThanOrEqual(0.5);
+  expect(
+    Math.abs((await center(folderRow.locator("svg").first())) - folderName),
+  ).toBeLessThanOrEqual(0.5);
+  expect(
+    Math.abs(
+      (await center(fileRow.locator("svg").first())) -
+        (await center(fileRow.getByText("diffx.json", { exact: true }))),
+    ),
+  ).toBeLessThanOrEqual(0.5);
+  // CollapsibleSection's toggle is a fixed sm (28px) Button, not a min-height.
   await expect(page.getByRole("button", { name: "Hide summary" })).toHaveCSS(
-    "min-height",
+    "height",
     "28px",
   );
-  await expect(page.locator(".summary-row").first()).toHaveCSS(
-    "font-size",
-    "13px",
-  );
-  await expect(page.locator(".sidebar-tabs")).toHaveCSS("height", "36px");
+  await expect(
+    page
+      .getByRole("region", { name: "Summary", exact: true })
+      .getByRole("term")
+      .first(),
+  ).toHaveCSS("font-size", "13px");
+  await expect(
+    page.getByRole("tablist", { name: "Sidebar view" }).locator(".."),
+  ).toHaveCSS("height", "36px");
   await expect(page.locator(".toolbar")).toHaveCSS("min-height", "36px");
   await expect(page.locator(".toolbar")).toHaveCSS("height", "36px");
   await expect(page.getByRole("button", { name: "View options" })).toHaveCSS(
     "height",
     "28px",
   );
-  await expect(page.locator("#file-panel .search-box")).toHaveCSS(
-    "height",
-    "28px",
-  );
-  await expect(page.getByRole("searchbox", { name: "Filter files" })).toHaveCSS(
-    "font-size",
-    "13px",
-  );
+  // SearchField is one 32px field everywhere; its input uses UI body text.
+  const filterFiles = page.getByRole("searchbox", { name: "Filter files" });
+  await expect(filterFiles.locator("..")).toHaveCSS("height", "32px");
+  await expect(filterFiles).toHaveCSS("font-size", "14px");
   await expect(files.filter({ hasText: "value.ts" })).toHaveAttribute(
     "data-path",
     "src/value.ts",
@@ -294,25 +302,22 @@ test("renders and filters a piped diff", async ({ page }) => {
     page.getByText("export const value = 2;", { exact: true }),
   ).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
+  const fontFamily = (locator: Locator) =>
+    locator.evaluate((element) => getComputedStyle(element).fontFamily);
+  expect(await fontFamily(folderRow)).toContain("JetBrains Mono Variable");
+  expect(await fontFamily(fileRow)).toContain("JetBrains Mono Variable");
   const treeFonts = await page.evaluate(() => {
-    const folder = document.querySelector<HTMLElement>(".tree-folder");
-    const file = document.querySelector<HTMLElement>(".file-row");
     const footer = document.querySelector<HTMLElement>(".main-footer");
     const container = document.querySelector("diffs-container");
     const code =
       container?.shadowRoot?.querySelector<HTMLElement>("[data-code]");
-    if (!folder || !file || !footer || !code)
-      throw new Error("Missing monospace surface");
+    if (!footer || !code) throw new Error("Missing monospace surface");
     return {
-      folder: getComputedStyle(folder).fontFamily,
-      file: getComputedStyle(file).fontFamily,
       footer: getComputedStyle(footer).fontFamily,
       code: getComputedStyle(code).fontFamily,
       loaded: document.fonts.check('14px "JetBrains Mono Variable"'),
     };
   });
-  expect(treeFonts.folder).toContain("JetBrains Mono Variable");
-  expect(treeFonts.file).toContain("JetBrains Mono Variable");
   expect(treeFonts.footer).toContain("JetBrains Mono Variable");
   expect(treeFonts.code).toContain("JetBrains Mono Variable");
   expect(treeFonts.loaded).toBe(true);
@@ -873,7 +878,7 @@ test("hide reviewed files filters the tree and diff together", async ({
   await showDiff(page);
 
   const hide = page.getByRole("button", { name: "Hide reviewed files" });
-  const rows = page.locator("#file-tree .file-row");
+  const rows = page.locator("#file-tree [data-path]");
   const headers = page.locator("#viewer diffs-container");
   const status = page.locator("#file-panel [role=status]");
   await expect(hide).toHaveAttribute("aria-pressed", "false");
@@ -932,7 +937,7 @@ test("hiding the last unreviewed file shows the all-reviewed state", async ({
   await showDiff(page);
 
   const hide = page.getByRole("button", { name: "Hide reviewed files" });
-  const rows = page.locator("#file-tree .file-row");
+  const rows = page.locator("#file-tree [data-path]");
   const headers = page.locator("#viewer diffs-container");
   await expect(page.locator("#review-count")).toHaveText("11 of 12 reviewed");
   await hide.click();
@@ -2111,29 +2116,31 @@ test("drawer aligns its header and retains desktop navigation density", async ({
   await page.setViewportSize({ width: 1280, height: 844 });
   await page.goto("/");
   await showDiff(page);
-  await expect(page.locator("#file-tree .file-row").first()).toBeVisible();
+  await expect(page.locator("#file-tree [data-path]").first()).toBeVisible();
+  const sidebar = page.locator("#sidebar");
+  const resetReviewed = sidebar.getByRole("button", { name: "Reset reviewed" });
+  const elements = [
+    sidebar.locator("#file-tree [data-path]").first(),
+    sidebar.getByRole("button", { name: /^Collapse folder / }).first(),
+    sidebar.getByRole("button", { name: "Hide summary" }),
+    resetReviewed,
+    sidebar.getByRole("searchbox", { name: "Filter files" }).locator(".."),
+    resetReviewed.locator(".."),
+    sidebar.getByText("Git unchanged").locator(".."),
+  ];
   const density = () =>
-    page.evaluate(() => {
-      const selectors = [
-        ".file-row",
-        ".tree-folder",
-        ".summary-section .review-tools-toggle",
-        "#reset-reviewed",
-        "#file-panel .search-box",
-        ".review-progress",
-        ".sidebar-footer",
-      ];
-      return selectors.map((selector) => {
-        const element = document.querySelector(selector);
-        if (!element) throw new Error(`Missing sidebar element: ${selector}`);
-        const style = getComputedStyle(element);
-        return {
-          height: element.getBoundingClientRect().height,
-          padding: style.padding,
-          margin: style.margin,
-        };
-      });
-    });
+    Promise.all(
+      elements.map((element) =>
+        element.evaluate((node) => {
+          const style = getComputedStyle(node);
+          return {
+            height: node.getBoundingClientRect().height,
+            padding: style.padding,
+            margin: style.margin,
+          };
+        }),
+      ),
+    );
   const desktop = await density();
   for (const width of [800, 390]) {
     await page.setViewportSize({ width, height: 844 });
@@ -2145,7 +2152,10 @@ test("drawer aligns its header and retains desktop navigation density", async ({
     await expect(page.locator("#sidebar")).toBeVisible();
     await expect.poll(density).toEqual(desktop);
     const header = await page.locator(".topbar").boundingBox();
-    const tabs = await page.locator(".sidebar-tabs").boundingBox();
+    const tabs = await page
+      .getByRole("tablist", { name: "Sidebar view" })
+      .locator("..")
+      .boundingBox();
     const drawer = await page.locator("#sidebar").boundingBox();
     if (!header || !tabs || !drawer) throw new Error("Missing drawer header");
     expect(tabs.height).toBe(header.height);

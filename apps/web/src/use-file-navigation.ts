@@ -153,7 +153,7 @@ export function useFileNavigation({
     requestAnimationFrame(() => {
       document
         .querySelector<HTMLElement>(
-          `#file-tree .file-row[data-path="${CSS.escape(path)}"]`,
+          `#file-tree [data-path="${CSS.escape(path)}"]`,
         )
         ?.scrollIntoView({ block: "nearest" });
     });
