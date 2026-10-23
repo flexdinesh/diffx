@@ -135,7 +135,9 @@ test("diff tracks fill frames and headers align with their gutters", async ({
     }
     const header = await page.locator(".topbar").boundingBox();
     const toolbar = await page.locator(".toolbar").boundingBox();
-    const theme = await page.locator("#theme").boundingBox();
+    const theme = await page
+      .getByRole("button", { name: /^Theme:/ })
+      .boundingBox();
     expect(toolbar?.height).toBe(header?.height);
     for (const id of ["#view-options", "#toggle-all-files"]) {
       const button = await page.locator(id).boundingBox();

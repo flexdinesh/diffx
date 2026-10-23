@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { FolderSyncIcon, LoaderCircleIcon } from "lucide-react";
+import { IconButton } from "@/components/icon-button";
 import { AccountButton } from "./account.tsx";
 import { ContextIdentity } from "./ContextIdentity.tsx";
 import {
@@ -13,6 +15,37 @@ import { useCompactChrome } from "./use-compact-chrome.ts";
 export function CurrentContext() {
   const catalog = useCatalog();
   return catalog.current ? <ContextIdentity current={catalog.current} /> : null;
+}
+
+/** Collects every local checkout; shared by the review and its loading shell. */
+export function SyncButton({
+  busy,
+  onClick,
+}: {
+  busy: boolean;
+  /** Omitted while the loading shell collects: the action is unavailable. */
+  onClick?: () => void;
+}) {
+  return (
+    <IconButton
+      variant="shell"
+      touch
+      label="Sync all checkouts"
+      shortcut={{ alt: true, key: "R" }}
+      aria-busy={busy}
+      disabled={!onClick}
+      onClick={onClick}
+    >
+      {busy ? (
+        <LoaderCircleIcon
+          className="motion-safe:animate-spinner"
+          aria-hidden="true"
+        />
+      ) : (
+        <FolderSyncIcon aria-hidden="true" />
+      )}
+    </IconButton>
+  );
 }
 
 /**
@@ -42,7 +75,7 @@ export function Topbar({
       <div className="header-actions">
         <NewChangesButton />
         {actions}
-        {compact && <AccountButton />}
+        {compact && <AccountButton variant="shell" />}
         <ThemeButton />
       </div>
     </header>

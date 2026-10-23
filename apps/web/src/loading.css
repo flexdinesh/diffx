@@ -1,41 +1,19 @@
-/* Loading reserves the same navigation and review surfaces as the workspace. */
-.skeleton {
-  display: block;
-  flex-shrink: 0;
-  height: var(--space-2);
-  border-radius: var(--radius-xs);
-  background: var(--border-muted);
-}
-.skeleton-icon {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-}
-.skeleton-title {
+/* Loading reserves the same navigation and review surfaces as the workspace.
+   Skeleton shapes and the pulse come from the primitive; widths are layout. */
+.skeleton-title,
+.skeleton-action {
   width: calc(2 * var(--space-8));
 }
 .skeleton-name {
   width: 64%;
 }
-.skeleton-action {
-  width: calc(2 * var(--space-8));
-  height: var(--control-compact);
-  border-radius: var(--radius-control);
-}
 .skeleton-search {
   width: 100%;
-  height: var(--control-small);
   margin-bottom: var(--space-3);
-  border-radius: var(--radius-control);
-}
-.loading-identity {
-  width: calc(3 * var(--space-12));
-  margin-left: var(--space-3);
 }
 .session-status.is-loading {
   display: flex;
   place-content: normal;
-  padding: 0;
-  text-align: start;
 }
 .loading-toolbar {
   display: flex;
@@ -77,7 +55,6 @@
   width: 30%;
 }
 .loading-file-header .skeleton-action {
-  height: var(--space-3);
   margin-left: auto;
 }
 .loading-code {
@@ -106,9 +83,6 @@
 .skeleton-line-number {
   width: var(--space-2);
   flex-shrink: 0;
-}
-.skeleton-code {
-  height: var(--space-1-5);
 }
 .skeleton-code-long {
   width: 68%;
@@ -208,11 +182,7 @@
   justify-content: start;
   padding: 0;
 }
-@media (prefers-reduced-motion: no-preference) {
-  .skeleton {
-    animation: skeleton-pulse var(--duration-pulse) ease-in-out infinite;
-  }
-}
+/* Referenced by the Skeleton primitive's animate-skeleton utility. */
 @keyframes skeleton-pulse {
   50% {
     opacity: 0.45;
@@ -228,8 +198,7 @@
     height: var(--topbar-height);
     gap: var(--space-3);
   }
-  .loading-toolbar > :nth-child(3),
-  .loading-identity {
+  .loading-toolbar > :nth-child(3) {
     display: none;
   }
   .loading-status p {

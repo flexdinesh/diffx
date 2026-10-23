@@ -1330,7 +1330,10 @@ test("inline comments use a distinct structured surface while sidebar comments r
   await expect(page.locator(".context-identity")).toHaveCSS(
     "height",
     await page
-      .locator("#refresh")
+      .getByRole("button", {
+        name: "Retry loading changes",
+        includeHidden: true,
+      })
       .evaluate((element) => getComputedStyle(element).height),
   );
   await page.getByRole("tab", { name: /Review/ }).click();
@@ -1546,24 +1549,26 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
   const view = page.getByRole("button", { name: "Diff", exact: true });
   await expect(page.locator("#file-count")).not.toHaveText("0");
   await expect(brand).toHaveText("diffx");
-  await expect(page.locator(".activity-views button")).toHaveCount(2);
+  const rail = page.getByRole("navigation", { name: "Views" });
+  const railViews = rail.getByRole("listitem").getByRole("button");
+  await expect(railViews).toHaveCount(2);
   expect(
-    await page
-      .locator(".activity-views button")
-      .evaluateAll((buttons) =>
-        buttons.map((button) => button.getAttribute("aria-label")),
-      ),
+    await railViews.evaluateAll((buttons) =>
+      buttons.map((button) => button.getAttribute("aria-label")),
+    ),
   ).toEqual(["Repos", "Diff"]);
   await expect(
     page.locator(".topbar .header-actions > :last-child"),
-  ).toHaveAttribute("id", "theme");
-  await expect(page.locator(".activity-bar #theme")).toHaveCount(0);
+  ).toHaveAccessibleName(/^Theme:/);
+  await expect(rail.getByRole("button", { name: /^Theme:/ })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Delete snapshot", exact: true }),
   ).toHaveCount(0);
   await expect(view).toBeVisible();
   await expect(
-    page.locator(".topbar #projects-toggle, .topbar #sidebar-toggle"),
+    page
+      .getByRole("banner")
+      .getByRole("button", { name: /^(Show|Hide) (repos|file sidebar)$/ }),
   ).toHaveCount(0);
   // Repos is the initial view; Diff opens the file tree on request.
   await expect(
@@ -1620,7 +1625,7 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
       return element;
     };
     const railViewButton = find(".activity-bar [aria-current='page']");
-    const themeElement = find("#theme");
+    const themeElement = find(".topbar [aria-label^='Theme:']");
     const rail = find(".activity-bar").getBoundingClientRect();
     const railView = railViewButton.getBoundingClientRect();
     const themeButton = themeElement.getBoundingClientRect();
@@ -1633,8 +1638,8 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
     return {
       identity: size(".context-identity > svg"),
       viewOptions: size("#view-options svg"),
-      refresh: size("#refresh svg"),
-      theme: size("#theme svg"),
+      refresh: size("[aria-label='Retry loading changes'] svg"),
+      theme: size(".topbar [aria-label^='Theme:'] svg"),
       view: size(".activity-bar [aria-current='page'] svg"),
       chromeStrokes: Array.from(
         document.querySelectorAll(
@@ -1698,7 +1703,7 @@ test("header text stays centered and Theme reaches the shell edge", async ({
       );
     const geometry = await page.locator(".topbar").evaluate((header) => {
       const box = header.getBoundingClientRect();
-      const theme = header.querySelector("#theme");
+      const theme = header.querySelector("[aria-label^='Theme:']");
       if (!theme) throw new Error("Missing Theme action");
       const themeBox = theme.getBoundingClientRect();
       const labels = Array.from(
@@ -1754,7 +1759,7 @@ test("header actions show a visible hover surface in both themes", async ({
   page,
 }) => {
   await page.goto("/");
-  const theme = page.locator("#theme");
+  const theme = page.getByRole("button", { name: /^Theme:/ });
   await expect(theme).toBeVisible();
   for (const mode of ["light", "dark"]) {
     await page
@@ -2148,7 +2153,9 @@ test("drawer aligns its header and retains desktop navigation density", async ({
     expect(tabs.y).toBe(drawer.x);
     if (width === 390) {
       const toolbar = await page.locator(".toolbar").boundingBox();
-      const theme = await page.locator("#theme").boundingBox();
+      const theme = await page
+        .getByRole("button", { name: /^Theme:/ })
+        .boundingBox();
       const options = await page.locator("#view-options").boundingBox();
       const collapse = await page.locator("#toggle-all-files").boundingBox();
       expect(header.height).toBe(44);

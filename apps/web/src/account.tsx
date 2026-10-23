@@ -1,12 +1,14 @@
 import { api, errorDetail, readBootstrap } from "@diffx/api";
 import { ArrowLeftIcon, UserRoundIcon } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { navigate, useIdentity } from "./identity-context.tsx";
 import { AccountTokens } from "./account-tokens.tsx";
 
-export function AccountButton() {
+/** Rail placement on the panel, or the compact header on the shell canvas. */
+export function AccountButton({ variant }: { variant: "rail" | "shell" }) {
   const { state } = useIdentity();
   if (
     state.status !== "ready" ||
@@ -15,15 +17,15 @@ export function AccountButton() {
   )
     return null;
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      aria-label="Account settings"
-      title={`Account settings · ${state.bootstrap.user.username}`}
+    <IconButton
+      variant={variant}
+      touch
+      label="Account settings"
+      hint={`Account settings · ${state.bootstrap.user.username}`}
       onClick={() => navigate("/settings")}
     >
-      <UserRoundIcon className="size-(--icon-base)" aria-hidden="true" />
-    </Button>
+      <UserRoundIcon aria-hidden="true" />
+    </IconButton>
   );
 }
 

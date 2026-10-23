@@ -25,9 +25,9 @@ export function DiffSkeleton() {
       {["primary", "secondary"].map((file) => (
         <div className="loading-file" key={file}>
           <div className="loading-file-header">
-            <Skeleton className="skeleton-icon" />
+            <Skeleton shape="icon" />
             <Skeleton className="skeleton-title" />
-            <Skeleton className="skeleton-action" />
+            <Skeleton shape="label" className="skeleton-action" />
           </div>
           <div className="loading-code">
             {["before", "after"].map((side) => (
@@ -38,6 +38,7 @@ export function DiffSkeleton() {
                     <div className="loading-code-line" key={index}>
                       <Skeleton className="skeleton-line-number" />
                       <Skeleton
+                        shape="code"
                         className={`skeleton-code skeleton-code-${length}`}
                       />
                     </div>
@@ -64,14 +65,14 @@ export function FileTreeSkeleton() {
         <Skeleton className="skeleton-title" />
       </div>
       <div className="loading-tree">
-        <Skeleton className="skeleton-search" />
+        <Skeleton shape="field" className="skeleton-search" />
         {["folder", "file", "file", "folder", "file", "file", "file"].map(
           (kind, index) => (
             <div
               className={`loading-tree-row loading-tree-${kind}`}
               key={index}
             >
-              <Skeleton className="skeleton-icon" />
+              <Skeleton shape="icon" />
               <Skeleton className="skeleton-name" />
             </div>
           ),
@@ -92,7 +93,7 @@ export function ProjectsSkeleton() {
       {["first", "second", "third"].map((group) => (
         <div className="loading-project" key={group}>
           <div className="loading-project-name">
-            <Skeleton className="skeleton-icon" />
+            <Skeleton shape="icon" />
             <Skeleton className="skeleton-name" />
           </div>
           <div className="loading-project-stream">
@@ -109,10 +110,10 @@ export function WorkspaceLoading({ collecting }: { collecting: boolean }) {
   return (
     <>
       <div className="loading-toolbar" aria-hidden="true">
-        <Skeleton className="skeleton-action" />
+        <Skeleton shape="control" className="skeleton-action" />
         <Skeleton className="skeleton-title" />
         <Skeleton className="skeleton-title" />
-        <Skeleton className="skeleton-action" />
+        <Skeleton shape="control" className="skeleton-action" />
       </div>
       <DiffSkeleton />
       <div className="loading-status">

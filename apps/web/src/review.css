@@ -763,7 +763,6 @@
 
 /* Enlarge app chrome, never Pierre's measured header or code-row slots. */
 @media (max-width: 767px), (pointer: coarse) {
-  .topbar button,
   [data-slot="button"][data-size="icon"]:not(.tree-control),
   .copy-comments-actions [data-slot="button"],
   .webmcp-instruction-button,
@@ -790,9 +789,7 @@
     min-width: var(--touch-target);
     min-height: var(--touch-target);
   }
-  .topbar button[data-size="icon"],
-  [data-slot="button"][data-size="icon"]:not(.tree-control),
-  #refresh {
+  [data-slot="button"][data-size="icon"]:not(.tree-control) {
     min-width: var(--touch-target);
   }
   .comment-editor textarea,

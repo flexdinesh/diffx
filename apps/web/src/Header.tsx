@@ -1,15 +1,11 @@
-import {
-  FolderSyncIcon,
-  ListTreeIcon,
-  LoaderCircleIcon,
-  RefreshCwIcon,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ListTreeIcon, RefreshCwIcon } from "lucide-react";
+import { IconButton } from "@/components/icon-button";
 import { useDiffSource } from "./app-state.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
 import { useCatalog, useSession } from "./session-context.tsx";
-import { Topbar } from "./Topbar.tsx";
+import { SyncButton, Topbar } from "./Topbar.tsx";
 import { contextDiagnostics, observationSummary } from "./project-picker.ts";
+import { useCompactChrome } from "./use-compact-chrome.ts";
 
 export function Header() {
   const { repository, piped, diff, refresh, refreshEnabled } = useDiffSource();
@@ -17,69 +13,44 @@ export function Header() {
   const { observation } = session;
   const { collect, collecting } = useCatalog();
   const sidebar = useSidebarState();
+  const compact = useCompactChrome();
+  const sidebarOpen = sidebar.view === "diff" && sidebar.expanded;
   return (
     <Topbar
       lead={
-        <Button
-          type="button"
+        <IconButton
           id="sidebar-toggle"
-          variant="ghost"
-          size="icon"
+          variant="shell"
+          touch
+          label={`${sidebarOpen ? "Hide" : "Show"} file sidebar`}
           aria-controls="sidebar"
-          aria-expanded={sidebar.view === "diff" && sidebar.expanded}
-          aria-label={`${sidebar.view === "diff" && sidebar.expanded ? "Hide" : "Show"} file sidebar`}
-          title={`${sidebar.view === "diff" && sidebar.expanded ? "Hide" : "Show"} file sidebar`}
+          aria-expanded={sidebarOpen}
           onClick={() => sidebar.selectView("diff")}
         >
-          <ListTreeIcon className="size-(--icon-base)" />
-        </Button>
+          <ListTreeIcon aria-hidden="true" />
+        </IconButton>
       }
       actions={
         collect ? (
-          <Button
-            type="button"
-            id="sync"
-            variant="ghost"
-            size="icon"
-            aria-label="Sync all checkouts"
-            title="Sync all checkouts (Alt+R)"
-            aria-busy={collecting || diff.busy}
-            onClick={refresh}
-          >
-            {collecting || diff.busy ? (
-              <LoaderCircleIcon
-                className="size-(--icon-base)"
-                aria-hidden="true"
-              />
-            ) : (
-              <FolderSyncIcon
-                className="size-(--icon-base)"
-                aria-hidden="true"
-              />
-            )}
-          </Button>
+          <SyncButton busy={collecting || diff.busy} onClick={refresh} />
         ) : (
-          <Button
-            type="button"
-            id="refresh"
-            variant="ghost"
-            aria-label={
-              refreshEnabled ? "Refresh changes" : "Retry loading changes"
-            }
-            title={
-              refreshEnabled
-                ? "Refresh changes (Alt+R)"
-                : "Retry loading stored changes"
-            }
+          // Compact chrome drops the visible text, leaving a 44px icon target.
+          <IconButton
+            variant="shell"
+            size={compact ? "icon" : "default"}
+            touch
+            label={refreshEnabled ? "Refresh changes" : "Retry loading changes"}
+            {...(refreshEnabled && { shortcut: { alt: true, key: "R" } })}
             hidden={!refreshEnabled && !diff.notice}
             aria-busy={diff.busy}
             onClick={refresh}
           >
-            <RefreshCwIcon className="size-(--icon-base)" aria-hidden="true" />
-            <span className="refresh-label">
-              {refreshEnabled ? "Refresh" : "Retry"}
-            </span>
-          </Button>
+            <RefreshCwIcon
+              className={diff.busy ? "motion-safe:animate-spinner" : undefined}
+              aria-hidden="true"
+            />
+            {!compact && (refreshEnabled ? "Refresh" : "Retry")}
+          </IconButton>
         )
       }
     >
@@ -92,6 +63,7 @@ export function Header() {
         </h1>
         <p
           id="repo-path"
+          className="header-path"
           title={
             observation
               ? contextDiagnostics(session)

@@ -10,6 +10,10 @@ function PopoverTrigger(props: PopoverPrimitive.Trigger.Props) {
   return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />;
 }
 
+function PopoverClose(props: PopoverPrimitive.Close.Props) {
+  return <PopoverPrimitive.Close data-slot="popover-close" {...props} />;
+}
+
 // Anchored detail surfaces such as server status and diff comparison.
 function PopoverContent({
   className,
@@ -103,6 +107,7 @@ function PopoverSection({
 
 export {
   Popover,
+  PopoverClose,
   PopoverContent,
   PopoverDescription,
   PopoverHeader,

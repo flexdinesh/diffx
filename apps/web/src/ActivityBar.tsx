@@ -1,5 +1,5 @@
 import { FileDiffIcon, FolderGit2Icon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/icon-button";
 import { AccountButton } from "./account.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
 import { useCompactChrome } from "./use-compact-chrome.ts";
@@ -23,10 +23,10 @@ export function ActivityBar({ diffReady = true }: { diffReady?: boolean }) {
       <ul className="activity-views">
         {views.map(({ id, label, Icon }) => (
           <li key={id}>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
+            <IconButton
+              variant="rail"
+              touch
+              label={label}
               id={`${id}-view`}
               disabled={id === "diff" && !diffReady}
               aria-current={
@@ -47,16 +47,14 @@ export function ActivityBar({ diffReady = true }: { diffReady?: boolean }) {
                 sidebar.expanded
               }
               onClick={() => sidebar.selectView(id)}
-              aria-label={label}
-              title={label}
             >
               <Icon aria-hidden="true" />
-            </Button>
+            </IconButton>
           </li>
         ))}
       </ul>
       <div className="activity-actions">
-        <AccountButton />
+        <AccountButton variant="rail" />
       </div>
     </nav>
   );

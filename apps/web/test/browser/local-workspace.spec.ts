@@ -204,7 +204,7 @@ test("comparison uses the captured merge base and follows the selected scope", a
   };
   await page.goto("/contexts/local-review");
   await ready(page);
-  const trigger = page.locator("#scope-description");
+  const trigger = page.getByRole("button", { name: /^Diff comparison:/ });
   await expect(trigger).toContainText(
     "Merge base (main · ccccccc) → working tree",
   );
@@ -263,7 +263,7 @@ test("working comparison identifies HEAD and unborn baselines", async ({
   const state = await localWorkspace(page);
   await page.goto("/contexts/local-review");
   await ready(page);
-  const trigger = page.locator("#scope-description");
+  const trigger = page.getByRole("button", { name: /^Diff comparison:/ });
   await expect(trigger).toContainText("HEAD → working tree");
   await trigger.click();
   const popup = page.getByRole("dialog", { name: "Diff comparison" });
@@ -339,7 +339,12 @@ test("snapshot stays selected after newer captures and branch transitions", asyn
   await page.goto("/contexts/original");
   await ready(page);
   await expect(page.locator("#connection")).toHaveText("Fixed snapshot");
-  await expect(page.locator("#refresh")).toBeHidden();
+  await expect(
+    page.getByRole("button", {
+      name: /^(Refresh|Retry loading) changes$/,
+      includeHidden: true,
+    }),
+  ).toBeHidden();
   contexts.unshift({
     ...original,
     id: "clean-other-branch",
@@ -1923,7 +1928,9 @@ for (const initialHeads of ["stored", "arriving"]) {
       );
     }
     await ready(page);
-    await expect(page.locator("#sync")).toHaveAttribute("aria-busy", "true");
+    await expect(
+      page.getByRole("button", { name: "Sync all checkouts" }),
+    ).toHaveAttribute("aria-busy", "true");
     await expect(page.locator(".session-status")).toHaveCount(0);
     // Same-document navigation must survive the earlier collection completing.
     await page.evaluate(() => {
@@ -1941,7 +1948,9 @@ for (const initialHeads of ["stored", "arriving"]) {
         failures: [],
       },
     });
-    await expect(page.locator("#sync")).toHaveAttribute("aria-busy", "false");
+    await expect(
+      page.getByRole("button", { name: "Sync all checkouts" }),
+    ).toHaveAttribute("aria-busy", "false");
     await expect(page).toHaveURL(/\/contexts\/pinned$/);
     expect(opened).toEqual(["local-review", "pinned"]);
     await ready(page);
@@ -2053,7 +2062,9 @@ test("unresolved navigation joins collection without reporting a missing stream"
   await pending.fulfill({ json: { contexts: [snapshot], failures: [] } });
   await ready(page);
   await expect(page).toHaveURL(/\/streams\/local-stream$/);
-  await expect(page.locator("#sync")).toHaveAttribute("aria-busy", "false");
+  await expect(
+    page.getByRole("button", { name: "Sync all checkouts" }),
+  ).toHaveAttribute("aria-busy", "false");
   expect(collections).toBe(1);
 });
 
@@ -2079,14 +2090,15 @@ test("file previews render independently while other previews are pending", asyn
   await page.goto("/contexts/local-review");
   await ready(page);
   await expect.poll(() => pending !== undefined).toBe(true);
-  await expect(page.locator("#refresh")).toHaveAttribute("aria-busy", "true");
+  const refresh = page.getByRole("button", { name: "Refresh changes" });
+  await expect(refresh).toHaveAttribute("aria-busy", "true");
   await expect(page.getByText("Loading diff…", { exact: true })).toBeVisible();
   if (!pending) throw new Error("Missing held preview");
   await pending.fulfill({ json: { patch: "", message: "Slow preview ready" } });
   await expect(
     page.getByText("Slow preview ready", { exact: true }),
   ).toBeVisible();
-  await expect(page.locator("#refresh")).toHaveAttribute("aria-busy", "false");
+  await expect(refresh).toHaveAttribute("aria-busy", "false");
   await ready(page);
 });
 
@@ -2261,11 +2273,15 @@ test("local live URLs sync the checkouts on every load", async ({ page }) => {
 
   await page.goto("/streams/local-stream");
   await ready(page);
-  await expect(page.locator("#sync")).toHaveAttribute("aria-busy", "true");
+  await expect(
+    page.getByRole("button", { name: "Sync all checkouts" }),
+  ).toHaveAttribute("aria-busy", "true");
   await expect(page.locator(".session-status")).toHaveCount(0);
   await expect.poll(() => state.scopes.length).toBe(1);
   release();
-  await expect(page.locator("#sync")).toHaveAttribute("aria-busy", "false");
+  await expect(
+    page.getByRole("button", { name: "Sync all checkouts" }),
+  ).toHaveAttribute("aria-busy", "false");
   await expect(page).toHaveURL(/\/streams\/local-stream$/);
   expect(collected).toBe(1);
   expect(opened).toEqual(["stored"]);
@@ -2355,9 +2371,17 @@ test("local sync collects every checkout without replacing the open review", asy
   });
   await page.goto("/contexts/local-review");
   await ready(page);
-  await expect(page.locator("#refresh")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", {
+      name: /^(Refresh|Retry loading) changes$/,
+      includeHidden: true,
+    }),
+  ).toHaveCount(0);
   const sync = page.getByRole("button", { name: "Sync all checkouts" });
-  await expect(sync).toHaveAttribute("title", "Sync all checkouts (Alt+R)");
+  await sync.hover();
+  const tooltip = page.locator('[data-slot="tooltip-content"]');
+  await expect(tooltip).toContainText("Sync all checkouts");
+  await expect(tooltip.getByText("Alt+R", { exact: true })).toBeVisible();
   await sync.click();
   await expect(page.locator("#comment-feedback")).toHaveText(
     "Synced 3 checkouts · 2 updated · 1 failed: /work/broken (git failed)",

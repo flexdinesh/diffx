@@ -1,5 +1,5 @@
 import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/icon-button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,24 +22,21 @@ export function ThemeButton() {
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button
-            type="button"
-            id="theme"
-            variant="ghost"
-            size="icon"
-            aria-label={`Theme: ${themeLabel(themePreference)}`}
-            title={`Theme: ${themeLabel(themePreference)}`}
-          />
+          <IconButton
+            variant="shell"
+            touch
+            label={`Theme: ${themeLabel(themePreference)}`}
+          >
+            {themePreference === "system" ? (
+              <MonitorIcon aria-hidden="true" />
+            ) : themePreference === "dark" ? (
+              <MoonIcon aria-hidden="true" />
+            ) : (
+              <SunIcon aria-hidden="true" />
+            )}
+          </IconButton>
         }
-      >
-        {themePreference === "system" ? (
-          <MonitorIcon aria-hidden="true" />
-        ) : themePreference === "dark" ? (
-          <MoonIcon aria-hidden="true" />
-        ) : (
-          <SunIcon aria-hidden="true" />
-        )}
-      </DropdownMenuTrigger>
+      />
       <DropdownMenuContent side="bottom" align="end" aria-label="Theme">
         <DropdownMenuRadioGroup
           value={themePreference}

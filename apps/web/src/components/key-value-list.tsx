@@ -14,16 +14,22 @@ export function KeyValueList({ className, ...props }: ComponentProps<"dl">) {
 
 export function KeyValue({
   label,
+  font = "sans",
   className,
   children,
   ...props
-}: ComponentProps<"dd"> & { label: ReactNode }) {
+}: ComponentProps<"dd"> & {
+  label: ReactNode;
+  /** Mono values are identifiers (commits, refs, metrics) that may wrap anywhere. */
+  font?: "sans" | "mono";
+}) {
   return (
     <div className="flex min-w-0 items-center justify-between gap-2">
       <dt className="min-w-0 text-secondary">{label}</dt>
       <dd
         className={cn(
           "m-0 min-w-0 text-right font-medium text-fg tabular-nums",
+          font === "mono" && "font-mono wrap-anywhere",
           className,
         )}
         {...props}

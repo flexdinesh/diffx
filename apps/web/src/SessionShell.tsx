@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
-import { LoaderCircleIcon } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WorkspaceLoading } from "./WorkspaceLoading.tsx";
 import { navigate } from "./identity-context.tsx";
 import { Button } from "@/components/ui/button";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { Navigation } from "./Navigation.tsx";
-import { Topbar } from "./Topbar.tsx";
+import { SyncButton, Topbar } from "./Topbar.tsx";
 import { useCatalog, useSessionShell } from "./session-context.tsx";
 
 /**
@@ -38,29 +38,9 @@ export function SessionShell({ children }: { children: ReactNode }) {
             children
           ) : (
             <>
-              <Topbar
-                actions={
-                  collecting && (
-                    <Button
-                      type="button"
-                      id="sync"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Sync all checkouts"
-                      title="Syncing checkouts"
-                      aria-busy="true"
-                      disabled
-                    >
-                      <LoaderCircleIcon
-                        className="size-(--icon-base)"
-                        aria-hidden="true"
-                      />
-                    </Button>
-                  )
-                }
-              >
+              <Topbar actions={collecting && <SyncButton busy />}>
                 {loading && !current && (
-                  <Skeleton className="loading-identity" />
+                  <Skeleton className="ml-3 w-36 max-md:hidden" />
                 )}
               </Topbar>
               <div className="workbench">
@@ -75,9 +55,11 @@ export function SessionShell({ children }: { children: ReactNode }) {
                   {loading ? (
                     <WorkspaceLoading collecting={collectOnLoad} />
                   ) : (
-                    <>
-                      <h1>
-                        {statusError
+                    <EmptyState
+                      size="page"
+                      heading="h1"
+                      title={
+                        statusError
                           ? collectError
                             ? "Cannot sync changes"
                             : "Cannot load diffx"
@@ -87,32 +69,43 @@ export function SessionShell({ children }: { children: ReactNode }) {
                               ? heads.contexts.length
                                 ? "No changes to review"
                                 : "No review contexts yet"
-                              : "Loading diffx"}
-                      </h1>
-                      <p>
-                        {statusError ||
-                          (missing
-                            ? "This stream's snapshots expired or were deleted. Pick current work from Repos."
-                            : empty
-                              ? remote
-                                ? "Create a collector token in settings, then run diffx sync to publish your changes."
-                                : "Run diffx to review a checkout, or diffx sync to publish remotely."
-                              : "Reading review context…")}
-                      </p>
-                      {empty && remote && (
-                        <Button
-                          variant="outline"
-                          onClick={() => navigate("/settings")}
-                        >
-                          Create a collector token
-                        </Button>
-                      )}
-                      {statusError && (
-                        <Button type="button" variant="outline" onClick={retry}>
-                          Retry
-                        </Button>
-                      )}
-                    </>
+                              : "Loading diffx"
+                      }
+                      description={
+                        statusError ||
+                        (missing
+                          ? "This stream's snapshots expired or were deleted. Pick current work from Repos."
+                          : empty
+                            ? remote
+                              ? "Create a collector token in settings, then run diffx sync to publish your changes."
+                              : "Run diffx to review a checkout, or diffx sync to publish remotely."
+                            : "Reading review context…")
+                      }
+                      action={
+                        statusError || (empty && remote) ? (
+                          <>
+                            {empty && remote && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => navigate("/settings")}
+                              >
+                                Create a collector token
+                              </Button>
+                            )}
+                            {statusError && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={retry}
+                              >
+                                Retry
+                              </Button>
+                            )}
+                          </>
+                        ) : undefined
+                      }
+                    />
                   )}
                 </main>
               </div>

@@ -18,6 +18,8 @@ const buttonVariants = cva(
         // Ghost actions on the shell canvas, where --hover is indistinguishable.
         shell:
           "text-secondary hover:bg-shell-hover hover:text-fg data-popup-open:bg-shell-hover [&_svg]:[stroke-width:var(--icon-stroke-chrome)]",
+        // Activity rail views on the panel; the current view keeps the accent fill.
+        rail: "text-secondary hover:bg-hover hover:text-fg aria-[current=page]:bg-selected aria-[current=page]:text-accent [&_svg]:[stroke-width:var(--icon-stroke-chrome)]",
         // Tertiary controls such as disclosure toggles and collapse arrows.
         subtle: "text-muted hover:bg-hover hover:text-fg",
         destructive: "text-error hover:bg-hover",
@@ -30,6 +32,8 @@ const buttonVariants = cva(
         xs: "h-control-compact gap-1 px-2 text-sm",
         sm: "h-control-small gap-1 px-2 text-sm",
         lg: "h-control-large gap-2 px-3",
+        // Text triggers inside a status row take the row's type and inset.
+        inline: "h-control-compact gap-1 px-0 [font:inherit]",
         icon: "size-control p-0",
         "icon-xs": "size-control-compact p-0",
         "icon-sm": "size-control-small p-0",
