@@ -2202,7 +2202,8 @@ test("drawer aligns its header and retains desktop navigation density", async ({
       const options = await page.locator("#view-options").boundingBox();
       const collapse = await page.locator("#toggle-all-files").boundingBox();
       expect(header.height).toBe(44);
-      expect(toolbar?.height).toBe(header.height);
+      // The wrapping toolbar keeps a 44px control row plus its bottom border.
+      expect(toolbar?.height).toBe(header.height + 1);
       expect(theme?.width).toBe(44);
       expect(theme?.height).toBe(44);
       expect(options?.width).toBe(theme?.width);
