@@ -63,6 +63,7 @@ export function ConfirmDialog({
             ref={cancel}
             type="button"
             variant="outline"
+            touch
             disabled={busy}
             onClick={() => onOpenChange(false)}
           >
@@ -71,6 +72,7 @@ export function ConfirmDialog({
           <Button
             type="button"
             variant="destructive-solid"
+            touch
             disabled={busy}
             aria-busy={busy}
             onClick={onConfirm}

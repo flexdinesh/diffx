@@ -16,6 +16,7 @@ export function SegmentedControl<Value extends string>({
   onValueChange,
   size = "xs",
   touch,
+  flush,
   id,
   className,
   hidden,
@@ -27,6 +28,8 @@ export function SegmentedControl<Value extends string>({
   onValueChange: (value: Value) => void;
   size?: "xs" | "sm";
   touch?: boolean;
+  /** Drops the frame's height below md so touch items fill a fixed row. */
+  flush?: boolean;
   id?: string;
   className?: string;
   hidden?: boolean;
@@ -40,6 +43,7 @@ export function SegmentedControl<Value extends string>({
       variant="segmented"
       size={size}
       touch={touch}
+      flush={flush}
       value={[value]}
       onValueChange={(values) => {
         const next = options.find((option) => option.value === values[0]);

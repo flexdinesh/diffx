@@ -16,8 +16,18 @@ const toggleGroupVariants = cva(
         segmented:
           "min-h-control-small gap-px border border-separator bg-panel p-px whitespace-nowrap",
       },
+      // Below md the frame becomes an outline, so touch items fill a fixed row.
+      flush: { true: "", false: "" },
     },
-    defaultVariants: { variant: "default" },
+    compoundVariants: [
+      {
+        variant: "segmented",
+        flush: true,
+        className:
+          "max-md:border-0 max-md:p-0 max-md:outline max-md:outline-separator",
+      },
+    ],
+    defaultVariants: { variant: "default", flush: false },
   },
 );
 
@@ -32,6 +42,7 @@ const ToggleGroupContext = React.createContext<
 function ToggleGroup({
   className,
   variant = "default",
+  flush = false,
   size,
   touch,
   orientation = "horizontal",
@@ -48,7 +59,7 @@ function ToggleGroup({
       data-variant={variant}
       data-size={size}
       data-orientation={orientation}
-      className={cn(toggleGroupVariants({ variant }), className)}
+      className={cn(toggleGroupVariants({ variant, flush }), className)}
       {...props}
     >
       <ToggleGroupContext.Provider value={{ variant, size, touch }}>

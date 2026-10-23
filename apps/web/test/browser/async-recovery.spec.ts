@@ -1,5 +1,5 @@
 import { type Page, type Route } from "@playwright/test";
-import { expect, test } from "./fixtures.ts";
+import { expect, fileToggle, reviewedToggle, test } from "./fixtures.ts";
 import { createApiClient, type ApiRepositoryDiff } from "@diffx/api";
 import type { ReviewComment } from "../../src/review-comments.ts";
 
@@ -83,7 +83,9 @@ async function openDraft(page: Page, line = 3) {
   const file = page
     .locator("#viewer diffs-container")
     .filter({ hasText: "src/components/Badge.tsx" });
-  const input = page.locator("#viewer .comment-editor textarea");
+  const input = page
+    .locator("#viewer")
+    .getByRole("textbox", { name: "Review comment" });
   await expect(async () => {
     if (await input.isVisible()) return;
     await file
@@ -128,7 +130,9 @@ test("comment submission guards keyboard and button duplicates", async ({
   expect(requests).toHaveLength(1);
   comments = [commentFor(repository, "Submitted snapshot")];
   await takeRequest(requests).fulfill({ status: 201, json: comments[0] });
-  await expect(page.locator("#viewer .comment-editor")).toHaveCount(0);
+  await expect(
+    page.locator("#viewer").getByRole("textbox", { name: "Review comment" }),
+  ).toHaveCount(0);
 });
 
 test("late save preserves newer text and retries it against the saved ID", async ({
@@ -167,7 +171,9 @@ test("late save preserves newer text and retries it against the saved ID", async
   });
   comments = [commentFor(repository, "Newer unsaved edit")];
   await update.fulfill({ json: comments[0] });
-  await expect(page.locator("#viewer .comment-editor")).toHaveCount(0);
+  await expect(
+    page.locator("#viewer").getByRole("textbox", { name: "Review comment" }),
+  ).toHaveCount(0);
 });
 
 test("late save cannot clear a replacement draft", async ({
@@ -217,14 +223,16 @@ test("save failure stays visible on Changes and retains the draft for retry", as
   const input = await openDraft(page);
   await input.fill("Retain me");
   await input.press("Control+Enter");
-  await expect(page.locator("#viewer .comment-editor [role=alert]")).toHaveText(
+  await expect(page.locator("#viewer").getByRole("alert")).toHaveText(
     "Save rejected",
   );
   await expect(page.locator("#comment-feedback")).toBeVisible();
   await expect(input).toHaveValue("Retain me");
   fail = false;
   await input.press("Control+Enter");
-  await expect(page.locator("#viewer .comment-editor")).toHaveCount(0);
+  await expect(
+    page.locator("#viewer").getByRole("textbox", { name: "Review comment" }),
+  ).toHaveCount(0);
 });
 
 test("concurrent reviewed files merge successful responses in either order", async ({
@@ -250,7 +258,8 @@ test("concurrent reviewed files merge successful responses in either order", asy
   await page.route("**/api/v2/contexts/*/review-marks/*?*", (route) => {
     requests.push(route);
   });
-  const buttons = page.locator("#viewer .review-button");
+  const viewer = page.locator("#viewer");
+  const buttons = reviewedToggle(viewer);
   await buttons.nth(0).click();
   await buttons.nth(1).click();
   await expect.poll(() => requests.length).toBe(2);
@@ -269,12 +278,8 @@ test("concurrent reviewed files merge successful responses in either order", asy
     await route.fulfill({ json: {} });
   }
   await expect(page.locator("#review-count")).toHaveText("2 of 12 reviewed");
-  await expect(
-    page.locator("#viewer .review-button[aria-pressed=true]"),
-  ).toHaveCount(2);
-  await expect(
-    page.locator("#viewer .diff-collapse[aria-expanded=false]"),
-  ).toHaveCount(2);
+  await expect(reviewedToggle(viewer, { pressed: true })).toHaveCount(2);
+  await expect(fileToggle(viewer, { expanded: false })).toHaveCount(2);
 });
 
 test("a stale comment poll cannot undo successful resolution", async ({
@@ -313,7 +318,7 @@ test("a stale comment poll cannot undo successful resolution", async ({
   await takeRequest(requests).fulfill({ json: { comments: stale } });
   await page.getByRole("button", { name: "Filter comments: Open" }).click();
   await page.getByRole("menuitemradio", { name: "Resolved 1" }).click();
-  await expect(card.locator(".comment-state")).toHaveText("Resolved");
+  await expect(card.getByTitle(/^Lifecycle:/)).toHaveText("Resolved");
 });
 
 test("slow comment polling completes instead of restarting every interval", async ({
@@ -440,9 +445,9 @@ test("WebMCP resolution shares comment ownership and preserves an active draft",
   await page.getByRole("button", { name: "Filter comments: Open" }).click();
   await page.getByRole("menuitemradio", { name: "Resolved 1" }).click();
   await expect(
-    page.locator(
-      '#comments-panel [data-comment-id="saved-comment"] .comment-state',
-    ),
+    page
+      .locator('#comments-panel [data-comment-id="saved-comment"]')
+      .getByTitle(/^Lifecycle:/),
   ).toHaveText("Resolved");
 });
 
@@ -492,9 +497,8 @@ test("reset waits for pending marks and clears their collapse state", async ({
   await page.route("**/api/v2/contexts/*/review-marks/*?*", (route) => {
     updates.push(route);
   });
-  const mark = page
-    .locator("#viewer .review-button[aria-pressed=false]")
-    .first();
+  const viewer = page.locator("#viewer");
+  const mark = reviewedToggle(viewer, { pressed: false }).first();
   await mark.click();
   await expect.poll(() => updates.length).toBe(1);
   await page.getByRole("button", { name: "Reset reviewed" }).click();
@@ -505,9 +509,7 @@ test("reset waits for pending marks and clears their collapse state", async ({
   await takeRequest(updates).fulfill({ json: {} });
   await expect.poll(() => resets).toBe(1);
   await expect(page.locator("#review-count")).toHaveText("0 of 12 reviewed");
-  await expect(
-    page.locator("#viewer .diff-collapse[aria-expanded=false]"),
-  ).toHaveCount(0);
+  await expect(fileToggle(viewer, { expanded: false })).toHaveCount(0);
 });
 
 test("reviewed-file failure remains visible with comments disabled and retries", async ({
@@ -540,12 +542,14 @@ test("reviewed-file failure remains visible with comments disabled and retries",
   await page.route("**/api/v2/contexts/*/review-marks/*?*", (route) =>
     route.fulfill({ status: 500, json: { detail: "Mark rejected" } }),
   );
-  await page.locator("#viewer .review-button").first().click();
-  await expect(page.locator(".reviewed-error")).toContainText("Mark rejected");
+  const reviewed = reviewedToggle(page.locator("#viewer")).first();
+  await reviewed.click();
+  const failure = page.getByRole("alert").filter({ hasText: "Mark rejected" });
+  await expect(failure).toBeVisible();
   await expect(page.locator("#comments-tab")).toHaveCount(0);
   await expect(page.locator("#review-count")).toHaveText("0 of 12 reviewed");
-  await page.getByRole("button", { name: "Retry reviewed files" }).click();
-  await expect(page.locator(".reviewed-error")).toHaveCount(0);
+  await failure.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(failure).toHaveCount(0);
   await page.route("**/api/v2/contexts/*/review-marks/*?*", async (route) => {
     const id = new URL(route.request().url()).pathname.split("/").at(-1);
     const payload: unknown = route.request().postDataJSON();
@@ -560,6 +564,6 @@ test("reviewed-file failure remains visible with comments disabled and retries",
     marks = [{ fileId: id, fileVersion: payload.fileVersion, scope: "all" }];
     await route.fulfill({ json: {} });
   });
-  await page.locator("#viewer .review-button").first().click();
+  await reviewed.click();
   await expect(page.locator("#review-count")).toHaveText("1 of 12 reviewed");
 });

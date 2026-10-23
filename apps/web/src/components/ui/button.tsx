@@ -13,6 +13,9 @@ const buttonVariants = cva(
           "border-control bg-bg text-fg hover:bg-hover data-popup-open:bg-hover",
         "outline-muted":
           "border-separator bg-bg text-fg hover:bg-hover data-popup-open:bg-hover",
+        // Muted outline toggle whose pressed state reads as done (Reviewed).
+        "outline-check":
+          "border-separator bg-bg text-muted hover:bg-hover aria-pressed:text-success",
         ghost:
           "text-secondary hover:bg-hover hover:text-fg data-popup-open:bg-hover",
         // Ghost actions on the shell canvas, where --hover is indistinguishable.

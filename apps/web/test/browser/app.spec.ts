@@ -1,11 +1,11 @@
 import { type Locator, type Page } from "@playwright/test";
 import { createApiClient } from "@diffx/api";
-import { expect, test } from "./fixtures.ts";
+import { expect, fileToggle, reviewedToggle, test } from "./fixtures.ts";
 import { resetFixtureState } from "./fixture-state.ts";
 
 async function resolvedRadius(
   page: Page,
-  token: "--radius-md" | "--radius-lg",
+  token: "--radius-sm" | "--radius-md" | "--radius-lg",
 ) {
   return page.evaluate((name) => {
     const probe = document.createElement("div");
@@ -487,10 +487,7 @@ test("file frames preserve measured gutters, gaps, and virtual geometry", async 
     "height",
     "36px",
   );
-  await expect(containers.first().locator(".review-button")).toHaveCSS(
-    "height",
-    "28px",
-  );
+  await expect(reviewedToggle(containers.first())).toHaveCSS("height", "28px");
   for (const fontSize of [16, 20]) {
     const spacing = fontSize * 0.75;
     await page.locator("html").evaluate((element, size) => {
@@ -636,14 +633,15 @@ test("diff collapse arrows share a column across file sizes and collapse states"
         element.style.fontSize = `${size}px`;
       }, fontSize);
       for (const state of ["expanded", "mixed", "collapsed"]) {
-        if (state === "mixed")
-          await files.first().locator(".diff-collapse").click();
+        if (state === "mixed") await fileToggle(files.first()).click();
         else await page.locator("#toggle-all-files").click();
         await expect
           .poll(() =>
             files.evaluateAll((elements) => {
               const positions = elements.map((element) => {
-                const button = element.querySelector(".diff-collapse");
+                const button = element.querySelector(
+                  ".diff-collapse-gutter button",
+                );
                 const header = element.shadowRoot?.querySelector(
                   "[data-diffs-header]",
                 );
@@ -685,35 +683,42 @@ test("only the diff collapse button toggles a file and paths copy independently"
     .locator("#viewer diffs-container")
     .filter({ hasText: "src/components/Badge.tsx" });
   const title = file.locator("[data-title]");
-  const collapse = file.locator(".diff-collapse");
+  const collapse = fileToggle(file);
   const copy = file.getByRole("button", {
     name: "Copy relative path: src/components/Badge.tsx",
     exact: true,
   });
+  const copyFeedback = copy.locator("..").getByRole("status");
+  // Header slot actions name themselves through tooltips instead of `title`.
+  const tooltip = page.locator('[data-slot="tooltip-content"]');
 
   await title.click();
   await expect(collapse).toHaveAttribute("aria-expanded", "true");
-  await expect(collapse).toHaveAttribute("title", "Collapse file");
+  await expect(collapse).not.toHaveAttribute("title");
   await expect(collapse).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await collapse.hover();
+  await expect(tooltip).toHaveText("Collapse file");
   await expect(collapse).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
 
+  await copy.hover();
+  await expect(tooltip).toHaveText("Copy relative path");
   await copy.click();
-  await expect(file.locator(".copy-path-feedback")).toHaveText("Copied");
-  await expect(copy).toHaveAttribute("title", "Copied");
+  await expect(copyFeedback).toHaveText("Copied");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     "src/components/Badge.tsx",
   );
   await expect(collapse).toHaveAttribute("aria-expanded", "true");
-  await expect(file.locator(".copy-path-feedback")).toHaveText("");
+  await expect(copyFeedback).toHaveText("");
 
   await collapse.click();
   await expect(collapse).toHaveAttribute("aria-expanded", "false");
-  await expect(collapse).toHaveAttribute("title", "Expand file");
+  await title.hover();
+  await collapse.hover();
+  await expect(tooltip).toHaveText("Expand file");
   await title.click();
   await expect(collapse).toHaveAttribute("aria-expanded", "false");
   await copy.click();
-  await expect(file.locator(".copy-path-feedback")).toHaveText("Copied");
+  await expect(copyFeedback).toHaveText("Copied");
   await expect(collapse).toHaveAttribute("aria-expanded", "false");
   await collapse.focus();
   await page.keyboard.press("Enter");
@@ -725,7 +730,7 @@ test("only the diff collapse button toggles a file and paths copy independently"
   });
   await page.locator('#file-tree [data-path="src/utils/format.ts"]').click();
   await renamed.click();
-  await expect(renamed).toHaveAttribute("title", "Copied");
+  await expect(renamed.locator("..").getByRole("status")).toHaveText("Copied");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     "src/utils/format.ts",
   );
@@ -751,7 +756,7 @@ for (const [start, end] of [
       .locator("#viewer diffs-container")
       .filter({ hasText: "src/components/Badge.tsx" });
     const add = file.locator("[data-utility-button]");
-    const editor = page.locator("#viewer .comment-editor");
+    const editor = page.locator('#viewer [data-slot="card"][data-active]');
     // Worker rendering can replace the hover utility before the drag starts.
     await expect(async () => {
       if (await editor.isVisible()) return;
@@ -786,29 +791,26 @@ for (const [start, end] of [
     }).toPass({ timeout: 10_000 });
     const displayLocation = `src/components/Badge.tsx:${start}${end !== start ? `–${end}` : ""}`;
     const copiedLocation = `src/components/Badge.tsx:${start}${end !== start ? `-${end}` : ""}`;
-    await expect(editor.locator(".comment-editor-title small")).toHaveText(
-      displayLocation,
+    const header = editor.locator('[data-slot="card-header"]');
+    await expect(
+      header.getByText(displayLocation, { exact: true }),
+    ).toBeVisible();
+    await expect(header).not.toContainText("New comment");
+    await expect(header).not.toContainText("·");
+    const copyLocation = editor.getByRole("button", {
+      name: `Copy path and lines: ${copiedLocation}`,
+    });
+    await copyLocation.click();
+    await expect(copyLocation.locator("..").getByRole("status")).toHaveText(
+      "Copied",
     );
-    await expect(editor.locator(".comment-editor-header")).not.toContainText(
-      "New comment",
-    );
-    await expect(editor.locator(".comment-editor-header")).not.toContainText(
-      "·",
-    );
-    await editor
-      .getByRole("button", { name: `Copy path and lines: ${copiedLocation}` })
-      .click();
-    await expect(editor.locator(".copy-path-feedback")).toHaveText("Copied");
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
       copiedLocation,
     );
     await expect(
       editor.getByRole("textbox", { name: "Review comment" }),
     ).toHaveValue("");
-    await expect(file.locator(".diff-collapse")).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
+    await expect(fileToggle(file)).toHaveAttribute("aria-expanded", "true");
   });
 }
 
@@ -826,11 +828,12 @@ test("path copy failures show feedback and allow retry", async ({ page }) => {
   await page.goto("/");
   const file = page.locator("#viewer diffs-container").first();
   const copy = file.getByRole("button", { name: /^Copy relative path:/ });
+  const feedback = copy.locator("..").getByRole("status");
   await copy.click();
-  await expect(file.locator(".copy-path-feedback")).toHaveText("Copy failed");
+  await expect(feedback).toHaveText("Copy failed");
   await expect(copy).toBeEnabled();
   await copy.click();
-  await expect(file.locator(".copy-path-feedback")).toHaveText("Copied");
+  await expect(feedback).toHaveText("Copied");
 });
 
 test("reset reviewed clears file review marks and disables when empty", async ({
@@ -846,9 +849,9 @@ test("reset reviewed clears file review marks and disables when empty", async ({
   await expect(reset).toHaveAttribute("data-size", "xs");
   await expect(reset).toHaveCSS("height", "24px");
 
-  const viewed = page.locator("#viewer .review-button").last();
+  const viewed = reviewedToggle(page.locator("#viewer")).last();
   const file = page.locator("#viewer diffs-container").last();
-  const collapse = file.locator(".diff-collapse");
+  const collapse = fileToggle(file);
   await viewed.click();
   await expect(viewed).toHaveAttribute("aria-pressed", "true");
   await expect(collapse).toHaveAttribute("aria-expanded", "false");
@@ -860,7 +863,7 @@ test("reset reviewed clears file review marks and disables when empty", async ({
   await expect(collapse).toHaveAttribute("aria-expanded", "true");
   await viewed.click();
   await expect(viewed).toHaveAttribute("aria-pressed", "true");
-  const manuallyCollapsed = page.locator("#viewer .diff-collapse").first();
+  const manuallyCollapsed = fileToggle(page.locator("#viewer")).first();
   await manuallyCollapsed.click();
   await expect(manuallyCollapsed).toHaveAttribute("aria-expanded", "false");
 
@@ -916,7 +919,7 @@ test("hide reviewed files filters the tree and diff together", async ({
   await page.getByRole("searchbox", { name: "Filter files" }).fill("docs");
   await expect(rows).toHaveCount(0);
   await expect(page.locator("#file-tree")).toHaveText("All files reviewed");
-  await expect(page.locator("#empty h2")).toHaveText(
+  await expect(page.locator("#empty").getByRole("heading")).toHaveText(
     "All matching files reviewed",
   );
   await page.getByRole("searchbox", { name: "Filter files" }).fill("");
@@ -944,14 +947,15 @@ test("hiding the last unreviewed file shows the all-reviewed state", async ({
   await expect(page.locator("#review-count")).toHaveText("11 of 12 reviewed");
   await hide.click();
   await expect(rows).toHaveCount(1);
-  await page
-    .locator("#viewer .review-button[aria-pressed=false]")
+  await reviewedToggle(page.locator("#viewer"), { pressed: false })
     .first()
     .click();
   await expect(page.locator("#review-count")).toHaveText("12 of 12 reviewed");
   await expect(rows).toHaveCount(0);
   await expect(page.locator("#file-tree")).toHaveText("All files reviewed");
-  await expect(page.locator("#empty h2")).toHaveText("All files reviewed");
+  await expect(page.locator("#empty").getByRole("heading")).toHaveText(
+    "All files reviewed",
+  );
   await page.getByRole("button", { name: "Show reviewed files" }).click();
   await expect(hide).toHaveAttribute("aria-pressed", "false");
   await expect(rows).toHaveCount(12);
@@ -967,7 +971,7 @@ test("mobile keeps review progress visible beside the diff", async ({
   const progress = page.locator(".mobile-review-progress");
   await expect(progress).toBeVisible();
   await expect(progress).toHaveText("0/12 reviewed");
-  await page.locator("#viewer .review-button").first().click();
+  await reviewedToggle(page.locator("#viewer")).first().click();
   await expect(progress).toHaveText("1/12 reviewed");
 });
 
@@ -1086,27 +1090,28 @@ test("inline comments use a distinct structured surface while sidebar comments r
   await showDiff(page);
 
   const inline = page.locator(
-    '#viewer [data-comment-id="range-comment"] .comment-card',
+    '#viewer [data-comment-id="range-comment"] [data-slot="card"]',
   );
+  const inlineContent = inline.locator('[data-slot="card-content"]');
   await expect(inline).toBeVisible();
   await expect(inline).toHaveAttribute("data-expanded", "true");
-  const openCommentToggle = inline.locator(".comment-collapse");
+  const openCommentToggle = inline.getByRole("button", {
+    name: /^(?:Collapse|Expand) comment at /,
+  });
   await expect(openCommentToggle).toHaveAccessibleName(/Collapse comment/);
   await expect(openCommentToggle).toHaveAttribute("aria-expanded", "true");
+  // The shared disclosure chevron points right when collapsed, down when open.
   await expect(openCommentToggle.locator("svg")).toHaveClass(
-    /lucide-chevron-down/,
+    /lucide-chevron-right/,
   );
-  await expect(openCommentToggle.locator("svg")).not.toHaveCSS(
-    "transform",
-    "none",
-  );
+  await expect(openCommentToggle.locator("svg")).toHaveCSS("rotate", "90deg");
   await openCommentToggle.click();
   await expect(inline).toHaveAttribute("data-expanded", "false");
-  await expect(inline.locator(".comment-collapse-panel")).toBeHidden();
-  await expect(openCommentToggle.locator("svg")).toHaveCSS("transform", "none");
+  await expect(inlineContent).toBeHidden();
+  await expect(openCommentToggle.locator("svg")).toHaveCSS("rotate", "none");
   await inline.getByRole("button", { name: /Expand comment/ }).click();
   await expect(inline).toHaveAttribute("data-expanded", "true");
-  await expect(inline.locator(".comment-collapse-panel")).toBeVisible();
+  await expect(inlineContent).toBeVisible();
   const highlights = await page
     .locator("diffs-container")
     .evaluateAll((containers) => {
@@ -1160,10 +1165,12 @@ test("inline comments use a distinct structured surface while sidebar comments r
   for (const highlight of Object.values(highlights))
     expect(highlight.highlighted).not.toBe(highlight.adjacent);
   const resolvedInline = page.locator(
-    '#viewer [data-comment-id="deletion-comment"] .comment-card',
+    '#viewer [data-comment-id="deletion-comment"] [data-slot="card"]',
   );
   await expect(resolvedInline).toHaveAttribute("data-expanded", "false");
-  await expect(resolvedInline.locator(".comment-collapse-panel")).toBeHidden();
+  await expect(
+    resolvedInline.locator('[data-slot="card-content"]'),
+  ).toBeHidden();
   await expect(
     resolvedInline.getByRole("button", {
       name: /Expand resolved comment/,
@@ -1180,7 +1187,9 @@ test("inline comments use a distinct structured surface while sidebar comments r
   await expect(inline.locator('[data-slot="card-content"]')).toHaveCount(1);
   await expect(inline.locator('[data-slot="card-footer"]')).toHaveCount(1);
   const headerAlignment = await inline.evaluate((element) => {
-    const header = element.querySelector<HTMLElement>(".comment-card-header");
+    const header = element.querySelector<HTMLElement>(
+      '[data-slot="card-header"]',
+    );
     const action = element.querySelector<HTMLElement>(
       '[data-slot="card-action"]',
     );
@@ -1200,19 +1209,28 @@ test("inline comments use a distinct structured surface while sidebar comments r
   expect(headerAlignment.rightInset).toBeLessThanOrEqual(9);
   expect(headerAlignment.actionMarginLeft).not.toBe("0px");
   expect(Math.abs(headerAlignment.centerOffset)).toBeLessThanOrEqual(0.5);
-  await expect(inline.locator(".comment-card-header")).toHaveCSS(
+  await expect(inline.locator('[data-slot="card-header"]')).toHaveCSS(
     "height",
     "36px",
   );
-  await expect(inline.locator(".comment-actions")).toHaveCSS("height", "36px");
-  await expect(inline.locator(".comment-state")).toHaveCSS("height", "28px");
-  await expect(inline.locator(".comment-state")).toHaveCSS(
+  await expect(inline.locator('[data-slot="card-footer"]')).toHaveCSS(
+    "height",
+    "36px",
+  );
+  // Status uses the shared Badge status variant: compact height, small radius.
+  const inlineState = inline.getByTitle(/^Lifecycle:/);
+  await expect(inlineState).toHaveCSS("height", "24px");
+  await expect(inlineState).toHaveCSS(
     "border-radius",
-    mediumRadius,
+    await resolvedRadius(page, "--radius-sm"),
   );
   const surfaces = await inline.evaluate((element) => {
-    const header = element.querySelector<HTMLElement>(".comment-card-header");
-    const actions = element.querySelector<HTMLElement>(".comment-actions");
+    const header = element.querySelector<HTMLElement>(
+      '[data-slot="card-header"]',
+    );
+    const actions = element.querySelector<HTMLElement>(
+      '[data-slot="card-footer"]',
+    );
     if (!header || !actions) throw new Error("Missing comment regions");
     return {
       body: getComputedStyle(element).backgroundColor,
@@ -1222,14 +1240,14 @@ test("inline comments use a distinct structured surface while sidebar comments r
   });
   expect(surfaces.header).not.toBe(surfaces.body);
   expect(surfaces.actions).not.toBe(surfaces.body);
-  await expect(inline.locator(".comment-card-header svg")).toHaveCount(2);
-  await expect(inline.locator(".comment-card-title span")).toHaveText(
+  await expect(inline.locator('[data-slot="card-header"] svg')).toHaveCount(2);
+  await expect(inline.locator('[data-slot="card-title"] span')).toHaveText(
     "· line 2–4",
   );
-  await expect(inline.locator(".comment-actions svg")).toHaveCount(4);
-  const commentActions = inline.locator(
-    '.comment-actions [data-slot="button"]',
-  );
+  await expect(inline.locator('[data-slot="card-footer"] svg')).toHaveCount(4);
+  const commentActions = inline
+    .locator('[data-slot="card-footer"]')
+    .getByRole("button");
   await expect(commentActions).toHaveCount(4);
   await expect(
     inline.getByRole("button", {
@@ -1279,7 +1297,7 @@ test("inline comments use a distinct structured surface while sidebar comments r
   expect(oneSidedGeometry.left).toBeLessThanOrEqual(25);
   expect(oneSidedGeometry.right).toBeGreaterThan(oneSidedGeometry.left);
   const pairedInline = page.locator(
-    '#viewer [data-comment-id="styled-comment"] .comment-card',
+    '#viewer [data-comment-id="styled-comment"] [data-slot="card"]',
   );
   await expect(pairedInline).toHaveAttribute("data-diff-layout", "split");
   await expect(pairedInline).not.toHaveAttribute("data-one-sided", "");
@@ -1314,11 +1332,15 @@ test("inline comments use a distinct structured surface while sidebar comments r
   await expect(pairedInline).toHaveAttribute("data-diff-layout", "split");
 
   await inline.getByRole("button", { name: "Edit", exact: true }).click();
-  const editor = page.locator("#viewer .comment-editor");
+  const editor = page.locator('#viewer [data-slot="card"][data-active]');
   await expect(editor).toBeVisible();
   const editorHeaderOffset = await editor.evaluate((element) => {
-    const header = element.querySelector<HTMLElement>(".comment-editor-header");
-    const title = element.querySelector<HTMLElement>(".comment-editor-title");
+    const header = element.querySelector<HTMLElement>(
+      '[data-slot="card-header"]',
+    );
+    const title = element.querySelector<HTMLElement>(
+      '[data-slot="card-title"]',
+    );
     if (!header || !title) throw new Error("Missing comment editor header");
     const headerBox = header.getBoundingClientRect();
     const titleBox = title.getBoundingClientRect();
@@ -1331,7 +1353,7 @@ test("inline comments use a distinct structured surface while sidebar comments r
   expect(Math.abs(editorHeaderOffset)).toBeLessThanOrEqual(0.5);
   await editor.getByRole("button", { name: "Cancel", exact: true }).click();
 
-  const viewed = page.locator("#viewer .review-button").first();
+  const viewed = reviewedToggle(page.locator("#viewer")).first();
   await expect(viewed).toHaveCSS("height", "28px");
   await expect(viewed).toHaveAttribute("data-size", "sm");
   await expect(page.locator(".context-identity")).toHaveCSS(
@@ -1345,22 +1367,24 @@ test("inline comments use a distinct structured surface while sidebar comments r
   );
   await page.getByRole("tab", { name: /Review/ }).click();
   const sidebar = page.locator(
-    '#comments-panel [data-comment-id="styled-comment"] .comment-card',
+    '#comments-panel [data-comment-id="styled-comment"] [data-slot="card"]',
   );
   await expect(sidebar).toBeVisible();
-  await expect(sidebar.locator(".comment-location")).toHaveText(
-    "src/value.ts:3",
-  );
-  await expect(sidebar.locator(".comment-card-header")).toHaveCSS(
+  await expect(
+    sidebar.getByRole("button", { name: "src/value.ts:3", exact: true }),
+  ).toBeVisible();
+  await expect(sidebar.locator('[data-slot="card-header"]')).toHaveCSS(
     "height",
     "32px",
   );
-  await expect(sidebar.locator(".comment-actions")).toHaveCSS("height", "32px");
-  await expect(sidebar.locator(".comment-state")).toHaveCSS("height", "24px");
+  await expect(sidebar.locator('[data-slot="card-footer"]')).toHaveCSS(
+    "height",
+    "32px",
+  );
+  await expect(sidebar.getByTitle(/^Lifecycle:/)).toHaveCSS("height", "24px");
   await page
-    .locator(
-      '#comments-panel [data-comment-id="range-comment"] .comment-location',
-    )
+    .locator('#comments-panel [data-comment-id="range-comment"]')
+    .getByRole("button", { name: "src/components/Badge.tsx:2–4", exact: true })
     .click({ position: { x: 12, y: 12 } });
   const rangeTarget = page
     .locator("#viewer diffs-container")
@@ -1390,9 +1414,9 @@ test("inline comments use a distinct structured surface while sidebar comments r
     sidebar.evaluate((element) => getComputedStyle(element).borderColor),
   ]);
   expect(inlineBorder).toBe(sidebarBorder);
-  const sidebarActions = sidebar.locator(
-    '.comment-actions [data-slot="button"]',
-  );
+  const sidebarActions = sidebar
+    .locator('[data-slot="card-footer"]')
+    .getByRole("button");
   await expect(sidebarActions).toHaveCount(4);
   await expect(
     sidebar.getByRole("button", {
@@ -1951,23 +1975,26 @@ test("copy dialog reports clipboard status and restores focus", async ({
     page.getByRole("region", { name: "Outdated comments" }),
   ).toBeVisible();
   const card = page.locator(
-    '#comments-panel [data-comment-id="browser-test"] .comment-card',
+    '#comments-panel [data-comment-id="browser-test"] [data-slot="card"]',
   );
+  const state = card.getByTitle(/^Lifecycle:/);
   await expect(card).toHaveAttribute("data-expanded", "false");
   await expect(card.getByText("Outdated", { exact: true })).toBeVisible();
-  await expect(card.locator(".comment-state")).toHaveAttribute(
+  await expect(state).toHaveAttribute(
     "title",
     "Lifecycle: open; applicability: outdated",
   );
-  const expand = card.locator(".comment-collapse");
+  const expand = card.getByRole("button", {
+    name: /^(?:Collapse|Expand) (?:\w+ )?comment at /,
+  });
   await expect(expand).toHaveAccessibleName(/Expand outdated comment/);
   await expand.click();
   const resolve = card.getByRole("button", { name: "Resolve", exact: true });
   await resolve.click();
   await expect(card).toHaveAttribute("data-expanded", "false");
-  await expect(card.locator(".comment-collapse-panel")).toBeHidden();
+  await expect(card.locator('[data-slot="card-content"]')).toBeHidden();
   await expect(card.getByText("Outdated", { exact: true })).toBeVisible();
-  await expect(card.locator(".comment-state")).toHaveAttribute(
+  await expect(state).toHaveAttribute(
     "title",
     "Lifecycle: resolved; applicability: outdated",
   );
@@ -1977,7 +2004,7 @@ test("copy dialog reports clipboard status and restores focus", async ({
   const reopen = card.getByRole("button", { name: "Reopen", exact: true });
   await expect(reopen).toBeVisible();
   await reopen.click();
-  await expect(card.locator(".comment-state")).toHaveAttribute(
+  await expect(state).toHaveAttribute(
     "title",
     "Lifecycle: open; applicability: outdated",
   );
@@ -2000,9 +2027,8 @@ test("copy dialog reports clipboard status and restores focus", async ({
   const commentOutput = page.getByRole("textbox", { name: "Comment XML" });
   await expect(commentDialog).toBeVisible();
   await expect(
-    commentDialog.getByText("Copy the selected text with ⌘C / Ctrl+C.", {
-      exact: true,
-    }),
+    // One shortcut format: the current platform's keys only.
+    commentDialog.getByText(/^Copy the selected text with (?:⌘C|Ctrl\+C)\.$/),
   ).toBeVisible();
   let query = new URLSearchParams(exportQueries.at(-1) ?? "");
   expect(query.get("includeResolved")).toBe("true");
@@ -2202,12 +2228,11 @@ test("file review comments save and reopen without selecting lines", async ({
         exact: true,
       })
       .click();
-    const editor = file.locator(".comment-editor");
+    const editor = file.locator('[data-slot="card"][data-active]');
     await expect(editor).toBeVisible();
-    await expect(editor.locator(".comment-editor-title")).toContainText(path);
-    await expect(editor.locator(".comment-editor-title")).not.toContainText(
-      ":0",
-    );
+    const editorTitle = editor.locator('[data-slot="card-title"]');
+    await expect(editorTitle).toContainText(path);
+    await expect(editorTitle).not.toContainText(":0");
     await expect(file.locator("[data-selected-line]")).toHaveCount(0);
     await editor
       .getByRole("textbox", { name: "Review comment" })
@@ -2226,22 +2251,22 @@ test("file review comments save and reopen without selecting lines", async ({
       end: 0,
     });
     const card = file
-      .locator(".comment-card")
+      .locator('[data-comment-id] [data-slot="card"]')
       .filter({ hasText: `Review entire ${path}` });
     await expect(card).toBeVisible();
-    await expect(card.locator(".comment-card-title")).toContainText("· file");
+    await expect(card.locator('[data-slot="card-title"]')).toContainText(
+      "· file",
+    );
   }
   await page.reload();
   const card = page
-    .locator("#viewer .comment-card")
+    .locator('#viewer [data-comment-id] [data-slot="card"]')
     .filter({ hasText: "Review entire config/diffx.json" });
   await expect(card).toBeVisible();
   await card.getByRole("button", { name: "Edit", exact: true }).click();
-  await expect(page.locator("#viewer .comment-editor")).toBeVisible();
-  await page
-    .locator("#viewer .comment-editor")
-    .getByRole("button", { name: "Cancel", exact: true })
-    .click();
+  const editor = page.locator('#viewer [data-slot="card"][data-active]');
+  await expect(editor).toBeVisible();
+  await editor.getByRole("button", { name: "Cancel", exact: true }).click();
   await card.getByRole("button", { name: "Resolve", exact: true }).click();
   await expect(card).toContainText("Resolved");
 });
@@ -2267,15 +2292,15 @@ test("file comments remain available without a text diff", async ({ page }) => {
       exact: true,
     })
     .click();
-  const editor = file.locator(".comment-editor");
+  const editor = file.locator('[data-slot="card"][data-active]');
   await expect(editor).toBeVisible();
   await editor
     .getByRole("textbox", { name: "Review comment" })
     .fill("Review this binary asset");
   await editor.getByRole("button", { name: "Save comment" }).click();
-  await expect(file.locator(".comment-card")).toContainText(
-    "Review this binary asset",
-  );
+  await expect(
+    file.locator('[data-comment-id] [data-slot="card"]'),
+  ).toContainText("Review this binary asset");
 });
 
 test("diff file and folder collapse state survives reload within the tab", async ({

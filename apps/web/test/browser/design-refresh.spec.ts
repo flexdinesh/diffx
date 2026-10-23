@@ -1,5 +1,5 @@
 import { type Page } from "@playwright/test";
-import { expect, test } from "./fixtures.ts";
+import { expect, fileToggle, reviewedToggle, test } from "./fixtures.ts";
 import { resetFixtureState } from "./fixture-state.ts";
 
 test.beforeEach(async ({ request }) => resetFixtureState(request));
@@ -155,10 +155,10 @@ test("interactive controls share the semantic control radius", async ({
     page.getByRole("searchbox", { name: "Filter files" }).locator(".."),
     page.getByRole("button", { name: /^Collapse folder / }).first(),
     page.locator("#file-tree [data-path]").first(),
-    page.locator(".layout-control"),
+    page.getByRole("group", { name: "Diff layout" }),
     page.getByRole("button", { name: "Split", exact: true }),
     viewOptions,
-    page.locator(".review-button").first(),
+    reviewedToggle(page).first(),
     page.getByRole("tab", { name: /Changes/ }),
   ];
   for (const control of controls)
@@ -246,17 +246,24 @@ test("review actions use progressive disclosure, status filters, and confirmed d
 
   const panel = page.locator("#comments-panel");
   await expect(panel.locator(".comment-summary")).toHaveCount(0);
-  const filterTrigger = panel.locator(".comment-filter-trigger");
+  const filterTrigger = panel.getByRole("button", {
+    name: /^Filter comments: /,
+  });
+  const count = (scope: typeof filterTrigger) =>
+    scope.locator('[data-slot="badge"]');
   await expect(filterTrigger).toHaveAccessibleName("Filter comments: Open");
-  await expect(panel.locator(".comment-panel-header")).toHaveCSS(
+  await expect(filterTrigger.locator("..")).toHaveCSS(
     "justify-content",
     "flex-start",
   );
-  await expect(filterTrigger.locator(".comment-filter-count")).toHaveText("1");
-  await expect(filterTrigger.locator(".comment-filter-count")).toHaveCSS(
-    "height",
-    "16px",
-  );
+  await expect(count(filterTrigger)).toHaveText("1");
+  // Comment filter counts share the CountBadge geometry used by other counts.
+  await expect(count(filterTrigger)).toHaveAttribute("data-variant", "count");
+  const [badgeBox, triggerBox] = await Promise.all([
+    count(filterTrigger).boundingBox(),
+    filterTrigger.boundingBox(),
+  ]);
+  expect(badgeBox?.height ?? Infinity).toBeLessThan(triggerBox?.height ?? 0);
   await filterTrigger.click();
   const filters = page.getByRole("menu", { name: "Filter comments" });
   await expect(filterTrigger).toHaveCSS("border-radius", controlRadius);
@@ -268,9 +275,9 @@ test("review actions use progressive disclosure, status filters, and confirmed d
   const outdatedFilter = filters.getByRole("menuitemradio", {
     name: "Outdated 0",
   });
-  await expect(openFilter.locator(".comment-filter-count")).toHaveText("1");
-  await expect(resolvedFilter.locator(".comment-filter-count")).toHaveText("1");
-  await expect(outdatedFilter.locator(".comment-filter-count")).toHaveText("0");
+  await expect(count(openFilter)).toHaveText("1");
+  await expect(count(resolvedFilter)).toHaveText("1");
+  await expect(count(outdatedFilter)).toHaveText("0");
   await expect(
     filters.getByRole("menuitemradio", { name: "All 2" }),
   ).toBeVisible();
@@ -327,7 +334,7 @@ test("review actions use progressive disclosure, status filters, and confirmed d
     .getByRole("button", { name: "Delete comment" })
     .click();
   await expect(resolvedCard).toHaveCount(0);
-  await expect(filterTrigger.locator(".comment-filter-count")).toHaveText("0");
+  await expect(count(filterTrigger)).toHaveText("0");
 
   await filterTrigger.click();
   await openFilter.click();
@@ -354,13 +361,19 @@ test("bulk comment deletion selects a status and defaults to all", async ({
   await page.getByRole("tab", { name: /Review/ }).click();
 
   const panel = page.locator("#comments-panel");
-  const filter = panel.locator(".comment-filter-trigger");
-  const remove = panel.locator(".bulk-delete-primary");
+  const filter = panel.getByRole("button", { name: /^Filter comments: / });
   const removeOptions = panel.getByRole("button", { name: "Delete options" });
+  const removeGroup = panel.getByRole("group").filter({
+    has: page.getByRole("button", { name: "Delete options" }),
+  });
+  const remove = removeGroup.getByRole("button", {
+    name: "Delete",
+    exact: true,
+  });
   const controlRadius = await page
     .getByRole("button", { name: "Copy review" })
     .evaluate((button) => getComputedStyle(button).borderTopLeftRadius);
-  await expect(remove).toHaveAttribute("data-variant", "destructive");
+  await expect(remove).toHaveAttribute("data-variant", "destructive-solid");
   await expect(remove).toHaveCSS("height", "24px");
   await expect(remove).toHaveCSS("border-top-left-radius", controlRadius);
   await expect(remove).toHaveCSS("border-top-right-radius", "0px");
@@ -369,15 +382,8 @@ test("bulk comment deletion selects a status and defaults to all", async ({
     "border-top-right-radius",
     controlRadius,
   );
-  const controls = await panel.locator(".comment-panel-header").evaluate(() => {
-    const filter = document.querySelector<HTMLElement>(
-      "#comments-panel .comment-filter-trigger",
-    );
-    const remove = document.querySelector<HTMLElement>(
-      "#comments-panel .bulk-delete-actions",
-    );
-    if (!filter || !remove) throw new Error("Missing review controls");
-    const header = filter.parentElement;
+  const controls = await removeGroup.evaluate((remove) => {
+    const header = remove.parentElement;
     if (!header) throw new Error("Missing review controls header");
     return {
       marginLeft: getComputedStyle(remove).marginLeft,
@@ -402,7 +408,7 @@ test("bulk comment deletion selects a status and defaults to all", async ({
     "This permanently removes 1 resolved comment.",
   );
   await resolvedDialog.getByRole("button", { name: "Delete comments" }).click();
-  await expect(filter.locator(".comment-filter-count")).toHaveText("1");
+  await expect(filter.locator('[data-slot="badge"]')).toHaveText("1");
 
   await removeOptions.click();
   await expect(
@@ -420,7 +426,8 @@ test("bulk comment deletion selects a status and defaults to all", async ({
   await expect(allDialog).toContainText("This permanently removes 1 comment.");
   await allDialog.getByRole("button", { name: "Delete comments" }).click();
   await expect(page.locator("#comment-count")).toHaveText("0");
-  await expect(panel.locator(".comment-panel-header")).toBeEmpty();
+  await expect(filter).toHaveCount(0);
+  await expect(removeOptions).toHaveCount(0);
 });
 
 test("light and dark themes retain readable text and visible control boundaries", async ({
@@ -511,19 +518,31 @@ test("diff header actions use shared muted borders and collapse files directly",
     exact: true,
   });
   await expect(options).toHaveText("");
-  await expect(options).toHaveAttribute("title", "View options");
+  // Icon-only actions name themselves through a tooltip, not `title`.
+  await expect(options).not.toHaveAttribute("title");
+  await options.hover();
+  await expect(page.getByText("View options", { exact: true })).toBeVisible();
   await expect(options).toHaveAttribute("data-variant", "ghost");
-  await expect(page.locator("#toggle-all-files")).toHaveAttribute(
-    "data-variant",
-    "ghost",
-  );
-  const reviewed = page.locator(".review-button").first();
+  await expect(
+    page.getByRole("button", { name: "Collapse all files", exact: true }),
+  ).toHaveAttribute("data-variant", "ghost");
+  const reviewed = reviewedToggle(page).first();
   await expect(reviewed).toHaveText("Reviewed");
-  const comment = page.locator(".file-comment-button").first();
-  await expect(comment).toHaveAttribute(
-    "title",
-    "Leave review comment on file",
-  );
+  const comments = page.getByRole("button", {
+    name: /^Leave review comment on file /,
+  });
+  await expect(comments.first()).not.toHaveAttribute("title");
+  await comments.first().hover();
+  await expect(
+    page.getByText("Leave review comment on file", { exact: true }),
+  ).toBeVisible();
+  const bordered = [
+    page.getByRole("searchbox", { name: "Filter files" }).locator(".."),
+    page.getByRole("group", { name: "Diff layout" }),
+    reviewedToggle(page),
+    comments,
+    page.locator("#reset-reviewed"),
+  ];
   for (const theme of ["light", "dark"]) {
     await page
       .locator("html")
@@ -531,23 +550,20 @@ test("diff header actions use shared muted borders and collapse files directly",
         (element, value) => element.setAttribute("data-theme", value),
         theme,
       );
-    const colors = await page.evaluate(() => {
+    const expected = await page.evaluate(() => {
       const probe = document.createElement("span");
       probe.style.borderColor = "var(--border-muted)";
       document.body.append(probe);
-      const expected = getComputedStyle(probe).borderColor;
-      const actual = Array.from(
-        document.querySelectorAll(
-          ".layout-control, .review-button, .file-comment-button, #reset-reviewed",
-        ),
-        (element) => getComputedStyle(element).borderTopColor,
-      );
+      const color = getComputedStyle(probe).borderColor;
       probe.remove();
-      return { expected, actual };
+      return color;
     });
-    expect(colors.actual.every((color) => color === colors.expected)).toBe(
-      true,
-    );
+    for (const controls of bordered) {
+      const actual = await controls.evaluateAll((elements) =>
+        elements.map((element) => getComputedStyle(element).borderTopColor),
+      );
+      expect(actual.every((color) => color === expected)).toBe(true);
+    }
   }
   await options.click();
   await expect(
@@ -557,9 +573,8 @@ test("diff header actions use shared muted borders and collapse files directly",
   await page
     .getByRole("button", { name: "Collapse all files", exact: true })
     .click();
-  await expect(page.locator(".diff-collapse[aria-expanded=true]")).toHaveCount(
-    0,
-  );
+  const viewer = page.locator("#viewer");
+  await expect(fileToggle(viewer, { expanded: true })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Expand all files", exact: true }),
   ).toBeVisible();
@@ -569,7 +584,5 @@ test("diff header actions use shared muted borders and collapse files directly",
   await expect(
     page.getByRole("button", { name: "Collapse all files", exact: true }),
   ).toBeVisible();
-  await expect(
-    page.locator(".diff-collapse[aria-expanded=true]").first(),
-  ).toBeVisible();
+  await expect(fileToggle(viewer, { expanded: true }).first()).toBeVisible();
 });

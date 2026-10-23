@@ -1,15 +1,9 @@
 import { useRef, useState } from "react";
 import { Trash2Icon } from "lucide-react";
 import { errorDetail } from "@diffx/api";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { IconButton } from "@/components/icon-button";
+import { DialogTrigger } from "@/components/ui/dialog";
 import { useDeleteContext, useSession } from "./session-context.tsx";
 import { contextDiagnostics } from "./project-picker.ts";
 
@@ -20,7 +14,6 @@ export function DeleteContextButton() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const pending = useRef(false);
-  const cancelRef = useRef<HTMLButtonElement>(null);
   const label = "Delete snapshot";
 
   async function confirm() {
@@ -40,42 +33,30 @@ export function DeleteContextButton() {
   }
 
   return (
-    <Dialog
+    <ConfirmDialog
       open={open}
       onOpenChange={(value) => {
         if (pending.current) return;
         setError("");
         setOpen(value);
       }}
-    >
-      <DialogTrigger
-        render={
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={label}
-            title={label}
-          />
-        }
-      >
-        <Trash2Icon className="size-(--icon-base)" aria-hidden="true" />
-      </DialogTrigger>
-      <DialogContent
-        className="delete-dialog"
-        initialFocus={() => cancelRef.current}
-      >
-        <DialogTitle>{label}?</DialogTitle>
-        <DialogDescription>
-          This permanently deletes this snapshot, including comments and
-          reviewed-file marks. This cannot be undone. Your Git files stay
-          unchanged. New collections can appear again.
-        </DialogDescription>
+      trigger={
+        <DialogTrigger
+          render={
+            <IconButton label={label} touch>
+              <Trash2Icon aria-hidden="true" />
+            </IconButton>
+          }
+        />
+      }
+      title={`${label}?`}
+      description="This permanently deletes this snapshot, including comments and reviewed-file marks. This cannot be undone. Your Git files stay unchanged. New collections can appear again."
+      details={
         <p
-          className="delete-context-details"
+          className="flex flex-col gap-1 text-sm text-secondary [overflow-wrap:anywhere]"
           title={contextDiagnostics(session)}
         >
-          <strong>{session.name}</strong>
+          <strong className="text-fg">{session.name}</strong>
           {session.branch && <span>{session.branch}</span>}
           {session.observation ? (
             <span>
@@ -86,34 +67,12 @@ export function DeleteContextButton() {
             <span>{session.root}</span>
           ) : null}
         </p>
-        {error && (
-          <p role="alert" className="text-destructive">
-            {error}
-          </p>
-        )}
-        <DialogFooter>
-          <Button
-            ref={cancelRef}
-            type="button"
-            variant="outline"
-            disabled={busy}
-            onClick={() => setOpen(false)}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            className="delete-confirm"
-            disabled={busy}
-            aria-busy={busy}
-            onClick={() => void confirm()}
-          >
-            <Trash2Icon aria-hidden="true" />
-            {busy ? "Deleting…" : label}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      }
+      error={error}
+      confirmLabel={label}
+      busyLabel="Deleting…"
+      busy={busy}
+      onConfirm={() => void confirm()}
+    />
   );
 }

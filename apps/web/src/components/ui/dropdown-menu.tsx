@@ -117,18 +117,29 @@ function DropdownMenuItem({ className, ...props }: MenuPrimitive.Item.Props) {
 function DropdownMenuRadioItem({
   className,
   children,
+  indicator = "end",
   ...props
-}: MenuPrimitive.RadioItem.Props) {
+}: MenuPrimitive.RadioItem.Props & {
+  /** `start` leads with the check, leaving the trailing edge for counts. */
+  indicator?: "start" | "end";
+}) {
   return (
     <MenuPrimitive.RadioItem
       data-slot="dropdown-menu-radio-item"
-      className={cn(dropdownMenuItemClassName, className)}
+      className={cn(
+        dropdownMenuItemClassName,
+        indicator === "start" && "pr-1 pl-7",
+        className,
+      )}
       {...props}
     >
       {children}
       <MenuPrimitive.RadioItemIndicator
         data-slot="dropdown-menu-radio-item-indicator"
-        className="pointer-events-none absolute right-2 flex size-icon items-center justify-center"
+        className={cn(
+          "pointer-events-none absolute flex size-icon items-center justify-center",
+          indicator === "start" ? "left-2" : "right-2",
+        )}
       >
         <CheckIcon />
       </MenuPrimitive.RadioItemIndicator>

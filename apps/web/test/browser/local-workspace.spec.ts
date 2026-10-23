@@ -1,5 +1,5 @@
 import { type Page, type Route } from "@playwright/test";
-import { expect, test } from "./fixtures.ts";
+import { expect, fileToggle, test } from "./fixtures.ts";
 import type { ApiContext, ApiRepositoryDiff } from "@diffx/api";
 import { isDiffMode, type DiffMode } from "../../src/diff-mode.ts";
 import type { ReviewComment } from "../../src/review-comments.ts";
@@ -407,8 +407,10 @@ test("rapid scopes ignore old diff responses and reviewed-file failures", async 
   if (!mark) throw new Error("Missing mark request");
   await mark.fulfill({ status: 500, json: { detail: "Old scope failure" } });
   await expect(page.locator("#review-count")).toHaveText("0 of 1 reviewed");
-  await expect(page.locator(".reviewed-error")).toHaveCount(0);
-  await expect(page.locator(".diff-collapse")).toHaveAttribute(
+  await expect(
+    page.locator(".workspace-feedback").getByRole("alert"),
+  ).toHaveCount(0);
+  await expect(fileToggle(page.locator("#viewer"))).toHaveAttribute(
     "aria-expanded",
     "true",
   );
@@ -422,7 +424,9 @@ test("draft survives scopes and explicit reload without automatic diff polling",
   await page.goto("/");
   await ready(page);
   await showDiff(page);
-  const inline = page.locator("#viewer .comment-editor textarea");
+  const inline = page
+    .locator("#viewer")
+    .getByRole("textbox", { name: "Review comment" });
   // Worker rendering can replace the hover utility during initial highlighting.
   await expect(async () => {
     if (await inline.isVisible()) return;
@@ -440,16 +444,16 @@ test("draft survives scopes and explicit reload without automatic diff polling",
   await page.getByRole("button", { name: "Staged", exact: true }).click();
   await ready(page, "staged-v1");
   await page.getByRole("tab", { name: /Review/ }).click();
-  await expect(
-    page.locator("#comments-panel .comment-editor textarea"),
-  ).toHaveValue("Preserve this draft");
+  const sidebar = page
+    .locator("#comments-panel")
+    .getByRole("textbox", { name: "Review comment" });
+  await expect(sidebar).toHaveValue("Preserve this draft");
   await page.getByRole("button", { name: "All changes", exact: true }).click();
   await ready(page);
   await expect(inline).toHaveValue("Preserve this draft");
   state.version = 2;
   await page.getByRole("button", { name: "Refresh changes" }).click();
   await ready(page, "all-v2");
-  const sidebar = page.locator("#comments-panel .comment-editor textarea");
   await expect(sidebar).toHaveValue("Preserve this draft");
   await sidebar.press("Escape");
   const requestsAfter = state.scopes.length;
@@ -474,7 +478,9 @@ test("full-file context and selection survive layout changes", async ({
   await expect(page.locator("#viewer")).toContainText("line 30");
   await ready(page);
   await page.getByRole("button", { name: "Split", exact: true }).click();
-  const editor = page.locator("#viewer .comment-editor-title");
+  const editor = page
+    .locator("#viewer")
+    .getByRole("textbox", { name: "Review comment" });
   // Worker rendering can replace the hover utility after switching layouts.
   await expect(async () => {
     if (await editor.isVisible()) return;
@@ -485,9 +491,9 @@ test("full-file context and selection survive layout changes", async ({
     await page.locator("[data-utility-button]").click({ timeout: 1_000 });
     await expect(editor).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 10_000 });
-  await expect(page.locator("#viewer .comment-editor-title")).toContainText(
-    "src/value.ts:50",
-  );
+  await expect(
+    page.locator("#viewer").getByText("src/value.ts:50", { exact: true }),
+  ).toBeVisible();
   expect(state.contentsRequests).toBe(1);
 });
 
@@ -536,9 +542,8 @@ test("comment navigation changes scope and clears filters after previews load", 
   await expect(page.locator("#viewer diffs-container")).toHaveCount(0);
   await page.getByRole("tab", { name: /Review/ }).click();
   await page
-    .locator(
-      '#comments-panel [data-comment-id="staged-comment"] .comment-location',
-    )
+    .locator('#comments-panel [data-comment-id="staged-comment"]')
+    .getByRole("button", { name: "src/value.ts:50", exact: true })
     .click();
   await expect(
     page.locator(
@@ -656,18 +661,20 @@ test("stream comments show moved and outdated placements and keep outdated comme
   const outdated = viewer.locator('[data-comment-id="outdated-comment"]');
   await expect(outdated.getByText("Outdated", { exact: true })).toBeVisible();
 
-  const notice = page.locator(".outdated-notice");
-  await expect(notice).toContainText(
-    "1 open comment is outdated by code changes",
-  );
+  const notice = page
+    .getByRole("status")
+    .filter({ hasText: "1 open comment is outdated by code changes" });
+  await expect(notice).toBeVisible();
   await notice.getByRole("button", { name: "Review outdated" }).click();
   const section = page.getByRole("region", { name: "Outdated comments" });
   await expect(section).toBeVisible();
   const card = section.locator(
-    '[data-comment-id="outdated-comment"] .comment-card',
+    '[data-comment-id="outdated-comment"] [data-slot="card"]',
   );
   await expect(card).toHaveAttribute("data-expanded", "false");
-  await card.locator(".comment-collapse").click();
+  await card
+    .getByRole("button", { name: /^Expand outdated comment at / })
+    .click();
   await card.getByRole("button", { name: "Keep open", exact: true }).click();
   await expect.poll(() => carried.length).toBe(1);
   await expect(page.locator("#comment-feedback")).toContainText(
@@ -2312,14 +2319,13 @@ test("local live URLs sync the checkouts on every load", async ({ page }) => {
   expect(collected).toBe(1);
 
   // Collapse state belongs to the stream, so it survives the new snapshot.
-  await page.locator("#viewer .diff-collapse").first().click();
+  const viewer = page.locator("#viewer");
+  await fileToggle(viewer).first().click();
   await page.reload();
-  await expect(
-    page.locator("#viewer .diff-collapse[aria-expanded=false]"),
-  ).toHaveCount(1);
+  await expect(fileToggle(viewer, { expanded: false })).toHaveCount(1);
   expect(collected).toBe(2);
   await expect(page).toHaveURL(/\/streams\/local-stream$/);
-  await page.locator("#viewer .diff-collapse").first().click();
+  await fileToggle(viewer).first().click();
 
   await page.goto("/contexts/local-review");
   await ready(page);

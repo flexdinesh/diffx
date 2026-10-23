@@ -19,7 +19,7 @@ function Card({
       data-density={density}
       data-active={active || undefined}
       className={cn(
-        "group/card flex min-w-0 flex-col overflow-hidden border border-border text-base leading-copy text-fg",
+        "group/card flex min-w-0 flex-col overflow-hidden border border-border font-sans text-base leading-copy text-fg",
         density === "inline" ? "rounded-md bg-raised" : "rounded-lg bg-bg",
         className,
       )}

@@ -1,4 +1,4 @@
-import { test as base } from "@playwright/test";
+import { test as base, type Locator, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { preview } from "vite";
 import { startFixtureProcess } from "../fixture-server.ts";
@@ -51,3 +51,24 @@ export const test = base.extend<
   ],
   baseURL: async ({ fixtureServer }, use) => use(fixtureServer),
 });
+
+type ToggleState = { pressed?: boolean; expanded?: boolean };
+
+/** File header Reviewed toggles, named "Mark <path> reviewed|unreviewed". */
+export function reviewedToggle(scope: Page | Locator, state?: ToggleState) {
+  return scope.getByRole("button", {
+    name: /^Mark .+ (?:un)?reviewed$/,
+    ...state,
+  });
+}
+
+/**
+ * File header collapse toggles, named "Collapse|Expand <path>". Comment
+ * toggles ("… comment at <path>") and the toolbar's "… all files" differ.
+ */
+export function fileToggle(scope: Page | Locator, state?: ToggleState) {
+  return scope.getByRole("button", {
+    name: /^(?:Collapse|Expand) (?!(?:\w+ )?comment at )(?!all files$)/,
+    ...state,
+  });
+}
