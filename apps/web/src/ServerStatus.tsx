@@ -1,4 +1,3 @@
-import { Popover } from "@base-ui/react/popover";
 import { api, type ApiServerMetrics } from "@diffx/api";
 import {
   CircleAlertIcon,
@@ -6,7 +5,17 @@ import {
   LoaderCircleIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { KeyValue, KeyValueList } from "@/components/key-value-list";
 import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverSection,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { formatBytes } from "./server-metrics.ts";
 
 const refreshMilliseconds = 2_500;
@@ -58,70 +67,62 @@ export function ServerStatus() {
   const cpu = current ? `${current.cpuUsage.toFixed(1)}%` : "--";
   const ram = current ? formatBytes(current.rssBytes) : "--";
   return (
-    <Popover.Root>
-      <Popover.Trigger
-        id="server-status"
-        data-status={health}
+    <Popover>
+      {/* The hover popover is this trigger's detail, so it carries no tooltip. */}
+      <PopoverTrigger
         aria-label={`Server status: ${label}`}
         openOnHover
         delay={150}
-        render={
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="server-status-trigger"
-          />
-        }
+        render={<Button variant="ghost" size="icon-xs" />}
       >
         <StatusIcon health={health} />
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Positioner
-          side="top"
-          align="end"
-          sideOffset={8}
-          collisionPadding={16}
-          className="z-50"
+      </PopoverTrigger>
+      <PopoverContent>
+        <PopoverHeader>
+          <PopoverTitle>
+            <StatusIcon health={health} />
+            {label}
+          </PopoverTitle>
+          {health === "unavailable" && (
+            <PopoverDescription>
+              Can’t reach the diffx server. Retrying automatically.
+            </PopoverDescription>
+          )}
+        </PopoverHeader>
+        <PopoverSection
+          title="Diffx server process"
+          aria-label="Diffx server process"
         >
-          <Popover.Popup className="server-status-popup" data-status={health}>
-            <Popover.Title className="server-status-title">
-              <StatusIcon health={health} />
-              {label}
-            </Popover.Title>
-            {health === "unavailable" && (
-              <Popover.Description className="server-status-description">
-                Can’t reach the diffx server. Retrying automatically.
-              </Popover.Description>
-            )}
-            <section
-              className="server-status-section"
-              aria-labelledby="server-process-heading"
-            >
-              <h2 id="server-process-heading">Diffx server process</h2>
-              <dl>
-                <div>
-                  <dt>CPU</dt>
-                  <dd id="server-cpu">{cpu}</dd>
-                </div>
-                <div>
-                  <dt>RAM</dt>
-                  <dd id="server-ram">{ram}</dd>
-                </div>
-              </dl>
-            </section>
-          </Popover.Popup>
-        </Popover.Positioner>
-      </Popover.Portal>
-    </Popover.Root>
+          <KeyValueList>
+            <KeyValue label="CPU" font="mono" id="server-cpu">
+              {cpu}
+            </KeyValue>
+            <KeyValue label="RAM" font="mono" id="server-ram">
+              {ram}
+            </KeyValue>
+          </KeyValueList>
+        </PopoverSection>
+      </PopoverContent>
+    </Popover>
   );
 }
 
 function StatusIcon({ health }: { health: ServerHealth }) {
-  const Icon =
-    health === "ready"
-      ? CircleCheckIcon
-      : health === "checking"
-        ? LoaderCircleIcon
-        : CircleAlertIcon;
-  return <Icon className="size-(--icon-sm)" aria-hidden="true" />;
+  if (health === "ready")
+    return (
+      <CircleCheckIcon
+        className="size-icon-sm text-success"
+        aria-hidden="true"
+      />
+    );
+  if (health === "checking")
+    return (
+      <LoaderCircleIcon
+        className="size-icon-sm motion-safe:animate-spinner"
+        aria-hidden="true"
+      />
+    );
+  return (
+    <CircleAlertIcon className="size-icon-sm text-error" aria-hidden="true" />
+  );
 }

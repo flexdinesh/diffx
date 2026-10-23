@@ -1,5 +1,8 @@
 import { ChevronDownIcon } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
+import { SegmentedControl } from "@/components/segmented-control";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -17,6 +20,12 @@ const freshnessLabels = {
   latest: "Latest snapshots",
   stale: "Stale snapshots",
 };
+
+const freshnessOptions = [
+  { value: "all", label: "All" },
+  { value: "latest", label: "Latest" },
+  { value: "stale", label: "Stale" },
+] satisfies { value: PickerFilters["freshness"]; label: string }[];
 
 export function pickerFilterSummary(filters: PickerFilters) {
   return [
@@ -66,11 +75,9 @@ function MultiFilter({
           `${label}${selected.length ? ` (${selected.length})` : ""}`,
         )}
       />
-      <DropdownMenuContent className="project-picker-filter-menu">
+      <DropdownMenuContent className="max-w-[min(var(--reading-width),calc(100vw-2*var(--page-gutter)))] wrap-anywhere">
         {!options.length && (
-          <p className="project-picker-filter-empty">
-            No recorded {label.toLowerCase()}
-          </p>
+          <EmptyState description={`No recorded ${label.toLowerCase()}`} />
         )}
         {options.map((value) => (
           <DropdownMenuCheckboxItem
@@ -104,39 +111,27 @@ export function PickerFilterControls({
 }) {
   return (
     <div
-      className="project-picker-filters"
+      className="flex flex-wrap gap-2 px-3 pb-2"
       role="group"
       aria-label="Repository filters"
     >
-      <div className="project-picker-freshness-row">
-        <div className="segmented" role="group" aria-label="Snapshot freshness">
-          {(
-            ["all", "latest", "stale"] satisfies PickerFilters["freshness"][]
-          ).map((value) => (
-            <Button
-              key={value}
-              variant="ghost"
-              size="sm"
-              aria-pressed={filters.freshness === value}
-              onClick={() => onChange({ ...filters, freshness: value })}
-            >
-              {value === "all"
-                ? "All"
-                : value === "latest"
-                  ? "Latest"
-                  : "Stale"}
-            </Button>
-          ))}
-        </div>
+      <div className="flex w-full items-center justify-between gap-2">
+        <SegmentedControl
+          label="Snapshot freshness"
+          size="sm"
+          touch
+          options={freshnessOptions}
+          value={filters.freshness}
+          onValueChange={(freshness) => onChange({ ...filters, freshness })}
+        />
         <label
-          className="project-picker-all"
+          className="inline-flex min-h-control cursor-pointer items-center gap-1 text-sm text-secondary"
           title="Include unavailable snapshots and snapshots with no changes or unknown status"
         >
-          <input
-            type="checkbox"
+          <Checkbox
             checked={filters.includeAll}
-            onChange={(event) =>
-              onChange({ ...filters, includeAll: event.target.checked })
+            onCheckedChange={(includeAll) =>
+              onChange({ ...filters, includeAll })
             }
           />
           All

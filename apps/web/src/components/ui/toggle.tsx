@@ -1,25 +1,33 @@
 import { Toggle as TogglePrimitive } from "@base-ui/react/toggle";
 import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 
 const toggleVariants = cva(
-  "group/toggle inline-flex items-center justify-center gap-[var(--space-1)] whitespace-nowrap rounded-[var(--radius-control)] text-[length:var(--text-sm)] font-[var(--weight-medium)] text-[var(--text-secondary)] hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-60 aria-invalid:border-destructive aria-pressed:bg-accent aria-pressed:text-accent-foreground data-[state=on]:bg-accent data-[state=on]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-(--icon-base)",
+  "group/toggle inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-control text-sm font-medium text-secondary hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-60 aria-invalid:border-error aria-pressed:bg-selected aria-pressed:text-accent [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-icon",
   {
     variants: {
       variant: {
         default: "bg-transparent",
-        outline: "border border-input bg-background hover:bg-muted",
+        // Pairs with bordered fields such as the file filter.
+        outline: "border border-separator bg-bg text-muted",
       },
+      // Sizes match Button: xs 24, sm 28, default 32.
       size: {
-        default:
-          "h-[var(--control-height)] min-w-[var(--control-height)] px-[var(--space-2)]",
-        sm: "h-[var(--control-compact)] min-w-[var(--control-compact)] px-[var(--space-2)] text-[length:var(--text-sm)] [&_svg:not([class*='size-'])]:size-(--icon-sm)",
-        lg: "h-9 min-w-9 px-2.5 has-data-[icon=inline-end]:pr-[var(--space-2)] has-data-[icon=inline-start]:pl-[var(--space-2)]",
+        default: "h-control min-w-control px-2",
+        sm: "h-control-small min-w-control-small px-2",
+        xs: "h-control-compact min-w-control-compact px-2",
+        icon: "size-control p-0",
+        "icon-sm": "size-control-small p-0",
+      },
+      touch: {
+        true: "max-md:min-h-touch pointer-coarse:min-h-touch",
+        false: "",
       },
     },
     defaultVariants: {
       variant: "default",
       size: "default",
+      touch: false,
     },
   },
 );
@@ -28,12 +36,13 @@ function Toggle({
   className,
   variant = "default",
   size = "default",
+  touch = false,
   ...props
 }: TogglePrimitive.Props & VariantProps<typeof toggleVariants>) {
   return (
     <TogglePrimitive
       data-slot="toggle"
-      className={cn(toggleVariants({ variant, size, className }))}
+      className={cn(toggleVariants({ variant, size, touch, className }))}
       {...props}
     />
   );

@@ -1,7 +1,6 @@
 import type { ApiRepositoryDiff as RepositoryDiff } from "@diffx/api";
 import {
   CheckCircle2Icon,
-  ChevronDownIcon,
   CircleDotIcon,
   CopyIcon,
   PencilIcon,
@@ -13,6 +12,10 @@ import {
   XIcon,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { DisclosureIcon } from "@/components/disclosure";
+import { IconButton } from "@/components/icon-button";
+import { Shortcut } from "@/components/shortcut";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,10 +30,11 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
+import { formatShortcut } from "./format.ts";
 import {
   useDiffSource,
   useDraft,
@@ -84,13 +88,19 @@ function placementNote(comment: ReviewComment, placement: CommentPlacement) {
   }
 }
 
+// Inline annotations keep generous outer spacing; sidebar cards stack.
+function cardSpacing(sidebar: boolean) {
+  return sidebar ? "my-2" : "mx-6 my-4 max-md:mx-1 max-md:my-2";
+}
+
 // Both the diff annotations and sidebar edit the same page-level draft.
-export function DraftComment() {
+export function DraftComment({ sidebar = false }: { sidebar?: boolean }) {
   const { draft, setDraft } = useDraft();
   const review = useReviewState();
   return draft ? (
     <CommentEditor
       draft={draft}
+      sidebar={sidebar}
       onChange={(body) =>
         setDraft((previous) => (previous ? { ...previous, body } : null))
       }
@@ -139,6 +149,7 @@ export function ReviewCommentCard({
 
 export function CommentEditor({
   draft,
+  sidebar = false,
   onChange,
   onSave,
   onCancel,
@@ -146,6 +157,7 @@ export function CommentEditor({
   saveError,
 }: {
   draft: ReviewComment;
+  sidebar?: boolean;
   onChange: (body: string) => void;
   onSave: () => void;
   onCancel: () => void;
@@ -175,16 +187,19 @@ export function CommentEditor({
   }
   return (
     <form
-      className="comment-editor-form"
       onSubmit={(event) => {
         event.preventDefault();
         saveComment();
       }}
     >
-      <Card size="sm" className="comment-editor">
-        <CardHeader className="comment-editor-header">
-          <CardTitle className="comment-editor-title">
-            <small>{draftLocation(draft)}</small>
+      <Card
+        active
+        density={sidebar ? "panel" : "inline"}
+        className={cardSpacing(sidebar)}
+      >
+        <CardHeader>
+          <CardTitle className="gap-2 [overflow-wrap:anywhere]">
+            <span>{draftLocation(draft)}</span>
             <CopyPathButton
               value={
                 draft.target === "file"
@@ -197,8 +212,11 @@ export function CommentEditor({
             />
           </CardTitle>
         </CardHeader>
-        <CardContent className="comment-editor-content">
-          <label className="comment-editor-label" htmlFor={inputId}>
+        <CardContent>
+          <label
+            className="mb-1 block text-sm font-semibold text-fg"
+            htmlFor={inputId}
+          >
             Review comment
           </label>
           <Textarea
@@ -226,20 +244,31 @@ export function CommentEditor({
             }}
           />
           {!!error && (
-            <p id={errorId} className="comment-editor-error" role="alert">
+            <p id={errorId} className="mt-1 text-sm text-error" role="alert">
               {error}
             </p>
           )}
         </CardContent>
-        <CardFooter className="comment-actions">
-          <span>⌘ / Ctrl + Enter to save</span>
-          <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+        <CardFooter>
+          {!sidebar && (
+            <span className="mr-auto text-xs text-muted max-md:hidden">
+              <Shortcut keys={{ mod: true, key: "Enter" }} /> to save
+            </span>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            touch
+            onClick={onCancel}
+          >
             <XIcon aria-hidden="true" />
             Cancel
           </Button>
           <Button
             type="submit"
             size="sm"
+            touch
             disabled={isSaving}
             aria-busy={isSaving}
           >
@@ -301,40 +330,49 @@ export function CommentCard({
   return (
     <article data-comment-id={comment.id}>
       <Card
-        size="sm"
-        className={`comment-card${resolved ? " resolved" : ""}${stale ? " stale" : ""}`}
+        density={sidebar ? "panel" : "inline"}
+        className={cn(
+          cardSpacing(sidebar),
+          // Unified and one-sided rows span the file; bound them to reading width.
+          !sidebar &&
+            (layout === "unified" || oneSided) &&
+            "w-[min(var(--reading-width),calc(100%-2*var(--space-6)))] max-md:w-[calc(100%-2*var(--space-1))]",
+        )}
         data-expanded={expanded}
         data-diff-layout={sidebar ? undefined : layout}
         data-one-sided={!sidebar && oneSided ? "" : undefined}
       >
-        <CardHeader className="comment-card-header">
-          <Button
-            type="button"
-            className="comment-collapse"
-            variant="ghost"
+        <CardHeader>
+          <IconButton
+            label={`${expanded ? "Collapse" : "Expand"} ${stale ? "outdated " : resolved ? "resolved " : ""}comment at ${location(comment, placement)}`}
+            variant="subtle"
             size="icon-xs"
             aria-controls={contentId}
             aria-expanded={expanded}
-            aria-label={`${expanded ? "Collapse" : "Expand"} ${stale ? "outdated " : resolved ? "resolved " : ""}comment at ${location(comment, placement)}`}
             onClick={() => setExpanded((current) => !current)}
           >
-            <ChevronDownIcon aria-hidden="true" />
-          </Button>
-          <CardTitle className="comment-card-title">
+            <DisclosureIcon open={expanded} />
+          </IconButton>
+          <CardTitle>
             {sidebar ? (
               <Button
                 type="button"
-                className="comment-location"
-                variant="ghost"
+                className="min-w-0 shrink truncate"
+                variant="link"
                 size="xs"
+                touch
                 title={location(comment, placement)}
                 onClick={() => onNavigate(comment)}
               >
-                {location(comment, placement)}
+                <span className="min-w-0 truncate font-mono font-normal">
+                  {location(comment, placement)}
+                </span>
               </Button>
             ) : (
               <>
-                <strong>Review comment</strong>
+                <strong className="font-semibold whitespace-nowrap text-fg">
+                  Review comment
+                </strong>
                 <span>
                   {comment.target === "file"
                     ? "· file"
@@ -347,8 +385,8 @@ export function CommentCard({
           </CardTitle>
           <CardAction>
             <Badge
-              variant="outline"
-              className="comment-state"
+              variant="status"
+              tone={stale ? "warning" : resolved ? "success" : "neutral"}
               title={`Lifecycle: ${comment.status}; applicability: ${applicability}`}
             >
               {stale ? (
@@ -362,49 +400,51 @@ export function CommentCard({
             </Badge>
           </CardAction>
         </CardHeader>
-        <div
-          id={contentId}
-          className="comment-collapse-panel"
-          hidden={!expanded}
-        >
-          <CardContent className="comment-card-content">
-            <p className="comment-body">{comment.body}</p>
-            {note && <p className="comment-outdated">{note}</p>}
+        <div id={contentId} hidden={!expanded}>
+          <CardContent>
+            <p className="text-md whitespace-pre-wrap [overflow-wrap:anywhere]">
+              {comment.body}
+            </p>
+            {note && <p className="my-2 text-xs text-muted">{note}</p>}
             {(sidebar || stale) && comment.code && (
-              <details open={stale && !sidebar}>
-                <summary>{stale ? "Original code" : "Code context"}</summary>
-                <pre>{comment.code}</pre>
+              <details
+                open={stale && !sidebar}
+                className="mt-2 text-xs text-muted"
+              >
+                <summary className="min-h-control-compact cursor-pointer max-md:min-h-touch pointer-coarse:min-h-touch">
+                  {stale ? "Original code" : "Code context"}
+                </summary>
+                <pre className="max-h-48 overflow-auto rounded-sm bg-bg p-2 font-mono text-sm leading-copy whitespace-pre-wrap text-fg [overflow-wrap:anywhere]">
+                  {comment.code}
+                </pre>
               </details>
             )}
           </CardContent>
-          <CardFooter className="comment-actions">
-            <Button
-              type="button"
-              className="copy-comment"
-              variant="ghost"
+          <CardFooter>
+            <IconButton
+              label={`Copy comment at ${location(comment, placement)}`}
               size={sidebar ? "icon-xs" : "icon-sm"}
-              aria-label={`Copy comment at ${location(comment, placement)}`}
-              title="Copy comment"
+              touch
               onClick={() => onCopy(comment)}
             >
               <CopyIcon aria-hidden="true" />
-            </Button>
+            </IconButton>
             <Button
               type="button"
-              className={sidebar ? "edit-comment" : undefined}
               variant="ghost"
-              size={sidebar ? "icon-xs" : "sm"}
-              aria-label={sidebar ? "Edit" : undefined}
-              title={sidebar ? "Edit comment" : undefined}
+              size={sidebar ? "xs" : "sm"}
+              touch
+              className="mr-auto"
               onClick={() => onEdit(comment)}
             >
               <PencilIcon aria-hidden="true" />
-              {!sidebar && "Edit"}
+              Edit
             </Button>
             <Button
               type="button"
               variant="outline"
               size={sidebar ? "xs" : "sm"}
+              touch
               onClick={() => onToggle(comment)}
             >
               {resolved ? (
@@ -419,6 +459,7 @@ export function CommentCard({
                 type="button"
                 variant="outline"
                 size={sidebar ? "xs" : "sm"}
+                touch
                 title="Keep this comment open on its file in the current snapshot"
                 onClick={() => onCarry(comment)}
               >
@@ -430,6 +471,7 @@ export function CommentCard({
               type="button"
               variant="destructive"
               size={sidebar ? "xs" : "sm"}
+              touch
               onClick={() => setConfirmDelete(true)}
             >
               <Trash2Icon aria-hidden="true" />
@@ -438,38 +480,17 @@ export function CommentCard({
           </CardFooter>
         </div>
       </Card>
-      <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <DialogContent
-          className="delete-comment-dialog"
-          showCloseButton={false}
-        >
-          <DialogTitle>Delete comment?</DialogTitle>
-          <DialogDescription>
-            This permanently removes the comment. This cannot be undone.
-          </DialogDescription>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setConfirmDelete(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              className="delete-comment-confirm"
-              variant="destructive"
-              onClick={() => {
-                onDelete(comment);
-                setConfirmDelete(false);
-              }}
-            >
-              <Trash2Icon aria-hidden="true" />
-              Delete comment
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete comment?"
+        description="This permanently removes the comment. This cannot be undone."
+        confirmLabel="Delete comment"
+        onConfirm={() => {
+          onDelete(comment);
+          setConfirmDelete(false);
+        }}
+      />
     </article>
   );
 }
@@ -496,25 +517,25 @@ export function CopyDialog({
       }}
     >
       <DialogContent
-        className="copy-dialog"
-        showCloseButton={false}
         initialFocus={content.clipboard === "manual" ? input : undefined}
       >
         <DialogTitle id="copy-dialog-title">{content.title}</DialogTitle>
         <DialogDescription>
           {content.clipboard === "copied"
             ? "Content copied to clipboard."
-            : "Copy the selected text with ⌘C / Ctrl+C."}
+            : `Copy the selected text with ${formatShortcut({ mod: true, key: "C" })}.`}
         </DialogDescription>
         {content.clipboard === "manual" && (
           <Textarea
             ref={input}
+            variant="code"
+            rows={15}
             value={content.text}
             readOnly
             aria-label={content.label}
           />
         )}
-        <Button type="button" variant="outline" onClick={onClose}>
+        <Button type="button" variant="outline" touch onClick={onClose}>
           Close
         </Button>
       </DialogContent>

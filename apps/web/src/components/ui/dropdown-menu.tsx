@@ -1,9 +1,10 @@
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { CheckIcon } from "lucide-react";
-import { cn } from "cn";
+import type { ComponentProps } from "react";
+import { cn } from "@/lib/utils";
 
 const dropdownMenuItemClassName =
-  "relative flex min-h-[var(--control-height)] cursor-default items-center gap-[var(--space-2)] rounded-[var(--radius-control)] py-[var(--space-1)] pr-[var(--space-8)] pl-[var(--space-2)] text-[length:var(--text-sm)] outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-60 [&_svg]:pointer-events-none [&_svg]:size-(--icon-base) [&_svg]:shrink-0";
+  "relative flex min-h-control cursor-default items-center gap-2 rounded-control py-1 pr-8 pl-2 text-sm outline-hidden select-none focus:bg-selected focus:text-accent data-highlighted:bg-selected data-highlighted:text-accent data-disabled:pointer-events-none data-disabled:opacity-60 [&_svg]:pointer-events-none [&_svg]:size-icon [&_svg]:shrink-0";
 
 function DropdownMenu(props: MenuPrimitive.Root.Props) {
   return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
@@ -32,18 +33,65 @@ function DropdownMenuContent({
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
-        className="isolate z-50 outline-none"
+        className="isolate z-(--layer-popover) outline-none"
       >
         <MenuPrimitive.Popup
           data-slot="dropdown-menu-content"
           className={cn(
-            "z-50 max-h-(--available-height) min-w-32 overflow-x-hidden overflow-y-auto rounded-[var(--radius-control)] bg-popover p-[var(--space-1)] text-popover-foreground shadow-[var(--shadow-overlay)] ring-1 ring-border outline-none",
+            "max-h-(--available-height) min-w-32 overflow-x-hidden overflow-y-auto rounded-control bg-raised p-1 text-fg shadow-overlay ring-1 ring-border outline-none",
             className,
           )}
           {...props}
         />
       </MenuPrimitive.Positioner>
     </MenuPrimitive.Portal>
+  );
+}
+
+function DropdownMenuGroup(props: MenuPrimitive.Group.Props) {
+  return <MenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />;
+}
+
+function DropdownMenuLabel({
+  className,
+  ...props
+}: MenuPrimitive.GroupLabel.Props) {
+  return (
+    <MenuPrimitive.GroupLabel
+      data-slot="dropdown-menu-label"
+      className={cn(
+        "px-2 pt-2 pb-1 text-xs font-semibold text-secondary",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+/** A non-interactive heading for a menu without groups. */
+function DropdownMenuHeader({ className, ...props }: ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="dropdown-menu-header"
+      className={cn(
+        "px-2 pt-1 pb-2 text-sm font-medium text-secondary",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function DropdownMenuSeparator({
+  className,
+  ...props
+}: MenuPrimitive.Separator.Props) {
+  return (
+    <MenuPrimitive.Separator
+      data-slot="dropdown-menu-separator"
+      className={cn("-mx-1 my-1 h-px bg-separator", className)}
+      {...props}
+    />
   );
 }
 
@@ -69,18 +117,29 @@ function DropdownMenuItem({ className, ...props }: MenuPrimitive.Item.Props) {
 function DropdownMenuRadioItem({
   className,
   children,
+  indicator = "end",
   ...props
-}: MenuPrimitive.RadioItem.Props) {
+}: MenuPrimitive.RadioItem.Props & {
+  /** `start` leads with the check, leaving the trailing edge for counts. */
+  indicator?: "start" | "end";
+}) {
   return (
     <MenuPrimitive.RadioItem
       data-slot="dropdown-menu-radio-item"
-      className={cn(dropdownMenuItemClassName, className)}
+      className={cn(
+        dropdownMenuItemClassName,
+        indicator === "start" && "pr-1 pl-8",
+        className,
+      )}
       {...props}
     >
       {children}
       <MenuPrimitive.RadioItemIndicator
         data-slot="dropdown-menu-radio-item-indicator"
-        className="pointer-events-none absolute right-[var(--space-2)] flex size-(--icon-base) items-center justify-center"
+        className={cn(
+          "pointer-events-none absolute flex size-icon items-center justify-center",
+          indicator === "start" ? "left-2" : "right-2",
+        )}
       >
         <CheckIcon />
       </MenuPrimitive.RadioItemIndicator>
@@ -100,7 +159,7 @@ function DropdownMenuCheckboxItem({
       {...props}
     >
       {children}
-      <MenuPrimitive.CheckboxItemIndicator className="pointer-events-none absolute right-[var(--space-2)] flex size-(--icon-base) items-center justify-center">
+      <MenuPrimitive.CheckboxItemIndicator className="pointer-events-none absolute right-2 flex size-icon items-center justify-center">
         <CheckIcon />
       </MenuPrimitive.CheckboxItemIndicator>
     </MenuPrimitive.CheckboxItem>
@@ -111,8 +170,12 @@ export {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuHeader,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 };

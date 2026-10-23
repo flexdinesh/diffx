@@ -1,21 +1,9 @@
-import {
-  FolderSyncIcon,
-  ListTreeIcon,
-  LoaderCircleIcon,
-  RefreshCwIcon,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { AccountButton } from "./account.tsx";
-import { ThemeButton } from "./ThemeButton.tsx";
-import {
-  HeaderBrand,
-  NewChangesButton,
-  ProjectsToggle,
-} from "./ProjectsNav.tsx";
+import { ListTreeIcon, RefreshCwIcon } from "lucide-react";
+import { IconButton } from "@/components/icon-button";
 import { useDiffSource } from "./app-state.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
 import { useCatalog, useSession } from "./session-context.tsx";
-import { CurrentContext } from "./SessionShell.tsx";
+import { SyncButton, Topbar } from "./Topbar.tsx";
 import { contextDiagnostics, observationSummary } from "./project-picker.ts";
 import { useCompactChrome } from "./use-compact-chrome.ts";
 
@@ -24,28 +12,48 @@ export function Header() {
   const session = useSession();
   const { observation } = session;
   const { collect, collecting } = useCatalog();
-  const compact = useCompactChrome();
   const sidebar = useSidebarState();
+  const compact = useCompactChrome();
+  const sidebarOpen = sidebar.view === "diff" && sidebar.expanded;
   return (
-    <header className="topbar">
-      {compact && <ProjectsToggle />}
-      <HeaderBrand />
-      {compact && (
-        <Button
-          type="button"
+    <Topbar
+      lead={
+        <IconButton
           id="sidebar-toggle"
-          variant="ghost"
-          size="icon"
+          variant="shell"
+          touch
+          label={`${sidebarOpen ? "Hide" : "Show"} file sidebar`}
           aria-controls="sidebar"
-          aria-expanded={sidebar.view === "diff" && sidebar.expanded}
-          aria-label={`${sidebar.view === "diff" && sidebar.expanded ? "Hide" : "Show"} file sidebar`}
-          title={`${sidebar.view === "diff" && sidebar.expanded ? "Hide" : "Show"} file sidebar`}
+          aria-expanded={sidebarOpen}
           onClick={() => sidebar.selectView("diff")}
         >
-          <ListTreeIcon className="size-(--icon-base)" />
-        </Button>
-      )}
-      <CurrentContext />
+          <ListTreeIcon aria-hidden="true" />
+        </IconButton>
+      }
+      actions={
+        collect ? (
+          <SyncButton busy={collecting || diff.busy} onClick={refresh} />
+        ) : (
+          // Compact chrome drops the visible text, leaving a 44px icon target.
+          <IconButton
+            variant="shell"
+            size={compact ? "icon" : "default"}
+            touch
+            label={refreshEnabled ? "Refresh changes" : "Retry loading changes"}
+            {...(refreshEnabled && { shortcut: { alt: true, key: "R" } })}
+            hidden={!refreshEnabled && !diff.notice}
+            aria-busy={diff.busy}
+            onClick={refresh}
+          >
+            <RefreshCwIcon
+              className={diff.busy ? "motion-safe:animate-spinner" : undefined}
+              aria-hidden="true"
+            />
+            {!compact && (refreshEnabled ? "Refresh" : "Retry")}
+          </IconButton>
+        )
+      }
+    >
       <div className="header-heading">
         <h1
           id="changes-title"
@@ -55,6 +63,7 @@ export function Header() {
         </h1>
         <p
           id="repo-path"
+          className="header-path"
           title={
             observation
               ? contextDiagnostics(session)
@@ -70,57 +79,6 @@ export function Header() {
               : (repository?.root ?? "Reading your repository…")}
         </p>
       </div>
-      <div className="header-actions">
-        <NewChangesButton />
-        {collect ? (
-          <Button
-            type="button"
-            id="sync"
-            variant="ghost"
-            size="icon"
-            aria-label="Sync all checkouts"
-            title="Sync all checkouts (Alt+R)"
-            aria-busy={collecting || diff.busy}
-            onClick={refresh}
-          >
-            {collecting || diff.busy ? (
-              <LoaderCircleIcon
-                className="size-(--icon-base)"
-                aria-hidden="true"
-              />
-            ) : (
-              <FolderSyncIcon
-                className="size-(--icon-base)"
-                aria-hidden="true"
-              />
-            )}
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            id="refresh"
-            variant="ghost"
-            aria-label={
-              refreshEnabled ? "Refresh changes" : "Retry loading changes"
-            }
-            title={
-              refreshEnabled
-                ? "Refresh changes (Alt+R)"
-                : "Retry loading stored changes"
-            }
-            hidden={!refreshEnabled && !diff.notice}
-            aria-busy={diff.busy}
-            onClick={refresh}
-          >
-            <RefreshCwIcon className="size-(--icon-base)" aria-hidden="true" />
-            <span className="refresh-label">
-              {refreshEnabled ? "Refresh" : "Retry"}
-            </span>
-          </Button>
-        )}
-        {compact && <AccountButton />}
-        <ThemeButton />
-      </div>
-    </header>
+    </Topbar>
   );
 }

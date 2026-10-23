@@ -252,9 +252,19 @@ mise run generate
 ## Frontend conventions
 
 Follow [DESIGN.md](../DESIGN.md). Semantic tokens in `apps/web/src/tokens.css`
-map into Tailwind and shadcn theme roles. Reuse primitives from
-`apps/web/src/components/ui`; keep authored CSS for specialized layout, dynamic
-geometry, and Pierre's measured rendering boundary.
+are exposed as same-name Tailwind utilities (`bg-panel`, `border-control`,
+`h-control`). Primitives in `apps/web/src/components/ui` and composites in
+`apps/web/src/components` own all visuals; feature code arranges them and adds
+semantic variants there when a look is missing. Keep authored CSS for
+specialized layout, dynamic geometry, and Pierre's measured rendering boundary.
+`mise run check:design` and oxlint enforce this.
+
+The dev-only gallery renders every variant: run `pnpm dev` in `apps/web` and
+open `/design.html` (`?theme=dark`, `?page=overlays`, `?page=dialog`). It is not
+part of the production build. Its goldens run with the browser suite
+(`pnpm exec playwright test --project gallery`); after an intended visual
+change, regenerate them with `--update-snapshots` and review the images.
+Baselines are Chromium on Linux.
 
 `App.tsx` composes page sections. `main.tsx` composes sidebar and appearance
 providers around identity; `SessionProvider` owns context selection, routes

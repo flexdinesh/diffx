@@ -4,7 +4,10 @@ import {
   MessageSquareWarningIcon,
   Trash2Icon,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { CountBadge } from "@/components/count-badge";
+import { Notice } from "@/components/notice";
+import { SplitButton } from "@/components/split-button";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -14,13 +17,6 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { TabsContent } from "@/components/ui/tabs";
 import {
   useDiffSource,
@@ -99,214 +95,161 @@ export function CommentsPanel() {
     <TabsContent
       value="comments"
       id="comments-panel"
+      className="comments-panel min-h-0"
       aria-label="Review comments"
     >
-      <div className="comment-panel-header">
-        {!!review.comments.length && (
-          <>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    type="button"
-                    className="comment-filter-trigger"
-                    variant="outline"
-                    size="xs"
-                    aria-label={`Filter comments: ${filterLabel(filter)}`}
-                  />
-                }
-              >
-                {filterLabel(filter)}
-                <Badge variant="outline" className="comment-filter-count">
-                  {activeCount}
-                </Badge>
-                <ChevronDownIcon aria-hidden="true" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="start"
-                className="comment-filter-menu"
-                aria-label="Filter comments"
-              >
-                <DropdownMenuRadioGroup
-                  value={filter}
-                  onValueChange={(value: unknown) => {
-                    if (
-                      value === "open" ||
-                      value === "resolved" ||
-                      value === "outdated" ||
-                      value === "all"
-                    )
-                      setFilter(value);
-                  }}
-                >
-                  {COMMENT_FILTERS.map((value) => (
-                    <DropdownMenuRadioItem
-                      key={value}
-                      value={value}
-                      closeOnClick
-                      className="comment-filter-option"
-                    >
-                      <span>{filterLabel(value)}</span>
-                      <Badge variant="outline" className="comment-filter-count">
-                        {value === "all"
-                          ? review.comments.length
-                          : counts[value]}
-                      </Badge>
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <div className="bulk-delete-actions">
-              <Button
-                type="button"
-                className="bulk-delete-primary"
-                variant="destructive"
-                size="xs"
-                onClick={() => setDeleteSelection("all")}
-              >
-                <Trash2Icon aria-hidden="true" />
-                Delete
-              </Button>
+      <div className="px-4 pb-3">
+        <div className="mb-3 flex items-center justify-start gap-2">
+          {!!review.comments.length && (
+            <>
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
                     <Button
                       type="button"
-                      className="bulk-delete-menu-trigger"
                       variant="outline"
-                      size="icon-xs"
-                      aria-label="Delete options"
-                      title="Delete options"
+                      size="xs"
+                      touch
+                      aria-label={`Filter comments: ${filterLabel(filter)}`}
                     />
                   }
                 >
-                  <ChevronDownIcon aria-hidden="true" />
+                  {filterLabel(filter)}
+                  <CountBadge count={activeCount} />
+                  <ChevronDownIcon className="size-3" aria-hidden="true" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="start"
-                  className="bulk-delete-menu"
-                  aria-label="Delete comments"
+                  className="w-max min-w-30"
+                  aria-label="Filter comments"
                 >
-                  {DELETE_FILTERS.map((value) => {
-                    const count =
-                      value === "all" ? review.comments.length : counts[value];
-                    return (
-                      <DropdownMenuItem
+                  <DropdownMenuRadioGroup
+                    value={filter}
+                    onValueChange={(value: unknown) => {
+                      if (
+                        value === "open" ||
+                        value === "resolved" ||
+                        value === "outdated" ||
+                        value === "all"
+                      )
+                        setFilter(value);
+                    }}
+                  >
+                    {COMMENT_FILTERS.map((value) => (
+                      <DropdownMenuRadioItem
                         key={value}
-                        className="bulk-delete-option"
-                        disabled={count === 0}
-                        onClick={() => setDeleteSelection(value)}
+                        value={value}
+                        closeOnClick
+                        indicator="start"
+                        className="gap-1"
                       >
                         <span>{filterLabel(value)}</span>
-                        <Badge
-                          variant="outline"
-                          className="comment-filter-count"
-                        >
-                          {count}
-                        </Badge>
-                      </DropdownMenuItem>
-                    );
-                  })}
+                        <CountBadge
+                          className="ml-auto"
+                          count={
+                            value === "all"
+                              ? review.comments.length
+                              : counts[value]
+                          }
+                        />
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </div>
-          </>
-        )}
-      </div>
-      {draft &&
-        (!placedInline(placementFor(draft, repository).applicability) ? (
-          <DraftComment />
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="xs"
-            onClick={() => navigateComment(draft)}
-          >
-            Continue draft
-          </Button>
-        ))}
-      {!!currentComments.length && (
-        <section className="review-round" aria-label="Current comments">
-          <h2>Current</h2>
-          {currentComments.map((comment) => (
-            <ReviewCommentCard key={comment.id} comment={comment} sidebar />
-          ))}
-        </section>
-      )}
-      {!!outdatedComments.length && (
-        <section
-          id="outdated-comments"
-          className="review-round outdated-review"
-          aria-label="Outdated comments"
-        >
-          <h2>Outdated</h2>
-          <p className="review-round-hint">
-            Written against earlier code. Resolve them, keep them open on their
-            file, or delete them.
-          </p>
-          {outdatedComments.map((comment) => (
-            <ReviewCommentCard key={comment.id} comment={comment} sidebar />
-          ))}
-        </section>
-      )}
-      {!review.comments.length && (
-        <p className="comment-empty">
-          Hover a code line and click + to leave feedback. Select several lines
-          to comment on a range. Saved comments persist through the local server
-          and can be copied for your coding agent.
-        </p>
-      )}
-      {!!review.comments.length &&
-        !currentComments.length &&
-        !outdatedComments.length && (
-          <p className="comment-empty">No {filter} comments.</p>
-        )}
-      <Dialog
-        open={deleteSelection !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteSelection(null);
-        }}
-      >
-        <DialogContent
-          className="delete-comment-dialog"
-          showCloseButton={false}
-        >
-          <DialogTitle>
-            Delete{" "}
-            {deleteSelection ? filterLabel(deleteSelection).toLowerCase() : ""}{" "}
-            comments?
-          </DialogTitle>
-          <DialogDescription>
-            This permanently removes {deleteCount}{" "}
-            {deleteSelection === "all" ? "" : `${deleteSelection} `}
-            {deleteCount === 1 ? "comment" : "comments"}. This cannot be undone.
-          </DialogDescription>
-          <DialogFooter>
+              <SplitButton
+                variant="destructive"
+                size="xs"
+                touch
+                className="ml-auto"
+                menuLabel="Delete options"
+                menuAlign="start"
+                menu={DELETE_FILTERS.map((value) => {
+                  const count =
+                    value === "all" ? review.comments.length : counts[value];
+                  return (
+                    <DropdownMenuItem
+                      key={value}
+                      className="gap-1"
+                      disabled={count === 0}
+                      onClick={() => setDeleteSelection(value)}
+                    >
+                      <span>{filterLabel(value)}</span>
+                      <CountBadge className="ml-auto" count={count} />
+                    </DropdownMenuItem>
+                  );
+                })}
+                onClick={() => setDeleteSelection("all")}
+              >
+                <Trash2Icon aria-hidden="true" />
+                Delete
+              </SplitButton>
+            </>
+          )}
+        </div>
+        {draft &&
+          (!placedInline(placementFor(draft, repository).applicability) ? (
+            <DraftComment sidebar />
+          ) : (
             <Button
               type="button"
               variant="outline"
-              onClick={() => setDeleteSelection(null)}
+              size="xs"
+              onClick={() => navigateComment(draft)}
             >
-              Cancel
+              Continue draft
             </Button>
-            <Button
-              type="button"
-              className="delete-comment-confirm"
-              variant="destructive"
-              onClick={() => {
-                if (deleteSelection)
-                  void review.removeComments(deleteSelection);
-                setDeleteSelection(null);
-              }}
-            >
-              <Trash2Icon aria-hidden="true" />
-              Delete comments
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          ))}
+        {!!currentComments.length && (
+          <section className="review-round" aria-label="Current comments">
+            <h2>Current</h2>
+            {currentComments.map((comment) => (
+              <ReviewCommentCard key={comment.id} comment={comment} sidebar />
+            ))}
+          </section>
+        )}
+        {!!outdatedComments.length && (
+          <section
+            id="outdated-comments"
+            className="review-round outdated-review"
+            aria-label="Outdated comments"
+          >
+            <h2>Outdated</h2>
+            <p className="review-round-hint">
+              Written against earlier code. Resolve them, keep them open on
+              their file, or delete them.
+            </p>
+            {outdatedComments.map((comment) => (
+              <ReviewCommentCard key={comment.id} comment={comment} sidebar />
+            ))}
+          </section>
+        )}
+        {!review.comments.length && (
+          <p className="comment-empty">
+            Hover a code line and click + to leave feedback. Select several
+            lines to comment on a range. Saved comments persist through the
+            local server and can be copied for your coding agent.
+          </p>
+        )}
+        {!!review.comments.length &&
+          !currentComments.length &&
+          !outdatedComments.length && (
+            <p className="comment-empty">No {filter} comments.</p>
+          )}
+        <ConfirmDialog
+          open={deleteSelection !== null}
+          onOpenChange={(open) => {
+            if (!open) setDeleteSelection(null);
+          }}
+          title={`Delete ${deleteSelection ? filterLabel(deleteSelection).toLowerCase() : ""} comments?`}
+          description={`This permanently removes ${deleteCount} ${deleteSelection === "all" ? "" : `${deleteSelection} `}${deleteCount === 1 ? "comment" : "comments"}. This cannot be undone.`}
+          confirmLabel="Delete comments"
+          onConfirm={() => {
+            if (deleteSelection) void review.removeComments(deleteSelection);
+            setDeleteSelection(null);
+          }}
+        />
+      </div>
     </TabsContent>
   );
 }
@@ -321,17 +264,11 @@ export function OutdatedCommentsNotice() {
   ).length;
   const visible = capabilityEnabled(capabilities.review.comments) && open > 0;
   return (
-    <div className="outdated-notice" role="status" hidden={!visible}>
-      {visible && (
-        <>
-          <MessageSquareWarningIcon
-            className="size-(--icon-sm)"
-            aria-hidden="true"
-          />
-          <p>
-            {open} open {open === 1 ? "comment is" : "comments are"} outdated by
-            code changes
-          </p>
+    <Notice
+      hidden={!visible}
+      icon={visible && <MessageSquareWarningIcon aria-hidden="true" />}
+      action={
+        visible && (
           <Button
             type="button"
             variant="outline-muted"
@@ -340,8 +277,11 @@ export function OutdatedCommentsNotice() {
           >
             Review outdated
           </Button>
-        </>
-      )}
-    </div>
+        )
+      }
+    >
+      {visible &&
+        `${open} open ${open === 1 ? "comment is" : "comments are"} outdated by code changes`}
+    </Notice>
   );
 }

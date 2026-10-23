@@ -1,25 +1,23 @@
 import {
-  ChevronDownIcon,
   CopyIcon,
   FileMinus2Icon,
   FilePenLineIcon,
   FilePlus2Icon,
   FileSymlinkIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CollapsibleSection } from "@/components/collapsible-section";
+import { EmptyState } from "@/components/empty-state";
+import { KeyValue, KeyValueList } from "@/components/key-value-list";
+import { SplitButton } from "@/components/split-button";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Separator } from "@/components/ui/separator";
 import {
   useDiffSource,
   useReviewState,
   useReviewedFilesState,
 } from "./app-state.tsx";
-import { save, saved } from "./preferences.ts";
+import { formatCount, formatProgress, pluralize } from "./format.ts";
 
 import { capabilityEnabled, useSession } from "./session-context.tsx";
 
@@ -30,99 +28,62 @@ export function ReviewTools() {
   const { capabilities } = useSession();
   const review = useReviewState();
   const commentsEnabled = capabilityEnabled(capabilities.review.comments);
-  const [toolsCollapsed, setToolsCollapsed] = useState(
-    () => saved("review-tools-collapsed") === "true",
-  );
-  useEffect(() => {
-    save("review-tools-collapsed", String(toolsCollapsed));
-  }, [toolsCollapsed]);
   // Unresolved exports include open outdated comments, tagged stale.
   const unresolved = review.comments.filter(
     (comment) => comment.status === "open",
   ).length;
   return (
-    <section className="review-tools" aria-label="Review tools">
-      <Button
-        type="button"
-        className="review-tools-toggle"
-        variant="ghost"
-        aria-controls="review-tools-content"
-        aria-expanded={!toolsCollapsed}
-        aria-label={`${toolsCollapsed ? "Show" : "Hide"} review tools`}
-        onClick={() => setToolsCollapsed((previous) => !previous)}
-      >
-        Review tools
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d={toolsCollapsed ? "m4 10 4-4 4 4" : "m4 6 4 4 4-4"} />
-        </svg>
-      </Button>
-      <div id="review-tools-content" hidden={toolsCollapsed}>
-        {commentsEnabled && !review.comments.length && (
-          <p className="review-tools-placeholder">
-            Leave a comment to enable review tools.
-          </p>
-        )}
-        {((commentsEnabled && !!review.comments.length) ||
-          !!review.feedback) && (
-          <div className="copy-comments-bar">
-            {commentsEnabled && !!review.comments.length && (
-              <div className="copy-comments-actions">
-                <Button
-                  type="button"
-                  id="copy-review"
-                  variant="outline"
-                  size="sm"
-                  disabled={!unresolved}
-                  onClick={() => {
-                    void review.copy(false);
-                  }}
-                >
-                  <CopyIcon aria-hidden="true" />
-                  Copy Review
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button
-                        type="button"
-                        className="copy-comments-menu-trigger"
-                        variant="outline"
-                        size="icon-sm"
-                        aria-label="Copy options"
-                        title="Copy options"
-                      />
-                    }
-                  >
-                    <ChevronDownIcon aria-hidden="true" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+    <CollapsibleSection
+      title="Review tools"
+      storageKey="review-tools-collapsed"
+      contentId="review-tools-content"
+    >
+      {commentsEnabled && !review.comments.length && (
+        <div className="px-1 pb-1">
+          <EmptyState description="Leave a comment to enable review tools." />
+        </div>
+      )}
+      {((commentsEnabled && !!review.comments.length) || !!review.feedback) && (
+        <div className="copy-comments-bar">
+          {commentsEnabled && !!review.comments.length && (
+            <>
+              <SplitButton
+                touch
+                className="w-full"
+                menuLabel="Copy options"
+                disabled={!unresolved}
+                onClick={() => {
+                  void review.copy(false);
+                }}
+                menu={
+                  <>
                     <DropdownMenuItem
-                      className="copy-comments-menu-item"
                       disabled={!unresolved}
                       onClick={() => {
                         void review.copy(false);
                       }}
                     >
-                      Open Comments
+                      Open comments
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      className="copy-comments-menu-item"
                       onClick={() => {
                         void review.copy(true);
                       }}
                     >
-                      All Comments
+                      All comments
                     </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            )}
-            {commentsEnabled && !!review.comments.length && (
+                  </>
+                }
+              >
+                <CopyIcon aria-hidden="true" />
+                Copy review
+              </SplitButton>
               <Button
                 type="button"
-                className="webmcp-instruction-button"
                 variant="outline"
                 size="sm"
+                touch
+                className="mt-2 w-full"
                 onClick={() => {
                   void review.copyWebMCPInstruction(
                     `${WEBMCP_INSTRUCTION}\n${window.location.origin}`,
@@ -130,30 +91,25 @@ export function ReviewTools() {
                 }}
               >
                 <CopyIcon aria-hidden="true" />
-                WebMCP Instruction
+                WebMCP instruction
               </Button>
-            )}
-          </div>
-        )}
-      </div>
-    </section>
+            </>
+          )}
+        </div>
+      )}
+    </CollapsibleSection>
   );
 }
 
 export function ChangeSummary() {
   const { repository } = useDiffSource();
   const { isReviewed, resetReviewed, pending } = useReviewedFilesState();
-  const [summaryCollapsed, setSummaryCollapsed] = useState(
-    () => saved("summary-collapsed") === "true",
-  );
-  useEffect(() => {
-    save("summary-collapsed", String(summaryCollapsed));
-  }, [summaryCollapsed]);
   const allFiles = repository?.files ?? [];
   const fileChanges = [
     {
       kind: "added",
       Icon: FilePlus2Icon,
+      tone: "text-success",
       count: allFiles.filter((file) => ["A", "?", "C"].includes(file.status))
         .length,
       description: "Files added (including untracked and copied files)",
@@ -161,12 +117,14 @@ export function ChangeSummary() {
     {
       kind: "deleted",
       Icon: FileMinus2Icon,
+      tone: "text-error",
       count: allFiles.filter((file) => file.status === "D").length,
       description: "Files deleted",
     },
     {
       kind: "modified",
       Icon: FilePenLineIcon,
+      tone: "text-warning",
       count: allFiles.filter((file) => ["M", "T", "U"].includes(file.status))
         .length,
       description: "Files modified (including type changes and conflicts)",
@@ -174,6 +132,7 @@ export function ChangeSummary() {
     {
       kind: "renamed",
       Icon: FileSymlinkIcon,
+      tone: "text-accent",
       count: allFiles.filter((file) => file.status === "R").length,
       description: "Files renamed",
     },
@@ -182,90 +141,73 @@ export function ChangeSummary() {
   const deletions = allFiles.reduce((sum, file) => sum + file.deletions, 0);
   const reviewedCount = allFiles.filter(isReviewed).length;
   return (
-    <section className="review-tools summary-section" aria-label="Summary">
-      <Button
-        type="button"
-        className="review-tools-toggle"
-        variant="ghost"
-        aria-controls="summary-content"
-        aria-expanded={!summaryCollapsed}
-        aria-label={`${summaryCollapsed ? "Show" : "Hide"} summary`}
-        onClick={() => setSummaryCollapsed((previous) => !previous)}
-      >
-        Summary
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d={summaryCollapsed ? "m4 10 4-4 4 4" : "m4 6 4 4 4-4"} />
-        </svg>
-      </Button>
-      <div id="summary-content" hidden={summaryCollapsed}>
-        <div className="sidebar-bottom">
-          <div className="summary-row summary-files-row">
-            <span>Files changed</span>
-            <div className="summary-file-counts">
-              <strong id="summary-files">{allFiles.length}</strong>
-              <div
-                className="summary-file-breakdown"
+    <CollapsibleSection
+      title="Summary"
+      storageKey="summary-collapsed"
+      contentId="summary-content"
+    >
+      <div className="flex flex-col gap-1 px-3 pt-2 pb-2">
+        <KeyValueList>
+          <KeyValue label="Files changed">
+            <span className="inline-flex flex-wrap items-center justify-end gap-2">
+              <span id="summary-files">{formatCount(allFiles.length)}</span>
+              <Separator orientation="vertical" />
+              <span
+                className="inline-flex flex-wrap items-center gap-2"
                 role="group"
                 aria-label="File changes by type"
               >
-                {fileChanges.map(({ kind, Icon, count, description }) => (
+                {fileChanges.map(({ kind, Icon, tone, count, description }) => (
                   <span
                     key={kind}
-                    className="summary-file-kind"
-                    data-kind={kind}
+                    className={`inline-flex items-center gap-1 font-mono text-xs font-normal ${tone}`}
                     role="img"
-                    aria-label={`${count} ${count === 1 ? "file" : "files"} ${kind}`}
+                    aria-label={`${pluralize(count, "file")} ${kind}`}
                     title={`${description}: ${count}`}
                   >
-                    <Icon aria-hidden="true" />
-                    <span aria-hidden="true">{count.toLocaleString()}</span>
+                    <Icon className="size-icon-sm" aria-hidden="true" />
+                    <span aria-hidden="true">{formatCount(count)}</span>
                   </span>
                 ))}
-              </div>
-            </div>
-          </div>
-          <div className="summary-row">
-            <span>Additions</span>
-            <strong id="additions" className="positive">
-              +{additions.toLocaleString()}
-            </strong>
-          </div>
-          <div className="summary-row">
-            <span>Deletions</span>
-            <strong id="deletions" className="negative">
-              −{deletions.toLocaleString()}
-            </strong>
-          </div>
-          <div
-            id="change-bar"
-            className="change-bar"
-            style={{ opacity: additions + deletions ? 1 : 0.15 }}
-          >
-            <span
-              style={{
-                width: `${additions + deletions ? (additions / (additions + deletions)) * 100 : 0}%`,
-              }}
-            />
-          </div>
-          <div className="review-progress">
-            <span id="review-count">
-              {reviewedCount} of {allFiles.length} reviewed
+              </span>
             </span>
-            <Button
-              type="button"
-              id="reset-reviewed"
-              variant="outline-muted"
-              size="xs"
-              disabled={reviewedCount === 0 || pending.has("*")}
-              aria-busy={pending.has("*")}
-              title="Clear all reviewed files"
-              onClick={resetReviewed}
-            >
-              Reset reviewed
-            </Button>
-          </div>
+          </KeyValue>
+        </KeyValueList>
+        <KeyValueList className="max-md:hidden">
+          <KeyValue label="Additions" id="additions">
+            <span className="text-success">+{formatCount(additions)}</span>
+          </KeyValue>
+          <KeyValue label="Deletions" id="deletions">
+            <span className="text-error">−{formatCount(deletions)}</span>
+          </KeyValue>
+        </KeyValueList>
+        <div
+          className="change-bar max-md:hidden"
+          style={{ opacity: additions + deletions ? 1 : 0.15 }}
+        >
+          <span
+            style={{
+              width: `${additions + deletions ? (additions / (additions + deletions)) * 100 : 0}%`,
+            }}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-2 text-sm text-muted">
+          <span id="review-count">
+            {formatProgress(reviewedCount, allFiles.length)}
+          </span>
+          <Button
+            type="button"
+            id="reset-reviewed"
+            variant="outline-muted"
+            size="xs"
+            disabled={reviewedCount === 0 || pending.has("*")}
+            aria-busy={pending.has("*")}
+            onClick={resetReviewed}
+          >
+            Reset reviewed
+          </Button>
         </div>
       </div>
-    </section>
+    </CollapsibleSection>
   );
 }

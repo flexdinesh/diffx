@@ -18,7 +18,12 @@ import {
   type ApiRepositoryDiff as RepositoryDiff,
 } from "@diffx/api";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { DisclosureIcon } from "@/components/disclosure";
+import { EmptyState } from "@/components/empty-state";
+import { IconButton } from "@/components/icon-button";
+import { Notice } from "@/components/notice";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   togglePath,
   useDiffSource,
@@ -664,9 +669,9 @@ export function DiffWorkspace() {
     <main>
       <DiffToolbar />
       <WorkspaceFeedback />
-      <div id="notice" role="status" hidden={!diff.notice}>
+      <Notice id="notice" tone="warning" hidden={!diff.notice}>
         {diff.notice}
-      </div>
+      </Notice>
       <p className="visually-hidden" role="status" aria-live="polite">
         {selectionFeedback}
       </p>
@@ -707,24 +712,18 @@ export function DiffWorkspace() {
             style={{ height: "100%", width: "100%", overflow: "auto" }}
             renderHeaderPrefix={(item) => (
               <span className="diff-collapse-gutter">
-                <Button
-                  type="button"
-                  className="diff-collapse"
-                  variant="ghost"
+                <IconButton
+                  label={`${item.collapsed ? "Expand" : "Collapse"} ${item.id}`}
+                  hint={item.collapsed ? "Expand file" : "Collapse file"}
+                  variant="subtle"
                   size="icon-xs"
-                  aria-label={`${item.collapsed ? "Expand" : "Collapse"} ${item.id}`}
-                  title={item.collapsed ? "Expand file" : "Collapse file"}
                   aria-expanded={!item.collapsed}
                   onClick={() =>
                     setCollapsed((previous) => togglePath(previous, item.id))
                   }
                 >
-                  <svg viewBox="0 0 16 16" aria-hidden="true">
-                    <path
-                      d={item.collapsed ? "m6 4 4 4-4 4" : "m4 6 4 4 4-4"}
-                    />
-                  </svg>
-                </Button>
+                  <DisclosureIcon open={!item.collapsed} />
+                </IconButton>
               </span>
             )}
             renderHeaderFilenameSuffix={(item) => (
@@ -742,7 +741,7 @@ export function DiffWorkspace() {
                     ).length
                   : 0;
               return file ? (
-                <div className="diff-file-actions">
+                <div className="flex items-center gap-1">
                   {outdated > 0 && (
                     <span
                       className="file-outdated-count"
@@ -753,8 +752,7 @@ export function DiffWorkspace() {
                   )}
                   <Button
                     type="button"
-                    className="review-button"
-                    variant="outline-muted"
+                    variant="outline-check"
                     size="sm"
                     aria-label={`Mark ${file.path} ${isReviewed(file) ? "unreviewed" : "reviewed"}`}
                     aria-pressed={isReviewed(file)}
@@ -774,13 +772,11 @@ export function DiffWorkspace() {
                   </Button>
 
                   {commentsEnabled && (
-                    <Button
-                      type="button"
-                      className="file-comment-button"
+                    <IconButton
+                      label={`Leave review comment on file ${file.path}`}
+                      hint="Leave review comment on file"
                       variant="outline-muted"
                       size="icon-sm"
-                      aria-label={`Leave review comment on file ${file.path}`}
-                      title="Leave review comment on file"
                       onClick={() => {
                         setCollapsed((previous) => {
                           const next = new Set(previous);
@@ -792,7 +788,7 @@ export function DiffWorkspace() {
                       }}
                     >
                       <MessageSquareIcon aria-hidden="true" />
-                    </Button>
+                    </IconButton>
                   )}
                 </div>
               ) : null;
@@ -810,7 +806,12 @@ export function DiffWorkspace() {
           id="empty"
           role="status"
           hidden={files.length > 0}
-          className={loadingChanges ? "is-loading" : undefined}
+          className={cn(
+            "absolute inset-0 flex flex-col",
+            loadingChanges
+              ? "items-stretch justify-start"
+              : "items-center justify-center p-(--page-gutter)",
+          )}
           aria-busy={loadingChanges}
         >
           {loadingChanges ? (
@@ -819,19 +820,20 @@ export function DiffWorkspace() {
               <p className="visually-hidden">Loading changes</p>
             </>
           ) : (
-            <>
-              <h2>{emptyTitle}</h2>
-              <p>{emptyDescription}</p>
-              {allReviewedHidden ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setHideReviewed(false)}
-                >
-                  Show reviewed files
-                </Button>
-              ) : (
-                !!filter && (
+            <EmptyState
+              size="page"
+              title={emptyTitle}
+              description={emptyDescription}
+              action={
+                allReviewedHidden ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setHideReviewed(false)}
+                  >
+                    Show reviewed files
+                  </Button>
+                ) : filter ? (
                   <Button
                     type="button"
                     variant="outline"
@@ -839,9 +841,9 @@ export function DiffWorkspace() {
                   >
                     Clear filter
                   </Button>
-                )
-              )}
-            </>
+                ) : undefined
+              }
+            />
           )}
         </div>
       </div>

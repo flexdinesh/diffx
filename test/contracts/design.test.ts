@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -93,24 +100,19 @@ test("type, radius, shadows and layout lengths require tokens", () => {
 
 test("optical exceptions remain exact in selector, value and source", () => {
   assert.deepEqual(
-    check(".staging-dot { border-radius: 50% }", "review.css"),
+    check(".file-reviewed-check { border-radius: 50% }", "review.css"),
     [],
   );
   assert.equal(check(".new { border-radius: 50% }", "review.css").length, 1);
   assert.equal(
-    check(".staging-dot { border-radius: 25% }", "review.css").length,
+    check(".file-reviewed-check { border-radius: 25% }", "review.css").length,
     1,
   );
   assert.equal(
-    check(".staging-dot { border-radius: 50% }", "new.css").length,
+    check(".file-reviewed-check { border-radius: 50% }", "new.css").length,
     1,
   );
   assert.deepEqual(check(".new { padding: 1px var(--space-2) }"), []);
-  // The projects drawer's new-changes dot is a status circle.
-  assert.deepEqual(
-    check(".new-mark > span { border-radius: 50% }", "style.css"),
-    [],
-  );
 });
 
 test("inline styles and named style objects cannot bypass rules", () => {
@@ -140,6 +142,11 @@ test("inline styles and named style objects cannot bypass rules", () => {
   );
   assert.deepEqual(
     check(`const itemMetrics = { lineHeight: measuredHeight };`, "new.tsx"),
+    [],
+  );
+  // Component props named like SVG attributes are variants, not paint.
+  assert.deepEqual(
+    check("const View = () => <StatusDot fill={state} />;", "new.tsx"),
     [],
   );
   assert.deepEqual(check(".control { border-radius: 0px }"), []);
@@ -236,6 +243,199 @@ test("new nested frontend files enter the check automatically", () => {
     const sources = readDesignSources(directory);
     assert.equal(sources.length, 2);
     assert.equal(checkDesign(sources).length, 2);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+// A minimal theme bridge and spacing scale, as style.css and tokens.css declare them.
+const theme = [
+  {
+    path: "style.css",
+    text: `@theme inline { --color-hover: var(--hover); --spacing-icon-sm: var(--icon-sm); }
+@theme inline reference { --radius-control: var(--radius-control); --text-xs: var(--text-xs); }`,
+  },
+  {
+    path: "tokens.css",
+    text: ":root { --space-0-5: .125rem; --space-1: .25rem; --space-1-5: .375rem; --space-2: .5rem; --space-3: .75rem }",
+  },
+];
+
+function checkThemed(text: string, path = "new.tsx") {
+  return checkDesign([...theme, { path, text }]).filter(
+    (violation) => violation.path === path,
+  );
+}
+
+test("arbitrary token variables use the utility that already renders them", () => {
+  // Audited: ProjectsNav icons and the shadcn tabs trigger before migration.
+  for (const token of [
+    "size-(--icon-sm)",
+    "rounded-[var(--radius-control)]",
+    "hover:bg-[var(--hover)]",
+    "text-[length:var(--text-xs)]",
+    "gap-[var(--space-1)]",
+    "-mr-(--space-1-5)",
+  ])
+    assert.equal(
+      checkThemed(`const classes = ${JSON.stringify(token)};`)[0]?.property,
+      "token-utility",
+      token,
+    );
+  assert.match(
+    checkThemed('const classes = "size-(--icon-sm)";')[0]?.value ?? "",
+    /→ size-icon-sm$/,
+  );
+  assert.deepEqual(
+    checkThemed('const classes = "w-(--drawer-width) max-h-[var(--x)]";'),
+    [],
+  );
+});
+
+test("spacing utilities stay on the token scale; 2px steps stay in components", () => {
+  // Audited: px-2.5 in the shadcn toggle, py-0.5 in the shadcn badge.
+  assert.equal(
+    checkThemed('const classes = "px-2.5";')[0]?.property,
+    "spacing-scale",
+  );
+  assert.equal(
+    checkThemed('const classes = "px-2.5";', "components/ui/toggle.tsx")[0]
+      ?.property,
+    "spacing-scale",
+  );
+  assert.equal(
+    checkThemed('const classes = "py-0.5";')[0]?.property,
+    "spacing-scale",
+  );
+  assert.deepEqual(
+    checkThemed('const classes = "py-0.5";', "components/ui/badge.tsx"),
+    [],
+  );
+  assert.deepEqual(
+    checkThemed('const classes = "gap-1.5 p-0 mt-3 -ml-1 h-24 size-4";'),
+    [],
+  );
+});
+
+test("feature CSS cannot reach into primitive slots or style by ID", () => {
+  // Audited: sidebar tabs and the file-name ID before migration.
+  assert.equal(
+    check(
+      '.sidebar-tabs [data-slot="tabs-trigger"] { min-width: 0 }',
+      "review.css",
+    )[0]?.property,
+    "slot-selector",
+  );
+  assert.equal(
+    check("#repo-path { overflow: hidden }", "style.css")[0]?.property,
+    "id-selector",
+  );
+  assert.equal(
+    check(":is(#server-status, .popup) svg { flex-shrink: 0 }")[0]?.property,
+    "id-selector",
+  );
+  assert.deepEqual(check("#viewer { min-height: 0 }", "style.css"), []);
+  assert.deepEqual(check('a[href="#top"] { overflow: hidden }'), []);
+  // A rule reports once, not per declaration.
+  assert.equal(
+    check("#repo-path { overflow: hidden; min-width: 0 }").length,
+    1,
+  );
+});
+
+const button = 'import { Button } from "@/components/ui/button";';
+
+test("feature classNames on components arrange them, never restyle them", () => {
+  for (const className of [
+    "h-9",
+    "text-error",
+    "rounded-control",
+    "px-3",
+    "hover:bg-hover",
+    "border-separator",
+  ])
+    assert.equal(
+      check(
+        `${button} const View = () => <Button className={cn("ml-auto", ${JSON.stringify(className)})} />;`,
+        "View.tsx",
+      )[0]?.property,
+      "component-class",
+      className,
+    );
+  assert.deepEqual(
+    check(
+      `${button} const View = () => <Button className="ml-auto min-w-0 flex-1 max-md:hidden w-full text-left" />;`,
+      "View.tsx",
+    ),
+    [],
+  );
+  // Plain elements and the design-system layer itself are out of scope.
+  assert.deepEqual(
+    check(`const View = () => <p className="text-error" />;`, "View.tsx"),
+    [],
+  );
+});
+
+test("feature CSS cannot restyle a component through a hook class", () => {
+  // Audited: DiffWorkspace's Reviewed toggle, colored by .review-button.
+  const usage = {
+    path: "DiffWorkspace.tsx",
+    text: `${button} const View = () => <Button className="review-button" />;`,
+  };
+  const styled = checkDesign([
+    usage,
+    { path: "style.css", text: ".review-button { color: var(--muted) }" },
+  ]);
+  assert.equal(styled[0]?.property, "component-style");
+  assert.deepEqual(
+    checkDesign([
+      usage,
+      {
+        path: "style.css",
+        text: ".review-button { margin-left: auto } .review-button svg { flex-shrink: 0 }",
+      },
+    ]),
+    [],
+  );
+  assert.deepEqual(
+    checkDesign([
+      {
+        path: "View.tsx",
+        text: 'const View = () => <div className="review-button" />;',
+      },
+      { path: "style.css", text: ".review-button { color: var(--muted) }" },
+    ]),
+    [],
+  );
+});
+
+test("feature files render primitives instead of raw form controls", () => {
+  // Audited: ProjectsNav's raw repo-row button before migration.
+  const root = fileURLToPath(new URL("../../", import.meta.url));
+  const config: unknown = JSON.parse(
+    readFileSync(join(root, ".oxlintrc.json"), "utf8"),
+  );
+  const directory = mkdtempSync(join(tmpdir(), "diffx-elements-"));
+  try {
+    writeFileSync(join(directory, ".oxlintrc.json"), JSON.stringify(config));
+    mkdirSync(join(directory, "apps/web/src/components/ui"), {
+      recursive: true,
+    });
+    const control =
+      'export const Row = () => <button type="button" className="project-row" />;\n';
+    writeFileSync(join(directory, "apps/web/src/ProjectsNav.tsx"), control);
+    writeFileSync(
+      join(directory, "apps/web/src/components/ui/button.tsx"),
+      control,
+    );
+    const result = spawnSync(
+      join(root, "node_modules/.bin/oxlint"),
+      ["-c", ".oxlintrc.json", "apps/web/src"],
+      { cwd: directory, encoding: "utf8" },
+    );
+    const output = result.stdout + result.stderr;
+    assert.match(output, /ProjectsNav\.tsx.*forbid-elements/);
+    assert.doesNotMatch(output, /button\.tsx.*forbid-elements/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

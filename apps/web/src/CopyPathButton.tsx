@@ -1,6 +1,7 @@
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/icon-button";
+import { cn } from "@/lib/utils";
 
 export function CopyPathButton({
   value,
@@ -32,13 +33,11 @@ export function CopyPathButton({
   }
 
   return (
-    <span className="copy-path" data-status={status}>
-      <Button
-        type="button"
-        variant="ghost"
+    <span className="inline-flex flex-none items-center gap-1">
+      <IconButton
+        label={`${label}: ${value}`}
+        hint={feedback || label}
         size="icon-xs"
-        aria-label={`${label}: ${value}`}
-        title={feedback || label}
         aria-busy={status === "copying"}
         disabled={status === "copying"}
         onClick={copy}
@@ -48,8 +47,14 @@ export function CopyPathButton({
         ) : (
           <CopyIcon aria-hidden="true" />
         )}
-      </Button>
-      <span className="copy-path-feedback" role="status">
+      </IconButton>
+      <span
+        className={cn(
+          "font-sans text-xs leading-ui",
+          status === "error" ? "text-error" : "text-success",
+        )}
+        role="status"
+      >
         {feedback}
       </span>
     </span>

@@ -1,12 +1,31 @@
 import * as React from "react";
-import { cn } from "cn";
+import { cva, type VariantProps } from "class-variance-authority";
+import { cn } from "@/lib/utils";
+import { textEntryClassName } from "@/components/ui/input";
 
-function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
+const textareaVariants = cva("block resize-y", {
+  variants: {
+    variant: {
+      // Review prose: comments and explanations.
+      default: "min-h-24 px-3 py-2 text-md leading-copy",
+      // Generated, selectable output such as exported review XML.
+      code: "bg-panel p-3 font-mono text-sm leading-copy",
+    },
+  },
+  defaultVariants: { variant: "default" },
+});
+
+function Textarea({
+  className,
+  variant = "default",
+  ...props
+}: React.ComponentProps<"textarea"> & VariantProps<typeof textareaVariants>) {
   return (
     <textarea
       data-slot="textarea"
       className={cn(
-        "flex min-h-16 w-full rounded-[var(--radius-control)] border border-input bg-background px-[var(--space-3)] py-[var(--space-2)] text-[length:var(--text-md)] leading-[var(--leading-copy)] placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60 aria-invalid:border-destructive",
+        textEntryClassName,
+        textareaVariants({ variant }),
         className,
       )}
       {...props}

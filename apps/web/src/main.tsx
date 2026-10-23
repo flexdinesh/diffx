@@ -21,6 +21,7 @@ import {
   useIdentity,
 } from "./identity-context.tsx";
 import { SignIn, AccountSettings } from "./account.tsx";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing React root");
@@ -67,7 +68,9 @@ createRoot(root).render(
     <SidebarProvider>
       <AppearanceProvider>
         <IdentityProvider>
-          <ApplicationRoutes />
+          <TooltipProvider>
+            <ApplicationRoutes />
+          </TooltipProvider>
         </IdentityProvider>
       </AppearanceProvider>
     </SidebarProvider>

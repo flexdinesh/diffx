@@ -1,5 +1,5 @@
 import { type Page, type Route } from "@playwright/test";
-import { expect, test } from "./fixtures.ts";
+import { expect, fileToggle, test } from "./fixtures.ts";
 import type { ApiContext, ApiRepositoryDiff } from "@diffx/api";
 import { isDiffMode, type DiffMode } from "../../src/diff-mode.ts";
 import type { ReviewComment } from "../../src/review-comments.ts";
@@ -204,7 +204,7 @@ test("comparison uses the captured merge base and follows the selected scope", a
   };
   await page.goto("/contexts/local-review");
   await ready(page);
-  const trigger = page.locator("#scope-description");
+  const trigger = page.getByRole("button", { name: /^Diff comparison:/ });
   await expect(trigger).toContainText(
     "Merge base (main · ccccccc) → working tree",
   );
@@ -263,7 +263,7 @@ test("working comparison identifies HEAD and unborn baselines", async ({
   const state = await localWorkspace(page);
   await page.goto("/contexts/local-review");
   await ready(page);
-  const trigger = page.locator("#scope-description");
+  const trigger = page.getByRole("button", { name: /^Diff comparison:/ });
   await expect(trigger).toContainText("HEAD → working tree");
   await trigger.click();
   const popup = page.getByRole("dialog", { name: "Diff comparison" });
@@ -339,7 +339,12 @@ test("snapshot stays selected after newer captures and branch transitions", asyn
   await page.goto("/contexts/original");
   await ready(page);
   await expect(page.locator("#connection")).toHaveText("Fixed snapshot");
-  await expect(page.locator("#refresh")).toBeHidden();
+  await expect(
+    page.getByRole("button", {
+      name: /^(Refresh|Retry loading) changes$/,
+      includeHidden: true,
+    }),
+  ).toBeHidden();
   contexts.unshift({
     ...original,
     id: "clean-other-branch",
@@ -402,8 +407,10 @@ test("rapid scopes ignore old diff responses and reviewed-file failures", async 
   if (!mark) throw new Error("Missing mark request");
   await mark.fulfill({ status: 500, json: { detail: "Old scope failure" } });
   await expect(page.locator("#review-count")).toHaveText("0 of 1 reviewed");
-  await expect(page.locator(".reviewed-error")).toHaveCount(0);
-  await expect(page.locator(".diff-collapse")).toHaveAttribute(
+  await expect(
+    page.locator(".workspace-feedback").getByRole("alert"),
+  ).toHaveCount(0);
+  await expect(fileToggle(page.locator("#viewer"))).toHaveAttribute(
     "aria-expanded",
     "true",
   );
@@ -417,7 +424,9 @@ test("draft survives scopes and explicit reload without automatic diff polling",
   await page.goto("/");
   await ready(page);
   await showDiff(page);
-  const inline = page.locator("#viewer .comment-editor textarea");
+  const inline = page
+    .locator("#viewer")
+    .getByRole("textbox", { name: "Review comment" });
   // Worker rendering can replace the hover utility during initial highlighting.
   await expect(async () => {
     if (await inline.isVisible()) return;
@@ -435,16 +444,16 @@ test("draft survives scopes and explicit reload without automatic diff polling",
   await page.getByRole("button", { name: "Staged", exact: true }).click();
   await ready(page, "staged-v1");
   await page.getByRole("tab", { name: /Review/ }).click();
-  await expect(
-    page.locator("#comments-panel .comment-editor textarea"),
-  ).toHaveValue("Preserve this draft");
+  const sidebar = page
+    .locator("#comments-panel")
+    .getByRole("textbox", { name: "Review comment" });
+  await expect(sidebar).toHaveValue("Preserve this draft");
   await page.getByRole("button", { name: "All changes", exact: true }).click();
   await ready(page);
   await expect(inline).toHaveValue("Preserve this draft");
   state.version = 2;
   await page.getByRole("button", { name: "Refresh changes" }).click();
   await ready(page, "all-v2");
-  const sidebar = page.locator("#comments-panel .comment-editor textarea");
   await expect(sidebar).toHaveValue("Preserve this draft");
   await sidebar.press("Escape");
   const requestsAfter = state.scopes.length;
@@ -469,7 +478,9 @@ test("full-file context and selection survive layout changes", async ({
   await expect(page.locator("#viewer")).toContainText("line 30");
   await ready(page);
   await page.getByRole("button", { name: "Split", exact: true }).click();
-  const editor = page.locator("#viewer .comment-editor-title");
+  const editor = page
+    .locator("#viewer")
+    .getByRole("textbox", { name: "Review comment" });
   // Worker rendering can replace the hover utility after switching layouts.
   await expect(async () => {
     if (await editor.isVisible()) return;
@@ -480,9 +491,9 @@ test("full-file context and selection survive layout changes", async ({
     await page.locator("[data-utility-button]").click({ timeout: 1_000 });
     await expect(editor).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 10_000 });
-  await expect(page.locator("#viewer .comment-editor-title")).toContainText(
-    "src/value.ts:50",
-  );
+  await expect(
+    page.locator("#viewer").getByText("src/value.ts:50", { exact: true }),
+  ).toBeVisible();
   expect(state.contentsRequests).toBe(1);
 });
 
@@ -531,9 +542,8 @@ test("comment navigation changes scope and clears filters after previews load", 
   await expect(page.locator("#viewer diffs-container")).toHaveCount(0);
   await page.getByRole("tab", { name: /Review/ }).click();
   await page
-    .locator(
-      '#comments-panel [data-comment-id="staged-comment"] .comment-location',
-    )
+    .locator('#comments-panel [data-comment-id="staged-comment"]')
+    .getByRole("button", { name: "src/value.ts:50", exact: true })
     .click();
   await expect(
     page.locator(
@@ -651,18 +661,20 @@ test("stream comments show moved and outdated placements and keep outdated comme
   const outdated = viewer.locator('[data-comment-id="outdated-comment"]');
   await expect(outdated.getByText("Outdated", { exact: true })).toBeVisible();
 
-  const notice = page.locator(".outdated-notice");
-  await expect(notice).toContainText(
-    "1 open comment is outdated by code changes",
-  );
+  const notice = page
+    .getByRole("status")
+    .filter({ hasText: "1 open comment is outdated by code changes" });
+  await expect(notice).toBeVisible();
   await notice.getByRole("button", { name: "Review outdated" }).click();
   const section = page.getByRole("region", { name: "Outdated comments" });
   await expect(section).toBeVisible();
   const card = section.locator(
-    '[data-comment-id="outdated-comment"] .comment-card',
+    '[data-comment-id="outdated-comment"] [data-slot="card"]',
   );
   await expect(card).toHaveAttribute("data-expanded", "false");
-  await card.locator(".comment-collapse").click();
+  await card
+    .getByRole("button", { name: /^Expand outdated comment at / })
+    .click();
   await card.getByRole("button", { name: "Keep open", exact: true }).click();
   await expect.poll(() => carried.length).toBe(1);
   await expect(page.locator("#comment-feedback")).toContainText(
@@ -1328,9 +1340,12 @@ test("picker combines filters before grouping and preserves them across navigati
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await openReviewPicker(page);
   await expect(dialog.getByRole("option")).toContainText("1 snapshot");
-  await expect(dialog.locator(".project-picker-filter-summary")).toContainText(
-    "Host: host-a · Host: host-b · Branch: feature · Worktree: tree-b",
-  );
+  await expect(
+    dialog.getByText(
+      "Latest snapshots · With changes · Host: host-a · Host: host-b · Branch: feature · Worktree: tree-b",
+      { exact: true },
+    ),
+  ).toBeVisible();
   await page.setViewportSize({ width: 360, height: 640 });
   const bounds = await dialog.boundingBox();
   if (!bounds) throw new Error("Missing picker bounds");
@@ -1436,7 +1451,9 @@ test("repos drawer lists current changed streams and announces newer snapshots",
   await expect(
     nav.getByRole("link", { name: /feat\/rate-limit/ }),
   ).toHaveAttribute("href", "/streams/stream-feat%2Frate-limit");
-  await expect(page.locator(".snapshot-notice")).toBeHidden();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Newer snapshot" }),
+  ).toBeHidden();
 
   const newer = {
     ...stream("rate-2", "acme-api", "feat/rate-limit", 40),
@@ -1445,7 +1462,7 @@ test("repos drawer lists current changed streams and announces newer snapshots",
   contexts.set(newer.id, newer);
   heads = [newer, ...heads.filter((context) => context.id !== viewed.id)];
   await page.evaluate(() => window.dispatchEvent(new Event("test-ingestion")));
-  const notice = page.locator(".snapshot-notice");
+  const notice = page.getByRole("status").filter({ hasText: "Newer snapshot" });
   await expect(notice).toContainText("Newer snapshot of feat/rate-limit");
   await expect(notice).toContainText("3 changed files");
   await expect(page).toHaveURL(/\/contexts\/rate-1$/);
@@ -1572,16 +1589,18 @@ test("live stream URLs open the latest head on load and keep it until navigation
 
   heads = [snapshot("main-2", 20)];
   await page.evaluate(() => window.dispatchEvent(new Event("test-ingestion")));
-  await expect(page.locator(".snapshot-notice")).toContainText(
-    "Newer snapshot",
-  );
+  await expect(
+    page.getByRole("status").filter({ hasText: "Newer snapshot" }),
+  ).toContainText("Newer snapshot");
   expect(opened.at(-1)).toBe("main-1");
 
   await page.reload();
   await ready(page);
   await expect(page).toHaveURL(/\/streams\/stream-main$/);
   expect(opened.at(-1)).toBe("main-2");
-  await expect(page.locator(".snapshot-notice")).toBeHidden();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Newer snapshot" }),
+  ).toBeHidden();
 
   await page.goto("/contexts/main-1");
   await ready(page);
@@ -1669,7 +1688,10 @@ for (const mode of ["local", "remote"]) {
     await expect(global).toHaveCount(0);
     const nav = page.getByRole("navigation", { name: "Repos" });
     await expect(nav).toBeVisible();
-    await expect(nav.locator(".project-name")).toHaveText(["api", "web"]);
+    await expect(nav.getByRole("listitem").getByRole("button")).toHaveText([
+      /^api/,
+      /^web/,
+    ]);
 
     const newerApi = snapshot("api-new", "api", 200, 900);
     const newerWeb = {
@@ -1685,10 +1707,13 @@ for (const mode of ["local", "remote"]) {
     );
     await expect(global).toHaveAccessibleName("New changes (2 streams)");
     await expect(global).toHaveText("2 new");
-    await expect(nav.locator(".project-name")).toHaveText(["web", "api"]);
-    await expect(page.locator(".snapshot-notice")).toContainText(
-      "Newer snapshot",
-    );
+    await expect(nav.getByRole("listitem").getByRole("button")).toHaveText([
+      /^web/,
+      /^api/,
+    ]);
+    await expect(
+      page.getByRole("status").filter({ hasText: "Newer snapshot" }),
+    ).toContainText("Newer snapshot");
     await expect(page).toHaveURL(/\/contexts\/viewed$/);
     await page.clock.fastForward(5 * 60_000);
     expect(collections).toBe(0);
@@ -1714,7 +1739,9 @@ for (const mode of ["local", "remote"]) {
     await expect(page).toHaveURL(/\/streams\/stream-api$/);
     await expect(menu).toBeHidden();
     await expect(global).toHaveAccessibleName("New changes (1 stream)");
-    await expect(page.locator(".snapshot-notice")).toBeHidden();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Newer snapshot" }),
+    ).toBeHidden();
     await expect(
       page.getByRole("button", { name: "Diff", exact: true }),
     ).toBeFocused();
@@ -1754,7 +1781,10 @@ for (const mode of ["local", "remote"]) {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.emulateMedia({ colorScheme: "light" });
     await page.getByRole("button", { name: "Repos", exact: true }).click();
-    await expect(nav.locator(".project-name")).toHaveText(["api", "web"]);
+    await expect(nav.getByRole("listitem").getByRole("button")).toHaveText([
+      /^api/,
+      /^web/,
+    ]);
     await expect(global).toHaveCount(0);
     expect(collections).toBe(0);
 
@@ -1923,7 +1953,9 @@ for (const initialHeads of ["stored", "arriving"]) {
       );
     }
     await ready(page);
-    await expect(page.locator("#sync")).toHaveAttribute("aria-busy", "true");
+    await expect(
+      page.getByRole("button", { name: "Sync all checkouts" }),
+    ).toHaveAttribute("aria-busy", "true");
     await expect(page.locator(".session-status")).toHaveCount(0);
     // Same-document navigation must survive the earlier collection completing.
     await page.evaluate(() => {
@@ -1941,7 +1973,9 @@ for (const initialHeads of ["stored", "arriving"]) {
         failures: [],
       },
     });
-    await expect(page.locator("#sync")).toHaveAttribute("aria-busy", "false");
+    await expect(
+      page.getByRole("button", { name: "Sync all checkouts" }),
+    ).toHaveAttribute("aria-busy", "false");
     await expect(page).toHaveURL(/\/contexts\/pinned$/);
     expect(opened).toEqual(["local-review", "pinned"]);
     await ready(page);
@@ -1994,7 +2028,7 @@ test("local root waits for collection to open its default over earlier heads", a
   await expect(status).toContainText("Collecting latest changes");
   await expect(status).toHaveAttribute("aria-busy", "true");
   await expect(
-    page.getByRole("navigation", { name: "Repos" }).locator(".stream-row"),
+    page.getByRole("navigation", { name: "Repos" }).getByRole("link"),
   ).toHaveCount(1);
   await expect(page).toHaveURL(/\/$/);
   expect(opened).toEqual([]);
@@ -2053,7 +2087,9 @@ test("unresolved navigation joins collection without reporting a missing stream"
   await pending.fulfill({ json: { contexts: [snapshot], failures: [] } });
   await ready(page);
   await expect(page).toHaveURL(/\/streams\/local-stream$/);
-  await expect(page.locator("#sync")).toHaveAttribute("aria-busy", "false");
+  await expect(
+    page.getByRole("button", { name: "Sync all checkouts" }),
+  ).toHaveAttribute("aria-busy", "false");
   expect(collections).toBe(1);
 });
 
@@ -2079,14 +2115,15 @@ test("file previews render independently while other previews are pending", asyn
   await page.goto("/contexts/local-review");
   await ready(page);
   await expect.poll(() => pending !== undefined).toBe(true);
-  await expect(page.locator("#refresh")).toHaveAttribute("aria-busy", "true");
+  const refresh = page.getByRole("button", { name: "Refresh changes" });
+  await expect(refresh).toHaveAttribute("aria-busy", "true");
   await expect(page.getByText("Loading diff…", { exact: true })).toBeVisible();
   if (!pending) throw new Error("Missing held preview");
   await pending.fulfill({ json: { patch: "", message: "Slow preview ready" } });
   await expect(
     page.getByText("Slow preview ready", { exact: true }),
   ).toBeVisible();
-  await expect(page.locator("#refresh")).toHaveAttribute("aria-busy", "false");
+  await expect(refresh).toHaveAttribute("aria-busy", "false");
   await ready(page);
 });
 
@@ -2261,31 +2298,34 @@ test("local live URLs sync the checkouts on every load", async ({ page }) => {
 
   await page.goto("/streams/local-stream");
   await ready(page);
-  await expect(page.locator("#sync")).toHaveAttribute("aria-busy", "true");
+  await expect(
+    page.getByRole("button", { name: "Sync all checkouts" }),
+  ).toHaveAttribute("aria-busy", "true");
   await expect(page.locator(".session-status")).toHaveCount(0);
   await expect.poll(() => state.scopes.length).toBe(1);
   release();
-  await expect(page.locator("#sync")).toHaveAttribute("aria-busy", "false");
+  await expect(
+    page.getByRole("button", { name: "Sync all checkouts" }),
+  ).toHaveAttribute("aria-busy", "false");
   await expect(page).toHaveURL(/\/streams\/local-stream$/);
   expect(collected).toBe(1);
   expect(opened).toEqual(["stored"]);
-  await expect(page.locator(".snapshot-notice")).toContainText(
-    "Newer snapshot",
-  );
+  await expect(
+    page.getByRole("status").filter({ hasText: "Newer snapshot" }),
+  ).toContainText("Newer snapshot");
   await page.getByRole("button", { name: "View latest" }).click();
   await expect.poll(() => opened.at(-1)).toBe("collected-1");
   await ready(page);
   expect(collected).toBe(1);
 
   // Collapse state belongs to the stream, so it survives the new snapshot.
-  await page.locator("#viewer .diff-collapse").first().click();
+  const viewer = page.locator("#viewer");
+  await fileToggle(viewer).first().click();
   await page.reload();
-  await expect(
-    page.locator("#viewer .diff-collapse[aria-expanded=false]"),
-  ).toHaveCount(1);
+  await expect(fileToggle(viewer, { expanded: false })).toHaveCount(1);
   expect(collected).toBe(2);
   await expect(page).toHaveURL(/\/streams\/local-stream$/);
-  await page.locator("#viewer .diff-collapse").first().click();
+  await fileToggle(viewer).first().click();
 
   await page.goto("/contexts/local-review");
   await ready(page);
@@ -2355,17 +2395,25 @@ test("local sync collects every checkout without replacing the open review", asy
   });
   await page.goto("/contexts/local-review");
   await ready(page);
-  await expect(page.locator("#refresh")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", {
+      name: /^(Refresh|Retry loading) changes$/,
+      includeHidden: true,
+    }),
+  ).toHaveCount(0);
   const sync = page.getByRole("button", { name: "Sync all checkouts" });
-  await expect(sync).toHaveAttribute("title", "Sync all checkouts (Alt+R)");
+  await sync.hover();
+  const tooltip = page.locator('[data-slot="tooltip-content"]');
+  await expect(tooltip).toContainText("Sync all checkouts");
+  await expect(tooltip.getByText("Alt+R", { exact: true })).toBeVisible();
   await sync.click();
   await expect(page.locator("#comment-feedback")).toHaveText(
     "Synced 3 checkouts · 2 updated · 1 failed: /work/broken (git failed)",
   );
   // Like distributed arrivals, the newer head is announced, never swapped in.
-  await expect(page.locator(".snapshot-notice")).toContainText(
-    "Newer snapshot",
-  );
+  await expect(
+    page.getByRole("status").filter({ hasText: "Newer snapshot" }),
+  ).toContainText("Newer snapshot");
   await expect(page).toHaveURL(/\/contexts\/local-review$/);
   expect(collections).toEqual(["POST"]);
   await page.keyboard.press("Alt+r");
@@ -2424,8 +2472,11 @@ test("each remote account baselines its own seen heads", async ({ page }) => {
   await page.goto("/contexts/api-head");
   await ready(page);
   await expect(
-    page.getByRole("navigation", { name: "Repos" }).locator(".project-name"),
-  ).toHaveText(["api", "web"]);
+    page
+      .getByRole("navigation", { name: "Repos" })
+      .getByRole("listitem")
+      .getByRole("button"),
+  ).toHaveText([/^api/, /^web/]);
   await expect(page.getByRole("button", { name: /^New changes/ })).toHaveCount(
     0,
   );

@@ -1,10 +1,6 @@
 import type { ApiContext } from "@diffx/api";
-import {
-  FolderGit2Icon,
-  GitBranchIcon,
-  GitForkIcon,
-  SquareTerminalIcon,
-} from "lucide-react";
+import { GitBranchIcon, GitForkIcon } from "lucide-react";
+import { ContextIcon } from "@/components/context-icon";
 import {
   contextCheckoutLabel,
   contextDetail,
@@ -17,10 +13,9 @@ import {
 /** The open review's repository, branch and worktree; switching lives in the projects drawer. */
 export function ContextIdentity({ current }: { current: ApiContext }) {
   const piped = contextIsPiped(current);
-  const Icon = piped ? SquareTerminalIcon : FolderGit2Icon;
   return (
     <div className="context-identity" title={contextDiagnostics(current)}>
-      <Icon className="size-(--icon-base)" aria-hidden="true" />
+      <ContextIcon piped={piped} size="md" />
       <span className="context-identity-name">
         {piped ? "Piped" : current.name}
       </span>
@@ -33,7 +28,7 @@ export function ContextIdentity({ current }: { current: ApiContext }) {
           <span className="context-identity-separator" aria-hidden="true">
             /
           </span>
-          <GitBranchIcon className="size-(--icon-sm)" aria-hidden="true" />
+          <GitBranchIcon className="size-icon-sm" aria-hidden="true" />
           <span className="context-identity-branch">
             {contextDetail(current)}
           </span>
@@ -46,7 +41,7 @@ export function ContextIdentity({ current }: { current: ApiContext }) {
           aria-label={contextCheckoutLabel(current)}
           title={contextCheckoutLabel(current)}
         >
-          <GitForkIcon className="size-(--icon-sm)" aria-hidden="true" />
+          <GitForkIcon className="size-icon-sm" aria-hidden="true" />
           <span className="context-identity-worktree-name" aria-hidden="true">
             Worktree:{" "}
             {current.worktreeName || current.observation?.worktreeName}

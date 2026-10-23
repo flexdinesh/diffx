@@ -1,3 +1,4 @@
+import { Scrim } from "@/components/scrim";
 import { useReviewState } from "./app-state.tsx";
 import { OutdatedCommentsNotice } from "./CommentsPanel.tsx";
 import { DiffWorkspace } from "./DiffWorkspace.tsx";
@@ -34,13 +35,7 @@ export function App() {
 function SidebarBackdrop() {
   const sidebar = useSidebarState();
   return sidebar.mobile && sidebar.open && sidebar.view === "diff" ? (
-    <button
-      type="button"
-      className="sidebar-backdrop"
-      aria-label="Close review sidebar"
-      tabIndex={-1}
-      onClick={sidebar.closeMobile}
-    />
+    <Scrim label="Close review sidebar" onDismiss={sidebar.closeMobile} />
   ) : null;
 }
 

@@ -1,12 +1,15 @@
 import { api, errorDetail, readBootstrap } from "@diffx/api";
 import { ArrowLeftIcon, UserRoundIcon } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { ErrorState } from "@/components/error-state";
+import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { navigate, useIdentity } from "./identity-context.tsx";
 import { AccountTokens } from "./account-tokens.tsx";
 
-export function AccountButton() {
+/** Rail placement on the panel, or the compact header on the shell canvas. */
+export function AccountButton({ variant }: { variant: "rail" | "shell" }) {
   const { state } = useIdentity();
   if (
     state.status !== "ready" ||
@@ -15,15 +18,15 @@ export function AccountButton() {
   )
     return null;
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      aria-label="Account settings"
-      title={`Account settings · ${state.bootstrap.user.username}`}
+    <IconButton
+      variant={variant}
+      touch
+      label="Account settings"
+      hint={`Account settings · ${state.bootstrap.user.username}`}
       onClick={() => navigate("/settings")}
     >
-      <UserRoundIcon className="size-(--icon-base)" aria-hidden="true" />
-    </Button>
+      <UserRoundIcon aria-hidden="true" />
+    </IconButton>
   );
 }
 
@@ -70,14 +73,19 @@ export function SignIn() {
       <a className="brand" href="/">
         diffx
       </a>
-      <h1>{signup ? "Create your account" : "Sign in"}</h1>
-      <p>Review your collected changes on this server.</p>
+      <h1 className="mb-2 text-xl font-semibold">
+        {signup ? "Create your account" : "Sign in"}
+      </h1>
+      <p className="mb-4 leading-copy text-secondary">
+        Review your collected changes on this server.
+      </p>
       <form className="account-form" onSubmit={submit}>
         <label htmlFor="username">Username</label>
         <Input
           id="username"
           name="username"
           autoComplete="username"
+          touch
           value={username}
           onChange={(event) => setUsername(event.target.value)}
           required
@@ -91,6 +99,7 @@ export function SignIn() {
           name="password"
           type="password"
           autoComplete={signup ? "new-password" : "current-password"}
+          touch
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           required
@@ -98,19 +107,26 @@ export function SignIn() {
           maxLength={128}
           disabled={busy}
         />
-        {signup && <p className="account-hint">Use at least 12 characters.</p>}
-        {error && (
-          <p className="account-error" role="alert">
-            {error}
+        {signup && (
+          <p className="text-sm leading-copy text-secondary">
+            Use at least 12 characters.
           </p>
         )}
-        <Button type="submit" disabled={busy} aria-busy={busy}>
+        {error && <ErrorState message={error} />}
+        <Button
+          type="submit"
+          touch
+          className="mt-2 justify-self-start"
+          disabled={busy}
+          aria-busy={busy}
+        >
           {signup ? "Create account" : "Sign in"}
         </Button>
       </form>
       {signupEnabled && (
         <Button
           variant="link"
+          touch
           disabled={busy}
           onClick={() => {
             setSignup((value) => !value);
@@ -147,27 +163,29 @@ export function AccountSettings() {
   return (
     <div className="account-shell">
       <header className="topbar account-topbar">
-        <Button variant="ghost" onClick={() => navigate("/")}>
+        <Button variant="shell" onClick={() => navigate("/")}>
           <ArrowLeftIcon aria-hidden="true" /> Reviews
         </Button>
         <span className="header-actions">{state.bootstrap.user.username}</span>
       </header>
       <main className="account-page settings-page">
-        <h1>Account settings</h1>
-        <p>
+        <h1 className="mb-2 text-xl font-semibold">Account settings</h1>
+        <p className="mb-4 leading-copy text-secondary">
           Signed in as <strong>{state.bootstrap.user.username}</strong>.
         </p>
         <AccountTokens />
         <PasswordSettings />
-        <section className="account-section" aria-labelledby="session-title">
-          <h2 id="session-title">Browser session</h2>
-          {error && (
-            <p className="account-error" role="alert">
-              {error}
-            </p>
-          )}
+        <section
+          className="mt-8 border-t border-separator pt-6"
+          aria-labelledby="session-title"
+        >
+          <h2 id="session-title" className="mb-2 text-md font-semibold">
+            Browser session
+          </h2>
+          {error && <ErrorState message={error} className="mb-4" />}
           <Button
             variant="outline"
+            touch
             disabled={busy}
             aria-busy={busy}
             onClick={() => void logout()}
@@ -207,9 +225,14 @@ function PasswordSettings() {
     }
   }
   return (
-    <section className="account-section" aria-labelledby="password-title">
-      <h2 id="password-title">Password</h2>
-      <p>
+    <section
+      className="mt-8 border-t border-separator pt-6"
+      aria-labelledby="password-title"
+    >
+      <h2 id="password-title" className="mb-2 text-md font-semibold">
+        Password
+      </h2>
+      <p className="mb-4 leading-copy text-secondary">
         Changing your password signs out every browser session. API tokens
         remain active.
       </p>
@@ -219,6 +242,7 @@ function PasswordSettings() {
           id="current-password"
           type="password"
           autoComplete="current-password"
+          touch
           value={currentPassword}
           onChange={(event) => setCurrent(event.target.value)}
           required
@@ -229,6 +253,7 @@ function PasswordSettings() {
           id="new-password"
           type="password"
           autoComplete="new-password"
+          touch
           minLength={12}
           maxLength={128}
           value={newPassword}
@@ -236,15 +261,15 @@ function PasswordSettings() {
           required
           disabled={busy}
         />
-        <p className="account-hint">Use at least 12 characters.</p>
-        {error && (
-          <p className="account-error" role="alert">
-            {error}
-          </p>
-        )}
+        <p className="text-sm leading-copy text-secondary">
+          Use at least 12 characters.
+        </p>
+        {error && <ErrorState message={error} />}
         <Button
           type="submit"
           variant="outline"
+          touch
+          className="mt-2 justify-self-start"
           disabled={busy}
           aria-busy={busy}
         >

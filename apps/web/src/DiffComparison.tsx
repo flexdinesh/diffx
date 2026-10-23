@@ -1,6 +1,16 @@
-import { Popover } from "@base-ui/react/popover";
 import { InfoIcon, XIcon } from "lucide-react";
+import { IconButton } from "@/components/icon-button";
+import { KeyValue, KeyValueList } from "@/components/key-value-list";
 import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverClose,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useDiffSource } from "./app-state.tsx";
 import { diffComparison } from "./diff-comparison.ts";
 import { useSession } from "./session-context.tsx";
@@ -10,59 +20,48 @@ export function DiffComparison() {
   const { mode, repository } = useDiffSource();
   const comparison = diffComparison(session, mode, repository?.head);
   return (
-    <Popover.Root key={mode}>
-      <Popover.Trigger
-        id="scope-description"
+    <Popover key={mode}>
+      <PopoverTrigger
         aria-label={`Diff comparison: ${comparison.summary}`}
         render={
           <Button
             variant="ghost"
-            size="xs"
-            className="diff-comparison-trigger"
+            size="inline"
+            className="min-w-0 shrink justify-start"
           />
         }
       >
-        <span className="diff-comparison-summary">{comparison.summary}</span>
-        <span className="diff-comparison-mobile-label">Comparison</span>
+        <span className="truncate max-md:hidden">{comparison.summary}</span>
+        <span className="hidden max-md:inline">Comparison</span>
         <InfoIcon aria-hidden="true" />
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Positioner
-          side="top"
-          align="start"
-          sideOffset={8}
-          collisionPadding={16}
-          className="z-50"
-        >
-          <Popover.Popup className="diff-comparison-popup">
-            <div className="diff-comparison-heading">
-              <Popover.Title>Diff comparison</Popover.Title>
-              <Popover.Close
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    aria-label="Close diff comparison"
-                  />
-                }
-              >
-                <XIcon aria-hidden="true" />
-              </Popover.Close>
-            </div>
-            <Popover.Description>{comparison.description}</Popover.Description>
-            {comparison.details.length > 0 && (
-              <dl>
-                {comparison.details.map(({ label, value }) => (
-                  <div key={label}>
-                    <dt>{label}</dt>
-                    <dd>{value}</dd>
-                  </div>
-                ))}
-              </dl>
-            )}
-          </Popover.Popup>
-        </Popover.Positioner>
-      </Popover.Portal>
-    </Popover.Root>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-[min(30rem,calc(100vw-2*var(--space-4)))]"
+      >
+        <PopoverHeader>
+          <div className="flex items-center justify-between gap-3">
+            <PopoverTitle>Diff comparison</PopoverTitle>
+            <PopoverClose
+              render={
+                <IconButton size="icon-xs" label="Close diff comparison">
+                  <XIcon aria-hidden="true" />
+                </IconButton>
+              }
+            />
+          </div>
+          <PopoverDescription>{comparison.description}</PopoverDescription>
+        </PopoverHeader>
+        {comparison.details.length > 0 && (
+          <KeyValueList>
+            {comparison.details.map(({ label, value }) => (
+              <KeyValue key={label} label={label} font="mono">
+                {value}
+              </KeyValue>
+            ))}
+          </KeyValueList>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
