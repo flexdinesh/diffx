@@ -7,9 +7,11 @@ Releases. It checks out the latest `main` when the run starts and marks the
 release as GitHub's latest stable release. Dispatches from other branches are
 skipped.
 
-Full test suites run locally through the pre-push hook. Release verification
-runs static checks, rebuilds generated files, rejects drift, and smoke-tests the
-distribution before publishing, using the same `mise run check:ci` task as PR CI.
+Full test suites run locally through the pre-push hook; CI never runs it.
+Workflows set `HUSKY=0`, and the `release:edge` and `release:tag` pushes pass
+`--no-verify`. Release verification runs static checks, rebuilds generated
+files, rejects drift, and smoke-tests the distribution before publishing, using
+the same `mise run check:ci` task as PR CI.
 Release steps run through `release:*` mise tasks and pnpm scripts; GoReleaser
 is installed only by `mise run release:publish`.
 

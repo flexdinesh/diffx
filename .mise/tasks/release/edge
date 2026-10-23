@@ -24,4 +24,4 @@ if [[ -n "$latest_release" ]] && ! git merge-base --is-ancestor "$latest_release
 fi
 
 edge_commit="$(tools/asset-commit.sh "edge: $candidate" "${parents[@]}")"
-git push --force-with-lease="refs/heads/edge:$current_edge" origin "$edge_commit:refs/heads/edge"
+git push --no-verify --force-with-lease="refs/heads/edge:$current_edge" origin "$edge_commit:refs/heads/edge"
