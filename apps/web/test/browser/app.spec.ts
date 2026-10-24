@@ -1,6 +1,12 @@
 import { type Locator, type Page } from "@playwright/test";
 import { createApiClient } from "@diffx/api";
-import { expect, fileToggle, reviewedToggle, test } from "./fixtures.ts";
+import {
+  expect,
+  fileToggle,
+  reviewedToggle,
+  test,
+  withReviewNavigation,
+} from "./fixtures.ts";
 import { resetFixtureState } from "./fixture-state.ts";
 
 async function resolvedRadius(
@@ -1700,9 +1706,49 @@ test("display controls expose state and persist preferences", async ({
     .toBe("github");
 });
 
+test("a capture shows only its diff: no review navigation, search or switcher", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.locator("#file-count")).not.toHaveText("0");
+  const banner = page.getByRole("banner");
+  // Static piped identity replaces the repository and branch comboboxes.
+  await expect(banner.locator(".context-identity")).toContainText("Piped");
+  await expect(banner.getByRole("combobox")).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Reviews" })).toHaveCount(
+    0,
+  );
+  await expect(page.locator(".stream-column")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Search reviews" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Sync all checkouts" }),
+  ).toHaveCount(0);
+  await page.locator("#viewer").click({ position: { x: 4, y: 4 } });
+  await page.keyboard.press("Control+K");
+  await page.keyboard.press("Meta+K");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // The file sidebar leads the island alone; collapsing it hides the island.
+  await expect(page.locator("#sidebar")).toBeVisible();
+  await page.getByRole("button", { name: "Hide file sidebar" }).click();
+  await expect(page.locator("#sidebar")).toBeHidden();
+  await expect(page.locator(".navigation-island")).toHaveCSS("display", "none");
+  await page.getByRole("button", { name: "Show file sidebar" }).click();
+  await expect(page.locator("#sidebar")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    page.getByRole("button", { name: "Show file sidebar" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /^(?:Show|Hide) reviews$/ }),
+  ).toHaveCount(0);
+});
+
 test("header icons and sidebar tab indicator use design-system sizes", async ({
   page,
 }) => {
+  await withReviewNavigation(page);
   await page.goto("/");
   const brand = page.locator(".topbar .brand");
   const filesToggle = page.getByRole("button", { name: "Hide file sidebar" });
@@ -1720,9 +1766,19 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
     page.getByRole("button", { name: "Delete snapshot", exact: true }),
   ).toHaveCount(0);
   // Desktop shows the review column and the file sidebar together; only the
-  // file sidebar toggles from the header.
+  // file sidebar toggles from the header, which also leads review search.
   await expect(
-    page.getByRole("banner").getByRole("button", { name: /reviews$/ }),
+    page
+      .getByRole("banner")
+      .getByRole("button", { name: /^(?:Show|Hide) reviews$/ }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("banner").getByRole("button", { name: "Search reviews" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Reviews" }).getByRole("button", {
+      name: "Search reviews",
+    }),
   ).toHaveCount(0);
   await expect(filesToggle).toHaveAttribute("aria-expanded", "true");
   const reviews = page.getByRole("navigation", { name: "Reviews" });
@@ -1938,6 +1994,7 @@ test("header actions show a visible hover surface in both themes", async ({
 test("review column and file sidebar resize independently and persist", async ({
   page,
 }) => {
+  await withReviewNavigation(page);
   await page.goto("/");
   const column = page.locator(".stream-column");
   const files = page.locator(".navigation-panel");
@@ -2275,6 +2332,7 @@ test("copy dialog reports clipboard status and restores focus", async ({
 test("drawer aligns its header and retains desktop navigation density", async ({
   page,
 }) => {
+  await withReviewNavigation(page);
   await page.setViewportSize({ width: 1280, height: 844 });
   await page.goto("/");
   await showDiff(page);

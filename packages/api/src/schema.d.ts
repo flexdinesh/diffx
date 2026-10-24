@@ -531,6 +531,11 @@ export interface components {
           csrfToken: null;
           /** @description Whether this process can collect its selected checkouts again through POST /api/v2/collections. */
           collect: boolean;
+          /**
+           * @description What this process serves. `checkouts` reviews discovered checkouts; `capture` reviews one fixed patch (piped stdin or a fixture) and has nothing to switch to.
+           * @enum {string}
+           */
+          input: "checkouts" | "capture";
         }
       | {
           /** @enum {string} */

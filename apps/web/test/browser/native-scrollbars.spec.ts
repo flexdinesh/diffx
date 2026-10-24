@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures.ts";
+import { expect, test, withReviewNavigation } from "./fixtures.ts";
 import { resetFixtureState } from "./fixture-state.ts";
 
 test.use({ launchOptions: { ignoreDefaultArgs: ["--hide-scrollbars"] } });
@@ -7,6 +7,8 @@ test.beforeEach(async ({ request }) => resetFixtureState(request));
 test("diff tracks fill frames and headers align with their gutters", async ({
   page,
 }) => {
+  // Header geometry is measured against the compact "Show reviews" toggle.
+  await withReviewNavigation(page);
   const colorSchemes: ("light" | "dark")[] = ["light", "dark"];
   for (const colorScheme of colorSchemes) {
     await page.emulateMedia({ colorScheme });

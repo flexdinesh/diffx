@@ -37,6 +37,16 @@ type Capabilities struct {
 	Collection       bool
 }
 
+// Input names what a local process serves: discovered checkouts, which it can
+// collect again, or one fixed capture (piped stdin or a fixture) with nothing
+// to switch to. Only checkout processes own collections.
+func (capabilities Capabilities) Input() string {
+	if capabilities.Collection {
+		return "checkouts"
+	}
+	return "capture"
+}
+
 func (options Options) Capabilities() Capabilities {
 	return Capabilities{
 		IngestionEnabled: options.Queue != nil,

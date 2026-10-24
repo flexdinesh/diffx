@@ -294,13 +294,15 @@ navigation, draft, review, reviewed files, and collapse state. Collapsed diff
 files (per stream and scope), closed tree folders and Hide reviewed files (per
 stream) persist in `sessionStorage`, so reloads and newer snapshots keep them within a tab; piped
 snapshots key by context. One draft persists
-across scopes. Context selection uses the Reviews column (`ProjectsNav.tsx`),
-its inbox overlay (`StreamInbox.tsx`), the header repository and branch menus
-(`ContextIdentity.tsx`) and the popup picker (Cmd/Ctrl+K or the column's
-“Search reviews” magnifier); `project-nav.ts` owns their grouping, ordering and
-facet rules. Selecting a stream keeps the column and file sidebar open.
-`use-stream-nav.ts`, provided by `stream-nav-context.tsx`, owns the column's
-rail/list state, width, grouping, inbox visibility and filters.
+across scopes. Context selection uses the Reviews column and rail
+(`ProjectsNav.tsx`), the header repository and branch comboboxes
+(`ContextIdentity.tsx`) and the popup picker (Cmd/Ctrl+K or the header's
+“Search reviews” magnifier); `project-nav.ts` owns their grouping, ordering,
+latest-stream and branch-filter rules. Selecting a stream keeps the column and
+file sidebar open. `use-stream-nav.ts`, provided by `stream-nav-context.tsx`,
+owns the column's rail/list state, width and grouping. `shell-policy.ts`
+resolves review navigation once from the bootstrap (`input: "capture"` hides
+all of it); components read that policy, never the deployment mode.
 `use-sidebar.ts` owns file sidebar visibility and width and which mobile drawer
 is open, with its focus. `Navigation.tsx` owns the island and both resize
 handles. The selected context scopes every request. The session owner exposes
@@ -337,8 +339,8 @@ uses catalog `lastChangedAt`, falling back to captured collection time, with
 stable stream/context identity ties. Repositories use their most active visible
 stream. Startup and root selection follow the same ordering. Collection triggers
 are unchanged; no periodic collection or Git watcher is scheduled.
-The “Switch review” picker first selects a repository
-or Piped, then an immutable observation. Repository observations retain branch,
+The “Switch review” picker first selects a repository,
+then an immutable observation. Repository observations retain branch,
 worktree, source/run, comparison, and collection-time metadata. Submission/session
 associations remain separate from original snapshot metadata; catalog API filters
 include `harness`, `sessionId`, `sessionName` and legacy `runId`. Global search is labeled

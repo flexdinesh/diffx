@@ -72,3 +72,28 @@ export function fileToggle(scope: Page | Locator, state?: ToggleState) {
     ...state,
   });
 }
+
+/**
+ * The fixture server is a capture (one fixed patch), so the shell hides review
+ * navigation. Serving a checkout-process bootstrap restores the Reviews
+ * column, header comboboxes and search for tests that mock several contexts.
+ * Later `page.route` registrations take precedence, so tests can still
+ * override it.
+ */
+export async function withReviewNavigation(
+  page: Page,
+  { collect = false }: { collect?: boolean } = {},
+) {
+  await page.route("**/api/v2/bootstrap", (route) =>
+    route.fulfill({
+      json: {
+        mode: "local",
+        signupEnabled: false,
+        user: null,
+        csrfToken: null,
+        collect,
+        input: "checkouts",
+      },
+    }),
+  );
+}

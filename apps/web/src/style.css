@@ -196,6 +196,14 @@
 .stream-column:has(+ .navigation-panel[hidden]) {
   border-radius: var(--radius-lg);
 }
+/* A capture has no review column; with its file sidebar collapsed nothing
+   remains, so the island hides (still mounted) and the review fills the row. */
+.navigation-island[data-empty] {
+  display: none;
+}
+.navigation-island[data-empty] + .workspace {
+  margin-left: 0;
+}
 .navigation-panel {
   display: flex;
   flex: 0 0 var(--sidebar-width);
@@ -251,39 +259,6 @@
   background: var(--panel);
   border-radius: inherit;
 }
-/* Covers the review island, which stays mounted and inert underneath. */
-.stream-inbox {
-  position: absolute;
-  inset: 0;
-  z-index: var(--layer-sidebar);
-  display: flex;
-  flex-direction: column;
-  background: var(--bg);
-}
-.inbox-body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  width: 100%;
-  max-width: var(--reading-width);
-  padding: var(--space-3) var(--page-gutter) var(--space-4);
-}
-.inbox-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.inbox-footer {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  min-height: var(--statusbar-height);
-  border-top: 1px solid var(--border);
-  padding: 0 var(--page-gutter);
-  background: var(--panel);
-  color: var(--muted);
-  font: var(--text-xs) var(--font-mono);
-}
 .projects-scroll {
   flex: 1;
   min-height: 0;
@@ -301,7 +276,6 @@
 .stream-meta {
   padding-left: calc(var(--icon-sm) + var(--space-1-5));
 }
-.new-changes-menu,
 .context-switch-menu {
   width: min(22rem, calc(100vw - 2 * var(--page-gutter)));
 }
@@ -315,6 +289,11 @@
   background: var(--panel);
   border-left: 1px solid var(--border-muted);
   border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+}
+/* Without a review column the file sidebar leads the island alone. */
+.navigation-panel:first-child .sidebar {
+  border-left: 0;
+  border-radius: var(--radius-lg);
 }
 .file-filter-row {
   display: flex;

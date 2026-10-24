@@ -20,6 +20,15 @@ import {
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxSearch,
+  ComboboxTrigger,
+} from "@/components/ui/combobox";
+import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
@@ -603,6 +612,38 @@ function Overlays() {
   );
 }
 
+const branches = ["main", "feat/rate-limit", "fix/auth", "docs/release"];
+
+function Comboboxes() {
+  return (
+    <div className="grid justify-items-start">
+      <Combobox items={branches} defaultValue="main" defaultOpen autoHighlight>
+        <ComboboxTrigger
+          render={
+            <Button variant="outline" aria-label="Branch main. Switch branch">
+              main
+            </Button>
+          }
+        />
+        <ComboboxContent className="w-64">
+          <ComboboxSearch
+            label="Filter branches"
+            placeholder="Filter branches…"
+          />
+          <ComboboxEmpty>No matching branches</ComboboxEmpty>
+          <ComboboxList aria-label="Branches">
+            {(branch: string) => (
+              <ComboboxItem key={branch} value={branch}>
+                {branch}
+              </ComboboxItem>
+            )}
+          </ComboboxList>
+        </ComboboxContent>
+      </Combobox>
+    </div>
+  );
+}
+
 function Dialogs() {
   const [open, setOpen] = useState(true);
   return (
@@ -626,6 +667,8 @@ export function Gallery({ page }: { page: string | null }) {
       </h1>
       {page === "overlays" ? (
         <Overlays />
+      ) : page === "combobox" ? (
+        <Comboboxes />
       ) : page === "dialog" ? (
         <Dialogs />
       ) : (

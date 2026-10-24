@@ -20,6 +20,7 @@ func localBootstrap(capabilities Capabilities) http.HandlerFunc {
 			User          *string `json:"user"`
 			CSRFToken     *string `json:"csrfToken"`
 			Collect       bool    `json:"collect"`
-		}{Mode: "local", Collect: capabilities.Collection})
+			Input         string  `json:"input"`
+		}{Mode: "local", Collect: capabilities.Collection, Input: capabilities.Input()})
 	}
 }
