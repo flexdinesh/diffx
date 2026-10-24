@@ -9,7 +9,6 @@ import {
   ProjectsToggle,
 } from "./ProjectsNav.tsx";
 import { useCatalog } from "./session-context.tsx";
-import { ThemeButton } from "./ThemeButton.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
 
 export function CurrentContext() {
@@ -50,7 +49,7 @@ export function SyncButton({
 
 /**
  * The app header shared by the review and its loading/empty shell: brand,
- * current context, then trailing actions ending with account and theme.
+ * current context, then trailing actions ending with account.
  */
 export function Topbar({
   lead,
@@ -61,7 +60,7 @@ export function Topbar({
   lead?: ReactNode;
   /** Content after the current context, e.g. the review heading. */
   children?: ReactNode;
-  /** Actions placed before account and theme. */
+  /** Actions placed before account. */
   actions?: ReactNode;
 }) {
   const { mobile } = useSidebarState();
@@ -76,7 +75,6 @@ export function Topbar({
         <NewChangesButton />
         {actions}
         <AccountButton variant="shell" />
-        <ThemeButton />
       </div>
     </header>
   );

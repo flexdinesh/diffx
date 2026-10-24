@@ -1976,6 +1976,10 @@ test("local first launch waits for collection with an empty catalog", async ({
   await expect(status).toContainText("Collecting latest changes");
   await expect(status).toHaveAttribute("aria-busy", "true");
   await expect(status.locator(".diff-skeleton")).toBeVisible();
+  // Themes stay reachable while the review loads.
+  await expect(
+    status.getByRole("button", { name: "Settings", exact: true }),
+  ).toBeVisible();
   const loadingBounds = await status.boundingBox();
   if (!loadingBounds) throw new Error("Missing loading workspace");
   await page.emulateMedia({ reducedMotion: "reduce" });

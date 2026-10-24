@@ -59,6 +59,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  ChoiceList,
+  ChoiceListGroup,
+  ChoiceListItem,
+} from "@/components/choice-list";
 import { CollapsibleSection } from "@/components/collapsible-section";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ContextIcon } from "@/components/context-icon";
@@ -76,6 +81,7 @@ import { SegmentedControl } from "@/components/segmented-control";
 import { Shortcut } from "@/components/shortcut";
 import { SplitButton } from "@/components/split-button";
 import { StatusDot } from "@/components/status-dot";
+import { ThemeSwatch } from "@/components/theme-swatch";
 
 const colors = [
   ["bg", "bg-bg"],
@@ -476,6 +482,35 @@ function Components() {
             </div>
           </CollapsibleSection>
         </div>
+      </Section>
+
+      <Section id="choices" title="Choice list and theme swatches">
+        <ChoiceList
+          aria-label="Theme"
+          defaultValue="dark"
+          className="w-full max-w-(--drawer-width)"
+        >
+          <ChoiceListGroup label="Diffx">
+            <ChoiceListItem value="system">
+              <ThemeSwatch palettes={["diffx-light", "diffx-dark"]} />
+              System
+            </ChoiceListItem>
+            <ChoiceListItem value="dark">
+              <ThemeSwatch palettes={["diffx-dark"]} />
+              Dark
+            </ChoiceListItem>
+          </ChoiceListGroup>
+          <ChoiceListGroup label="Omarchy">
+            <ChoiceListItem value="tokyo-night">
+              <ThemeSwatch palettes={["tokyo-night"]} />
+              Tokyo Night
+            </ChoiceListItem>
+            <ChoiceListItem value="flexoki-light">
+              <ThemeSwatch palettes={["flexoki-light"]} />
+              Flexoki Light
+            </ChoiceListItem>
+          </ChoiceListGroup>
+        </ChoiceList>
       </Section>
 
       <Section id="states" title="States">

@@ -352,8 +352,8 @@ repository grouping. Unavailable entries are disabled and skipped during keyboar
 navigation. Filter selections persist while navigating and reopening the picker.
 Switching disposes the previous workspace's request ownership and resets transient
 state.
-The compact header keeps Theme at its trailing edge and exposes no snapshot
-delete action. Snapshot deletion through the API removes its stored diff scopes,
+The compact header exposes no snapshot delete action; theme choice lives in
+the status bar's Settings popover. Snapshot deletion through the API removes its stored diff scopes,
 comments, and reviewed-file marks.
 Deletion preserves stream freshness history; older snapshots remain stale.
 It leaves Git files untouched, and a new collection can create a review again.

@@ -15,15 +15,16 @@ function PopoverClose(props: PopoverPrimitive.Close.Props) {
 }
 
 // Anchored detail surfaces such as server status and diff comparison.
+// `list` caps a long choice list (settings) so it scrolls inside the popover.
 function PopoverContent({
   className,
+  size = "default",
   align = "end",
   alignOffset = 0,
   side = "top",
   sideOffset = 8,
   ...props
-}: PopoverPrimitive.Popup.Props &
-  Pick<
+}: PopoverPrimitive.Popup.Props & { size?: "default" | "list" } & Pick<
     PopoverPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset"
   >) {
@@ -41,6 +42,7 @@ function PopoverContent({
           data-slot="popover-content"
           className={cn(
             "flex max-h-(--available-height) w-[min(16rem,calc(100vw-2*var(--space-4)))] flex-col gap-3 overflow-y-auto rounded-control bg-raised p-3 text-sm text-fg shadow-overlay ring-1 ring-border outline-none",
+            size === "list" && "max-h-[min(24rem,var(--available-height))]",
             className,
           )}
           {...props}

@@ -12,6 +12,7 @@ const sections = [
   "fields",
   "card",
   "rows",
+  "choices",
   "states",
 ] as const;
 

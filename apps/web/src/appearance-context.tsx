@@ -7,13 +7,18 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { readDiffTheme, readLineDiffType } from "./display-options.ts";
+import {
+  CODE_THEME_STORAGE_KEY,
+  readLineDiffType,
+  savedDiffTheme,
+} from "./display-options.ts";
 import { save, saved } from "./preferences.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
 import {
   readThemePreference,
   resolveTheme,
   THEME_STORAGE_KEY,
+  themePalette,
 } from "./theme.ts";
 
 function useAppearanceState(mobile: boolean) {
@@ -30,10 +35,9 @@ function useAppearanceState(mobile: boolean) {
     () => window.matchMedia("(prefers-color-scheme: dark)").matches,
   );
   const theme = resolveTheme(themePreference, systemDark);
+  const palette = themePalette(themePreference);
   const [wrap, setWrap] = useState(() => saved("wrap") === "true");
-  const [diffTheme, setDiffTheme] = useState(() =>
-    readDiffTheme(saved("diff-theme")),
-  );
+  const [diffTheme, setDiffTheme] = useState(() => savedDiffTheme(saved));
   const [lineDiffType, setLineDiffType] = useState(() =>
     readLineDiffType(saved("line-diff-type")),
   );
@@ -45,8 +49,11 @@ function useAppearanceState(mobile: boolean) {
     return () => query.removeEventListener("change", update);
   }, []);
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    if (palette) root.dataset.palette = palette;
+    else delete root.dataset.palette;
+  }, [theme, palette]);
   useEffect(() => {
     save(THEME_STORAGE_KEY, themePreference);
   }, [themePreference]);
@@ -57,7 +64,7 @@ function useAppearanceState(mobile: boolean) {
     save("wrap", String(wrap));
   }, [wrap]);
   useEffect(() => {
-    save("diff-theme", diffTheme);
+    save(CODE_THEME_STORAGE_KEY, diffTheme);
   }, [diffTheme]);
   useEffect(() => {
     save("line-diff-type", lineDiffType);

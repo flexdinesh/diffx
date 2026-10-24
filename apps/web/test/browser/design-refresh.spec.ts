@@ -1,6 +1,7 @@
 import { type Page } from "@playwright/test";
 import { expect, fileToggle, reviewedToggle, test } from "./fixtures.ts";
 import { resetFixtureState } from "./fixture-state.ts";
+import { THEMES, themePalette } from "../../src/theme.ts";
 
 test.beforeEach(async ({ request }) => resetFixtureState(request));
 
@@ -132,7 +133,7 @@ test("view options expose secondary display settings and persist them", async ({
     menu.getByRole("menuitemradio", { name: "Words", exact: true }),
   ).toHaveAttribute("aria-checked", "true");
   await expect(
-    menu.getByRole("menuitemradio", { name: "Pierre" }),
+    menu.getByRole("menuitemradio", { name: "Match app theme" }),
   ).toHaveAttribute("aria-checked", "true");
 
   await wrap.click();
@@ -432,15 +433,20 @@ test("bulk comment deletion selects a status and defaults to all", async ({
   await expect(removeOptions).toHaveCount(0);
 });
 
-test("light and dark themes retain readable text and visible control boundaries", async ({
+test("every theme retains readable text and visible control boundaries", async ({
   page,
 }) => {
   await page.goto("/");
 
-  for (const theme of ["light", "dark"]) {
-    await page.locator("html").evaluate((element, value) => {
-      element.dataset.theme = value;
-    }, theme);
+  for (const theme of THEMES.filter(({ id }) => id !== "system")) {
+    await page.locator("html").evaluate(
+      (element, { mode, palette }) => {
+        element.dataset.theme = mode;
+        if (palette) element.dataset.palette = palette;
+        else delete element.dataset.palette;
+      },
+      { mode: theme.mode, palette: themePalette(theme.id) },
+    );
     const contrast = await page.evaluate(() => {
       const rgb = (value: string) => {
         const channels = value
@@ -485,6 +491,9 @@ test("light and dark themes retain readable text and visible control boundaries"
       const controlBorder = token("border-control");
       const hover = token("hover");
       const selected = token("accent-bg");
+      const surfaces = ["bg", "panel", "surface-raised"].map(token);
+      const onSurfaces = (name: string) =>
+        Math.min(...surfaces.map((surface) => ratio(token(name), surface)));
       const fileHints = ["file-code", "file-config"].flatMap((name) => [
         ratio(token(name), hover),
         ratio(token(name), selected),
@@ -494,20 +503,40 @@ test("light and dark themes retain readable text and visible control boundaries"
         ratio(token("warning-border"), token("warning-bg")),
         ratio(token("error-border"), token("error-bg")),
       ];
-      probe.remove();
-      return {
+      const result = {
         text: ratio(root.color, root.backgroundColor),
         control: ratio(controlBorder, root.backgroundColor),
         hoverControl: ratio(controlBorder, hover),
         fileHint: Math.min(...fileHints),
         statusBorder: Math.min(...statusBorders),
+        secondary: Math.min(onSurfaces("text-secondary"), onSurfaces("muted")),
+        accent: Math.min(
+          onSurfaces("accent"),
+          ratio(token("accent"), selected),
+        ),
+        onAccent: ratio(token("on-accent"), token("accent")),
+        status: Math.min(
+          ...["success", "warning", "error"].map((name) =>
+            Math.min(onSurfaces(name), ratio(token(name), token(`${name}-bg`))),
+          ),
+        ),
       };
+      probe.remove();
+      return result;
+    });
+    test.info().annotations.push({
+      type: "contrast",
+      description: `${theme.id}: ${JSON.stringify(contrast)}`,
     });
     expect(contrast.text).toBeGreaterThanOrEqual(4.5);
     expect(contrast.control).toBeGreaterThanOrEqual(3);
     expect(contrast.hoverControl).toBeGreaterThanOrEqual(3);
     expect(contrast.fileHint).toBeGreaterThanOrEqual(4.5);
     expect(contrast.statusBorder).toBeGreaterThanOrEqual(3);
+    expect(contrast.secondary).toBeGreaterThanOrEqual(4.5);
+    expect(contrast.accent).toBeGreaterThanOrEqual(4.5);
+    expect(contrast.onAccent).toBeGreaterThanOrEqual(4.5);
+    expect(contrast.status).toBeGreaterThanOrEqual(4.5);
   }
 });
 

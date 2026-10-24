@@ -4,7 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const listRowVariants = cva(
-  "flex w-full min-w-0 min-h-control-small items-center gap-1.5 rounded-control px-1 py-0.5 text-left text-sm text-fg no-underline hover:bg-hover aria-[current=page]:bg-selected aria-[current=page]:text-accent aria-[current=true]:bg-selected aria-[current=true]:text-accent aria-selected:bg-selected disabled:cursor-not-allowed disabled:text-secondary disabled:hover:bg-transparent [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-icon-sm",
+  "flex w-full min-w-0 min-h-control-small items-center gap-1.5 rounded-control px-1 py-0.5 text-left text-sm text-fg no-underline hover:bg-hover aria-[current=page]:bg-selected aria-[current=page]:text-accent aria-[current=true]:bg-selected aria-[current=true]:text-accent aria-selected:bg-selected aria-checked:bg-selected aria-checked:text-accent disabled:cursor-not-allowed disabled:text-secondary disabled:hover:bg-transparent [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-icon-sm",
   {
     variants: {
       // Paths and code identifiers stay mono; names of repos and branches sans.
@@ -26,8 +26,8 @@ const listRowVariants = cva(
 
 /**
  * The one navigable row: file tree entries, repos and streams, picker and menu
- * results. Current (`aria-current`) and selected (`aria-selected`) rows share
- * the accent fill. `depth` indents nested tree rows.
+ * results, choice-list options. Current (`aria-current`), selected
+ * (`aria-selected`) and checked (`aria-checked`) rows share the accent fill. `depth` indents nested tree rows.
  */
 function ListRow({
   font,

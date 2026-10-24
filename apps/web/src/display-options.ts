@@ -3,14 +3,25 @@ import type {
   SupportedLanguages,
   ThemesType,
 } from "@pierre/diffs";
+import { themeCode, type ThemePreference } from "./theme.ts";
 
-export type DiffTheme = "pierre" | "github" | "vitesse" | "catppuccin";
+export type DiffTheme =
+  | "match"
+  | "pierre"
+  | "github"
+  | "vitesse"
+  | "catppuccin";
+
+export const CODE_THEME_STORAGE_KEY = "code-theme";
+const LEGACY_CODE_THEME_STORAGE_KEY = "diff-theme";
 
 export const DIFF_THEMES: readonly {
   value: DiffTheme;
   label: string;
-  themes: ThemesType;
+  /** Omitted when the code theme follows the app theme. */
+  themes?: ThemesType;
 }[] = [
+  { value: "match", label: "Match app theme" },
   {
     value: "pierre",
     label: "Pierre",
@@ -45,13 +56,27 @@ export const LINE_DIFF_TYPES: readonly {
 
 export function readDiffTheme(value: string | null): DiffTheme {
   switch (value) {
+    case "pierre":
     case "github":
     case "vitesse":
     case "catppuccin":
       return value;
     default:
-      return "pierre";
+      return "match";
   }
+}
+
+/**
+ * Reads the saved code theme. The legacy key always saved its Pierre default,
+ * which Diffx themes match, so only its other choices carry over as overrides.
+ */
+export function savedDiffTheme(
+  read: (key: string) => string | null,
+): DiffTheme {
+  const current = read(CODE_THEME_STORAGE_KEY);
+  if (current !== null) return readDiffTheme(current);
+  const legacy = read(LEGACY_CODE_THEME_STORAGE_KEY);
+  return legacy === "pierre" ? "match" : readDiffTheme(legacy);
 }
 
 export function readLineDiffType(value: string | null): LineDiffTypes {
@@ -65,10 +90,13 @@ export function readLineDiffType(value: string | null): LineDiffTypes {
   }
 }
 
-export function themesFor(value: DiffTheme): ThemesType {
+export function themesFor(
+  value: DiffTheme,
+  appTheme: ThemePreference,
+): ThemesType {
   return (
     DIFF_THEMES.find((option) => option.value === value)?.themes ??
-    DIFF_THEMES[0]?.themes ?? { light: "pierre-light", dark: "pierre-dark" }
+    themeCode(appTheme)
   );
 }
 

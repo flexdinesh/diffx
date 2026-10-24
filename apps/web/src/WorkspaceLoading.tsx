@@ -1,5 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAppearance } from "./appearance-context.tsx";
+import { SettingsButton } from "./SettingsButton.tsx";
 
 const lines = [
   "medium",
@@ -113,6 +114,9 @@ export function WorkspaceLoading({ collecting }: { collecting: boolean }) {
       <div className="loading-status">
         <h1>{collecting ? "Collecting latest changes" : "Loading review"}</h1>
         <p>{collecting ? "Reading checkouts…" : "Reading stored changes…"}</p>
+        <span className="ml-auto flex items-center">
+          <SettingsButton />
+        </span>
       </div>
     </>
   );

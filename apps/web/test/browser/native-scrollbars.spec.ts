@@ -80,22 +80,24 @@ test("diff tracks fill frames and headers align with their gutters", async ({
       await expect
         .poll(() =>
           files.first().evaluate((element) => {
-            // Theme anchors to the shell; diff actions retain their measured gutter.
-            const theme = Array.from(
+            // Trailing header actions anchor to the shell; diff actions
+            // retain their measured gutter.
+            const trailing = Array.from(
               document.querySelectorAll(".header-actions > *"),
             )
               .filter((action) => action.getClientRects().length > 0)
               .at(-1);
             const toggle = document.querySelector("#toggle-all-files");
             const header = document.querySelector(".topbar");
-            if (!theme || !toggle || !header)
-              throw new Error("Missing shell actions");
+            if (!toggle || !header) throw new Error("Missing shell actions");
             const edge = element.getBoundingClientRect().right;
             return Math.max(
-              Math.abs(
-                theme.getBoundingClientRect().right -
-                  header.getBoundingClientRect().right,
-              ),
+              trailing
+                ? Math.abs(
+                    trailing.getBoundingClientRect().right -
+                      header.getBoundingClientRect().right,
+                  )
+                : 0,
               Math.abs(toggle.getBoundingClientRect().right - edge),
             );
           }),
@@ -135,16 +137,17 @@ test("diff tracks fill frames and headers align with their gutters", async ({
     }
     const header = await page.locator(".topbar").boundingBox();
     const toolbar = await page.locator(".toolbar").boundingBox();
-    const theme = await page
-      .getByRole("button", { name: /^Theme:/ })
+    const action = await page
+      .locator(".topbar")
+      .getByRole("button", { name: "Show reviews" })
       .boundingBox();
     if (!header) throw new Error("Missing header");
     // The wrapping toolbar keeps a 44px control row plus its bottom border.
     expect(toolbar?.height).toBe(header.height + 1);
     for (const id of ["#view-options", "#toggle-all-files"]) {
       const button = await page.locator(id).boundingBox();
-      expect(button?.width).toBe(theme?.width);
-      expect(button?.height).toBe(theme?.height);
+      expect(button?.width).toBe(action?.width);
+      expect(button?.height).toBe(action?.height);
     }
   }
 });

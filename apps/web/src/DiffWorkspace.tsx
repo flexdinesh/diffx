@@ -49,6 +49,7 @@ import {
   type CommentAnnotation,
 } from "./review-model.ts";
 import { ServerStatus } from "./ServerStatus.tsx";
+import { SettingsButton } from "./SettingsButton.tsx";
 import { WorkspaceFeedback } from "./WorkspaceFeedback.tsx";
 import { capabilityEnabled, useSession } from "./session-context.tsx";
 
@@ -173,7 +174,10 @@ export function DiffWorkspace() {
   } = useDiffSource();
   const session = useSession();
   const { id: contextId, capabilities } = session;
-  const { theme, diffTheme, lineDiffType, layout, wrap } = useAppearance();
+  const { theme, themePreference, diffTheme, lineDiffType, layout, wrap } =
+    useAppearance();
+  // Stable per choice: theme definitions are module constants.
+  const codeThemes = themesFor(diffTheme, themePreference);
   const { collapsed, setCollapsed } = useDiffCollapse();
   const {
     files,
@@ -206,9 +210,9 @@ export function DiffWorkspace() {
   useEffect(() => {
     if (!workerPool) return;
     void workerPool
-      .setRenderOptions({ theme: themesFor(diffTheme), lineDiffType })
+      .setRenderOptions({ theme: codeThemes, lineDiffType })
       .catch((error: unknown) => console.error(error));
-  }, [workerPool, diffTheme, lineDiffType]);
+  }, [workerPool, codeThemes, lineDiffType]);
   // Virtual scroll offsets must use the same row height and spacing as our CSS.
   // Observe a sizing probe so browser font preferences also stay in sync.
   useLayoutEffect(() => {
@@ -449,7 +453,7 @@ export function DiffWorkspace() {
   }, [commentNavigationTarget, viewer]);
   const options = useMemo<CodeViewReactOptions<CommentAnnotation, undefined>>(
     () => ({
-      theme: themesFor(diffTheme),
+      theme: codeThemes,
       themeType: theme,
       diffStyle: layout,
       lineDiffType,
@@ -646,7 +650,7 @@ export function DiffWorkspace() {
     [
       contextId,
       theme,
-      diffTheme,
+      codeThemes,
       lineDiffType,
       layout,
       wrap,
@@ -886,7 +890,10 @@ export function DiffWorkspace() {
               </>
             )}
           </span>
-          <ServerStatus />
+          <span className="flex items-center gap-1">
+            <ServerStatus />
+            <SettingsButton />
+          </span>
         </span>
       </footer>
     </main>

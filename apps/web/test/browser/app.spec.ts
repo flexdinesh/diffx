@@ -1552,47 +1552,102 @@ test("inline comments use a distinct structured surface while sidebar comments r
   expect(copyHoverBackground).not.toBe(copyRestingBackground);
 });
 
-test("theme picker follows system and persists explicit choices", async ({
+test("settings theme picker follows system, applies Omarchy palettes and persists", async ({
   page,
 }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   await page.addInitScript(() => localStorage.setItem("theme", "light"));
   await page.goto("/");
+  const html = page.locator("html");
+  const savedTheme = () =>
+    page.evaluate(() => localStorage.getItem("theme-v2"));
+  const background = () =>
+    page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 
-  const theme = page.getByRole("button", { name: "Theme: System" });
-  await expect(theme).toBeVisible();
-  await expect(theme.locator("svg")).toHaveClass(/lucide-monitor/);
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("theme-v2")))
-    .toBe("system");
+  await expect(page.getByRole("button", { name: /^Theme:/ })).toHaveCount(0);
+  const settings = page
+    .locator(".main-footer")
+    .getByRole("button", { name: "Settings", exact: true });
+  await expect(settings).toBeVisible();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await expect(html).not.toHaveAttribute("data-palette");
+  await expect.poll(savedTheme).toBe("system");
 
-  await theme.click();
-  await page.getByRole("menuitemradio", { name: "Light" }).click();
+  await settings.click();
+  const themes = page.getByRole("radiogroup", { name: "Theme" });
+  await expect(themes.getByRole("radio")).toHaveCount(25);
+  await expect(themes.getByRole("group", { name: "Diffx" })).toBeVisible();
+  await expect(themes.getByRole("group", { name: "Omarchy" })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Theme: Light" }).locator("svg"),
-  ).toHaveClass(/lucide-sun/);
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("theme-v2")))
-    .toBe("light");
+    themes.getByRole("radio", { name: "System", exact: true }),
+  ).toBeChecked();
 
-  await page.getByRole("button", { name: "Theme: Light" }).click();
-  await page.getByRole("menuitemradio", { name: "System" }).click();
+  await themes.getByRole("radio", { name: "Light", exact: true }).click();
+  await expect(html).toHaveAttribute("data-theme", "light");
+  await expect.poll(savedTheme).toBe("light");
+  // Arrow keys move and select, like native radios.
+  await page.keyboard.press("ArrowDown");
   await expect(
-    page.getByRole("button", { name: "Theme: System" }).locator("svg"),
-  ).toHaveClass(/lucide-monitor/);
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await page.emulateMedia({ colorScheme: "light" });
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    themes.getByRole("radio", { name: "Dark", exact: true }),
+  ).toBeChecked();
+  await expect(html).toHaveAttribute("data-theme", "dark");
 
-  await page.getByRole("button", { name: "Theme: System" }).click();
-  await page.getByRole("menuitemradio", { name: "Dark" }).click();
+  await themes.getByRole("radio", { name: "Tokyo Night" }).click();
+  await expect(html).toHaveAttribute("data-palette", "tokyo-night");
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await expect.poll(background).toBe("rgb(26, 27, 38)");
+  await expect.poll(savedTheme).toBe("tokyo-night");
+  await page.keyboard.press("Escape");
+  await expect(themes).toBeHidden();
+  await expect(settings).toBeFocused();
+
+  // The boot script restores the palette before the app renders.
   await page.reload();
-  const darkTheme = page.getByRole("button", { name: "Theme: Dark" });
-  await expect(darkTheme).toBeVisible();
-  await expect(darkTheme.locator("svg")).toHaveClass(/lucide-moon/);
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(html).toHaveAttribute("data-palette", "tokyo-night");
+  await expect.poll(background).toBe("rgb(26, 27, 38)");
+
+  // A light palette keeps its mode regardless of the system preference.
+  await settings.click();
+  await themes.getByRole("radio", { name: "Flexoki Light" }).click();
+  await expect(html).toHaveAttribute("data-palette", "flexoki-light");
+  await expect(html).toHaveAttribute("data-theme", "light");
+
+  await themes.getByRole("radio", { name: "System", exact: true }).click();
+  await expect(html).not.toHaveAttribute("data-palette");
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(html).toHaveAttribute("data-theme", "light");
+});
+
+test("code theme matches the app theme until overridden", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("theme-v2", "hackerman");
+    localStorage.setItem("diff-theme", "pierre");
+  });
+  await page.goto("/");
+  await showDiff(page);
+  // Generated palettes color code through tokens.css syntax variables.
+  const tokenStyles = () =>
+    page
+      .locator("diffs-container")
+      .first()
+      .evaluate((host) =>
+        Array.from(
+          host.shadowRoot?.querySelectorAll("span[style]") ?? [],
+          (span) => span.getAttribute("style") ?? "",
+        ).join(" "),
+      );
+  await expect.poll(tokenStyles).toContain("var(--diffs-token-keyword)");
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("code-theme")))
+    .toBe("match");
+
+  await page.getByRole("button", { name: "View options" }).click();
+  await expect(
+    page.getByRole("menuitemradio", { name: "Match app theme" }),
+  ).toBeChecked();
+  await page.getByRole("menuitemradio", { name: "GitHub" }).click();
+  await expect.poll(tokenStyles).not.toContain("var(--diffs-token-keyword)");
 });
 
 test("display controls expose state and persist preferences", async ({
@@ -1641,7 +1696,7 @@ test("display controls expose state and persist preferences", async ({
   await viewOptions.click();
   await page.getByRole("menuitemradio", { name: "GitHub" }).click();
   await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("diff-theme")))
+    .poll(() => page.evaluate(() => localStorage.getItem("code-theme")))
     .toBe("github");
 });
 
@@ -1656,9 +1711,11 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
   await expect(
     page.getByRole("navigation", { name: "Views", exact: true }),
   ).toHaveCount(0);
+  // Theme lives in Settings at the status bar's trailing edge.
+  await expect(page.getByRole("button", { name: /^Theme:/ })).toHaveCount(0);
   await expect(
-    page.locator(".topbar .header-actions > :last-child"),
-  ).toHaveAccessibleName(/^Theme:/);
+    page.locator(".main-footer .footer-details > :last-child > :last-child"),
+  ).toHaveAccessibleName("Settings");
   await expect(
     page.getByRole("button", { name: "Delete snapshot", exact: true }),
   ).toHaveCount(0);
@@ -1725,10 +1782,10 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
       return element;
     };
     const railViewButton = find("#reviews-expand");
-    const themeElement = find(".topbar [aria-label^='Theme:']");
+    const headerElement = find(".topbar [aria-label='Hide file sidebar']");
     const rail = find(".stream-rail").getBoundingClientRect();
     const railView = railViewButton.getBoundingClientRect();
-    const themeButton = themeElement.getBoundingClientRect();
+    const headerButton = headerElement.getBoundingClientRect();
     const indicator = getComputedStyle(tab, "::after");
     const colorProbe = document.createElement("span");
     colorProbe.style.color = "var(--accent)";
@@ -1739,7 +1796,7 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
       identity: size(".context-identity svg"),
       viewOptions: size("#view-options svg"),
       refresh: size("[aria-label='Retry loading changes'] svg"),
-      theme: size(".topbar [aria-label^='Theme:'] svg"),
+      headerIcon: size(".topbar [aria-label='Hide file sidebar'] svg"),
       view: size("#reviews-expand svg"),
       chromeStrokes: Array.from(
         document.querySelectorAll(
@@ -1760,17 +1817,17 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
       railWidth: rail.width,
       railViewSize: [railView.width, railView.height],
       railViewInset: railView.left - rail.left,
-      headerButtonSize: [themeButton.width, themeButton.height],
-      headerButtonInset: themeButton.top - topbarBox.top,
+      headerButtonSize: [headerButton.width, headerButton.height],
+      headerButtonInset: headerButton.top - topbarBox.top,
       railViewRadius: getComputedStyle(railViewButton).borderRadius,
-      headerButtonRadius: getComputedStyle(themeElement).borderRadius,
+      headerButtonRadius: getComputedStyle(headerElement).borderRadius,
       accent,
     };
   });
 
   expect(styles).toMatchObject({
     refresh: "16px",
-    theme: "16px",
+    headerIcon: "16px",
     view: "16px",
     tabBorderWidth: "1px",
     indicatorOpacity: "1",
@@ -1789,9 +1846,7 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
   expect(styles.indicatorColor).toBe(styles.accent);
 });
 
-test("header text stays centered and Theme reaches the shell edge", async ({
-  page,
-}) => {
+test("header text and actions stay centered", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#file-count")).not.toHaveText("0");
   for (const width of [1627, 800, 390]) {
@@ -1804,9 +1859,11 @@ test("header text stays centered and Theme reaches the shell edge", async ({
       );
     const geometry = await page.locator(".topbar").evaluate((header) => {
       const box = header.getBoundingClientRect();
-      const theme = header.querySelector("[aria-label^='Theme:']");
-      if (!theme) throw new Error("Missing Theme action");
-      const themeBox = theme.getBoundingClientRect();
+      const action = Array.from(header.querySelectorAll("button")).find(
+        (button) => button.getClientRects().length > 0,
+      );
+      if (!action) throw new Error("Missing header action");
+      const actionBox = action.getBoundingClientRect();
       const labels = Array.from(
         header.querySelectorAll(
           ".brand > span, .context-identity-name, .context-identity-branch, .context-identity-separator, .context-identity-worktree-name, #repo-path",
@@ -1834,9 +1891,8 @@ test("header text stays centered and Theme reaches the shell edge", async ({
       return {
         top: box.top,
         islandGap: workbench.getBoundingClientRect().top - box.bottom,
-        rightInset: box.right - themeBox.right,
         iconOffset: Math.abs(
-          themeBox.y + themeBox.height / 2 - (box.y + box.height / 2),
+          actionBox.y + actionBox.height / 2 - (box.y + box.height / 2),
         ),
         labels,
       };
@@ -1844,7 +1900,6 @@ test("header text stays centered and Theme reaches the shell edge", async ({
     // Controls center between the window edge and the islands below.
     expect(geometry.top).toBe(0);
     expect(geometry.islandGap).toBe(0);
-    expect(geometry.rightInset).toBe(0);
     expect(geometry.iconOffset).toBe(0);
     expect(geometry.labels.length).toBeGreaterThan(0);
     for (const label of geometry.labels) {
@@ -1860,14 +1915,14 @@ test("header actions show a visible hover surface in both themes", async ({
   page,
 }) => {
   await page.goto("/");
-  const theme = page.getByRole("button", { name: /^Theme:/ });
-  await expect(theme).toBeVisible();
+  const action = page.getByRole("button", { name: "Hide file sidebar" });
+  await expect(action).toBeVisible();
   for (const mode of ["light", "dark"]) {
     await page
       .locator("html")
       .evaluate((element, value) => (element.dataset.theme = value), mode);
-    await theme.hover();
-    const surfaces = await theme.evaluate((element) => {
+    await action.hover();
+    const surfaces = await action.evaluate((element) => {
       const header = element.closest(".topbar");
       if (!header) throw new Error("Missing header");
       return {
@@ -2270,20 +2325,20 @@ test("drawer aligns its header and retains desktop navigation density", async ({
     expect(tabs.y).toBe(drawer.x);
     if (width === 390) {
       const toolbar = await page.locator(".toolbar").boundingBox();
-      const theme = await page
-        .getByRole("button", { name: /^Theme:/ })
+      const action = await page
+        .locator(".topbar")
+        .getByRole("button", { name: "Show reviews" })
         .boundingBox();
       const options = await page.locator("#view-options").boundingBox();
       const collapse = await page.locator("#toggle-all-files").boundingBox();
       expect(header.height).toBe(44);
       // The wrapping toolbar keeps a 44px control row plus its bottom border.
       expect(toolbar?.height).toBe(header.height + 1);
-      expect(theme?.width).toBe(44);
-      expect(theme?.height).toBe(44);
-      expect(options?.width).toBe(theme?.width);
-      expect(options?.height).toBe(theme?.height);
-      expect(theme && theme.x + theme.width).toBe(header.x + header.width);
-      expect(collapse?.width).toBe(theme?.width);
+      expect(action?.width).toBe(44);
+      expect(action?.height).toBe(44);
+      expect(options?.width).toBe(action?.width);
+      expect(options?.height).toBe(action?.height);
+      expect(collapse?.width).toBe(action?.width);
     }
     await page
       .locator("#sidebar")
