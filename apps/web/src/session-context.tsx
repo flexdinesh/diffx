@@ -12,11 +12,7 @@ import {
 } from "react";
 import { useIdentity } from "./identity-context.tsx";
 import { latestChangedContext } from "./context-activity.ts";
-import {
-  streamKey,
-  unseenChangedHeads,
-  type SeenStreams,
-} from "./project-nav.ts";
+import { streamKey, type SeenStreams } from "./project-nav.ts";
 import { useSeenStreams } from "./use-seen-streams.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
 import {
@@ -57,7 +53,6 @@ interface Catalog {
   /** The selected review once loaded, otherwise its catalog entry if known. */
   current: ApiContext | undefined;
   seen: SeenStreams | null;
-  unreadHeads: ApiContext[];
   selectedId: string;
   /** Pins one snapshot. */
   select: (id: string, options?: { restoreFocus?: boolean }) => void;
@@ -402,16 +397,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     heads.loaded,
     ready ? current : undefined,
   );
-  const unreadHeads = useMemo(
-    () => unseenChangedHeads(heads.contexts, seen),
-    [heads.contexts, seen],
-  );
   const catalog = useMemo(
     () => ({
       heads,
       current,
       seen,
-      unreadHeads,
       selectedId,
       select,
       openStream,
@@ -426,7 +416,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       heads,
       current,
       seen,
-      unreadHeads,
       selectedId,
       select,
       openStream,

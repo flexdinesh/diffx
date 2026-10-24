@@ -14,6 +14,8 @@ diffx < saved.patch
 ```
 
 The process serves the UI, REST and MCP until Ctrl-C, without watching a checkout.
+The page shows only that diff and its file tree; there are no other reviews to
+switch to.
 Piped diffs ignore remote configuration. `diffx -` explicitly selects stdin;
 combining redirected stdin with a path argument or `--path` is rejected.
 Collection does not inspect Git or attach repository identity.

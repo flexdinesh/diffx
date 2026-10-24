@@ -12,15 +12,18 @@ const contextIconVariants = cva("", {
   defaultVariants: { size: "inherit", tone: "current" },
 });
 
-/** A review context's kind: a terminal for piped input, a repository otherwise. */
+/**
+ * A review context's kind: a repository, or a terminal for the piped capture
+ * a capture process shows.
+ */
 export function ContextIcon({
-  piped,
+  piped = false,
   size,
   tone,
   className,
   ...props
 }: Omit<ComponentProps<typeof FolderGit2Icon>, "size"> &
-  VariantProps<typeof contextIconVariants> & { piped: boolean }) {
+  VariantProps<typeof contextIconVariants> & { piped?: boolean }) {
   const Icon = piped ? SquareTerminalIcon : FolderGit2Icon;
   return (
     <Icon

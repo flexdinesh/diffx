@@ -1,12 +1,15 @@
 import { useRef, type ReactNode } from "react";
 import { FileTreeSkeleton } from "./WorkspaceLoading.tsx";
 import { ProjectsNav } from "./ProjectsNav.tsx";
+import { useShellPolicy } from "./shell-policy.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
 import { useStreamNavState } from "./stream-nav-context.tsx";
 
 /**
  * One navigation island: the review column, then the open review's file
- * sidebar. Each pane owns its width and resize boundary.
+ * sidebar. Each pane owns its width and resize boundary. Without review
+ * navigation (a capture) only the file sidebar remains; the island hides,
+ * still mounted, while that sidebar is collapsed.
  */
 export function Navigation({
   children,
@@ -17,22 +20,27 @@ export function Navigation({
 }) {
   const sidebar = useSidebarState();
   const streams = useStreamNavState();
+  const { reviewNavigation } = useShellPolicy();
   const files = Boolean(children) || loading;
   const filesWidth = files && !sidebar.collapsed ? sidebar.width : 0;
-  const rail = streams.state === "rail";
+  const rail = !reviewNavigation || streams.state === "rail";
+  const empty =
+    !reviewNavigation && !sidebar.mobile && (!files || sidebar.collapsed);
   return (
-    <div className="navigation-island">
-      <div className={`stream-column${rail ? " is-rail" : ""}`}>
-        <ProjectsNav />
-        <PaneResizer
-          label="Resize reviews column"
-          min={200}
-          max={400}
-          width={streams.width}
-          hidden={rail || sidebar.mobile}
-          onResize={(width) => streams.setWidth(width, filesWidth)}
-        />
-      </div>
+    <div className="navigation-island" data-empty={empty || undefined}>
+      {reviewNavigation && (
+        <div className={`stream-column${rail ? " is-rail" : ""}`}>
+          <ProjectsNav />
+          <PaneResizer
+            label="Resize reviews column"
+            min={200}
+            max={400}
+            width={streams.width}
+            hidden={rail || sidebar.mobile}
+            onResize={(width) => streams.setWidth(width, filesWidth)}
+          />
+        </div>
+      )}
       {files && (
         <div
           className="navigation-panel"

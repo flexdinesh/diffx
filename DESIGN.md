@@ -280,23 +280,35 @@ such detail into a token. New layout spacing must use the scale.
   monospace labels without clipping ascenders or descenders.
 - Header lead: brand and divider identify the app. The file-sidebar toggle
   leads the review toolbar. Below 1012px a “Show reviews” toggle in the header
-  opens the review column as a drawer. Account actions are the header's
-  trailing action in every layout.
+  opens the review column as a drawer. “Search reviews” (magnifier, Cmd/Ctrl+K)
+  leads the header's trailing actions in every layout and opens the review
+  picker. Account actions are the header's trailing action in every layout.
+- Review navigation is a shell policy (`shell-policy.ts`), resolved once from
+  the server bootstrap: checkout and remote processes switch between reviews;
+  a capture (piped stdin or a fixture) serves one fixed diff. A capture shows
+  no review column, rail, drawer toggle, search, Cmd/Ctrl+K, header
+  comboboxes or sync; its header keeps the brand, file-sidebar toggle and the
+  static Piped identity, and the island holds only the file sidebar (hidden,
+  still mounted, while collapsed). Piped wording, icons and grouping appear
+  only there; elsewhere a stored stdin snapshot reads like any review.
+  Components read the policy, never the deployment mode.
 - Review column: the leading pane of the navigation island, titled “Reviews”,
   on `--panel`, sharing the file tree and diff's top and bottom edges below the
   header. Switching streams changes everything to its right; the column stays.
-  It has three states: list, rail, and the inbox overlay. List and rail persist
-  per browser; there is no auto-collapse.
+  It has two states, list and rail, persisted per browser; there is no
+  auto-collapse.
   Its header matches the compact sidebar tabs and display toolbar and holds the
   title (UI label size, medium, secondary text) and ghost actions: “Review list
-  view” (Group by repo / Recent first, persisted, default by repo), “Search
-  reviews” (opens the picker), “Open inbox”, and “Collapse reviews” on desktop
-  or “Close reviews” in the drawer. Selecting a stream loads its diff and keeps
-  the column and file sidebar open.
+  view” (Group by repo / Recent first, persisted, default by repo) and
+  “Collapse reviews” on desktop or “Close reviews” in the drawer. Selecting a
+  stream loads its diff and keeps the column and file sidebar open.
+  A repository row is a `disclosure-row`: its chevron alone collapses or
+  expands the group; its name (“Open latest in {repo}”) opens the repository's
+  most active stream and expands the group.
   Repositories sort by their most active visible stream. Streams sort by
   estimated code activity, with captured collection time as fallback and stable
   identity ties. Recent first is one flat activity-ordered list labeling each
-  row with its repository; Piped stays last. Rows retain compact tree density,
+  row with its repository. Rows retain compact tree density,
   truncation, ages and metadata.
   Show only current heads with changes. The current stream uses `--accent-bg`,
   accent text and `aria-current="page"`. Unopened arrivals show a small accent
@@ -306,35 +318,19 @@ such detail into a token. New layout spacing must use the scale.
   to `--topbar-height` (36px; 44px for coarse pointers). Items match header icon
   buttons (32px desktop, 44px touch) with the header's inset; coarse pointers add
   a 4px block inset so flush items clear the island corners. “Expand reviews”
-  and “Open inbox” lead a separator, then one `rail` button per repository
-  showing a two-letter monogram (terminal icon for Piped), an accent dot for
-  unopened streams, and `aria-current="true"` with accent text on `--selected`
-  for the open review's repository. A mark expands the list scrolled to and
-  focused on that repository.
-- Inbox: “Open inbox” extends the column over the review island as an overlay,
-  not a route. The review stays mounted, inert and unscrolled underneath.
-  Filter text, Repository / Session / Worktree / Host facets (OR within a facet,
-  AND across), and Unread only; facets show only with values and persist per
-  browser; text does not. Rows show repository / branch, new mark, count and
-  age, with worktree, session and host below in muted monospace. Content is
-  bounded by `--reading-width`; a footer counts shown reviews. Escape or “Close
-  inbox” restores focus to the opener; choosing a row opens it and focuses the
-  column's current stream.
+  leads a separator, then one `rail` button per repository showing a
+  two-letter monogram, an accent dot for unopened streams, and
+  `aria-current="true"` with accent text on `--selected` for the open review's
+  repository. A mark (“Open latest in {repo}”) opens that repository's most
+  active stream; the rail stays collapsed.
 - A newer head for the viewed stream shows a one-line `--accent-bg` notice below
   the header with an outline-muted “View latest” action. Never swap the open review.
-- A compact header action counts unopened changed heads across projects and
-  opens a “New changes” menu anchored below it, on `--surface-raised` with the
-  shared menu shadow. Opening the menu never swaps the review. Rows follow
-  activity order and show repository name (medium, primary text) with age, then
-  branch with changed-file count, then the linked worktree name or “Primary
-  checkout” (secondary metadata, single-line truncation). Choosing a row opens
-  that stream. Share the review column's per-browser seen state,
-  baseline existing heads on first visit, and clear a head's mark when opened.
-  Keep the same-stream notice available. Unchanged submissions must not create
-  unread prompts. Use existing ghost-button typography, icons and accessible
-  labels; preserve the header's review identity and compact-layout controls.
+- Unopened arrivals are marked only by the column's and rail's accent dots and
+  the header combobox rows; there is no header counter. Share the per-browser
+  seen state, baseline existing heads on first visit, and clear a head's mark
+  when opened. Unchanged submissions must not create unread marks.
 - Status bars: `--statusbar-height` (28: a compact control plus 2px insets,
-  border included) for the sidebar, review, inbox and loading footers alike,
+  border included) for the sidebar, review and loading footers alike,
   with shortcuts shed before server status.
   Server status is an icon-only compact ghost trigger at the trailing edge:
   success check when ready, reduced-motion-safe spinner while connecting, and
@@ -452,6 +448,8 @@ with a semantic variant instead of overriding it.
 | Banner, empty, error                   | `notice`, `empty-state`, `error-state`                                                                                                   |
 | Destructive confirmation               | `confirm-dialog`; other dialogs `ui/dialog`                                                                                              |
 | Menus, popovers, tooltips              | `ui/dropdown-menu`, `ui/popover`, `ui/tooltip`                                                                                           |
+| Menu with type-to-filter rows          | `ui/combobox` (shares the `ui/dropdown-menu` surface and rows)                                                                           |
+| Group row: toggle plus its own action  | `disclosure-row` (chevron toggles; label acts)                                                                                           |
 | Keyboard hint                          | `shortcut` (formats per platform), `ui/kbd`                                                                                              |
 | Loading placeholder                    | `ui/skeleton` (shapes mirror real geometry)                                                                                              |
 | Divider, drawer backdrop               | `ui/separator` (`chrome` for the header), `scrim`                                                                                        |
@@ -542,22 +540,28 @@ at `/design.html` (see `docs/development.md`).
 ### Overlays
 
 - The header identifies the open review after the brand divider at control
-  height as two ghost menu triggers, repo ▾ / branch ▾: a semibold repository
-  name with repository icon, then a quieter branch. Give the repository name
-  priority when long context labels truncate; hide the chevrons below 768px.
-  The repository menu opens a repository's most active stream; the branch menu
-  lists the open repository's streams with new marks, counts and metadata.
-  Both focus the column's current stream after switching. Worktree stays static.
-  Piped reviews use static text: a terminal icon, “Piped”, and collection time;
+  height as two ghost `ui/combobox` triggers, repo ▾ / branch ▾: a semibold
+  repository name with repository icon, then a quieter branch. Give the
+  repository name priority when long context labels truncate; hide the
+  chevrons below 768px. Each opens a `--surface-raised` popup matching
+  `ui/dropdown-menu` with a focused filter field on top (“Filter
+  repositories”; “Filter branches, worktrees, sessions…”), then the matching
+  rows; the first match is highlighted so typing and Enter switch, and an
+  empty filter result says so. The repository combobox opens a repository's
+  most active stream; the branch combobox lists the open repository's streams
+  with new marks, counts and metadata, matching every word against branch,
+  worktree, host and sessions. Both focus the column's current stream after
+  switching. Worktree stays static.
+  A capture uses static text: a terminal icon, “Piped”, and collection time;
   omit repository, branch, worktree, and directory identity.
-  Cmd/Ctrl+K and the column's search action open the searchable “Switch review”
-  dialog. Position it at
+  Cmd/Ctrl+K and the header's “Search reviews” action open the searchable
+  “Switch review” dialog. Position it at
   `--topbar-height` plus `--space-6` on desktop (64px default), `--space-4` on
   mobile (16px default). Bound picker width to 35rem and viewport gutters. The
   picker owns focus and stays available during context errors. Choosing a
   review moves focus to the column's current stream.
 - Search leads the picker; keep “Switch review” as its screen-reader title.
-  Label global search “Search reviews” and Piped history search “Search Piped”.
+  Label search “Search reviews”.
   Use the shared `SearchField` (32px) with close at its right edge and the
   focus ring around its entire boundary. The dialog is `DialogContent`'s
   `command` variant.
@@ -565,12 +569,8 @@ at `/design.html` (see `docs/development.md`).
   within each group; search preserves that order, using match strength to break
   recency ties. Compact rows (about 48px) put repository name and branch on
   one line, with a muted monospace path below; truncate long text to single lines.
-  Mark linked paths with “Worktree”. Group retained imports under a separate
-  “Piped” entry after repositories, with a quiet separator and snapshot count.
-  Its history shows collection timestamps newest first, including legacy captures;
-  changed-file counts remain secondary. Show “Piped · Newest first” below search
-  and omit repository filters from this history. Repository freshness, host,
-  branch, worktree, and status filters never hide Piped imports.
+  Mark linked paths with “Worktree”. Stored stdin snapshots follow the same
+  grouping and filters as any review.
   Distinguish the current review with a check and accessible “Current review”
   text; retain explicit “Unavailable” feedback. Keep the footer to a short result
   count and keyboard hints.
@@ -652,7 +652,7 @@ Do not add motion for decoration. New animation must honor
   `min(320px, 88vw)`. Keep file selection, comments, and export reachable there.
   The review column becomes a drawer with the same modal pattern from its own
   header toggle; opening it closes the file drawer. Choosing a stream closes it
-  and shows the diff. The inbox fills the review island.
+  and shows the diff.
   Its tab strip matches `--topbar-height`, including the tablet header height.
   File/folder rows, filter, summary toggle, and review progress retain desktop
   control heights and spacing; do not apply the general mobile enlargement here.

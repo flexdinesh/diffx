@@ -92,6 +92,7 @@ func TestCheckoutServerServesBeforeCollectionAndWaitsForCollectorShutdown(t *tes
 	for _, expected := range []struct{ path, body string }{
 		{"/", "<html"},
 		{"/api/v2/bootstrap", `"collect":true`},
+		{"/api/v2/bootstrap", `"input":"checkouts"`},
 		{"/api/v2/contexts", `"contexts":[]`},
 	} {
 		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, status.BrowserURL+expected.path, nil)

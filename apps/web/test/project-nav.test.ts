@@ -3,20 +3,15 @@ import { test } from "node:test";
 import type { ApiContext } from "@diffx/api";
 import {
   baselineSeen,
-  defaultStreamFilters,
-  filterStreams,
+  latestStream,
   newerHead,
   projectGroups,
   readSeen,
-  readStreamFilters,
   recentStreams,
   relativeAge,
   repoMonogram,
-  streamFacets,
-  streamFiltersChanged,
+  streamMatches,
   streamMeta,
-  unseenChangedHeads,
-  type StreamFilters,
 } from "../src/project-nav.ts";
 import {
   compareContextActivity,
@@ -63,7 +58,7 @@ function head(
   };
 }
 
-test("projects list current changed streams by recent activity, piped last", () => {
+test("projects list current changed streams by recent activity", () => {
   const groups = projectGroups(
     [
       head("old-api", "api", 10),
@@ -72,11 +67,6 @@ test("projects list current changed streams by recent activity, piped last", () 
       head("clean", "api", 40, { changedFileCount: 0 }),
       head("stale", "api", 50, { stale: true }),
       head("gone", "web", 60, { availability: "unavailable" }),
-      head("piped", "", 70, {
-        source: "stdin",
-        repositoryId: null,
-        streamId: null,
-      }),
     ],
     null,
   );
@@ -88,10 +78,21 @@ test("projects list current changed streams by recent activity, piped last", () 
     [
       ["web", ["web"]],
       ["api", ["new-api", "old-api"]],
-      ["Piped", ["piped"]],
     ],
   );
   assert.equal(groups[1]?.lastActivity, 20);
+});
+
+test("a repository opens to its most active stream", () => {
+  const [api] = projectGroups(
+    [
+      head("quiet", "api", 10, { lastChangedAt: 10 }),
+      head("busy", "api", 5, { lastChangedAt: 90 }),
+    ],
+    null,
+  );
+  assert.ok(api);
+  assert.equal(latestStream(api)?.context.id, "busy");
 });
 
 test("activity orders streams and repositories independently of submission time", () => {
@@ -181,7 +182,7 @@ test("activity ties use stream then context identity, including same-name projec
   }
 });
 
-test("equal-activity repository order aligns initial and unread targets over names", () => {
+test("equal-activity repository order aligns the initial target over names", () => {
   const contexts = [
     head("first", "repo-z", 50, { name: "Zebra", streamId: "stream-a" }),
     head("last", "repo-a", 50, { name: "Alpha", streamId: "stream-z" }),
@@ -190,61 +191,28 @@ test("equal-activity repository order aligns initial and unread targets over nam
     const top = projectGroups(heads, {}).at(0)?.streams.at(0)?.context;
     assert.equal(top?.id, "first");
     assert.equal(top, latestChangedContext(heads));
-    assert.equal(top, unseenChangedHeads(heads, {}).at(0));
   }
 });
 
-test("Piped stays last and preserves captured chronology despite activity or arrival", () => {
-  const contexts = [
-    head("older", "", 900, {
-      source: "stdin",
-      streamId: null,
-      createdAt: 10,
-      lastChangedAt: 500,
-    }),
-    head("newer", "", 100, {
-      source: "stdin",
-      streamId: null,
-      createdAt: 20,
-      lastChangedAt: 50,
-    }),
-    head("repository", "api", 1),
-  ];
-  for (const heads of [contexts, [...contexts].reverse()]) {
-    const groups = projectGroups(heads, null);
-    assert.equal(groups.at(0)?.id, "api");
-    assert.deepEqual(
-      groups.at(-1)?.streams.map((stream) => stream.context.id),
-      ["newer", "older"],
-    );
-  }
-});
-
-test("global unread heads count changed streams and open by activity", () => {
-  const viewed = head("viewed", "api", 1);
-  const seen = baselineSeen([viewed]);
-  const unchanged = { ...viewed, lastSubmittedAt: 999, lastChangedAt: 500 };
-  const recent = head("recent", "web", 10, { lastChangedAt: 300 });
-  const arrival = head("arrival", "api", 200, { lastChangedAt: 100 });
-  const heads = [
-    unchanged,
-    arrival,
-    recent,
-    head("clean", "api", 400, { changedFileCount: 0 }),
-    head("stale", "api", 500, { stale: true }),
-  ];
-  assert.deepEqual(unseenChangedHeads(heads, null), []);
-  assert.deepEqual(
-    unseenChangedHeads(heads, seen).map((context) => context.id),
-    ["recent", "arrival"],
+test("stray stdin contexts group like any repository, by name and activity", () => {
+  const groups = projectGroups(
+    [
+      head("repository", "api", 1),
+      head("capture", "", 50, {
+        source: "stdin",
+        repositoryId: null,
+        streamId: null,
+        name: "Piped diff",
+      }),
+    ],
+    null,
   );
-  assert.deepEqual(unseenChangedHeads(heads, baselineSeen(heads)), []);
   assert.deepEqual(
-    unseenChangedHeads(heads, {
-      ...seen,
-      [recent.streamId ?? recent.id]: recent.id,
-    }).map((context) => context.id),
-    ["arrival"],
+    groups.map((group) => [group.id, group.name]),
+    [
+      ["name:Piped diff", "Piped diff"],
+      ["api", "api"],
+    ],
   );
 });
 
@@ -368,19 +336,18 @@ function observed(
   });
 }
 
-test("recent streams interleave repositories by activity, piped still last", () => {
+test("recent streams interleave repositories by activity", () => {
   const groups = projectGroups(
     [
       head("api-old", "api", 10),
       head("web-new", "web", 30),
       head("api-new", "api", 20),
-      head("pipe", "", 99, { source: "stdin", streamId: null }),
     ],
     null,
   );
   assert.deepEqual(
     groups.map((group) => group.id),
-    ["web", "api", "piped"],
+    ["web", "api"],
   );
   assert.deepEqual(
     recentStreams(groups).map(({ context, group }) => [context.id, group.id]),
@@ -388,7 +355,6 @@ test("recent streams interleave repositories by activity, piped still last", () 
       ["web-new", "web"],
       ["api-new", "api"],
       ["api-old", "api"],
-      ["pipe", "piped"],
     ],
   );
 });
@@ -404,90 +370,32 @@ test("recent stream activity ties keep stable stream identity order", () => {
   );
 });
 
-test("inbox facets list repositories, sessions, hosts and worktrees once", () => {
-  const groups = projectGroups(
-    [
-      observed("auth", "api", 3, {
-        worktree: "wt-auth",
-        sessions: [
-          { harness: "claude", name: "fix auth" },
-          { harness: "codex" },
-        ],
-      }),
-      observed("main", "api", 2, { hostname: "ci" }),
-      observed("site", "web", 1, { sessions: [{ harness: "codex" }] }),
-    ],
-    null,
-  );
-  assert.deepEqual(streamFacets(groups), {
-    repos: ["api", "web"],
-    sessions: ["codex", "fix auth (claude)"],
-    hosts: ["ci", "laptop"],
-    worktrees: ["wt-auth"],
-  });
+test("repository marks use word initials or the name's first letters", () => {
+  assert.equal(repoMonogram("diffx"), "Di");
+  assert.equal(repoMonogram("agent-skills"), "AS");
+  assert.equal(repoMonogram("tokenInsights"), "TI");
+  assert.equal(repoMonogram("x"), "X");
 });
 
-test("inbox filters match within each facet and across facets", () => {
-  const seen = { "stream-main": "main", "stream-site": "site" };
-  const groups = projectGroups(
+test("branch filter matches every word across branch, worktree, host and sessions", () => {
+  const [group] = projectGroups(
     [
       observed("auth", "api", 3, {
         worktree: "wt-auth",
         sessions: [{ harness: "claude", name: "fix auth" }],
       }),
       observed("main", "api", 2, { hostname: "ci" }),
-      observed("site", "web", 1, { sessions: [{ harness: "codex" }] }),
     ],
-    seen,
+    null,
   );
-  const ids = (filters: Partial<StreamFilters>, query = "") =>
-    filterStreams(groups, { ...defaultStreamFilters, ...filters }, query).map(
-      (group) => [group.id, group.streams.map((stream) => stream.context.id)],
-    );
-  assert.deepEqual(ids({}), [
-    ["api", ["auth", "main"]],
-    ["web", ["site"]],
-  ]);
-  assert.deepEqual(ids({ repos: ["web"] }), [["web", ["site"]]]);
-  assert.deepEqual(ids({ sessions: ["codex", "fix auth (claude)"] }), [
-    ["api", ["auth"]],
-    ["web", ["site"]],
-  ]);
-  assert.deepEqual(ids({ repos: ["api"], hosts: ["laptop"] }), [
-    ["api", ["auth"]],
-  ]);
-  assert.deepEqual(ids({ worktrees: ["wt-auth"] }), [["api", ["auth"]]]);
-  assert.deepEqual(ids({ unread: true }), [["api", ["auth"]]]);
-  assert.deepEqual(ids({}, "CI branch-main"), [["api", ["main"]]]);
-  assert.deepEqual(ids({}, "fix"), [["api", ["auth"]]]);
-  assert.deepEqual(ids({ repos: ["web"] }, "auth"), []);
-  assert.equal(streamFiltersChanged(defaultStreamFilters), false);
-  assert.equal(
-    streamFiltersChanged({ ...defaultStreamFilters, unread: true }),
-    true,
-  );
-});
-
-test("saved inbox filters keep only known string and flag values", () => {
-  assert.deepEqual(readStreamFilters(null), defaultStreamFilters);
-  assert.deepEqual(readStreamFilters("not json"), defaultStreamFilters);
-  assert.deepEqual(readStreamFilters("[]"), defaultStreamFilters);
-  assert.deepEqual(
-    readStreamFilters(
-      '{"repos":["api",1],"sessions":"codex","hosts":["ci"],"unread":"yes"}',
-    ),
-    { ...defaultStreamFilters, repos: ["api"], hosts: ["ci"] },
-  );
-  assert.deepEqual(readStreamFilters('{"unread":true}'), {
-    ...defaultStreamFilters,
-    unread: true,
-  });
-});
-
-test("repository marks use word initials or the name's first letters", () => {
-  assert.equal(repoMonogram("diffx"), "Di");
-  assert.equal(repoMonogram("agent-skills"), "AS");
-  assert.equal(repoMonogram("tokenInsights"), "TI");
-  assert.equal(repoMonogram("x"), "X");
-  assert.equal(repoMonogram("Piped"), "Pi");
+  assert.ok(group);
+  const ids = (query: string) =>
+    group.streams
+      .filter((stream) => streamMatches(stream, query))
+      .map((stream) => stream.context.id);
+  assert.deepEqual(ids(""), ["auth", "main"]);
+  assert.deepEqual(ids("WT-AUTH"), ["auth"]);
+  assert.deepEqual(ids("ci branch-main"), ["main"]);
+  assert.deepEqual(ids("fix claude"), ["auth"]);
+  assert.deepEqual(ids("auth ci"), []);
 });

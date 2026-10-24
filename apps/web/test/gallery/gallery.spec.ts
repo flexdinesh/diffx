@@ -43,6 +43,15 @@ for (const theme of themes) {
     await expect(page).toHaveScreenshot(`overlays-${theme}.png`);
   });
 
+  test(`combobox in ${theme}`, async ({ page }) => {
+    await open(page, `theme=${theme}&page=combobox`);
+    await expect(
+      page.getByRole("combobox", { name: "Filter branches" }),
+    ).toBeFocused();
+    await expect(page.getByRole("option", { name: "main" })).toBeVisible();
+    await expect(page).toHaveScreenshot(`combobox-${theme}.png`);
+  });
+
   test(`confirm dialog in ${theme}`, async ({ page }) => {
     await open(page, `theme=${theme}&page=dialog`);
     const dialog = page.getByRole("dialog", { name: "Delete comment?" });

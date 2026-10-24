@@ -15,7 +15,6 @@ import {
   pickerFilterOptions,
   contextIsPiped,
   contextTimestampLabel,
-  pipedGroupId,
 } from "../src/project-picker.ts";
 
 const main: ApiContext = {
@@ -206,7 +205,7 @@ test("search lists newest changes before stronger matches", () => {
   );
 });
 
-test("captures stay selectable", () => {
+test("stray captures stay selectable and search by name like any review", () => {
   const capture: ApiContext = {
     ...main,
     id: "capture",
@@ -225,8 +224,11 @@ test("captures stay selectable", () => {
     results.find((context) => context.id === "capture")?.name,
     "Captured patch",
   );
-  assert.equal(pickerResults([main, capture], "piped")[0]?.id, "capture");
-  assert.deepEqual(pickerResults([main, capture], "captured"), []);
+  assert.deepEqual(
+    pickerResults([main, capture], "captured").map((context) => context.id),
+    ["capture"],
+  );
+  assert.deepEqual(pickerResults([main, capture], "piped"), []);
 });
 
 test("changed checkouts precede newer empty projects, including search results", () => {
@@ -457,7 +459,7 @@ test("freshly reviewed observations sort by latest review without changing colle
   assert.equal(repeatedReview.observation?.collectedAt, 1000);
 });
 
-test("Piped groups stdin observations independently of repositories and filters", () => {
+test("stdin observations share repository grouping and filters; piped identity stays for captures", () => {
   const piped: ApiContext = {
     ...observation("piped-old", "host", "run"),
     source: "stdin",
@@ -465,55 +467,32 @@ test("Piped groups stdin observations independently of repositories and filters"
   };
   if (!piped.observation) throw new Error("Missing observation");
   piped.observation.linkedWorktree = true;
-  const capture: ApiContext = {
-    ...main,
-    id: "piped-new",
-    kind: "observation",
-    source: "stdin",
-    createdAt: 2000,
-    changedFileCount: 0,
-  };
   const repo = observation("repo-context", "host", "run");
-  const contexts = [piped, repo, capture];
-  const filters = {
+  const contexts = [piped, repo];
+  const stale = {
     ...defaultPickerFilters,
     freshness: "stale",
-    branches: ["unrelated"],
-    worktrees: ["elsewhere"],
-    hosts: ["absent"],
   } satisfies typeof defaultPickerFilters;
-  const entries = pickerEntries(contexts, "", "", filters);
-  assert.equal(entries.length, 1);
-  const group = entries[0];
-  if (group?.kind !== "piped") throw new Error("Missing Piped group");
   assert.deepEqual(
-    group.contexts.map((context) => context.id),
-    ["piped-new", "piped-old"],
+    pickerEntries(contexts, "", "repo", stale).map((entry) => entry.id),
+    ["piped-old"],
   );
   assert.deepEqual(
-    pickerEntries(contexts, "", pipedGroupId, filters).map((entry) => entry.id),
-    ["piped-new", "piped-old"],
+    pickerEntries(contexts, "", "", {
+      ...stale,
+      hosts: ["absent"],
+    }),
+    [],
   );
   assert.deepEqual(
-    pickerEntries(contexts, "", "repo").map((entry) => entry.id),
-    ["repo-context"],
+    pickerEntries(contexts, "", "").map((entry) => entry.id),
+    ["repository-repo"],
   );
+  assert.deepEqual(pickerFilterOptions([piped]).hosts, ["host"]);
   assert.equal(contextIsPiped(piped), true);
   assert.equal(contextIsLinkedWorktree(piped), false);
-  assert.deepEqual(pickerResults([piped], "diffx"), []);
-  assert.deepEqual(pickerResults([piped], "main"), []);
-  assert.deepEqual(pickerFilterOptions([piped, capture]), {
-    hosts: [],
-    branches: [],
-    worktrees: [],
-  });
   assert.ok(!contextDiagnostics(piped).includes("diffx"));
-  assert.ok(!contextDiagnostics(piped).includes("main"));
   assert.ok(contextDiagnostics(piped).includes("Context: piped-old"));
-  assert.deepEqual(
-    pickerResults(contexts, "").map((context) => context.id),
-    ["repo-context", "piped-new", "piped-old"],
-  );
 });
 
 test("Piped timestamp labels use capture time and distinguish today, yesterday, and older years", () => {
