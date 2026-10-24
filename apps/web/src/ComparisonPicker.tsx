@@ -40,7 +40,7 @@ export function ComparisonPicker() {
         <DropdownMenuTrigger
           render={
             <Button
-              variant="outline"
+              variant="outline-muted"
               size="xs"
               touch
               aria-label={`Comparison: ${selected}`}

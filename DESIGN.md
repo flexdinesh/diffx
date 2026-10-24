@@ -333,7 +333,9 @@ such detail into a token. New layout spacing must use the scale.
   Keep the same-stream notice available. Unchanged submissions must not create
   unread prompts. Use existing ghost-button typography, icons and accessible
   labels; preserve the header's review identity and compact-layout controls.
-- Status bar: `--statusbar-height` (28), with shortcuts shed before server status.
+- Status bars: `--statusbar-height` (28: a compact control plus 2px insets,
+  border included) for the sidebar, review, inbox and loading footers alike,
+  with shortcuts shed before server status.
   Server status is an icon-only compact ghost trigger at the trailing edge:
   success check when ready, reduced-motion-safe spinner while connecting, and
   error alert when metrics are unreachable; its accessible name carries the
@@ -404,7 +406,8 @@ such detail into a token. New layout spacing must use the scale.
 ## Borders, radii, and shadows
 
 - Use the shared `outline-muted` Button variant (`--border-muted`) for compact
-  file-level diff actions and reset reviewed. Segmented layout controls and
+  file-level diff actions, reset reviewed, and the toolbar comparison picker.
+  Segmented layout controls and
   every `SearchField` (file filter and picker search) share this token.
   Text, icons, hover and focus identify these actions; avoid per-button colors.
 - Use 1px `--border-muted` for separators and `--border-control` for interactive
