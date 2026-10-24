@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Open or update the Homebrew tap pull request"
+#MISE tools={ "aqua:cli/cli" = "2.103.0" }
 
 set -euo pipefail
 

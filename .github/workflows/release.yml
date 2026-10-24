@@ -44,7 +44,7 @@ jobs:
           restore-keys: ${{ runner.os }}-dependencies-
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: mise run deps
 
       - name: Select release version
         id: version

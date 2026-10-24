@@ -33,6 +33,21 @@ commands, activate mise in your shell or use `mise exec -- pnpm <script>`.
 List available tasks with `mise tasks`. Keep personal overrides in
 `mise.local.toml`, which is ignored by Git.
 
+`mise.lock` pins tool checksums for Linux x64 and macOS arm64; CI installs
+with `--locked`. After changing a tool pin, including task-level tools, run
+`mise lock` and commit the lockfile; `mise lock --bump` moves pins to the newest
+allowed versions. `min_version` in `mise.toml` must match the mise version CI
+installs and the requirement above; a contract test enforces this and that the
+Dockerfile Go image matches the mise Go pin. `GOTOOLCHAIN=local` makes Go use
+the mise pin instead of downloading a toolchain, so a `go.mod` bump past it
+fails until `mise.toml` is updated. `mise run deps` installs pnpm dependencies
+from the lockfile.
+
+Build tasks declare `sources` and `outputs`; mise skips `web:build`,
+`web:stage`, `build` and `plugins:build` when their source contents are
+unchanged. Run `mise run --force <task>` to rebuild anyway. CI checkouts always
+build.
+
 ## Commands
 
 | Purpose                                                    | Command                          |

@@ -27,7 +27,7 @@ jobs:
             ~/.cache/go-build
           key: ${{ runner.os }}-dependencies-${{ hashFiles('mise.toml', '.node-version', 'package.json', 'pnpm-lock.yaml', 'go.sum') }}
           restore-keys: ${{ runner.os }}-dependencies-
-      - run: pnpm install --frozen-lockfile
+      - run: mise run deps
       - run: mise run check:ci
 
   edge:
@@ -59,6 +59,6 @@ jobs:
             ~/.cache/go-build
           key: ${{ runner.os }}-dependencies-${{ hashFiles('mise.toml', '.node-version', 'package.json', 'pnpm-lock.yaml', 'go.sum') }}
           restore-keys: ${{ runner.os }}-dependencies-
-      - run: pnpm install --frozen-lockfile
+      - run: mise run deps
       - run: mise run web:stage
       - run: mise run release:edge

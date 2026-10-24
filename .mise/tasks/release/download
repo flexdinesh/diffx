@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Download artifacts for an existing release"
+#MISE tools={ "aqua:cli/cli" = "2.103.0" }
 
 set -euo pipefail
 : "${RELEASE_TAG:?RELEASE_TAG is required}"
