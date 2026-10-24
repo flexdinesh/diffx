@@ -39,8 +39,8 @@ chrome competing with additions, deletions, syntax, or selected lines.
 ## Sources of truth
 
 - `apps/web/src/tokens.css`: semantic colors, spacing, geometry, elevation,
-  responsive gutters, light/dark equivalents, and Omarchy theme palettes.
-- `apps/web/src/theme.ts`: the theme registry (id, label, group, mode and
+  responsive gutters, light/dark equivalents, and theme palettes.
+- `apps/web/src/theme.ts`: the theme registry (id, label, kind, mode and
   matching code theme).
 - `apps/web/src/typography.css`: fonts, text/icon sizes, weights, line heights.
 - `apps/web/src/style.css`: Tailwind entry point, shadcn theme bridge, shell,
@@ -99,7 +99,7 @@ token that already has a utility is rejected. 2px (`*-0.5`) steps are optical
 insets reserved for `components/`.
 
 `[data-theme]` always carries the resolved light/dark mode; the Tailwind
-`dark` variant and Pierre's `themeType` read it. Omarchy themes additionally set
+`dark` variant and Pierre's `themeType` read it. Palette themes additionally set
 `[data-palette]`, whose `tokens.css` block remaps every semantic color role, so
 components never branch on a theme. Do not add independent theme state. Tailwind Preflight and utility use must not override Pierre's
 measured elements or replace the application tokens with framework defaults.
@@ -145,15 +145,15 @@ measured elements or replace the application tokens with framework defaults.
   the browser or whole machine. Keep that scope explicit in the status popup.
 - Pierre owns syntax colors, changed-line fills, word highlights, line selection,
   and code-theme surfaces. App status tokens govern the surrounding UI only.
-  Exception: Omarchy palettes without a bundled Shiki theme render code through
+  Exception: palettes without a bundled Shiki theme render code through
   Pierre's CSS-variable theme (`diffx-palette`); their `tokens.css` blocks set
   `--diffs-token-*`/`--diffs-ansi-*` and point Pierre's addition, deletion and
   modified color overrides at `--success`, `--error` and `--warning`.
 
 ### Themes
 
-- Settings offers three Diffx themes (System, Light, Dark) and the 22 themes on
-  omarchy.org. Each Omarchy theme has a fixed mode. The choice is saved per
+- Settings offers three base themes (System, Light, Dark) and 22 palette
+  themes. Each palette theme has a fixed mode. The choice is saved per
   browser (`theme-v2`); `index.html` applies it before the app renders and keeps
   its palette id lists synchronized with `theme.ts`.
 - Palettes keep each theme's background, foreground and accent identity, then
@@ -344,8 +344,8 @@ such detail into a token. New layout spacing must use the scale.
   Add future system details as further sections in the same popover.
   Settings follows it at the trailing edge: an icon-only compact ghost gear
   that opens a `--surface-raised` popover titled “Settings”, capped at 24rem
-  and scrolling internally. Its Theme section is a choice list grouped under
-  “Diffx” and “Omarchy”; rows show a theme swatch, the name and a check on the
+  and scrolling internally. Its Theme section is one flat choice list, base
+  themes first; rows show a theme swatch, the name and a check on the
   current theme. Clicking or arrowing applies and saves immediately; there is
   no hover preview. Add future browser preferences as further sections.
 - The diff display toolbar uses `--panel`, matching the header and status bar.
@@ -444,7 +444,7 @@ with a semantic variant instead of overriding it.
 | Search or filter input                 | `search-field`                                                                                                                           |
 | Text input, select, textarea, checkbox | `ui/input`, `ui/select`, `ui/textarea`, `ui/checkbox`                                                                                    |
 | Tree, nav or picker row                | `list-row` (sans/mono font, depth, `option`)                                                                                             |
-| Single choice among rows (themes)      | `choice-list` (groups, check on the chosen row), `theme-swatch`                                                                          |
+| Single choice among rows (themes)      | `choice-list` (check on the chosen row), `theme-swatch`                                                                                  |
 | Panel title row                        | `panel-header`; tabs in `ui/tabs`                                                                                                        |
 | Collapsible sidebar section            | `collapsible-section`, `disclosure` chevron                                                                                              |
 | Count, status label, status dot        | `count-badge`, `ui/badge` (status tones), `status-dot`                                                                                   |

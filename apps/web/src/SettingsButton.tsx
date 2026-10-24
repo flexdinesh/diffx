@@ -1,9 +1,5 @@
 import { SettingsIcon } from "lucide-react";
-import {
-  ChoiceList,
-  ChoiceListGroup,
-  ChoiceListItem,
-} from "@/components/choice-list";
+import { ChoiceList, ChoiceListItem } from "@/components/choice-list";
 import { IconButton } from "@/components/icon-button";
 import {
   Popover,
@@ -16,11 +12,6 @@ import {
 import { ThemeSwatch } from "@/components/theme-swatch";
 import { useAppearance } from "./appearance-context.tsx";
 import { readThemePreference, swatchPalette, THEMES } from "./theme.ts";
-
-const groups = [
-  { group: "diffx", label: "Diffx" },
-  { group: "omarchy", label: "Omarchy" },
-] as const;
 
 /** Browser-saved preferences, opened from the status bar's trailing edge. */
 export function SettingsButton() {
@@ -46,23 +37,17 @@ export function SettingsButton() {
               setThemePreference(readThemePreference(value))
             }
           >
-            {groups.map(({ group, label }) => (
-              <ChoiceListGroup key={group} label={label}>
-                {THEMES.filter((theme) => theme.group === group).map(
-                  (theme) => (
-                    <ChoiceListItem key={theme.id} value={theme.id}>
-                      <ThemeSwatch
-                        palettes={
-                          theme.id === "system"
-                            ? ["diffx-light", "diffx-dark"]
-                            : [swatchPalette(theme.id)]
-                        }
-                      />
-                      {theme.label}
-                    </ChoiceListItem>
-                  ),
-                )}
-              </ChoiceListGroup>
+            {THEMES.map((theme) => (
+              <ChoiceListItem key={theme.id} value={theme.id}>
+                <ThemeSwatch
+                  palettes={
+                    theme.id === "system"
+                      ? ["diffx-light", "diffx-dark"]
+                      : [swatchPalette(theme.id)]
+                  }
+                />
+                {theme.label}
+              </ChoiceListItem>
             ))}
           </ChoiceList>
         </PopoverSection>

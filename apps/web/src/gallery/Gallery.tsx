@@ -59,11 +59,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  ChoiceList,
-  ChoiceListGroup,
-  ChoiceListItem,
-} from "@/components/choice-list";
+import { ChoiceList, ChoiceListItem } from "@/components/choice-list";
 import { CollapsibleSection } from "@/components/collapsible-section";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ContextIcon } from "@/components/context-icon";
@@ -490,26 +486,22 @@ function Components() {
           defaultValue="dark"
           className="w-full max-w-(--drawer-width)"
         >
-          <ChoiceListGroup label="Diffx">
-            <ChoiceListItem value="system">
-              <ThemeSwatch palettes={["diffx-light", "diffx-dark"]} />
-              System
-            </ChoiceListItem>
-            <ChoiceListItem value="dark">
-              <ThemeSwatch palettes={["diffx-dark"]} />
-              Dark
-            </ChoiceListItem>
-          </ChoiceListGroup>
-          <ChoiceListGroup label="Omarchy">
-            <ChoiceListItem value="tokyo-night">
-              <ThemeSwatch palettes={["tokyo-night"]} />
-              Tokyo Night
-            </ChoiceListItem>
-            <ChoiceListItem value="flexoki-light">
-              <ThemeSwatch palettes={["flexoki-light"]} />
-              Flexoki Light
-            </ChoiceListItem>
-          </ChoiceListGroup>
+          <ChoiceListItem value="system">
+            <ThemeSwatch palettes={["diffx-light", "diffx-dark"]} />
+            System
+          </ChoiceListItem>
+          <ChoiceListItem value="dark">
+            <ThemeSwatch palettes={["diffx-dark"]} />
+            Dark
+          </ChoiceListItem>
+          <ChoiceListItem value="tokyo-night">
+            <ThemeSwatch palettes={["tokyo-night"]} />
+            Tokyo Night
+          </ChoiceListItem>
+          <ChoiceListItem value="flexoki-light">
+            <ThemeSwatch palettes={["flexoki-light"]} />
+            Flexoki Light
+          </ChoiceListItem>
         </ChoiceList>
       </Section>
 

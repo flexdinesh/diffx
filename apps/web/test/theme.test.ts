@@ -24,7 +24,7 @@ test("system theme resolves from the operating system", () => {
   assert.equal(resolveTheme("dark", false), "dark");
 });
 
-test("Omarchy themes keep their fixed mode and palette", () => {
+test("palette themes keep their fixed mode and palette", () => {
   assert.equal(readThemePreference("tokyo-night"), "tokyo-night");
   assert.equal(readThemePreference("starship"), "system");
   assert.equal(resolveTheme("tokyo-night", false), "dark");
@@ -34,23 +34,23 @@ test("Omarchy themes keep their fixed mode and palette", () => {
   assert.equal(themePalette("system"), undefined);
 });
 
-test("swatches preview Diffx themes through their base palettes", () => {
+test("swatches preview base themes through their base palettes", () => {
   assert.equal(swatchPalette("light"), "diffx-light");
   assert.equal(swatchPalette("dark"), "diffx-dark");
   assert.equal(swatchPalette("nord"), "nord");
 });
 
-test("theme registry lists Diffx themes and the 22 Omarchy themes", () => {
+test("theme registry lists base themes and the 22 palette themes", () => {
   const ids = THEMES.map((theme) => theme.id);
   assert.equal(new Set(ids).size, ids.length);
   assert.deepEqual(
-    THEMES.filter((theme) => theme.group === "diffx").map((theme) => theme.id),
+    THEMES.filter((theme) => theme.kind === "base").map((theme) => theme.id),
     ["system", "light", "dark"],
   );
-  assert.equal(THEMES.filter((theme) => theme.group === "omarchy").length, 22);
+  assert.equal(THEMES.filter((theme) => theme.kind === "palette").length, 22);
 });
 
-test("boot script lists every Omarchy palette with its mode", () => {
+test("boot script lists every palette with its mode", () => {
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const listed = (name: string) =>
     [
@@ -60,7 +60,7 @@ test("boot script lists every Omarchy palette with its mode", () => {
     ].map((match) => match[1]);
   const palettes = (mode: string) =>
     THEMES.filter(
-      (theme) => theme.group === "omarchy" && theme.mode === mode,
+      (theme) => theme.kind === "palette" && theme.mode === mode,
     ).map((theme) => theme.id);
   assert.deepEqual(listed("lightPalettes"), palettes("light"));
   assert.deepEqual(listed("darkPalettes"), palettes("dark"));
