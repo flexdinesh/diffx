@@ -1552,7 +1552,7 @@ test("inline comments use a distinct structured surface while sidebar comments r
   expect(copyHoverBackground).not.toBe(copyRestingBackground);
 });
 
-test("settings theme picker follows system, applies Omarchy palettes and persists", async ({
+test("settings theme picker follows system, applies palettes and persists", async ({
   page,
 }) => {
   await page.emulateMedia({ colorScheme: "dark" });
@@ -1576,8 +1576,8 @@ test("settings theme picker follows system, applies Omarchy palettes and persist
   await settings.click();
   const themes = page.getByRole("radiogroup", { name: "Theme" });
   await expect(themes.getByRole("radio")).toHaveCount(25);
-  await expect(themes.getByRole("group", { name: "Diffx" })).toBeVisible();
-  await expect(themes.getByRole("group", { name: "Omarchy" })).toBeVisible();
+  // One flat list: no group headings.
+  await expect(themes.getByRole("group")).toHaveCount(0);
   await expect(
     themes.getByRole("radio", { name: "System", exact: true }),
   ).toBeChecked();

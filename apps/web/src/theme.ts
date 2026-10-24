@@ -11,7 +11,7 @@ export const PALETTE_CODE_THEME = "diffx-palette";
 type ThemeDefinition = {
   id: string;
   label: string;
-  group: "diffx" | "omarchy";
+  kind: "base" | "palette";
   mode: ResolvedTheme | "system";
   /** Code theme used when the code theme matches the app theme. */
   code: ThemesType;
@@ -26,168 +26,167 @@ function bundled(name: string): ThemesType {
   return { light: name, dark: name };
 }
 
-/** Omarchy palettes: https://github.com/basecamp/omarchy (MIT). */
 export const THEMES = [
   {
     id: "system",
     label: "System",
-    group: "diffx",
+    kind: "base",
     mode: "system",
     code: pierre,
   },
-  { id: "light", label: "Light", group: "diffx", mode: "light", code: pierre },
-  { id: "dark", label: "Dark", group: "diffx", mode: "dark", code: pierre },
+  { id: "light", label: "Light", kind: "base", mode: "light", code: pierre },
+  { id: "dark", label: "Dark", kind: "base", mode: "dark", code: pierre },
   {
     id: "catppuccin",
     label: "Catppuccin",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: bundled("catppuccin-mocha"),
   },
   {
     id: "catppuccin-latte",
     label: "Catppuccin Latte",
-    group: "omarchy",
+    kind: "palette",
     mode: "light",
     code: bundled("catppuccin-latte"),
   },
   {
     id: "ethereal",
     label: "Ethereal",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: palette,
   },
   {
     id: "everforest",
     label: "Everforest",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: bundled("everforest-dark"),
   },
   {
     id: "flexoki-light",
     label: "Flexoki Light",
-    group: "omarchy",
+    kind: "palette",
     mode: "light",
     code: palette,
   },
   {
     id: "gruvbox",
     label: "Gruvbox",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: bundled("gruvbox-dark-medium"),
   },
   {
     id: "hackerman",
     label: "Hackerman",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: palette,
   },
   {
     id: "kanagawa",
     label: "Kanagawa",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: bundled("kanagawa-wave"),
   },
   {
     id: "last-horizon",
     label: "Last Horizon",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: palette,
   },
   {
     id: "lumon",
     label: "Lumon",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: palette,
   },
   {
     id: "lupine",
     label: "Lupine",
-    group: "omarchy",
+    kind: "palette",
     mode: "light",
     code: palette,
   },
   {
     id: "matte-black",
     label: "Matte Black",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: palette,
   },
   {
     id: "miasma",
     label: "Miasma",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: palette,
   },
   {
     id: "nord",
     label: "Nord",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: bundled("nord"),
   },
   {
     id: "osaka-jade",
     label: "Osaka Jade",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: palette,
   },
   {
     id: "retro-82",
     label: "Retro 82",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: palette,
   },
   {
     id: "ristretto",
     label: "Ristretto",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: palette,
   },
   {
     id: "rose-pine",
     label: "Rosé Pine",
-    group: "omarchy",
+    kind: "palette",
     mode: "light",
     code: bundled("rose-pine-dawn"),
   },
   {
     id: "solitude",
     label: "Solitude",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: palette,
   },
   {
     id: "tokyo-night",
     label: "Tokyo Night",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: bundled("tokyo-night"),
   },
   {
     id: "vantablack",
     label: "Vantablack",
-    group: "omarchy",
+    kind: "palette",
     mode: "dark",
     code: palette,
   },
   {
     id: "white",
     label: "White",
-    group: "omarchy",
+    kind: "palette",
     mode: "light",
     code: palette,
   },
@@ -218,18 +217,18 @@ export function resolveTheme(
   return systemDark ? "dark" : "light";
 }
 
-/** The `data-palette` id for Omarchy themes; Diffx themes use base tokens. */
+/** The `data-palette` id for palette themes; base themes use base tokens. */
 export function themePalette(preference: ThemePreference): string | undefined {
   const theme = themeFor(preference);
-  return theme.group === "omarchy" ? theme.id : undefined;
+  return theme.kind === "palette" ? theme.id : undefined;
 }
 
-/** The swatch palette: Diffx themes preview their light/dark tokens. */
+/** The swatch palette: base themes preview their light/dark tokens. */
 export function swatchPalette(
   preference: Exclude<ThemePreference, "system">,
 ): string {
   const theme = themeFor(preference);
-  return theme.group === "omarchy" ? theme.id : `diffx-${theme.mode}`;
+  return theme.kind === "palette" ? theme.id : `diffx-${theme.mode}`;
 }
 
 export function themeCode(preference: ThemePreference): ThemesType {

@@ -134,11 +134,8 @@
   --file-config: #bc9de2;
 }
 
-/* Omarchy palettes: adapted from Omarchy themes/<id>/colors.toml.
-   Omarchy is MIT licensed: https://github.com/basecamp/omarchy
-   Source commit: cbd44ba1d649c334f3c9dcd8628c5c390524d344
-   Values are tuned for WCAG AA against Diffx surfaces, so some differ from
-   the source palettes. */
+/* Palette themes: values are tuned for WCAG AA against Diffx surfaces, so
+   some differ from the source palettes. */
 :root[data-palette="catppuccin"],
 [data-palette="catppuccin"] {
   color-scheme: dark;
