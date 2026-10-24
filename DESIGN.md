@@ -39,7 +39,9 @@ chrome competing with additions, deletions, syntax, or selected lines.
 ## Sources of truth
 
 - `apps/web/src/tokens.css`: semantic colors, spacing, geometry, elevation,
-  responsive gutters, and light/dark equivalents.
+  responsive gutters, light/dark equivalents, and Omarchy theme palettes.
+- `apps/web/src/theme.ts`: the theme registry (id, label, group, mode and
+  matching code theme).
 - `apps/web/src/typography.css`: fonts, text/icon sizes, weights, line heights.
 - `apps/web/src/style.css`: Tailwind entry point, shadcn theme bridge, shell,
   navigation, and viewer boundary.
@@ -96,8 +98,10 @@ Use the utility when one exists; `bg-(--panel)` or `p-[var(--space-2)]` for a
 token that already has a utility is rejected. 2px (`*-0.5`) steps are optical
 insets reserved for `components/`.
 
-Dark mode continues to use `[data-theme="dark"]`; do not add independent
-theme state. Tailwind Preflight and utility use must not override Pierre's
+`[data-theme]` always carries the resolved light/dark mode; the Tailwind
+`dark` variant and Pierre's `themeType` read it. Omarchy themes additionally set
+`[data-palette]`, whose `tokens.css` block remaps every semantic color role, so
+components never branch on a theme. Do not add independent theme state. Tailwind Preflight and utility use must not override Pierre's
 measured elements or replace the application tokens with framework defaults.
 
 ## Color
@@ -141,6 +145,31 @@ measured elements or replace the application tokens with framework defaults.
   the browser or whole machine. Keep that scope explicit in the status popup.
 - Pierre owns syntax colors, changed-line fills, word highlights, line selection,
   and code-theme surfaces. App status tokens govern the surrounding UI only.
+  Exception: Omarchy palettes without a bundled Shiki theme render code through
+  Pierre's CSS-variable theme (`diffx-palette`); their `tokens.css` blocks set
+  `--diffs-token-*`/`--diffs-ansi-*` and point Pierre's addition, deletion and
+  modified color overrides at `--success`, `--error` and `--warning`.
+
+### Themes
+
+- Settings offers three Diffx themes (System, Light, Dark) and the 22 themes on
+  omarchy.org. Each Omarchy theme has a fixed mode. The choice is saved per
+  browser (`theme-v2`); `index.html` applies it before the app renders and keeps
+  its palette id lists synchronized with `theme.ts`.
+- Palettes keep each theme's background, foreground and accent identity, then
+  tune derived roles (muted, secondary, control border, on-accent, status and
+  syntax colors) until every pairing meets WCAG AA. `design-refresh.spec.ts`
+  asserts this for every theme.
+- Status keeps its meaning: a palette's red, green and yellow back `--error`,
+  `--success` and `--warning` only when their hues read as red (330–30°), green
+  (80–170°) and yellow (30–70°) and stay distinct; otherwise use the Diffx value
+  for that mode.
+- The code theme defaults to “Match app theme”: Pierre for Diffx themes, the
+  bundled Shiki theme where one exists, otherwise `diffx-palette`. Pierre,
+  GitHub, Vitesse and Catppuccin remain explicit overrides in View options.
+- Theme swatches render through the theme's own tokens by scoping
+  `[data-palette]` on the swatch; Diffx light and dark are addressable as
+  `diffx-light` and `diffx-dark`. Never hard-code a preview color.
 - Quiet frames use the light canvas/dot tokens or their dark equivalents from
   the frontmatter. Keep dots behind opaque code surfaces; they do not tint code.
   Light mode uses the white primary surface and separator-colored dots; dark mode
@@ -201,8 +230,8 @@ component internals; layout remains aligned to the 4px rhythm.
 Use `--page-gutter` for notices and footer: 24 desktop, 16 below
 1012px, 12 below 768px. Toolbar and file frames share `--diff-gutter`
 (12px), accounting for the viewport's native scrollbar inset. Header leading
-content uses the same gutter; its rightmost Theme action anchors directly to
-the shell's right edge, independently of diff scrolling.
+content uses the same gutter; its trailing actions anchor directly to the
+shell's right edge, independently of diff scrolling.
 Use explicit margins instead of relying on browser-default paragraph spacing.
 
 Custom values are acceptable only for documented optical or renderer geometry:
@@ -235,25 +264,24 @@ such detail into a token. New layout spacing must use the scale.
 - Header and display-toolbar icon actions share borderless ghost buttons,
   16px icons, and 1.7px strokes, including menu and dialog triggers. Hover and
   expanded states use the same neutral surface feedback. On mobile, both rows
-  use 8px action gaps; the toolbar retains its diff gutter while Theme reaches
-  the header's right edge.
+  use 8px action gaps; the toolbar retains its diff gutter while trailing
+  header actions reach the header's right edge.
 - Header uses `--shell-canvas`, a quiet brand, and the review identity as its primary
   context. Keep the secondary scope heading and muted monospace path inline;
   hide the path at 768–1011px and both below 768px. Group ghost Refresh and
   sync actions at the trailing edge; share `--shell-hover` feedback with the
   trigger, since `--hover` is indistinguishable from the shell canvas.
-  Theme is the rightmost header action in every layout, with the same ghost
-  styling, 32px desktop hit area and 16px icon. Keep its outer edge flush with
-  the shell; never apply the diff scrollbar inset to header actions. Snapshot deletion is absent
-  from the header.
+  Keep the last header action's outer edge flush with the shell; never apply
+  the diff scrollbar inset to header actions. Theme and snapshot deletion are
+  absent from the header.
   A local checkout process replaces Refresh with an icon-only “Sync all
   checkouts” action (folder-sync icon) that never swaps the open review.
 - Header text uses cap-height trimming with token padding to center UI and
   monospace labels without clipping ascenders or descenders.
 - Header lead: brand and divider identify the app. The file-sidebar toggle
   leads the review toolbar. Below 1012px a “Show reviews” toggle in the header
-  opens the review column as a drawer. Account actions sit in the header
-  before the rightmost theme control in every layout.
+  opens the review column as a drawer. Account actions are the header's
+  trailing action in every layout.
 - Review column: the leading pane of the navigation island, titled “Reviews”,
   on `--panel`, sharing the file tree and diff's top and bottom edges below the
   header. Switching streams changes everything to its right; the column stays.
@@ -312,6 +340,12 @@ such detail into a token. New layout spacing must use the scale.
   state. Hover, focus plus Enter, or tap opens a `--surface-raised` popover
   titled by the state, with a “Diffx server process” section listing CPU and RAM.
   Add future system details as further sections in the same popover.
+  Settings follows it at the trailing edge: an icon-only compact ghost gear
+  that opens a `--surface-raised` popover titled “Settings”, capped at 24rem
+  and scrolling internally. Its Theme section is a choice list grouped under
+  “Diffx” and “Omarchy”; rows show a theme swatch, the name and a check on the
+  current theme. Clicking or arrowing applies and saves immediately; there is
+  no hover preview. Add future browser preferences as further sections.
 - The diff display toolbar uses `--panel`, matching the header and status bar.
 - Desktop navigation widths: `--streams-width` defaults to 240px and
   `--sidebar-width` to 330px. `Navigation.tsx` owns the island and one resize
@@ -407,6 +441,7 @@ with a semantic variant instead of overriding it.
 | Search or filter input                 | `search-field`                                                                                                                           |
 | Text input, select, textarea, checkbox | `ui/input`, `ui/select`, `ui/textarea`, `ui/checkbox`                                                                                    |
 | Tree, nav or picker row                | `list-row` (sans/mono font, depth, `option`)                                                                                             |
+| Single choice among rows (themes)      | `choice-list` (groups, check on the chosen row), `theme-swatch`                                                                          |
 | Panel title row                        | `panel-header`; tabs in `ui/tabs`                                                                                                        |
 | Collapsible sidebar section            | `collapsible-section`, `disclosure` chevron                                                                                              |
 | Count, status label, status dot        | `count-badge`, `ui/badge` (status tones), `status-dot`                                                                                   |
@@ -573,8 +608,8 @@ Do not add motion for decoration. New animation must honor
 
 ### Loading
 
-- Keep the real shell, review column and theme actions available while review
-  data loads. Reserve both navigation widths and split/unified layout
+- Keep the real shell, review column and Settings available while review
+  data loads; the loading status bar carries the Settings trigger. Reserve both navigation widths and split/unified layout
   with neutral skeletons for review rows, file rows, the toolbar and diff frames.
   Narrow screens hide the placeholder file sidebar and follow the narrow layout.
 - Skeletons use `--border-muted`, existing spacing and radius tokens, and a gentle
@@ -608,7 +643,7 @@ Do not add motion for decoration. New animation must honor
   code theme, and narrow layout choice in View options.
 - Mobile retains the review identity's repository/branch or Piped/time context; truncate long
   labels and hide its shortcut hint. Hide the secondary heading/path and refresh
-  text, preserving accessible labels and theme/sidebar controls.
+  text, preserving accessible labels and sidebar controls.
   Keep the linked-worktree icon visible when its text label is hidden.
 - Collapse navigation to the toggle-controlled modal drawer; its width is
   `min(320px, 88vw)`. Keep file selection, comments, and export reachable there.
@@ -624,8 +659,8 @@ Do not add motion for decoration. New animation must honor
   and accessible names; wrap the group when the sidebar is too narrow.
 - At mobile widths or coarse pointers, app-owned controls target 44px hit heights;
   icon controls also reach 44px width. Text-input sizing uses `--text-input-touch`.
-  The compact View options and collapse/expand icons match the theme control's
-  44px size within the narrow toolbar’s first row, matching the header touch targets.
+  The compact View options and collapse/expand icons match the header
+  controls' 44px size within the narrow toolbar’s first row, matching the header touch targets.
   Drawer navigation and summary controls retain desktop density, per the same brief.
 - Pierre code rows and header slots retain measured geometry. Larger library
   gutter/header targets need a coordinated renderer-metric change, not a CSS override.
@@ -638,7 +673,7 @@ Do not add motion for decoration. New animation must honor
 
 - Meet WCAG AA: at least 4.5:1 for normal text and 3:1 for meaningful control
   boundaries, focus indicators, and large text. Check actual adjacent surfaces
-  in both themes, including selected and elevated surfaces.
+  in every theme, including selected and elevated surfaces.
 - Use real buttons, inputs, selects, summaries, and dialogs. Modifier-based
   keyboard shortcuts avoid single-character activation conflicts. Preserve tree
   navigation, sidebar resizing, and Pierre's interaction model.
@@ -665,7 +700,7 @@ Before adding a value or visual pattern:
 3. Is the difference meaningful or incidental?
 4. Does this compete with Pierre's code or duplicate its styling?
 5. Does it preserve selection, annotations, and measured scrolling?
-6. Does it remain coherent on mobile, with long content, and in both themes?
+6. Does it remain coherent on mobile, with long content, and in every theme?
 7. Are keyboard focus, contrast, labels, and hit areas correct?
 8. Does this follow `DESIGN.md`? If a new role is necessary, update it here.
 

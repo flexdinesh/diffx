@@ -6,18 +6,53 @@
     <meta name="color-scheme" content="light dark" />
     <script>
       (() => {
+        // Keep these Omarchy ids synchronized with THEMES in src/theme.ts.
+        const lightPalettes = [
+          "catppuccin-latte",
+          "flexoki-light",
+          "lupine",
+          "rose-pine",
+          "white",
+        ];
+        const darkPalettes = [
+          "catppuccin",
+          "ethereal",
+          "everforest",
+          "gruvbox",
+          "hackerman",
+          "kanagawa",
+          "last-horizon",
+          "lumon",
+          "matte-black",
+          "miasma",
+          "nord",
+          "osaka-jade",
+          "retro-82",
+          "ristretto",
+          "solitude",
+          "tokyo-night",
+          "vantablack",
+        ];
+        const root = document.documentElement;
         let theme = "light";
         try {
           const preference = localStorage.getItem("theme-v2");
           const systemDark = matchMedia("(prefers-color-scheme: dark)").matches;
-          theme =
-            preference === "light" || preference === "dark"
-              ? preference
-              : systemDark
-                ? "dark"
-                : "light";
+          if (lightPalettes.includes(preference)) {
+            root.dataset.palette = preference;
+            theme = "light";
+          } else if (darkPalettes.includes(preference)) {
+            root.dataset.palette = preference;
+            theme = "dark";
+          } else
+            theme =
+              preference === "light" || preference === "dark"
+                ? preference
+                : systemDark
+                  ? "dark"
+                  : "light";
         } catch {}
-        document.documentElement.dataset.theme = theme;
+        root.dataset.theme = theme;
       })();
     </script>
     <title>diffx · Code review</title>

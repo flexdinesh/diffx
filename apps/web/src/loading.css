@@ -105,7 +105,8 @@
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-3);
   min-height: var(--statusbar-height);
-  padding: var(--space-2) var(--diff-gutter);
+  /* Settings keeps the bar's height; wrapped text relies on the row gap. */
+  padding: 0 var(--diff-gutter);
   border-top: 1px solid var(--border-muted);
   background: var(--panel);
 }
