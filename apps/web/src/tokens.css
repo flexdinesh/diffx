@@ -72,9 +72,8 @@
   --topbar-height: calc(var(--control-small) + 2 * var(--space-1));
   /* Compact panel headers: sidebar tabs, Repos, toolbar, comment card rows. */
   --panel-header-height: calc(var(--control-small) + 2 * var(--space-1));
-  --statusbar-height: calc(
-    var(--text-xs) * var(--leading-ui) + 2 * var(--space-2) + 1px
-  );
+  /* Status bars fit compact controls with a 2px inset, border included. */
+  --statusbar-height: calc(var(--control-compact) + var(--space-1));
   --page-gutter: var(--space-6);
   --diff-gutter: var(--space-3);
   --shell-gutter: var(--space-1-5);
