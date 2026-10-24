@@ -1,14 +1,28 @@
+min_version = "2026.8.6"
+
 [settings]
 # Reuse .node-version and package.json's packageManager pin.
 idiomatic_version_file_enable_tools = ["node", "pnpm"]
+# Record tool checksums in mise.lock; CI installs with --locked.
+lockfile = true
+# Checkouts and rebases rewrite mtimes; compare task sources by content.
+task.source_freshness_hash_contents = true
+
+[env]
+# Use the mise Go pin; never download a toolchain go.mod asks for.
+GOTOOLCHAIN = "local"
 
 [tools]
 go = "1.27.3"
 
+[tasks.deps]
+description = "Install pnpm dependencies from the lockfile"
+run = "pnpm install --frozen-lockfile"
+
 [tasks.setup]
 description = "Install dependencies, hooks, Playwright Chromium, and embedded web assets"
 run = [
-  "pnpm install --frozen-lockfile",
+  { task = "deps" },
   "pnpm prepare",
   "pnpm test:browser:install",
   { task = "web:stage" },
@@ -20,16 +34,41 @@ run = ["pnpm generate:api", { task = "plugins:build" }]
 
 [tasks."web:build"]
 description = "Generate API types and build the web app"
+sources = [
+  "apps/web/src/**/*",
+  "apps/web/index.html",
+  "apps/web/vite.config.ts",
+  "apps/web/tsconfig.json",
+  "apps/web/components.json",
+  "apps/web/package.json",
+  "packages/api/openapi.yaml",
+  "packages/api/src/**/*",
+  "packages/api/package.json",
+  "package.json",
+  "pnpm-lock.yaml",
+]
+outputs = ["apps/web/dist/**/*", "packages/api/src/schema.d.ts"]
 run = "pnpm build"
 
 [tasks."web:stage"]
 description = "Build and stage ignored embedded web assets for Go builds"
 depends = ["web:build"]
+sources = ["apps/web/dist/**/*", "tools/stage-web/**/*"]
+outputs = ["internal/webui/dist/**/*"]
 run = "go run ./tools/stage-web apps/web/dist internal/webui/dist"
 
 [tasks.build]
 description = "Build the standalone CLI at dist/diffx"
 depends = ["web:stage"]
+sources = [
+  "cmd/**/*",
+  "internal/**/*",
+  "packages/api/*.go",
+  "packages/api/openapi.yaml",
+  "go.mod",
+  "go.sum",
+]
+outputs = ["dist/diffx", "dist/diffx-server"]
 run = [
   "node -e \"require('node:fs').mkdirSync('dist', { recursive: true })\"",
   "go build -trimpath -o dist/diffx ./cmd/diffx",
@@ -48,6 +87,14 @@ run = "pnpm dev:web"
 
 [tasks."plugins:build"]
 description = "Build self-contained agent plugin adapters"
+sources = [
+  "packages/plugin-*/src/**/*",
+  "packages/plugin-*/tsconfig*.json",
+  "packages/plugin-*/package.json",
+  "tsconfig.json",
+  "pnpm-lock.yaml",
+]
+outputs = ["packages/plugin-opencode/dist/**/*", "packages/plugin-pi/dist/**/*"]
 run = "pnpm --recursive --filter '@diffx/plugin-*' --if-present build"
 
 [tasks."docs:dev"]
