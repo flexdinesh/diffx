@@ -115,3 +115,25 @@ Stage assets locally before Go builds and tests:
 ```sh
 mise run web:stage
 ```
+
+## Licensing
+
+diffx is MIT licensed. Linked Go modules and runtime npm dependencies use
+permissive licenses (MIT, BSD, ISC, Apache-2.0, 0BSD, BlueOak-1.0.0). The
+JetBrains Mono font is OFL-1.1.
+
+Known exceptions, accepted after the October 2026 dependency audit:
+
+- The embedded web bundle includes every Shiki grammar and theme as lazy
+  chunks. The upstream sources (per `tm-grammars`/`tm-themes` metadata) of grammars
+  `ada`, `nginx`, `org`, `racket` and `ahk2` and theme `aurora-x` are GPL-3.0;
+  `hcl`, `terraform` and `bird2` are MPL-2.0; about 30 grammars, mostly
+  TextMate bundles such as `yaml` and `toml`, declare no detectable license.
+- The docs site's build-only dependency `vocs` pulls `@codesandbox/nodebox`
+  (Sustainable Use License, non-commercial). It is not in the published site or
+  any release artifact.
+- Build and test tooling includes MPL-2.0 (`lightningcss`), CC-BY-4.0
+  (`caniuse-lite`) and Python-2.0 (`argparse`) packages; none are shipped.
+
+Recheck with `pnpm licenses list -r` and the `LICENSE` files of `go list -deps`
+modules when adding dependencies.

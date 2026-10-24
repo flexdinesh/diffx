@@ -1,6 +1,7 @@
 {
   "name": "@diffx/docs",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vocs dev",
