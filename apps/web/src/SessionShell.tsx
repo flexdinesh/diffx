@@ -6,13 +6,14 @@ import { navigate } from "./identity-context.tsx";
 import { Button } from "@/components/ui/button";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { Navigation } from "./Navigation.tsx";
-import { StreamInbox } from "./StreamInbox.tsx";
 import { SyncButton, Topbar } from "./Topbar.tsx";
 import { useCatalog, useSessionShell } from "./session-context.tsx";
+import { useShellPolicy } from "./shell-policy.ts";
 
 /**
  * Presents the selected review once ready, or the loading, empty and failure
- * shell while SessionProvider resolves it. The picker spans both states.
+ * shell while SessionProvider resolves it. The picker spans both states
+ * wherever the shell offers review navigation.
  */
 export function SessionShell({ children }: { children: ReactNode }) {
   const { current, selectedId, select, pickerOpen, heads } = useCatalog();
@@ -31,6 +32,7 @@ export function SessionShell({ children }: { children: ReactNode }) {
     history,
     setPickerOpen,
   } = useSessionShell();
+  const { reviewNavigation } = useShellPolicy();
   return (
     <>
       <div className="app-shell">
@@ -110,20 +112,21 @@ export function SessionShell({ children }: { children: ReactNode }) {
                       />
                     )}
                   </main>
-                  <StreamInbox />
                 </div>
               </div>
             </>
           )}
         </div>
       </div>
-      <ProjectPicker
-        contexts={history.loaded ? history.contexts : heads.contexts}
-        selectedId={selectedId}
-        select={select}
-        open={pickerOpen}
-        onOpenChange={setPickerOpen}
-      />
+      {reviewNavigation && (
+        <ProjectPicker
+          contexts={history.loaded ? history.contexts : heads.contexts}
+          selectedId={selectedId}
+          select={select}
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+        />
+      )}
     </>
   );
 }

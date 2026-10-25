@@ -72,10 +72,14 @@ func TestAdmissionCapabilitiesMatchHealthAndRoutes(t *testing.T) {
 				t.Fatalf("health capabilities: %+v, want %+v", health, test.want)
 			}
 			bootstrap := decode[struct {
-				Collect bool `json:"collect"`
+				Collect bool   `json:"collect"`
+				Input   string `json:"input"`
 			}](t, request(t, d, "GET", "/api/v2/bootstrap", nil))
 			if bootstrap.Collect != test.want.Collection {
 				t.Fatalf("bootstrap collect: %v, want %v", bootstrap.Collect, test.want.Collection)
+			}
+			if want := map[bool]string{false: "capture", true: "checkouts"}[test.want.Collection]; bootstrap.Input != want {
+				t.Fatalf("bootstrap input: %q, want %q", bootstrap.Input, want)
 			}
 			collections := request(t, d, "GET", "/api/v2/collections", nil)
 			collections.Body.Close()

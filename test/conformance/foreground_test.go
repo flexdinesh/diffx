@@ -127,10 +127,11 @@ func TestForegroundPipedPatchAndPersistentHistory(t *testing.T) {
 				}
 			}
 			var bootstrap struct {
-				Collect *bool `json:"collect"`
+				Collect *bool  `json:"collect"`
+				Input   string `json:"input"`
 			}
 			requestJSON(t, status.BrowserURL+"/api/v2/bootstrap", &bootstrap)
-			if bootstrap.Collect == nil || *bootstrap.Collect || statusOf(t, http.MethodPost, status.BrowserURL+"/api/v2/collections") != http.StatusNotFound {
+			if bootstrap.Collect == nil || *bootstrap.Collect || bootstrap.Input != "capture" || statusOf(t, http.MethodPost, status.BrowserURL+"/api/v2/collections") != http.StatusNotFound {
 				t.Fatalf("piped capture exposed checkout collection: %+v", bootstrap)
 			}
 			response, err := http.Post(status.BrowserURL+"/api/v2/ingestions", "application/json", strings.NewReader("{}"))
@@ -299,10 +300,11 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 		t.Fatalf("snapshot followed edits or branch switch: %+v", retained)
 	}
 	var bootstrap struct {
-		Collect *bool `json:"collect"`
+		Collect *bool  `json:"collect"`
+		Input   string `json:"input"`
 	}
 	requestJSON(t, status.BrowserURL+"/api/v2/bootstrap", &bootstrap)
-	if bootstrap.Collect == nil || !*bootstrap.Collect {
+	if bootstrap.Collect == nil || !*bootstrap.Collect || bootstrap.Input != "checkouts" {
 		t.Fatalf("checkout process cannot collect: %+v", bootstrap)
 	}
 	// Only an explicit request collects the selected checkouts again.

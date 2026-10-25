@@ -162,6 +162,7 @@ test("Go distribution implements the API contract", async (t) => {
     user: null,
     csrfToken: null,
     collect: false,
+    input: "capture",
   });
   const collection = await fetch(`${url}/api/v2/collections`, {
     method: "POST",

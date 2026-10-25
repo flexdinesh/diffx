@@ -933,7 +933,7 @@ components:
       oneOf:
         - type: object
           additionalProperties: false
-          required: [mode, signupEnabled, user, csrfToken, collect]
+          required: [mode, signupEnabled, user, csrfToken, collect, input]
           properties:
             mode:
               type: string
@@ -948,6 +948,10 @@ components:
             collect:
               type: boolean
               description: Whether this process can collect its selected checkouts again through POST /api/v2/collections.
+            input:
+              type: string
+              enum: [checkouts, capture]
+              description: What this process serves. `checkouts` reviews discovered checkouts; `capture` reviews one fixed patch (piped stdin or a fixture) and has nothing to switch to.
         - type: object
           additionalProperties: false
           required: [mode, signupEnabled, user, csrfToken]

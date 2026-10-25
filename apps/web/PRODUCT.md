@@ -24,7 +24,7 @@ A local review workspace that combines a browser-based Git diff with comments th
 - Reviews can cover all, staged, or unstaged changes. The file tree, reviewed-file marks, and comments help track progress.
 - Comments can be copied as agent-ready XML. The same review comments are available to compatible coding agents through MCP and, in supported browsers, WebMCP.
 - The CLI can also display a piped Git patch as a fixed review.
-- A remote diffx server can collect from many agent sessions across many repositories. The Reviews column keeps that work navigable as people hop between agents: each repository lists only its current changed branches, newest first, the column collapses to repository marks, the inbox filters every stream by repository, session, worktree or host, and new arrivals are marked without replacing the review in progress.
+- A remote diffx server can collect from many agent sessions across many repositories. The Reviews column keeps that work navigable as people hop between agents: each repository lists only its current changed branches, newest first, the column collapses to repository marks that open each repository's latest work, the header repository and branch comboboxes filter as you type, and new arrivals are marked without replacing the review in progress. A piped patch shows only that diff.
 - Review data is stored by the local diffx server, as documented in `../../docs-website/src/pages/api.md`.
 
 ## Capabilities and Constraints
