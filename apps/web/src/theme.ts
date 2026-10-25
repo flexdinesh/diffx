@@ -29,13 +29,19 @@ function bundled(name: string): ThemesType {
 export const THEMES = [
   {
     id: "system",
-    label: "System",
+    label: "Auto",
     kind: "base",
     mode: "system",
     code: pierre,
   },
-  { id: "light", label: "Light", kind: "base", mode: "light", code: pierre },
-  { id: "dark", label: "Dark", kind: "base", mode: "dark", code: pierre },
+  {
+    id: "light",
+    label: "diffx Light",
+    kind: "base",
+    mode: "light",
+    code: pierre,
+  },
+  { id: "dark", label: "diffx Dark", kind: "base", mode: "dark", code: pierre },
   {
     id: "catppuccin",
     label: "Catppuccin",

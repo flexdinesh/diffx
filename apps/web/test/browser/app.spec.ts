@@ -1585,16 +1585,16 @@ test("settings theme picker follows system, applies palettes and persists", asyn
   // One flat list: no group headings.
   await expect(themes.getByRole("group")).toHaveCount(0);
   await expect(
-    themes.getByRole("radio", { name: "System", exact: true }),
+    themes.getByRole("radio", { name: "Auto", exact: true }),
   ).toBeChecked();
 
-  await themes.getByRole("radio", { name: "Light", exact: true }).click();
+  await themes.getByRole("radio", { name: "diffx Light", exact: true }).click();
   await expect(html).toHaveAttribute("data-theme", "light");
   await expect.poll(savedTheme).toBe("light");
   // Arrow keys move and select, like native radios.
   await page.keyboard.press("ArrowDown");
   await expect(
-    themes.getByRole("radio", { name: "Dark", exact: true }),
+    themes.getByRole("radio", { name: "diffx Dark", exact: true }),
   ).toBeChecked();
   await expect(html).toHaveAttribute("data-theme", "dark");
 
@@ -1618,7 +1618,7 @@ test("settings theme picker follows system, applies palettes and persists", asyn
   await expect(html).toHaveAttribute("data-palette", "flexoki-light");
   await expect(html).toHaveAttribute("data-theme", "light");
 
-  await themes.getByRole("radio", { name: "System", exact: true }).click();
+  await themes.getByRole("radio", { name: "Auto", exact: true }).click();
   await expect(html).not.toHaveAttribute("data-palette");
   await expect(html).toHaveAttribute("data-theme", "dark");
   await page.emulateMedia({ colorScheme: "light" });

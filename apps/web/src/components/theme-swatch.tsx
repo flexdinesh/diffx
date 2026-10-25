@@ -14,7 +14,7 @@ function SwatchStrip({ palette }: { palette: string }) {
 /**
  * Previews a theme through its own tokens: `data-palette` scopes tokens.css,
  * so the strip shows that theme's surface, accent, success and error. Two
- * palettes split the swatch, e.g. System's light and dark.
+ * palettes split the swatch, e.g. Auto's light and dark.
  */
 export function ThemeSwatch({
   palettes,
