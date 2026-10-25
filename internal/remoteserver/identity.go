@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/flexdinesh/diffx/internal/githubsync"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/serverapp"
 	"github.com/flexdinesh/diffx/packages/api"
@@ -29,6 +30,7 @@ type transport struct {
 	assets       fs.FS
 	limiter      *authLimiter
 	authSlots    chan struct{}
+	github       *githubsync.Service
 }
 type principal struct {
 	account identityservice.Account
@@ -78,6 +80,9 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if remote.githubPublic(w, r) {
+		return
+	}
 	if !serverapp.SameOrigin(r) {
 		problem(w, 403, "Cross-origin access denied")
 		return
@@ -118,6 +123,14 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if p.session != nil && unsafe(r.Method) && !validCSRF(r, p.session.CSRFToken) {
 		problem(w, 403, "CSRF token required")
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/v2/github/") {
+		if p.session == nil {
+			problem(w, 403, "Browser session required")
+			return
+		}
+		remote.githubAccount(w, r, p)
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/v2/account/") || r.URL.Path == "/api/v2/auth/logout" {

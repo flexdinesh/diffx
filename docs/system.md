@@ -124,6 +124,39 @@ Transient ingestion notifications remain hints; clients reload durable catalog
 state after reconnecting. Queue workers may execute out of order, but stream
 freshness follows collection time and acceptance sequence.
 
+### GitHub pull requests
+
+The remote server optionally integrates a GitHub App, enabled only when every
+`DIFFX_SERVER_GITHUB_*` setting is present; secrets come from the environment
+only. Local composition has no GitHub routes.
+
+Access is the intersection of the GitHub user and the app installation. An
+account connects GitHub in Settings through the app's OAuth web flow; the
+authorization state is bound to the starting account and consumed once, and the
+callback, a cross-site top-level navigation, completes only for that account's
+session. User access and refresh tokens are sealed with AES-GCM under
+`DIFFX_SERVER_GITHUB_TOKEN_KEY`, bound to the account. An account may follow
+only repositories GitHub lists for that user's installations. Listing,
+following, Resync and startup reconciliation recheck access; delivery to a
+follower rechecks it when its last verification is older than eight hours.
+Lost access, uninstalls, removed repositories, revoked authorizations and
+rejected refreshes mark follows lost; lost follows receive nothing until access
+is verified again. GitHub management routes need a browser session and CSRF
+token, like account management, because they handle GitHub credentials.
+
+Webhooks arrive at `POST /api/v2/github/webhooks`, authenticated only by the
+`X-Hub-Signature-256` HMAC, verified before parsing. A delivery ID is recorded
+only after its effects apply, and recorded IDs are acknowledged without effect,
+so GitHub redeliveries are safe; every effect is idempotent. Pull request events
+for actively followed repositories coalesce into one refresh intent per pull
+request by advancing its generation. GitHub never retries failed deliveries, so
+the server reconciles once at startup and on Settings Resync: it requests
+refreshes for every open pull request of each followed repository and for
+previously open ones missing from GitHub's list, which closed without a
+delivery. Resync's run identity makes the resulting submissions fresh, extending
+retention of pull requests idle since their last change; startup
+reconciliation and webhooks do not. There is no periodic poll.
+
 ### Browse and review
 
 The comparison selector reads scopes of the open observation. It does not
