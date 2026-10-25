@@ -316,6 +316,26 @@ func TestIngestionHTTPRejectsMalformedAndAmbiguousInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	reserved := emptyRequest()
+	reserved.Metadata.SourceID = ingestion.GitHubSourceID
+	reservedRaw, err := json.Marshal(reserved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pull := emptyRequest()
+	head := strings.Repeat("c", 40)
+	pull.Metadata.SourceID, pull.Metadata.Trigger, pull.Metadata.Branch, pull.Metadata.Head = ingestion.GitHubSourceID, ingestion.GitHubTrigger, "feature", &head
+	pull.Scopes[0].Snapshot.Branch, pull.Scopes[0].Snapshot.Head = "feature", &head
+	pull.Metadata.Comparison = &ingestion.Comparison{Kind: "branch", BaseRef: "refs/heads/main", BaseCommit: strings.Repeat("a", 40), MergeBase: strings.Repeat("b", 40)}
+	pull.Metadata.PullRequest = &ingestion.PullRequest{Provider: "github", RepositoryID: 7, FullName: "octo/app", Number: 12, URL: "https://github.com/octo/app/pull/12",
+		Title: "Spoofed", State: "open", Author: ingestion.PullRequestAuthor{Login: "mona", URL: "https://github.com/mona"}}
+	if err := ingestion.Validate(pull); err != nil {
+		t.Fatalf("fixture must be otherwise valid: %v", err)
+	}
+	pullRaw, err := json.Marshal(pull)
+	if err != nil {
+		t.Fatal(err)
+	}
 	cases := []struct {
 		name, method, contentType, body string
 		status                          int
@@ -328,6 +348,8 @@ func TestIngestionHTTPRejectsMalformedAndAmbiguousInput(t *testing.T) {
 		{"trailing JSON", "POST", "application/json", string(raw) + ` {}`, 400},
 		{"trailing garbage", "POST", "application/json", string(raw) + ` x`, 400},
 		{"unsupported protocol", "POST", "application/json", string(unsupportedRaw), 400},
+		{"reserved github source", "POST", "application/json", string(reservedRaw), 400},
+		{"producer-claimed pull request", "POST", "application/json", string(pullRaw), 400},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

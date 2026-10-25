@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +27,7 @@ func TestOlderSchemaRefusedWithoutReset(t *testing.T) {
 			store.Close()
 			t.Fatal("accepted older schema")
 		} else {
-			for _, text := range []string{path, "schema 10 is older than supported schema 11", "supporting schema 10", "automatic reset is disabled", "back up", "SQLite sidecar files", "--state /path/to/new-state.db", "no saved reviews or server accounts"} {
+			for _, text := range []string{path, "schema 10 is older than supported schema 12", "supporting schema 10", "automatic reset is disabled", "back up", "SQLite sidecar files", "--state /path/to/new-state.db", "no saved reviews or server accounts"} {
 				if !strings.Contains(err.Error(), text) {
 					t.Fatalf("missing recovery guidance %q: %v", text, err)
 				}
@@ -45,6 +46,35 @@ func TestOlderSchemaRefusedWithoutReset(t *testing.T) {
 	var version int
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 10 {
 		t.Fatalf("older schema version changed: %d %v", version, err)
+	}
+}
+
+func TestAdditiveSchemaUpgradesInPlace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := store.User("owner", "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec("PRAGMA user_version=11"); err != nil {
+		t.Fatal(err)
+	}
+	store.Close()
+	store, err = Open(path)
+	if err != nil {
+		t.Fatalf("schema 11 must upgrade in place: %v", err)
+	}
+	defer store.Close()
+	var version int
+	if err := store.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != schemaVersion {
+		t.Fatalf("upgraded version %d %v", version, err)
+	}
+	again, err := store.User("owner", "owner")
+	if err != nil || again.ID != user.ID {
+		t.Fatalf("upgrade lost state: %+v %v", again, err)
 	}
 }
 
@@ -184,7 +214,7 @@ func TestResetBacksUpOlderStateBesideItAndKeepsLatestBackup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("current schema not reset: %v", err)
 	}
-	if !strings.HasPrefix(filepath.Base(second), "state.db.schema11-") {
+	if !strings.HasPrefix(filepath.Base(second), fmt.Sprintf("state.db.schema%d-", schemaVersion)) {
 		t.Fatalf("unexpected backup path %q", second)
 	}
 	for _, pruned := range []string{first, first + "-shm"} {

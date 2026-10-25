@@ -29,8 +29,11 @@ func Validate(input Request) error {
 	if input.Metadata.ActivityAt < 0 {
 		return fmt.Errorf("activityAt must be nonnegative")
 	}
-	if input.Metadata.Trigger != "manual" && input.Metadata.Trigger != "agent-hook" && input.Metadata.Trigger != "pipe" {
-		return fmt.Errorf("trigger must be manual, agent-hook, or pipe")
+	if input.Metadata.Trigger != "manual" && input.Metadata.Trigger != "agent-hook" && input.Metadata.Trigger != "pipe" && input.Metadata.Trigger != GitHubTrigger {
+		return fmt.Errorf("trigger must be manual, agent-hook, pipe, or github")
+	}
+	if err := validatePullRequest(input.Metadata); err != nil {
+		return err
 	}
 	values := []string{input.Metadata.Hostname, input.Metadata.RunID, input.Metadata.Agent, input.Metadata.RepositoryKey, input.Metadata.RepositoryName, input.Metadata.RemoteURL, input.Metadata.CheckoutKey, input.Metadata.Root, input.Metadata.WorktreeName, input.Metadata.Branch, input.Metadata.BranchID, input.Metadata.CollectorVersion, input.Metadata.TriggerRoot}
 	if comparison := input.Metadata.Comparison; comparison != nil {
@@ -147,6 +150,45 @@ func validateComparisonKind(snapshot review.RepositoryDiff, metadata Metadata) e
 	}
 	if kind == review.ComparisonCommitted && (snapshot.Head == nil || *snapshot.Head == "") {
 		return fmt.Errorf("committed comparison requires captured HEAD")
+	}
+	return nil
+}
+
+// A pull request capture is always a GitHub-triggered branch comparison.
+func validatePullRequest(metadata Metadata) error {
+	pull := metadata.PullRequest
+	if (pull != nil) != (metadata.Trigger == GitHubTrigger) {
+		return fmt.Errorf("pullRequest metadata and github trigger must be supplied together")
+	}
+	if pull == nil {
+		return nil
+	}
+	if metadata.SourceID != GitHubSourceID || metadata.Comparison == nil || metadata.Comparison.Kind != "branch" {
+		return fmt.Errorf("pullRequest requires the github source and a branch comparison")
+	}
+	owner, name, ok := strings.Cut(pull.FullName, "/")
+	if pull.Provider != "github" || pull.RepositoryID <= 0 || pull.Number <= 0 || !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return fmt.Errorf("pullRequest requires github provider, repositoryId, owner/name and number")
+	}
+	if pull.URL != fmt.Sprintf("https://github.com/%s/pull/%d", pull.FullName, pull.Number) {
+		return fmt.Errorf("pullRequest url must address the pull request on github.com")
+	}
+	if pull.State != "open" && pull.State != "closed" && pull.State != "merged" {
+		return fmt.Errorf("pullRequest state must be open, closed, or merged")
+	}
+	if pull.Author.Login == "" || pull.Author.URL != "https://github.com/"+pull.Author.Login {
+		return fmt.Errorf("pullRequest author requires login and github.com profile url")
+	}
+	if pull.CreatedAt < 0 || pull.UpdatedAt < pull.CreatedAt {
+		return fmt.Errorf("pullRequest times must be nonnegative and ordered")
+	}
+	if len(pull.Body) > 256<<10 {
+		return fmt.Errorf("pullRequest body exceeds 256 KiB")
+	}
+	for _, value := range []string{pull.FullName, pull.Title, pull.Author.Login, pull.BaseRef, pull.HeadRef, pull.HeadRepository} {
+		if len(value) > 32<<10 {
+			return fmt.Errorf("metadata value exceeds 32 KiB")
+		}
 	}
 	return nil
 }

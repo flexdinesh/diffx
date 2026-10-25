@@ -188,11 +188,15 @@ uses `X-Diffx-State` to pin submission and polling to the destination identity;
 older protocols are rejected. Release artifacts use the explicit `diffx` project
 name, independent of the checkout directory.
 
-Schema 11 preserves current state across starts. It moved review state from
-each snapshot scope to its stream and scope, because comments and reviewed marks
-must survive new collections and snapshot deletion. Older, future and unrecognized
-schemas are refused; opening a database never resets it. No automatic schema
-migration is implemented. `reviewstore.Reset` is the only reset: under the
+Schema 12 preserves current state across starts. Schema 11 moved review state
+from each snapshot scope to its stream and scope, because comments and reviewed
+marks must survive new collections and snapshot deletion. Schema 11 and later
+upgrade in place: later schemas only add tables and indexes, so opening runs the
+idempotent creation statements and records the new version in one transaction,
+because durable server volumes must gain GitHub integration state without an
+operator reset. A schema change that alters existing tables needs a new
+compatibility floor instead. Older-than-11, future and unrecognized schemas are
+refused; opening a database never resets it. `reviewstore.Reset` is the only reset: under the
 ownership lock it moves current or older diffx state and its SQLite sidecars to
 a timestamped backup beside the database, keeping only the newest backup, and
 refuses newer or unrecognized files. Only local composition decides to call it,
@@ -207,8 +211,12 @@ state also suggest `--reset-state`. Fresh state has no saved reviews or server
 accounts.
 Install the server first when adding optional protocol 4 metadata: older servers
 reject unknown request fields and new diff scopes. Captured comparison kinds,
-the `uncommitted` and `committed` scopes, and activity metadata retain protocol 4.
-Existing saved submissions remain replayable and schema 11 state needs no reset.
+the `uncommitted` and `committed` scopes, activity and pull request metadata
+retain protocol 4. Public ingestion rejects the `github` source, the `github`
+trigger and `pullRequest` metadata at the transport, because only the server's
+GitHub integration may claim a hosted pull request; shared validation accepts
+them for that internal admission path.
+Existing saved submissions remain replayable and schema 11 state upgrades without reset.
 Legacy comparison kinds are interpreted on read; stored payloads and their retry
 identities are not rewritten. Upgrade collectors after the server.
 Versioned producer directories ignore old manual/hook pending payloads.

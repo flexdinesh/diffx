@@ -47,6 +47,43 @@ type Metadata struct {
 	Comparison       *Comparison   `json:"comparison,omitempty"`
 	AgentSession     *AgentSession `json:"agentSession,omitempty"`
 	TriggerRoot      string        `json:"triggerRoot,omitempty"`
+	PullRequest      *PullRequest  `json:"pullRequest,omitempty"`
+}
+
+// PullRequest describes the hosted pull request a capture reviews. Only the
+// server's GitHub integration authors it; public ingestion rejects it.
+type PullRequest struct {
+	Provider       string            `json:"provider"`
+	RepositoryID   int64             `json:"repositoryId"`
+	FullName       string            `json:"fullName"`
+	Number         int               `json:"number"`
+	URL            string            `json:"url"`
+	Title          string            `json:"title"`
+	Body           string            `json:"body"`
+	State          string            `json:"state"`
+	Draft          bool              `json:"draft"`
+	Author         PullRequestAuthor `json:"author"`
+	BaseRef        string            `json:"baseRef"`
+	HeadRef        string            `json:"headRef"`
+	HeadRepository string            `json:"headRepository"`
+	CreatedAt      int64             `json:"createdAt"`
+	UpdatedAt      int64             `json:"updatedAt"`
+}
+
+type PullRequestAuthor struct {
+	Login string `json:"login"`
+	URL   string `json:"url"`
+}
+
+// Server-authored producer markers; public ingestion rejects both.
+const (
+	GitHubSourceID = "github"
+	GitHubTrigger  = "github"
+)
+
+// Reserved reports metadata only the server's GitHub integration may submit.
+func (metadata Metadata) Reserved() bool {
+	return metadata.PullRequest != nil || metadata.SourceID == GitHubSourceID || metadata.Trigger == GitHubTrigger
 }
 
 type Scope struct {

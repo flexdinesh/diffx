@@ -207,6 +207,14 @@ head selection. Unchanged submissions can update ordering without producing an
 unread-content indicator. Piped history and the full catalog retain their
 existing collection/submission chronology.
 
+Optional `pullRequest` metadata (title, description, author, state, refs and
+URL of a hosted pull request) follows the same rule: a current head shows its
+winning submission's value, so a title edit or merge that leaves the diff
+unchanged reuses the observation and still updates what the head shows, while
+historical snapshots keep their captured value. It does not participate in
+content identity. Only the server's GitHub integration authors it; public
+ingestion rejects it with the reserved `github` source and trigger.
+
 The review picker, opened by Cmd/Ctrl+K or the header's “Search reviews”
 action, loads the full catalog only while open. It selects a
 repository, then an observation identified by worktree, branch, source, run and time. Distinct
