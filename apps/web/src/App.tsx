@@ -6,6 +6,7 @@ import { FileExplorerNav } from "./FileExplorerNav.tsx";
 import { Header } from "./Header.tsx";
 import { Navigation } from "./Navigation.tsx";
 import { NewerSnapshotNotice } from "./ProjectsNav.tsx";
+import { PullRequestBanner } from "./PullRequestBanner.tsx";
 import { CopyDialog } from "./review.tsx";
 import { capabilityEnabled, useSession } from "./session-context.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
@@ -22,6 +23,7 @@ export function App() {
           <FileExplorerNav />
         </Navigation>
         <div className="workspace">
+          <PullRequestBanner />
           <NewerSnapshotNotice />
           <OutdatedCommentsNotice />
           <DiffWorkspace />

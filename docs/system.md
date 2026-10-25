@@ -126,6 +126,9 @@ freshness follows collection time and acceptance sequence.
 
 ### GitHub pull requests
 
+Live testing against a real GitHub App is pending; see
+[github-live-testing.md](github-live-testing.md).
+
 The remote server optionally integrates a GitHub App, enabled only when every
 `DIFFX_SERVER_GITHUB_*` setting is present; secrets come from the environment
 only. Local composition has no GitHub routes.

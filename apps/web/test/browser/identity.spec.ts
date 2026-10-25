@@ -326,3 +326,170 @@ test("logout failure stays recoverable and success disposes account UI", async (
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 });
+
+test("GitHub settings stay absent until the server configures the integration", async ({
+  page,
+}) => {
+  await remote(page);
+  await page.route("**/api/v2/github/connection", (route) =>
+    route.fulfill({
+      status: 404,
+      json: { detail: "GitHub integration is not configured" },
+    }),
+  );
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "API tokens" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "GitHub" })).toHaveCount(0);
+});
+
+test("connecting GitHub starts authorization with CSRF and reports the callback once", async ({
+  page,
+}) => {
+  await remote(page);
+  await page.route("**/api/v2/github/connection", (route) => {
+    if (route.request().method() === "POST") {
+      expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
+      return route.fulfill({
+        json: { authorizeUrl: "https://github.test/login/oauth/authorize" },
+      });
+    }
+    return route.fulfill({
+      json: {
+        connected: false,
+        installUrl: "https://github.com/apps/diffx/installations/new",
+      },
+    });
+  });
+  await page.route("https://github.test/**", (route) =>
+    route.fulfill({ contentType: "text/html", body: "<h1>Authorize</h1>" }),
+  );
+  await page.goto("/settings?github=cancelled");
+  await expect(
+    page.getByText("GitHub authorization was cancelled."),
+  ).toBeVisible();
+  expect(new URL(page.url()).search).toBe("");
+  await expect(
+    page.getByRole("link", { name: "Install on repositories" }),
+  ).toHaveAttribute("href", "https://github.com/apps/diffx/installations/new");
+  await page
+    .getByRole("button", { name: "Connect GitHub", exact: true })
+    .click();
+  await expect(page.getByRole("heading", { name: "Authorize" })).toBeVisible();
+  expect(page.url()).toBe("https://github.test/login/oauth/authorize");
+});
+
+test("followed repositories toggle with CSRF, resync, and lost access stays listed", async ({
+  page,
+}) => {
+  await remote(page);
+  await page.route("**/api/v2/github/connection", (route) =>
+    route.fulfill({
+      json: {
+        connected: true,
+        login: "alice-gh",
+        state: "active",
+        installUrl: "https://github.com/apps/diffx/installations/new",
+      },
+    }),
+  );
+  await page.route("**/api/v2/github/repositories", (route) =>
+    route.fulfill({
+      json: {
+        repositories: [
+          {
+            id: 10,
+            fullName: "octo/app",
+            private: true,
+            followed: false,
+            lost: false,
+          },
+          {
+            id: 11,
+            fullName: "octo/gone",
+            private: false,
+            followed: true,
+            lost: true,
+          },
+        ],
+      },
+    }),
+  );
+  const follows: string[] = [];
+  await page.route("**/api/v2/github/follows/*", (route) => {
+    expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
+    follows.push(
+      `${route.request().method()} ${new URL(route.request().url()).pathname}`,
+    );
+    return route.fulfill({ status: 204 });
+  });
+  let resynced = false;
+  await page.route("**/api/v2/github/resync", (route) => {
+    expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
+    resynced = true;
+    return route.fulfill({ status: 204 });
+  });
+  await page.goto("/settings");
+  await expect(page.getByText("Connected as @alice-gh.")).toBeVisible();
+  const app = page.getByRole("checkbox", { name: "octo/app" });
+  await expect(app).not.toBeChecked();
+  await expect(page.getByRole("img", { name: "Private" })).toBeVisible();
+  await expect(page.getByText("Access lost")).toBeVisible();
+  await app.click();
+  await expect(app).toBeChecked();
+  await expect(page.getByText("Following octo/app.")).toBeVisible();
+  await page.getByRole("checkbox", { name: "octo/gone" }).click();
+  await expect(page.getByRole("checkbox", { name: "octo/gone" })).toHaveCount(
+    0,
+  );
+  expect(follows).toEqual([
+    "PUT /api/v2/github/follows/10",
+    "DELETE /api/v2/github/follows/11",
+  ]);
+  await page.getByRole("button", { name: "Resync pull requests" }).click();
+  await expect(
+    page.getByText("Refreshing pull requests of followed repositories."),
+  ).toBeVisible();
+  expect(resynced).toBe(true);
+});
+
+test("expired GitHub authorization asks to connect again and disconnect confirms", async ({
+  page,
+}) => {
+  await remote(page);
+  let connected = true;
+  await page.route("**/api/v2/github/connection", (route) => {
+    if (route.request().method() === "DELETE") {
+      expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
+      connected = false;
+      return route.fulfill({ status: 204 });
+    }
+    return route.fulfill({
+      json: connected
+        ? {
+            connected: true,
+            login: "alice-gh",
+            state: "expired",
+            installUrl: "https://github.com/apps/diffx/installations/new",
+          }
+        : {
+            connected: false,
+            installUrl: "https://github.com/apps/diffx/installations/new",
+          },
+    });
+  });
+  await page.goto("/settings");
+  await expect(page.getByText(/expired\. Connect again/)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Connect GitHub again" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Repositories" })).toHaveCount(
+    0,
+  );
+  await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+  const confirm = page.getByRole("dialog", { name: "Disconnect GitHub?" });
+  await confirm.getByRole("button", { name: "Disconnect GitHub" }).click();
+  await expect(confirm).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Connect GitHub", exact: true }),
+  ).toBeVisible();
+});

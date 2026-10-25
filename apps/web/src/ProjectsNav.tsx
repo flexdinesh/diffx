@@ -3,6 +3,8 @@ import type { ApiContext } from "@diffx/api";
 import {
   FolderGit2Icon,
   GitBranchIcon,
+  GitPullRequestDraftIcon,
+  GitPullRequestIcon,
   HistoryIcon,
   ListIcon,
   PanelLeftCloseIcon,
@@ -40,6 +42,7 @@ import {
   latestStream,
   newerHead,
   projectGroups,
+  pullRequestOf,
   recentStreams,
   relativeAge,
   repoMonogram,
@@ -471,10 +474,7 @@ function StreamRow({
       onClick={(event) => onOpen(event, context)}
     >
       <span className="flex min-w-0 items-center gap-1.5">
-        <GitBranchIcon
-          className={current ? undefined : "text-muted"}
-          aria-hidden="true"
-        />
+        <StreamIcon context={context} muted={!current} />
         <span className="min-w-0 flex-1 truncate">{streamTitle(context)}</span>
         {fresh && !current && <NewMark />}
         {typeof context.changedFileCount === "number" && (
@@ -494,6 +494,27 @@ function StreamRow({
         {meta}
       </span>
     </ListRow>
+  );
+}
+
+/** Pull requests carry their GitHub state; other streams show a branch. */
+export function StreamIcon({
+  context,
+  muted = false,
+}: {
+  context: ApiContext;
+  muted?: boolean;
+}) {
+  const pull = pullRequestOf(context);
+  const className = muted ? "text-muted" : undefined;
+  if (!pull) return <GitBranchIcon className={className} aria-hidden="true" />;
+  const Icon = pull.draft ? GitPullRequestDraftIcon : GitPullRequestIcon;
+  return (
+    <Icon
+      className={className}
+      role="img"
+      aria-label={pull.draft ? "Draft pull request" : "Pull request"}
+    />
   );
 }
 

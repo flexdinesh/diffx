@@ -22,6 +22,9 @@ export type ApiReviewComment = components["schemas"]["ReviewComment"];
 export type ApiReviewMark = components["schemas"]["ReviewMark"];
 export type ApiCollectionResult = components["schemas"]["CollectionResult"];
 export type ApiCollectionFailure = components["schemas"]["CollectionFailure"];
+export type ApiPullRequest = components["schemas"]["PullRequest"];
+export type ApiGitHubConnection = components["schemas"]["GitHubConnection"];
+export type ApiGitHubRepository = components["schemas"]["GitHubRepository"];
 
 export function errorDetail(error: unknown, fallback: string) {
   if (error instanceof Error) return error.message;

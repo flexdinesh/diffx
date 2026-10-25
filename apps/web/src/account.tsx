@@ -6,6 +6,7 @@ import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { navigate, useIdentity } from "./identity-context.tsx";
+import { AccountGitHub } from "./account-github.tsx";
 import { AccountTokens } from "./account-tokens.tsx";
 
 /** Rail placement on the panel, or the compact header on the shell canvas. */
@@ -174,6 +175,7 @@ export function AccountSettings() {
           Signed in as <strong>{state.bootstrap.user.username}</strong>.
         </p>
         <AccountTokens />
+        <AccountGitHub />
         <PasswordSettings />
         <section
           className="mt-8 border-t border-separator pt-6"

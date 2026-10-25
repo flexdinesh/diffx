@@ -376,6 +376,12 @@ repository grouping. Unavailable entries are disabled and skipped during keyboar
 navigation. Filter selections persist while navigating and reopening the picker.
 Switching disposes the previous workspace's request ownership and resets transient
 state.
+GitHub pull request streams read `observation.pullRequest`, which the server
+projects from the stream head: `project-nav.ts` owns their title, metadata and
+the rule that closed and merged pull requests leave current work;
+`PullRequestBanner.tsx` renders the banner; `account-github.tsx` owns Connect,
+follows and Resync in Settings and renders nothing when
+`GET /api/v2/github/connection` returns 404.
 The compact header exposes no snapshot delete action; theme choice lives in
 the status bar's Settings popover. Snapshot deletion through the API removes its stored diff scopes,
 comments, and reviewed-file marks.

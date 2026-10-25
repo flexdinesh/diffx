@@ -1,6 +1,6 @@
 import { type Page, type Route } from "@playwright/test";
 import { expect, fileToggle, test, withReviewNavigation } from "./fixtures.ts";
-import type { ApiContext, ApiRepositoryDiff } from "@diffx/api";
+import type { ApiContext, ApiPullRequest, ApiRepositoryDiff } from "@diffx/api";
 import {
   comparisonKind,
   isDiffMode,
@@ -2934,4 +2934,118 @@ test("saved comparison preferences belong to the active account", async ({
   account = "first-account";
   await page.goto("/contexts/local-review");
   await ready(page, "committed-v1");
+});
+
+test("pull request reviews show GitHub identity and a sanitized description; closed ones leave the column", async ({
+  page,
+}) => {
+  const state = await localWorkspace(page);
+  await page.route("**/api/v2/bootstrap", (route) =>
+    route.fulfill({
+      json: {
+        mode: "remote",
+        signupEnabled: false,
+        user: { id: "account-a", username: "alice" },
+        csrfToken: "csrf",
+        collect: false,
+      },
+    }),
+  );
+  const pull = {
+    provider: "github",
+    repositoryId: 10,
+    fullName: "octo/app",
+    number: 12,
+    url: "https://github.com/octo/app/pull/12",
+    title: "Add search",
+    body: [
+      "Adds **search**.",
+      "",
+      "<script>window.injected = true</script>",
+      '<img src="x" onerror="window.injected = true">',
+      "",
+      "[unsafe](javascript:window.injected=true) and ![logo](https://example.com/logo.png)",
+    ].join("\n"),
+    state: "open",
+    draft: false,
+    author: { login: "mona", url: "https://github.com/mona" },
+    baseRef: "main",
+    headRef: "search",
+    headRepository: "mona/app",
+    createdAt: 1,
+    updatedAt: 2,
+  } satisfies ApiPullRequest;
+  state.context.streamId = "pr-stream";
+  state.context.latestContextId = state.context.id;
+  state.context.branch = "search";
+  state.context.observation = {
+    sourceId: "github",
+    hostname: "github.com",
+    runId: "",
+    agent: "",
+    trigger: "github",
+    repositoryKey: "repo",
+    repositoryName: "app",
+    remoteUrl: "https://github.com/octo/app.git",
+    checkoutKey: "pr-12",
+    root: pull.url,
+    worktreeName: "PR #12",
+    branch: "search",
+    head: "a".repeat(40),
+    collectedAt: 2,
+    collectorVersion: "test",
+    pullRequest: pull,
+  };
+  const closed: ApiContext = {
+    ...state.context,
+    id: "closed-head",
+    streamId: "closed-stream",
+    latestContextId: "closed-head",
+    observation: {
+      ...state.context.observation,
+      pullRequest: { ...pull, number: 9, title: "Old work", state: "merged" },
+    },
+  };
+  await page.route("**/api/v2/contexts?*", (route) =>
+    route.fulfill({
+      json: { contexts: [state.context, closed], nextCursor: null },
+    }),
+  );
+  await page.goto("/contexts/local-review?scope=all");
+  await ready(page);
+  const nav = page.getByRole("navigation", { name: "Reviews", exact: true });
+  const row = nav.getByRole("link", { name: /#12 Add search/ });
+  await expect(row).toContainText("GitHub · @mona");
+  await expect(row.getByRole("img", { name: "Pull request" })).toBeVisible();
+  await expect(nav.getByText(/Old work/)).toHaveCount(0);
+
+  const banner = page.getByRole("region", { name: "Pull request #12" });
+  await expect(
+    banner.getByRole("heading", { name: "#12 Add search" }),
+  ).toBeVisible();
+  await expect(banner.getByText("Open", { exact: true })).toBeVisible();
+  await expect(banner).toContainText("@mona");
+  await expect(banner).toContainText("Merging search");
+  await expect(banner).toContainText("into main");
+  await expect(
+    banner.getByRole("link", { name: "Open on GitHub" }),
+  ).toHaveAttribute("href", pull.url);
+  await expect(banner.getByText("Adds")).toBeHidden();
+  await banner.getByRole("button", { name: "Show description" }).click();
+  await expect(banner.getByText("search", { exact: true })).toHaveJSProperty(
+    "tagName",
+    "STRONG",
+  );
+  await expect(banner.locator("script, img")).toHaveCount(0);
+  await expect(banner).not.toContainText("<script");
+  await expect(banner).not.toContainText("onerror");
+  expect(await page.evaluate(() => "injected" in window)).toBe(false);
+  expect(
+    await banner.getByRole("link", { name: "unsafe" }).getAttribute("href"),
+  ).not.toMatch(/^javascript:/i);
+  await expect(
+    banner.getByRole("link", { name: "Image: logo" }),
+  ).toHaveAttribute("href", "https://example.com/logo.png");
+  await banner.getByRole("button", { name: "Hide description" }).click();
+  await expect(banner.getByText("Adds")).toBeHidden();
 });

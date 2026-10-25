@@ -8,6 +8,8 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { LinkButton } from "@/components/link-button";
+import { MarkdownText } from "@/components/markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -150,6 +152,25 @@ const layouts = [
   { value: "unified", label: "Unified" },
 ] as const;
 
+const galleryMarkdown = [
+  "## Summary",
+  "",
+  "Adds **search** with `useSearch()` and [docs](#markdown).",
+  "",
+  "- [x] Index files",
+  "- [ ] Rank results",
+  "",
+  "> Follow-up: cache queries.",
+  "",
+  "```ts",
+  "const hits = search(query);",
+  "```",
+  "",
+  "| Case | Result |",
+  "| --- | --- |",
+  "| empty | none |",
+].join("\n");
+
 function Section({
   id,
   title,
@@ -248,6 +269,9 @@ function Components() {
           <IconButton label="Changes" variant="rail" aria-current="page">
             <FileDiffIcon aria-hidden="true" />
           </IconButton>
+          <LinkButton variant="outline-muted" size="sm" href="#button">
+            Link button
+          </LinkButton>
           <span className="text-xs text-secondary">
             Status row ·{" "}
             <Button variant="link" size="inline">
@@ -550,6 +574,12 @@ function Components() {
           <Separator orientation="vertical" />
           <Separator variant="chrome" orientation="vertical" />
         </Row>
+      </Section>
+
+      <Section id="markdown" title="Markdown">
+        <MarkdownText className="max-w-(--reading-width)">
+          {galleryMarkdown}
+        </MarkdownText>
       </Section>
     </div>
   );

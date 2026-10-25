@@ -22,6 +22,8 @@
     "lucide-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "react-markdown": "catalog:",
+    "remark-gfm": "catalog:",
     "shadcn": "catalog:",
     "tw-animate-css": "catalog:"
   },

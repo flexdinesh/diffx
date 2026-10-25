@@ -14,6 +14,7 @@ const sections = [
   "rows",
   "choices",
   "states",
+  "markdown",
 ] as const;
 
 async function open(page: import("@playwright/test").Page, query: string) {

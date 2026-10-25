@@ -30,10 +30,22 @@ export function projectKey(context: ApiContext) {
   return context.repositoryId ?? `name:${context.name}`;
 }
 
+/** The GitHub pull request a stream reviews; the server alone authors it. */
+export function pullRequestOf(context: ApiContext) {
+  return context.observation?.pullRequest;
+}
+
+/** Closed and merged pull requests leave current work; their reviews remain. */
+function currentWork(context: ApiContext) {
+  const state = pullRequestOf(context)?.state;
+  return state !== "closed" && state !== "merged";
+}
+
 export function projectGroups(heads: ApiContext[], seen: SeenStreams | null) {
   const groups = new Map<string, ProjectGroup>();
   for (const context of heads) {
-    if (context.stale || !contextHasChanges(context)) continue;
+    if (context.stale || !contextHasChanges(context) || !currentWork(context))
+      continue;
     const id = projectKey(context);
     const group = groups.get(id) ?? {
       id,
@@ -126,6 +138,8 @@ export function streamMatches(stream: ProjectStream, query: string) {
   const { context } = stream;
   const text = [
     streamTitle(context),
+    context.branch ?? "",
+    pullRequestOf(context)?.author.login ?? "",
     streamWorktree(context),
     streamHost(context),
     ...streamSessions(context),
@@ -147,6 +161,8 @@ export function repoMonogram(name: string) {
 }
 
 export function streamTitle(context: ApiContext) {
+  const pull = pullRequestOf(context);
+  if (pull) return `#${pull.number} ${pull.title}`;
   return context.branch ?? context.observation?.branch ?? "Detached HEAD";
 }
 
@@ -162,10 +178,14 @@ export function streamMeta(
     )[0]?.harness ??
     context.observation?.agentSession?.harness ??
     "";
+  const pull = pullRequestOf(context);
   return [
+    pull ? "GitHub" : "",
+    pull?.draft ? "Draft" : "",
+    pull ? `@${pull.author.login}` : "",
     worktree,
     harness,
-    multipleHosts ? streamHost(context) : "",
+    multipleHosts && !pull ? streamHost(context) : "",
     relativeAge(contextActivity(context), now),
   ]
     .filter(Boolean)
