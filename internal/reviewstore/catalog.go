@@ -61,7 +61,8 @@ var contextSelect = `SELECT c.id,c.kind,json_extract(o.metadata,'$.root'),NULL,o
 	 FROM observation_sessions a JOIN agent_sessions s ON s.owner_id=a.owner_id AND s.source_id=a.source_id AND s.harness=a.harness AND s.session_id=a.session_id WHERE a.context_id=c.id),
 	head.source_id,head.repository_key,head.checkout_key,head.branch,head.comparison_policy,
 	(SELECT hc.id FROM contexts hc JOIN diffs hd ON hd.id=hc.anchor_diff_id WHERE hc.owner_id=c.owner_id AND hc.id=head.context_id
-	 AND (hd.expires_at IS NULL OR hd.expires_at>CAST(strftime('%s','now') AS INTEGER)*1000))
+	 AND (hd.expires_at IS NULL OR hd.expires_at>CAST(strftime('%s','now') AS INTEGER)*1000)),
+	CASE WHEN head.context_id=c.id THEN json_extract(head_submission.metadata,'$.pullRequest') END
 	FROM contexts c
 	LEFT JOIN diffs d ON d.id=c.anchor_diff_id LEFT JOIN observations o ON o.context_id=c.id
 	LEFT JOIN observation_stream_heads head ON head.owner_id=o.owner_id AND head.source_id=o.source_id
@@ -85,9 +86,10 @@ func scanContext(row scanner) (ContextInfo, error) {
 	var metadata *string
 	var sessions, summaries string
 	var head [5]sql.NullString
+	var headPull sql.NullString
 	err := row.Scan(&item.ID, &item.Kind, &item.Root, &item.LocationID, &item.RepositoryID, &item.CommonDir, &item.WorktreeKey,
 		&item.SubmittedFrom, &item.CreatedAt, &item.LastSubmittedAt, &item.ExpiresAt, &item.ActivityAt, &item.ChangedFileCount, &summaries, &item.Source, &metadata, &item.Stale, &sessions,
-		&head[0], &head[1], &head[2], &head[3], &head[4], &item.LatestContextID)
+		&head[0], &head[1], &head[2], &head[3], &head[4], &item.LatestContextID, &headPull)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ContextInfo{}, ErrNotFound
 	}
@@ -104,6 +106,15 @@ func scanContext(row scanner) (ContextInfo, error) {
 		var decoded ingestion.Metadata
 		if err := json.Unmarshal([]byte(*metadata), &decoded); err != nil {
 			return ContextInfo{}, err
+		}
+		// A current head shows its winning submission's pull request, so edits
+		// and state changes appear without changing captured metadata.
+		if headPull.Valid {
+			var pull ingestion.PullRequest
+			if err := json.Unmarshal([]byte(headPull.String), &pull); err != nil {
+				return ContextInfo{}, err
+			}
+			decoded.PullRequest = &pull
 		}
 		item.Metadata = &decoded
 		item.Kind = "observation"

@@ -145,6 +145,12 @@ func decodeIngestion(service *contextservice.Service, w http.ResponseWriter, r *
 		problem(w, 400, err.Error())
 		return ingestion.Request{}, false
 	}
+	// Producers cannot claim a hosted pull request; only the server's GitHub
+	// integration admits that provenance.
+	if input.Metadata.Reserved() {
+		problem(w, 400, "github source, trigger and pullRequest metadata are reserved for the server's GitHub integration")
+		return ingestion.Request{}, false
+	}
 	return input, true
 }
 func stream(ctx context.Context, service *contextservice.Service, w http.ResponseWriter, r *http.Request) {

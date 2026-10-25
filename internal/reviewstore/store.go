@@ -17,7 +17,13 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 11
+const schemaVersion = 12
+
+// additiveSchema is the oldest schema that opens by upgrading in place. Each
+// later schema only creates tables and indexes, so the idempotent initialization
+// statements migrate it in the same transaction that records the new version.
+const additiveSchema = 11
+
 const DefaultRetention = 7 * 24 * time.Hour
 
 var ErrNotFound = reviewdata.ErrNotFound
@@ -148,9 +154,9 @@ type StateError struct {
 	reason  string
 }
 
-// Older reports diffx state written by an earlier schema.
+// Older reports diffx state written by an earlier schema that cannot upgrade in place.
 func (failure *StateError) Older() bool {
-	return failure.Version > 0 && failure.Version < schemaVersion
+	return failure.Version > 0 && failure.Version < additiveSchema
 }
 
 // Supported is the schema this binary opens.
@@ -176,7 +182,7 @@ func (store *Store) initialize(path string) error {
 	if version > schemaVersion {
 		return newerStateError(path, version)
 	}
-	if version > 0 && version < schemaVersion {
+	if version > 0 && version < additiveSchema {
 		return &StateError{Path: path, Version: version, reason: fmt.Sprintf("diffx state schema %d is older than supported schema %d; to keep existing data, use a diffx binary supporting schema %d", version, schemaVersion, version)}
 	}
 	if _, err := store.db.Exec("PRAGMA foreign_keys=OFF"); err != nil {

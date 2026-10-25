@@ -579,6 +579,43 @@ export interface components {
       id: string;
       name?: string;
     };
+    /** @description Hosted pull request a capture reviews. Authored only by the server's GitHub integration; public ingestion rejects it. A current stream head shows its winning submission's value, so edits and state changes appear without new content; older snapshots keep their captured value. */
+    PullRequest: {
+      /** @enum {string} */
+      provider: "github";
+      /** Format: int64 */
+      repositoryId: number;
+      /** @description Base repository as owner/name. */
+      fullName: string;
+      number: number;
+      /** @description https://github.com/{fullName}/pull/{number}. */
+      url: string;
+      title: string;
+      /** @description Untrusted Markdown description; clients must render it without raw HTML. */
+      body: string;
+      /** @enum {string} */
+      state: "open" | "closed" | "merged";
+      draft: boolean;
+      author: {
+        login: string;
+        /** @description https://github.com/{login}. */
+        url: string;
+      };
+      baseRef: string;
+      headRef: string;
+      /** @description Head repository as owner/name; differs from fullName for forks. */
+      headRepository: string;
+      /**
+       * Format: int64
+       * @description Unix milliseconds.
+       */
+      createdAt: number;
+      /**
+       * Format: int64
+       * @description Unix milliseconds.
+       */
+      updatedAt: number;
+    };
     SessionAssociation: {
       sourceId: string;
       harness: string;
@@ -624,6 +661,7 @@ export interface components {
       agentSession?: components["schemas"]["AgentSession"];
       /** @description Directory whose manual command or agent event triggered collection; does not establish authorship. */
       triggerRoot?: string;
+      pullRequest?: components["schemas"]["PullRequest"];
     };
     IngestionScope: {
       snapshot: components["schemas"]["RepositoryDiff"];

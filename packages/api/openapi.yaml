@@ -1027,6 +1027,80 @@ components:
           type: string
         name:
           type: string
+    PullRequest:
+      type: object
+      additionalProperties: false
+      description: Hosted pull request a capture reviews. Authored only by the server's GitHub integration; public ingestion rejects it. A current stream head shows its winning submission's value, so edits and state changes appear without new content; older snapshots keep their captured value.
+      required:
+        [
+          provider,
+          repositoryId,
+          fullName,
+          number,
+          url,
+          title,
+          body,
+          state,
+          draft,
+          author,
+          baseRef,
+          headRef,
+          headRepository,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        provider:
+          type: string
+          enum: [github]
+        repositoryId:
+          type: integer
+          format: int64
+          minimum: 1
+        fullName:
+          type: string
+          description: Base repository as owner/name.
+        number:
+          type: integer
+          minimum: 1
+        url:
+          type: string
+          description: https://github.com/{fullName}/pull/{number}.
+        title:
+          type: string
+        body:
+          type: string
+          description: Untrusted Markdown description; clients must render it without raw HTML.
+        state:
+          type: string
+          enum: [open, closed, merged]
+        draft:
+          type: boolean
+        author:
+          type: object
+          additionalProperties: false
+          required: [login, url]
+          properties:
+            login:
+              type: string
+            url:
+              type: string
+              description: https://github.com/{login}.
+        baseRef:
+          type: string
+        headRef:
+          type: string
+        headRepository:
+          type: string
+          description: Head repository as owner/name; differs from fullName for forks.
+        createdAt:
+          type: integer
+          format: int64
+          description: Unix milliseconds.
+        updatedAt:
+          type: integer
+          format: int64
+          description: Unix milliseconds.
     SessionAssociation:
       type: object
       additionalProperties: false
@@ -1120,6 +1194,8 @@ components:
         triggerRoot:
           type: string
           description: Directory whose manual command or agent event triggered collection; does not establish authorship.
+        pullRequest:
+          $ref: "#/components/schemas/PullRequest"
     IngestionScope:
       type: object
       additionalProperties: false

@@ -105,6 +105,71 @@ func TestValidateStructuredMetadataAndLegacyFallback(t *testing.T) {
 	}
 }
 
+func pullRequestRequest() Request {
+	r := validRequest()
+	head := strings.Repeat("c", 40)
+	r.Metadata.SourceID, r.Metadata.Trigger, r.Metadata.Branch, r.Metadata.Head = GitHubSourceID, GitHubTrigger, "feature", &head
+	r.Scopes[0].Snapshot.Branch, r.Scopes[0].Snapshot.Head = "feature", &head
+	r.Metadata.Comparison = &Comparison{Kind: "branch", BaseRef: "refs/heads/main", BaseCommit: strings.Repeat("a", 40), MergeBase: strings.Repeat("b", 40)}
+	r.Metadata.PullRequest = &PullRequest{Provider: "github", RepositoryID: 7, FullName: "octo/app", Number: 12, URL: "https://github.com/octo/app/pull/12",
+		Title: "Add feature", Body: "Details", State: "open", Author: PullRequestAuthor{Login: "mona", URL: "https://github.com/mona"},
+		BaseRef: "main", HeadRef: "feature", HeadRepository: "mona/app", CreatedAt: 1, UpdatedAt: 2}
+	return r
+}
+
+func TestValidatePullRequestMetadata(t *testing.T) {
+	if err := Validate(pullRequestRequest()); err != nil {
+		t.Fatalf("valid pull request: %v", err)
+	}
+	cases := []struct {
+		name   string
+		change func(*Request)
+	}{
+		{"without github trigger", func(r *Request) { r.Metadata.Trigger = "manual" }},
+		{"github trigger without pull request", func(r *Request) { r.Metadata.PullRequest = nil }},
+		{"foreign source", func(r *Request) { r.Metadata.SourceID = "laptop" }},
+		{"working-tree comparison", func(r *Request) { r.Metadata.Comparison = &Comparison{Kind: "working-tree", BaseRef: "HEAD"} }},
+		{"unknown provider", func(r *Request) { r.Metadata.PullRequest.Provider = "gitlab" }},
+		{"missing repository ID", func(r *Request) { r.Metadata.PullRequest.RepositoryID = 0 }},
+		{"missing number", func(r *Request) { r.Metadata.PullRequest.Number = 0 }},
+		{"name without owner", func(r *Request) { r.Metadata.PullRequest.FullName = "app" }},
+		{"foreign url", func(r *Request) { r.Metadata.PullRequest.URL = "https://example.com/octo/app/pull/12" }},
+		{"url for another number", func(r *Request) { r.Metadata.PullRequest.URL = "https://github.com/octo/app/pull/13" }},
+		{"unknown state", func(r *Request) { r.Metadata.PullRequest.State = "draft" }},
+		{"missing author", func(r *Request) { r.Metadata.PullRequest.Author = PullRequestAuthor{} }},
+		{"foreign author url", func(r *Request) { r.Metadata.PullRequest.Author.URL = "javascript:alert(1)" }},
+		{"updated before created", func(r *Request) { r.Metadata.PullRequest.UpdatedAt = 0 }},
+		{"oversized body", func(r *Request) { r.Metadata.PullRequest.Body = strings.Repeat("x", (256<<10)+1) }},
+		{"oversized title", func(r *Request) { r.Metadata.PullRequest.Title = strings.Repeat("x", (32<<10)+1) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := pullRequestRequest()
+			tc.change(&r)
+			if err := Validate(r); err == nil {
+				t.Fatal("invalid pull request accepted")
+			}
+		})
+	}
+}
+
+func TestReservedMetadata(t *testing.T) {
+	if validRequest().Metadata.Reserved() {
+		t.Fatal("ordinary producer metadata reserved")
+	}
+	for _, change := range []func(*Metadata){
+		func(m *Metadata) { m.SourceID = GitHubSourceID },
+		func(m *Metadata) { m.Trigger = GitHubTrigger },
+		func(m *Metadata) { m.PullRequest = &PullRequest{} },
+	} {
+		metadata := validRequest().Metadata
+		change(&metadata)
+		if !metadata.Reserved() {
+			t.Fatalf("server-authored metadata not reserved: %+v", metadata)
+		}
+	}
+}
+
 func TestValidateEmptyAndUnavailableSnapshots(t *testing.T) {
 	r := validRequest()
 	r.ContentHash = strings.Repeat("a", 64)
