@@ -79,7 +79,7 @@ func MultiHandler(ctx context.Context, store *reviewstore.Store, assets fs.FS, o
 		settings = options[0]
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	handler, closeServices, tasks, err := compose(ctx, store, assets, settings)
+	handler, _, closeServices, tasks, err := compose(ctx, store, assets, settings)
 	if err != nil {
 		cancel()
 		return nil, nil, err
@@ -101,14 +101,17 @@ func MultiHandler(ctx context.Context, store *reviewstore.Store, assets fs.FS, o
 		return closeErr
 	}, nil
 }
-func compose(ctx context.Context, store *reviewstore.Store, assets fs.FS, settings Settings) (http.Handler, func() error, []serverapp.Task, error) {
+
+// compose returns the public handler and, when GitHub is configured, the
+// internal fetcher handler.
+func compose(ctx context.Context, store *reviewstore.Store, assets fs.FS, settings Settings) (http.Handler, http.Handler, func() error, []serverapp.Task, error) {
 	identity := identityservice.New(store)
 	if err := bootstrap(ctx, identity, settings); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	github, err := composeGitHub(store, settings.GitHub)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	applications := &registry{ctx: ctx, store: store, assets: assets, applications: make(map[string]application)}
 	remote := &transport{identity: identity, applications: applications, settings: settings, assets: assets, limiter: newLimiter(), authSlots: make(chan struct{}, 4), github: github}
@@ -132,10 +135,12 @@ func compose(ctx context.Context, store *reviewstore.Store, assets fs.FS, settin
 		})
 	}
 	tasks := []serverapp.Task{worker}
+	var internal http.Handler
 	if github != nil {
 		tasks = append(tasks, reconcileAtStartup(github))
+		internal = fetchHandler(github, settings.GitHub.FetcherSecret)
 	}
-	return remote, applications.close, tasks, nil
+	return remote, internal, applications.close, tasks, nil
 }
 func bootstrap(ctx context.Context, identity *identityservice.Service, settings Settings) error {
 	if (settings.Username == "") != (settings.Password == "") {
@@ -174,7 +179,7 @@ func Run(ctx context.Context, settings Settings, ready func(string)) error {
 	if err := store.PruneExpired(time.Now()); err != nil {
 		return err
 	}
-	handler, closeServices, tasks, err := compose(ctx, store, webui.Assets(), settings)
+	handler, internal, closeServices, tasks, err := compose(ctx, store, webui.Assets(), settings)
 	if err != nil {
 		return err
 	}
@@ -186,7 +191,19 @@ func Run(ctx context.Context, settings Settings, ready func(string)) error {
 	defer listener.Close()
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 2 * time.Minute, IdleTimeout: 60 * time.Second}
 	defer server.Close()
-	return serverapp.Run(ctx, []serverapp.Endpoint{{Server: server, Listener: listener}}, append(tasks, serverapp.Prune(store.PruneExpired)), func() {
+	endpoints := []serverapp.Endpoint{{Server: server, Listener: listener}}
+	if internal != nil {
+		// The fetcher protocol never shares the public listener.
+		internalListener, err := net.Listen("tcp", settings.GitHub.InternalListen)
+		if err != nil {
+			return err
+		}
+		defer internalListener.Close()
+		internalServer := &http.Server{Handler: internal, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 2 * time.Minute, IdleTimeout: 60 * time.Second}
+		defer internalServer.Close()
+		endpoints = append(endpoints, serverapp.Endpoint{Server: internalServer, Listener: internalListener})
+	}
+	return serverapp.Run(ctx, endpoints, append(tasks, serverapp.Prune(store.PruneExpired)), func() {
 		if ready != nil {
 			ready(listener.Addr().String())
 		}

@@ -10,6 +10,22 @@ ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -o /diffx-server ./cmd/diffx-server
 RUN mkdir /data && chown 10001:10001 /data
 
+FROM build AS fetcher-build
+ARG TARGETOS=linux
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -o /diffx-fetcher ./cmd/diffx-fetcher
+
+# GitHub pull request fetcher: `docker build --target fetcher .`. Git 2.44+
+# keeps collection offline; the server image below stays the default target.
+FROM alpine:3.22 AS fetcher
+RUN apk add --no-cache git ca-certificates && mkdir /mirrors && chown 10001:10001 /mirrors
+COPY --from=fetcher-build /diffx-fetcher /diffx-fetcher
+USER 10001:10001
+ENV DIFFX_FETCHER_MIRRORS=/mirrors
+VOLUME ["/mirrors"]
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/diffx-fetcher"]
+
 FROM scratch
 COPY --from=build /diffx-server /diffx-server
 COPY --from=build --chown=10001:10001 /data /data

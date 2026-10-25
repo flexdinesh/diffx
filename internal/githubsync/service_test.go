@@ -23,6 +23,14 @@ type fakeGitHub struct {
 	refreshes    int
 	refreshError error
 	listings     int
+	pulls        map[int]github.PullRequest
+	tokens       []tokenGrant
+}
+
+type tokenGrant struct {
+	installation int64
+	repositories []int64
+	permissions  map[string]string
 }
 
 func (f *fakeGitHub) AppSlug(context.Context) (string, error) { return "diffx-test", nil }
@@ -55,6 +63,21 @@ func (f *fakeGitHub) UserRepositories(_ context.Context, token string) ([]github
 }
 func (f *fakeGitHub) OpenPullRequests(_ context.Context, _ int64, fullName string) ([]github.PullRequest, error) {
 	return f.open[fullName], nil
+}
+func (f *fakeGitHub) PullRequest(_ context.Context, _ int64, _ string, number int) (github.PullRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	pull, ok := f.pulls[number]
+	if !ok {
+		return github.PullRequest{}, &github.Error{Status: 404, Message: "Not Found"}
+	}
+	return pull, nil
+}
+func (f *fakeGitHub) InstallationToken(_ context.Context, installation int64, repositories []int64, permissions map[string]string) (github.Token, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.tokens = append(f.tokens, tokenGrant{installation, repositories, permissions})
+	return github.Token{Value: "installation-token", ExpiresAt: time.Now().Add(time.Hour)}, nil
 }
 
 // refreshLog records refresh intent while delegating to the real store.

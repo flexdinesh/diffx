@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/processlock"
+	"github.com/flexdinesh/diffx/internal/review"
 	"github.com/google/uuid"
 )
 
@@ -48,7 +49,7 @@ func StableIdentity(ctx context.Context, root, sourceID, branch string) (StableR
 	defer lock.Close()
 	repositoryKey := identityHash("repository", sourceID, facts.CommonDir)
 	if facts.RemoteURL != "" {
-		repositoryKey = identityHash("remote", facts.RemoteURL)
+		repositoryKey = review.RemoteRepositoryKey(facts.RemoteURL)
 	}
 	repositoryPath := filepath.Join(directory, "repository.json")
 	repository, err := readSavedIdentity(repositoryPath, sourceID, repositoryKey)

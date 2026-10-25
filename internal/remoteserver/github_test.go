@@ -17,8 +17,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
+	"github.com/flexdinesh/diffx/internal/fetchprotocol"
 	"github.com/flexdinesh/diffx/internal/identityservice"
+	"github.com/flexdinesh/diffx/internal/reviewstore"
 )
 
 // fakeGitHubAPI serves the API and OAuth endpoints the integration calls.
@@ -194,5 +197,50 @@ func TestGitHubCallbackRefusesForeignAndMissingSessions(t *testing.T) {
 	w = identityRequest(handler, "GET", "/api/v2/github/connection", "", bob, "", "")
 	if strings.Contains(w.Body.String(), `"connected":true`) {
 		t.Fatalf("bob completed alice's authorization: %s", w.Body.String())
+	}
+}
+
+func TestFetchProtocolOnlyOnInternalListenerWithSecret(t *testing.T) {
+	store, err := reviewstore.Open("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	settings := githubSettings(t, fakeGitHubAPI(t).URL)
+	settings.FetcherSecret = strings.Repeat("s", 32)
+	public, internal, closeServices, _, err := compose(t.Context(), store, fstest.MapFS{"index.html": {Data: []byte("app shell")}}, Settings{SignupEnabled: true, GitHub: settings})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closeServices() })
+	lease := func(handler http.Handler, method, authorization string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, fetchprotocol.LeasePath, nil)
+		if authorization != "" {
+			r.Header.Set("Authorization", authorization)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w
+	}
+	if w := lease(public, "POST", "Bearer "+settings.FetcherSecret); w.Code == 200 || w.Code == 204 {
+		t.Fatalf("public listener served the fetch protocol: %d", w.Code)
+	}
+	for _, authorization := range []string{"", "Bearer wrong", settings.FetcherSecret} {
+		if w := lease(internal, "POST", authorization); w.Code != 401 {
+			t.Fatalf("lease with %q: %d", authorization, w.Code)
+		}
+	}
+	if w := lease(internal, "GET", "Bearer "+settings.FetcherSecret); w.Code != 405 {
+		t.Fatalf("GET lease: %d", w.Code)
+	}
+	if w := lease(internal, "POST", "Bearer "+settings.FetcherSecret); w.Code != 204 {
+		t.Fatalf("idle lease: %d %s", w.Code, w.Body.String())
+	}
+	r := httptest.NewRequest("POST", fetchprotocol.ResultPath, strings.NewReader(`{"id":"10-1","leaseToken":"stale","error":"x"}`))
+	r.Header.Set("Authorization", "Bearer "+settings.FetcherSecret)
+	w := httptest.NewRecorder()
+	internal.ServeHTTP(w, r)
+	if w.Code != 409 {
+		t.Fatalf("result without a lease: %d", w.Code)
 	}
 }

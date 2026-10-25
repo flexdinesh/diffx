@@ -26,6 +26,9 @@ type GitHubSettings struct {
 	WebhookSecret  string
 	TokenKey       string
 	PublicURL      string
+	// InternalListen serves the fetcher protocol, authenticated by FetcherSecret.
+	InternalListen string
+	FetcherSecret  string
 	// apiURL and webURL replace github.com in tests.
 	apiURL, webURL string
 }

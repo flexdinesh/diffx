@@ -76,7 +76,12 @@ personal lifecycle discovery.
   REST reads, webhook signatures and payloads. No storage or diffx policy.
 - `githubsync`: GitHub integration rules: which accounts may follow which
   repositories, sealed user tokens, webhook deduplication, coalesced pull
-  request refresh intent and reconciliation. Remote composition only.
+  request refresh intent, reconciliation, fetch leases and server-authored
+  pull request observations. Remote composition only.
+- `fetchprotocol`: lease/result contract and client between `diffx-server`'s
+  internal listener and `diffx-fetcher`.
+- `fetcher`: `diffx-fetcher`'s partial-clone mirrors and offline collection of
+  leased pull request heads. It holds no account, GitHub App key or store.
 - `reviewstore`: SQLite transactions, identity persistence, stored reads,
   retention and queue adapter.
 - `ingestionqueue`: admission/lease contract and worker failure policy; jobs fail

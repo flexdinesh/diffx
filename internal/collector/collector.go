@@ -36,6 +36,9 @@ type Options struct {
 	Base             string
 	Branch           string
 	OnSource         func(ingestion.Metadata, diffsource.Comparison)
+	// Identity supplies repository, checkout and branch identity instead of
+	// enrolling it in Git metadata, for producers that own identity elsewhere.
+	Identity *diffsource.StableRepositoryIdentity
 }
 
 func Collect(ctx context.Context, directory string, options Options) (ingestion.Request, error) {
@@ -392,6 +395,10 @@ func repositoryMetadata(ctx context.Context, root string, facts diffsource.Repos
 	metadata.RemoteURL = facts.RemoteURL
 	metadata.RepositoryName = filepath.Base(filepath.Dir(facts.CommonDir))
 	metadata.RepositoryName = diffsource.RemoteRepositoryName(facts.RemoteURL, metadata.RepositoryName)
+	if options.Identity != nil {
+		metadata.RepositoryKey, metadata.CheckoutKey, metadata.BranchID = options.Identity.RepositoryKey, options.Identity.CheckoutKey, options.Identity.BranchID
+		return metadata, nil
+	}
 	identity, err := diffsource.StableIdentity(ctx, root, options.SourceID, snapshot.Branch)
 	if err != nil {
 		return ingestion.Metadata{}, err

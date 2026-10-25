@@ -18,6 +18,9 @@ import (
 // so both modes can run on one machine.
 const DefaultServerPort = 7980
 
+// DefaultInternalPort serves the GitHub fetcher protocol; never publish it.
+const DefaultInternalPort = 7979
+
 // ServerValues is deployment configuration, independent of personal CLI settings.
 type ServerValues struct {
 	Host            string `json:"host"`
@@ -27,7 +30,9 @@ type ServerValues struct {
 	SignupEnabled   bool   `json:"signupEnabled"`
 	InsecureCookies bool   `json:"insecureCookies"`
 	RetentionDays   int    `json:"retentionDays"`
-	GitHub          GitHub `json:"github"`
+	// InternalPort listens beside Port, on the same host, when GitHub is enabled.
+	InternalPort int    `json:"internalPort"`
+	GitHub       GitHub `json:"github"`
 }
 
 // GitHub configures the optional GitHub App integration. Secrets come only from
@@ -40,6 +45,8 @@ type GitHub struct {
 	ClientSecret   string `json:"-"`
 	WebhookSecret  string `json:"-"`
 	TokenKey       string `json:"-"`
+	// FetcherSecret authenticates diffx-fetcher on the internal listener.
+	FetcherSecret string `json:"-"`
 }
 
 // Enabled reports whether any GitHub setting is present; Validate requires all.
@@ -65,6 +72,7 @@ func (github GitHub) Validate(insecureCookies bool) error {
 		{"DIFFX_SERVER_GITHUB_CLIENT_SECRET", github.ClientSecret != ""},
 		{"DIFFX_SERVER_GITHUB_WEBHOOK_SECRET", github.WebhookSecret != ""},
 		{"DIFFX_SERVER_GITHUB_TOKEN_KEY", github.TokenKey != ""},
+		{"DIFFX_SERVER_FETCHER_SECRET", github.FetcherSecret != ""},
 	} {
 		if !field.present {
 			missing = append(missing, field.name)
@@ -82,6 +90,9 @@ func (github GitHub) Validate(insecureCookies bool) error {
 	if err != nil || len(key) != 32 {
 		return errors.New("DIFFX_SERVER_GITHUB_TOKEN_KEY must be 32 random bytes in standard base64, such as the output of: openssl rand -base64 32")
 	}
+	if len(github.FetcherSecret) < 32 {
+		return errors.New("DIFFX_SERVER_FETCHER_SECRET must be at least 32 characters, such as the output of: openssl rand -base64 32")
+	}
 	return nil
 }
 
@@ -89,7 +100,7 @@ func (github GitHub) Validate(insecureCookies bool) error {
 // It never discovers personal config, creates files, or acquires a config lock.
 // Variables use the DIFFX_SERVER_ prefix so they never configure the local CLI.
 func LoadServerFile(path string) (ServerValues, error) {
-	values := ServerValues{Host: "127.0.0.1", Port: DefaultServerPort, State: "data/state.db", RetentionDays: 7}
+	values := ServerValues{Host: "127.0.0.1", Port: DefaultServerPort, InternalPort: DefaultInternalPort, State: "data/state.db", RetentionDays: 7}
 	if path == "" {
 		path = os.Getenv("DIFFX_SERVER_CONFIG")
 	}
@@ -124,6 +135,7 @@ func LoadServerFile(path string) (ServerValues, error) {
 		{"DIFFX_SERVER_GITHUB_CLIENT_SECRET", &values.GitHub.ClientSecret},
 		{"DIFFX_SERVER_GITHUB_WEBHOOK_SECRET", &values.GitHub.WebhookSecret},
 		{"DIFFX_SERVER_GITHUB_TOKEN_KEY", &values.GitHub.TokenKey},
+		{"DIFFX_SERVER_FETCHER_SECRET", &values.GitHub.FetcherSecret},
 	} {
 		if value, exists := os.LookupEnv(field.name); exists {
 			*field.target = value
@@ -134,6 +146,7 @@ func LoadServerFile(path string) (ServerValues, error) {
 		target *int
 	}{
 		{"DIFFX_SERVER_PORT", &values.Port},
+		{"DIFFX_SERVER_INTERNAL_PORT", &values.InternalPort},
 		{"DIFFX_SERVER_RETENTION_DAYS", &values.RetentionDays},
 	} {
 		if raw, exists := os.LookupEnv(field.name); exists {
@@ -144,7 +157,8 @@ func LoadServerFile(path string) (ServerValues, error) {
 			*field.target = value
 		}
 	}
-	if raw, exists := os.LookupEnv("DIFFX_SERVER_GITHUB_APP_ID"); exists {
+	// Compose passes unset integration variables through as empty.
+	if raw := os.Getenv("DIFFX_SERVER_GITHUB_APP_ID"); raw != "" {
 		value, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil {
 			return values, fmt.Errorf("invalid DIFFX_SERVER_GITHUB_APP_ID: %w", err)
@@ -178,4 +192,16 @@ func (values ServerValues) ListenAddress() (string, error) {
 		return "", errors.New("server port must be between 0 and 65535")
 	}
 	return net.JoinHostPort(values.Host, strconv.Itoa(values.Port)), nil
+}
+
+// InternalAddress places the internal listener on the public listener's host.
+func (values ServerValues) InternalAddress(listen string) (string, error) {
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		return "", fmt.Errorf("invalid listen address: %w", err)
+	}
+	if values.InternalPort <= 0 || values.InternalPort > 65535 || strconv.Itoa(values.InternalPort) == port {
+		return "", errors.New("server internal port must be between 1 and 65535 and differ from the server port")
+	}
+	return net.JoinHostPort(host, strconv.Itoa(values.InternalPort)), nil
 }

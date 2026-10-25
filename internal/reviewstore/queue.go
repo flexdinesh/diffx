@@ -58,6 +58,21 @@ type SQLiteQueue struct{ store *Store }
 func (store *Store) Queue() *SQLiteQueue { return &SQLiteQueue{store: store} }
 
 func (queue *SQLiteQueue) Accept(ctx context.Context, owner string, request ingestion.Request) (ingestionqueue.Job, error) {
+	tx, err := queue.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ingestionqueue.Job{}, err
+	}
+	defer tx.Rollback()
+	job, err := acceptJob(tx, owner, request)
+	if err != nil {
+		return job, err
+	}
+	return job, tx.Commit()
+}
+
+// acceptJob admits within the caller's transaction, so other state can commit
+// atomically with durable admission.
+func acceptJob(tx *sql.Tx, owner string, request ingestion.Request) (ingestionqueue.Job, error) {
 	if err := ingestion.Validate(request); err != nil {
 		return ingestionqueue.Job{}, err
 	}
@@ -68,18 +83,13 @@ func (queue *SQLiteQueue) Accept(ctx context.Context, owner string, request inge
 	if len(raw) > ingestion.MaxRequestBytes {
 		return ingestionqueue.Job{}, ingestionqueue.ErrFull
 	}
-	tx, err := queue.store.db.BeginTx(ctx, nil)
-	if err != nil {
-		return ingestionqueue.Job{}, err
-	}
-	defer tx.Rollback()
 	sequence, contextID, err := recordSubmission(tx, owner, request, hash)
 	if err != nil {
 		return ingestionqueue.Job{}, err
 	}
 	job, err := scanJob(tx.QueryRow(jobSelect+` WHERE j.sequence=?`, sequence))
 	if err == nil {
-		return job, tx.Commit()
+		return job, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return job, err
@@ -102,7 +112,7 @@ func (queue *SQLiteQueue) Accept(ctx context.Context, owner string, request inge
 		return job, err
 	}
 	job = ingestionqueue.Job{ID: id, SubmissionID: request.SubmissionID, State: state, ContextID: contextID}
-	return job, tx.Commit()
+	return job, nil
 }
 
 const jobSelect = `SELECT j.id,r.submission_id,j.state,j.attempt,j.context_id,j.detail FROM ingestion_jobs j JOIN ingestion_records r ON r.sequence=j.sequence`

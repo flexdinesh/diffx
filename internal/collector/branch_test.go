@@ -267,3 +267,24 @@ func TestStableFingerprintSurvivesCheckoutMoveAndBranchRename(t *testing.T) {
 		t.Fatalf("moved provenance: before %+v after %+v", request.Metadata, updated.Metadata)
 	}
 }
+
+func TestSuppliedIdentityCollectsWithoutEnrollment(t *testing.T) {
+	root := branchRepository(t)
+	git(t, root, "switch", "--detach", "HEAD~1")
+	options := branchOptions()
+	options.Branch, options.Base = "feature", "refs/heads/main"
+	options.Identity = &diffsource.StableRepositoryIdentity{RepositoryKey: "repository", CheckoutKey: "checkout", BranchID: "branch"}
+	request, err := Collect(t.Context(), root, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.Metadata.RepositoryKey != "repository" || request.Metadata.BranchID != "branch" || request.Metadata.CheckoutKey != diffsource.BranchCheckoutKey("repository", "branch") {
+		t.Fatalf("supplied identity ignored: %+v", request.Metadata)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".git", "diffx")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("collection enrolled identity in Git metadata: %v", err)
+	}
+	if config := git(t, root, "config", "--local", "--list"); strings.Contains(config, "diffx-id") {
+		t.Fatalf("collection wrote branch identity: %s", config)
+	}
+}

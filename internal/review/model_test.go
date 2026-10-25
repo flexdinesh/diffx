@@ -97,3 +97,11 @@ func TestMovedCommentExportsCurrentLines(t *testing.T) {
 		t.Fatalf("moved comment must report current lines: %s", output)
 	}
 }
+
+func TestRemoteRepositoryKeyMatchesEnrolledIdentity(t *testing.T) {
+	// Collectors enrolled this key before the rule was shared; it must not drift.
+	const enrolled = "b11f5fec12c6f0510b7b34d163a1a59584a49a42a6dc76dcf6e3d7f5de56c799"
+	if got := RemoteRepositoryKey("https://github.com/octo/app.git"); got != enrolled {
+		t.Fatalf("key %q, want %q", got, enrolled)
+	}
+}

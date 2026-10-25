@@ -29,6 +29,8 @@ type GitHub interface {
 	User(ctx context.Context, accessToken string) (github.Account, error)
 	UserRepositories(ctx context.Context, accessToken string) ([]github.Repository, error)
 	OpenPullRequests(ctx context.Context, installationID int64, fullName string) ([]github.PullRequest, error)
+	PullRequest(ctx context.Context, installationID int64, fullName string, number int) (github.PullRequest, error)
+	InstallationToken(ctx context.Context, installationID int64, repositoryIDs []int64, permissions map[string]string) (github.Token, error)
 }
 
 var (
@@ -476,7 +478,7 @@ func (s *Service) apply(ctx context.Context, event any) error {
 			return nil
 		}
 		follows, err := s.store.RepositoryFollows(ctx, event.Repository.ID)
-		if err != nil || !slices.ContainsFunc(follows, func(f Follow) bool { return f.Status == "active" }) {
+		if err != nil || !hasActive(follows) {
 			return err
 		}
 		ref := PullRequestRef{RepositoryID: event.Repository.ID, InstallationID: event.InstallationID, FullName: event.Repository.FullName, Number: event.Number}
