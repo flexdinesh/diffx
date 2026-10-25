@@ -310,7 +310,10 @@ such detail into a token. New layout spacing must use the scale.
   identity ties. Recent first is one flat activity-ordered list labeling each
   row with its repository. Rows retain compact tree density,
   truncation, ages and metadata.
-  Show only current heads with changes. The current stream uses `--accent-bg`,
+  Show only current heads with changes; closed and merged GitHub pull requests
+  are not current. A pull request row shows a pull request (or draft) icon
+  labeled for assistive technology, `#N title`, and “GitHub · @author” first in
+  its metadata. The current stream uses `--accent-bg`,
   accent text and `aria-current="page"`. Unopened arrivals show a small accent
   dot labeled “New changes”; collapsed repositories carry their streams' dots.
   Repository collapse state persists per browser.
@@ -323,6 +326,13 @@ such detail into a token. New layout spacing must use the scale.
   `aria-current="true"` with accent text on `--selected` for the open review's
   repository. A mark (“Open latest in {repo}”) opens that repository's most
   active stream; the rail stays collapsed.
+- A GitHub pull request review shows a banner on `--panel` above the review
+  notices: a state icon, muted `#N` and the semibold title, a status `Badge`
+  (Open success, Draft neutral, Merged accent, Closed error), `@author`, muted
+  monospace head → base, an outline-muted “Open on GitHub” `LinkButton`, and a
+  “Show description” disclosure, collapsed by default and persisted per
+  browser. The description is `MarkdownText`, bounded by `--reading-width`, and
+  scrolls within the banner rather than pushing the diff away.
 - A newer head for the viewed stream shows a one-line `--accent-bg` notice below
   the header with an outline-muted “View latest” action. Never swap the open review.
 - Unopened arrivals are marked only by the column's and rail's accent dots and
@@ -433,6 +443,8 @@ with a semantic variant instead of overriding it.
 
 | Need                                   | Component (`apps/web/src/components`)                                                                                                    |
 | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Navigation styled as a button          | `link-button` (keeps link semantics; `external` opens a new tab)                                                                         |
+| Untrusted Markdown prose               | `markdown` (`MarkdownText`: no raw HTML, images as links)                                                                                |
 | Action, link-styled trigger            | `ui/button` (variants: default, outline, outline-muted, outline-check, ghost, shell, rail, subtle, destructive, destructive-solid, link) |
 | Icon-only action                       | `icon-button` (label is name and tooltip)                                                                                                |
 | Primary action plus menu               | `split-button`                                                                                                                           |

@@ -32,7 +32,7 @@ import {
   type ProjectGroup,
   type ProjectStream,
 } from "./project-nav.ts";
-import { NewMark, useNow } from "./ProjectsNav.tsx";
+import { NewMark, StreamIcon, useNow } from "./ProjectsNav.tsx";
 import { useCatalog } from "./session-context.tsx";
 import { useShellPolicy } from "./shell-policy.ts";
 
@@ -204,7 +204,7 @@ function BranchItem({
   return (
     <ComboboxItem value={item} className="flex-col items-stretch gap-0">
       <span className="flex min-w-0 items-center gap-1.5">
-        <GitBranchIcon aria-hidden="true" />
+        <StreamIcon context={context} />
         <span className="min-w-0 flex-1 truncate">{streamTitle(context)}</span>
         {unseen && <NewMark />}
         {typeof context.changedFileCount === "number" && (

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ApiContext } from "@diffx/api";
+import type { ApiContext, ApiPullRequest } from "@diffx/api";
 import {
   baselineSeen,
   latestStream,
@@ -12,6 +12,7 @@ import {
   repoMonogram,
   streamMatches,
   streamMeta,
+  streamTitle,
 } from "../src/project-nav.ts";
 import {
   compareContextActivity,
@@ -398,4 +399,78 @@ test("branch filter matches every word across branch, worktree, host and session
   assert.deepEqual(ids("ci branch-main"), ["main"]);
   assert.deepEqual(ids("fix claude"), ["auth"]);
   assert.deepEqual(ids("auth ci"), []);
+});
+
+function pullRequestHead(
+  id: string,
+  pull: Partial<ApiPullRequest> = {},
+): ApiContext {
+  const pullRequest: ApiPullRequest = {
+    provider: "github",
+    repositoryId: 10,
+    fullName: "octo/app",
+    number: 12,
+    url: "https://github.com/octo/app/pull/12",
+    title: "Add search",
+    body: "",
+    state: "open",
+    draft: false,
+    author: { login: "mona", url: "https://github.com/mona" },
+    baseRef: "main",
+    headRef: "search",
+    headRepository: "mona/app",
+    createdAt: 1,
+    updatedAt: 2,
+    ...pull,
+  };
+  return head(id, "app", 10, {
+    branch: "search",
+    observation: {
+      sourceId: "github",
+      hostname: "github.com",
+      runId: "",
+      agent: "",
+      trigger: "github",
+      repositoryKey: "app",
+      repositoryName: "app",
+      remoteUrl: "https://github.com/octo/app.git",
+      checkoutKey: id,
+      root: pullRequest.url,
+      worktreeName: `PR #${pullRequest.number}`,
+      branch: "search",
+      head: "a".repeat(40),
+      collectedAt: 10,
+      collectorVersion: "test",
+      pullRequest,
+    },
+  });
+}
+
+test("closed and merged pull requests leave current work beside open ones", () => {
+  const groups = projectGroups(
+    [
+      pullRequestHead("open"),
+      pullRequestHead("draft", { number: 13, draft: true }),
+      pullRequestHead("closed", { number: 14, state: "closed" }),
+      pullRequestHead("merged", { number: 15, state: "merged" }),
+      head("local", "app", 5),
+    ],
+    null,
+  );
+  assert.deepEqual(
+    groups.flatMap((group) => group.streams.map((stream) => stream.context.id)),
+    ["draft", "open", "local"],
+  );
+});
+
+test("pull request streams show number, title, GitHub and author", () => {
+  const open = pullRequestHead("open");
+  const draft = pullRequestHead("draft", { draft: true });
+  assert.equal(streamTitle(open), "#12 Add search");
+  assert.equal(streamTitle(head("local", "app", 5)), "branch-local");
+  assert.equal(streamMeta(open, true, 10), "GitHub · @mona · now");
+  assert.equal(streamMeta(draft, false, 10), "GitHub · Draft · @mona · now");
+  const stream = { id: "open", context: open, unseen: false };
+  assert.ok(streamMatches(stream, "search mona"));
+  assert.ok(streamMatches(stream, "#12"));
 });

@@ -19,6 +19,7 @@ export default defineConfig({
       text: "Agents and remote",
       items: [
         { text: "Agent hooks and remote ingestion", link: "/agent-hooks" },
+        { text: "GitHub pull requests", link: "/github-pull-requests" },
         { text: "Agent plugins", link: "/plugins" },
         { text: "MCP", link: "/mcp" },
         { text: "WebMCP", link: "/webmcp" },
