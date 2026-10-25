@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -84,5 +85,54 @@ func TestServerConfigRejectsMalformedFiles(t *testing.T) {
 				t.Fatal("accepted invalid server config")
 			}
 		})
+	}
+}
+
+func TestGitHubConfigIsAllOrNothingWithSecretsFromEnvironment(t *testing.T) {
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	key := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+	complete := map[string]string{
+		"DIFFX_SERVER_GITHUB_APP_ID": "12", "DIFFX_SERVER_GITHUB_CLIENT_ID": "client", "DIFFX_SERVER_GITHUB_PRIVATE_KEY_FILE": "/keys/app.pem",
+		"DIFFX_SERVER_GITHUB_PUBLIC_URL": "https://diffx.example.com", "DIFFX_SERVER_GITHUB_CLIENT_SECRET": "secret",
+		"DIFFX_SERVER_GITHUB_WEBHOOK_SECRET": "hook", "DIFFX_SERVER_GITHUB_TOKEN_KEY": key,
+	}
+	for name, value := range complete {
+		t.Setenv(name, value)
+	}
+	values, err := LoadServerFile("")
+	if err != nil || values.GitHub.AppID != 12 || values.GitHub.TokenKey != key || values.GitHub.Validate(false) != nil {
+		t.Fatalf("complete integration: %+v %v %v", values.GitHub, err, values.GitHub.Validate(false))
+	}
+	for _, tc := range []struct{ name, value, want string }{
+		{"DIFFX_SERVER_GITHUB_WEBHOOK_SECRET", "", "DIFFX_SERVER_GITHUB_WEBHOOK_SECRET"},
+		{"DIFFX_SERVER_GITHUB_PUBLIC_URL", "http://diffx.example.com", "https origin"},
+		{"DIFFX_SERVER_GITHUB_PUBLIC_URL", "https://diffx.example.com/app", "https origin"},
+		{"DIFFX_SERVER_GITHUB_TOKEN_KEY", "short", "32 random bytes"},
+	} {
+		t.Run(tc.name+"="+tc.value, func(t *testing.T) {
+			t.Setenv(tc.name, tc.value)
+			values, err := LoadServerFile("")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := values.GitHub.Validate(false); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("validation %v, want %q", err, tc.want)
+			}
+		})
+	}
+	t.Setenv("DIFFX_SERVER_GITHUB_PUBLIC_URL", "http://127.0.0.1:7980")
+	values, _ = LoadServerFile("")
+	if err := values.GitHub.Validate(true); err != nil {
+		t.Fatalf("development http public url with insecure cookies: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "server.json")
+	if err := os.WriteFile(path, []byte(`{"github":{"appId":1,"clientSecret":"in-file"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadServerFile(path); err == nil || !strings.Contains(err.Error(), "clientSecret") {
+		t.Fatalf("secret accepted from config file: %v", err)
+	}
+	if (GitHub{}).Validate(false) != nil || (GitHub{}).Enabled() {
+		t.Fatal("absent integration must be valid and disabled")
 	}
 }

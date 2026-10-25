@@ -29,7 +29,10 @@ var allowed = map[string][]string{
 	"internal/contextservice": {"internal/review", "internal/reviewdata", "internal/reviewsession", "internal/ingestion"},
 	"internal/controlapi":     {"internal/config", "internal/review"},
 	"internal/diffsource":     {"internal/processlock", "internal/review"},
-	"internal/hooks":          {"internal/ingestion", "internal/processlock", "internal/submission"},
+	// GitHub wire adapter; integration policy lives in githubsync.
+	"internal/github":     {},
+	"internal/githubsync": {"internal/github"},
+	"internal/hooks":      {"internal/ingestion", "internal/processlock", "internal/submission"},
 	"internal/httpapi": {
 		"internal/review", "internal/reviewdata", "internal/reviewsession", "internal/contextservice",
 		"internal/reviewservice", "internal/ingestion", "internal/processmetrics", "packages/api",
@@ -45,14 +48,14 @@ var allowed = map[string][]string{
 	"internal/processlock":    {},
 	"internal/processmetrics": {},
 	"internal/remoteserver": {
-		"internal/contextservice", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/review",
+		"internal/contextservice", "internal/github", "internal/githubsync", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/review",
 		"internal/reviewstore", "internal/serverapp", "internal/webui", "packages/api",
 	},
 	"internal/review":        {},
 	"internal/reviewdata":    {"internal/review", "internal/ingestion"},
 	"internal/reviewservice": {"internal/review", "internal/reviewdata", "internal/reviewsession", "internal/contextservice", "internal/ingestion"},
 	"internal/reviewsession": {"internal/review"},
-	"internal/reviewstore":   {"internal/identityservice", "internal/review", "internal/reviewdata", "internal/ingestion", "internal/ingestionqueue", "internal/processlock"},
+	"internal/reviewstore":   {"internal/githubsync", "internal/identityservice", "internal/review", "internal/reviewdata", "internal/ingestion", "internal/ingestionqueue", "internal/processlock"},
 	"internal/serverapp": {
 		"internal/contextservice", "internal/httpapi", "internal/ingestion", "internal/ingestionqueue",
 		"internal/mcpapi", "internal/review", "internal/reviewdata", "internal/reviewservice", "internal/version",

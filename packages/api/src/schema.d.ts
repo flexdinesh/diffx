@@ -124,6 +124,113 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v2/github/webhooks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Distributed only, when the GitHub App integration is configured. Called by GitHub; authenticated by the X-Hub-Signature-256 HMAC, not by diffx credentials. Repeated X-GitHub-Delivery IDs are acknowledged without effect. */
+    post: operations["receiveGitHubWebhook"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/github/callback": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description OAuth redirect target. Completes authorization only for the browser session that started it, then redirects to /settings with a github=connected|cancelled|failed|signin query. */
+    get: operations["completeGitHubAuthorization"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/github/connection": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description The account's GitHub connection. 404 when the integration is not configured. Distributed browser sessions only. */
+    get: operations["getGitHubConnection"];
+    put?: never;
+    /** @description Start GitHub authorization for this account; navigate the browser to authorizeUrl. Distributed browser sessions only. */
+    post: operations["connectGitHub"];
+    /** @description Remove the account's GitHub authorization and every follow. Existing snapshots remain until retention expiry. Distributed browser sessions only. */
+    delete: operations["disconnectGitHub"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/github/repositories": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Repositories both the GitHub user and the app can read, plus followed repositories that lost access. Listing rechecks access. Distributed browser sessions only. */
+    get: operations["listGitHubRepositories"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/github/follows/{repositoryId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        repositoryId: number;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /** @description Follow a repository's pull requests after verifying access, then request a refresh of its open pull requests. Distributed browser sessions only. */
+    put: operations["followGitHubRepository"];
+    post?: never;
+    /** @description Stop following; existing snapshots remain until retention expiry. Distributed browser sessions only. */
+    delete: operations["unfollowGitHubRepository"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/github/resync": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Recheck access and refresh every followed repository's pull requests, including ones closed without a delivery. Resulting submissions are fresh, extending retention. Distributed browser sessions only. */
+    post: operations["resyncGitHub"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v2/health": {
     parameters: {
       query?: never;
@@ -615,6 +722,26 @@ export interface components {
        * @description Unix milliseconds.
        */
       updatedAt: number;
+    };
+    GitHubConnection: {
+      connected: boolean;
+      login?: string;
+      /**
+       * @description Revoked or expired connections must connect again; their follows receive nothing meanwhile.
+       * @enum {string}
+       */
+      state?: "active" | "revoked" | "expired";
+      /** @description GitHub page for installing the app on more repositories. */
+      installUrl: string;
+    };
+    GitHubRepository: {
+      /** Format: int64 */
+      id: number;
+      fullName: string;
+      private: boolean;
+      followed: boolean;
+      /** @description Followed but no longer readable by this account; receives nothing until access returns. */
+      lost: boolean;
     };
     SessionAssociation: {
       sourceId: string;
@@ -1251,6 +1378,242 @@ export interface operations {
       401: components["responses"]["Problem"];
       403: components["responses"]["Problem"];
       404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  receiveGitHubWebhook: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-GitHub-Event": string;
+        "X-GitHub-Delivery": string;
+        "X-Hub-Signature-256": string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": Record<string, never>;
+      };
+    };
+    responses: {
+      /** @description Delivery applied or already applied. */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      413: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  completeGitHubAuthorization: {
+    parameters: {
+      query?: {
+        code?: string;
+        state?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Redirect to settings. */
+      303: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getGitHubConnection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Connection status. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GitHubConnection"];
+        };
+      };
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  connectGitHub: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Authorization started. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            authorizeUrl: string;
+          };
+        };
+      };
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  disconnectGitHub: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Disconnected. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  listGitHubRepositories: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Repositories. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            repositories: components["schemas"]["GitHubRepository"][];
+          };
+        };
+      };
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+      429: components["responses"]["Problem"];
+      502: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  followGitHubRepository: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path: {
+        repositoryId: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Followed. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+      429: components["responses"]["Problem"];
+      502: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  unfollowGitHubRepository: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path: {
+        repositoryId: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Unfollowed. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  resyncGitHub: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Refresh requested. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+      429: components["responses"]["Problem"];
+      502: components["responses"]["Problem"];
       default: components["responses"]["Problem"];
     };
   };

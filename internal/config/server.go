@@ -2,13 +2,16 @@ package config
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // DefaultServerPort keeps diffx-server off the local `diffx [PATH]` range (7981-7990)
@@ -24,6 +27,62 @@ type ServerValues struct {
 	SignupEnabled   bool   `json:"signupEnabled"`
 	InsecureCookies bool   `json:"insecureCookies"`
 	RetentionDays   int    `json:"retentionDays"`
+	GitHub          GitHub `json:"github"`
+}
+
+// GitHub configures the optional GitHub App integration. Secrets come only from
+// DIFFX_SERVER_GITHUB_* environment variables, never the config file.
+type GitHub struct {
+	AppID          int64  `json:"appId"`
+	ClientID       string `json:"clientId"`
+	PrivateKeyFile string `json:"privateKeyFile"`
+	PublicURL      string `json:"publicUrl"`
+	ClientSecret   string `json:"-"`
+	WebhookSecret  string `json:"-"`
+	TokenKey       string `json:"-"`
+}
+
+// Enabled reports whether any GitHub setting is present; Validate requires all.
+func (github GitHub) Enabled() bool {
+	return github != GitHub{}
+}
+
+// Validate requires the complete integration or none of it. publicUrl is the
+// browser-facing origin for OAuth callbacks; plain HTTP is development only.
+func (github GitHub) Validate(insecureCookies bool) error {
+	if !github.Enabled() {
+		return nil
+	}
+	missing := make([]string, 0)
+	for _, field := range []struct {
+		name    string
+		present bool
+	}{
+		{"DIFFX_SERVER_GITHUB_APP_ID", github.AppID > 0},
+		{"DIFFX_SERVER_GITHUB_CLIENT_ID", github.ClientID != ""},
+		{"DIFFX_SERVER_GITHUB_PRIVATE_KEY_FILE", github.PrivateKeyFile != ""},
+		{"DIFFX_SERVER_GITHUB_PUBLIC_URL", github.PublicURL != ""},
+		{"DIFFX_SERVER_GITHUB_CLIENT_SECRET", github.ClientSecret != ""},
+		{"DIFFX_SERVER_GITHUB_WEBHOOK_SECRET", github.WebhookSecret != ""},
+		{"DIFFX_SERVER_GITHUB_TOKEN_KEY", github.TokenKey != ""},
+	} {
+		if !field.present {
+			missing = append(missing, field.name)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("incomplete GitHub integration; also set %s", strings.Join(missing, ", "))
+	}
+	public, err := url.Parse(github.PublicURL)
+	if err != nil || public.Host == "" || public.User != nil || public.RawQuery != "" || public.Fragment != "" || strings.TrimSuffix(public.Path, "/") != "" ||
+		public.Scheme != "https" && (public.Scheme != "http" || !insecureCookies) {
+		return errors.New("GitHub publicUrl must be an https origin such as https://diffx.example.com (http only with insecure cookies)")
+	}
+	key, err := base64.StdEncoding.DecodeString(github.TokenKey)
+	if err != nil || len(key) != 32 {
+		return errors.New("DIFFX_SERVER_GITHUB_TOKEN_KEY must be 32 random bytes in standard base64, such as the output of: openssl rand -base64 32")
+	}
+	return nil
 }
 
 // LoadServerFile resolves defaults, an explicitly selected file, then environment.
@@ -59,6 +118,12 @@ func LoadServerFile(path string) (ServerValues, error) {
 		{"DIFFX_SERVER_HOST", &values.Host},
 		{"DIFFX_SERVER_STATE", &values.State},
 		{"DIFFX_SERVER_USERNAME", &values.Username},
+		{"DIFFX_SERVER_GITHUB_CLIENT_ID", &values.GitHub.ClientID},
+		{"DIFFX_SERVER_GITHUB_PRIVATE_KEY_FILE", &values.GitHub.PrivateKeyFile},
+		{"DIFFX_SERVER_GITHUB_PUBLIC_URL", &values.GitHub.PublicURL},
+		{"DIFFX_SERVER_GITHUB_CLIENT_SECRET", &values.GitHub.ClientSecret},
+		{"DIFFX_SERVER_GITHUB_WEBHOOK_SECRET", &values.GitHub.WebhookSecret},
+		{"DIFFX_SERVER_GITHUB_TOKEN_KEY", &values.GitHub.TokenKey},
 	} {
 		if value, exists := os.LookupEnv(field.name); exists {
 			*field.target = value
@@ -78,6 +143,13 @@ func LoadServerFile(path string) (ServerValues, error) {
 			}
 			*field.target = value
 		}
+	}
+	if raw, exists := os.LookupEnv("DIFFX_SERVER_GITHUB_APP_ID"); exists {
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return values, fmt.Errorf("invalid DIFFX_SERVER_GITHUB_APP_ID: %w", err)
+		}
+		values.GitHub.AppID = value
 	}
 	for _, field := range []struct {
 		name   string

@@ -28,6 +28,7 @@ type Settings struct {
 	SignupEnabled   bool
 	InsecureCookies bool
 	RetentionDays   int
+	GitHub          *GitHubSettings
 }
 
 type application struct {
@@ -78,27 +79,39 @@ func MultiHandler(ctx context.Context, store *reviewstore.Store, assets fs.FS, o
 		settings = options[0]
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	handler, closeServices, worker, err := compose(ctx, store, assets, settings)
+	handler, closeServices, tasks, err := compose(ctx, store, assets, settings)
 	if err != nil {
 		cancel()
 		return nil, nil, err
 	}
-	done := make(chan error, 1)
-	go func() { done <- worker(ctx) }()
+	done := make(chan error, len(tasks))
+	for _, task := range tasks {
+		go func() { done <- task(ctx) }()
+	}
 	var once sync.Once
 	var closeErr error
 	return handler, func() error {
-		once.Do(func() { cancel(); closeErr = errors.Join(<-done, closeServices()) })
+		once.Do(func() {
+			cancel()
+			for range tasks {
+				closeErr = errors.Join(closeErr, <-done)
+			}
+			closeErr = errors.Join(closeErr, closeServices())
+		})
 		return closeErr
 	}, nil
 }
-func compose(ctx context.Context, store *reviewstore.Store, assets fs.FS, settings Settings) (http.Handler, func() error, serverapp.Task, error) {
+func compose(ctx context.Context, store *reviewstore.Store, assets fs.FS, settings Settings) (http.Handler, func() error, []serverapp.Task, error) {
 	identity := identityservice.New(store)
 	if err := bootstrap(ctx, identity, settings); err != nil {
 		return nil, nil, nil, err
 	}
+	github, err := composeGitHub(store, settings.GitHub)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	applications := &registry{ctx: ctx, store: store, assets: assets, applications: make(map[string]application)}
-	remote := &transport{identity: identity, applications: applications, settings: settings, assets: assets, limiter: newLimiter(), authSlots: make(chan struct{}, 4)}
+	remote := &transport{identity: identity, applications: applications, settings: settings, assets: assets, limiter: newLimiter(), authSlots: make(chan struct{}, 4), github: github}
 	worker := func(ctx context.Context) error {
 		return ingestionqueue.Run(ctx, store.Queue(), func(ctx context.Context, owner string, input ingestion.Request) (string, error) {
 			accounts, err := identity.Accounts(ctx)
@@ -118,7 +131,11 @@ func compose(ctx context.Context, store *reviewstore.Store, assets fs.FS, settin
 			return "", review.Error(403, "Account unavailable")
 		})
 	}
-	return remote, applications.close, worker, nil
+	tasks := []serverapp.Task{worker}
+	if github != nil {
+		tasks = append(tasks, reconcileAtStartup(github))
+	}
+	return remote, applications.close, tasks, nil
 }
 func bootstrap(ctx context.Context, identity *identityservice.Service, settings Settings) error {
 	if (settings.Username == "") != (settings.Password == "") {
@@ -157,7 +174,7 @@ func Run(ctx context.Context, settings Settings, ready func(string)) error {
 	if err := store.PruneExpired(time.Now()); err != nil {
 		return err
 	}
-	handler, closeServices, worker, err := compose(ctx, store, webui.Assets(), settings)
+	handler, closeServices, tasks, err := compose(ctx, store, webui.Assets(), settings)
 	if err != nil {
 		return err
 	}
@@ -169,7 +186,7 @@ func Run(ctx context.Context, settings Settings, ready func(string)) error {
 	defer listener.Close()
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 2 * time.Minute, IdleTimeout: 60 * time.Second}
 	defer server.Close()
-	return serverapp.Run(ctx, []serverapp.Endpoint{{Server: server, Listener: listener}}, []serverapp.Task{worker, serverapp.Prune(store.PruneExpired)}, func() {
+	return serverapp.Run(ctx, []serverapp.Endpoint{{Server: server, Listener: listener}}, append(tasks, serverapp.Prune(store.PruneExpired)), func() {
 		if ready != nil {
 			ready(listener.Addr().String())
 		}

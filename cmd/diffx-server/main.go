@@ -79,6 +79,13 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 	if _, err := remoteserver.Retention(settings.RetentionDays); err != nil {
 		return settings, false, err
 	}
+	if err := values.GitHub.Validate(settings.InsecureCookies); err != nil {
+		return settings, false, err
+	}
+	if github := values.GitHub; github.Enabled() {
+		settings.GitHub = &remoteserver.GitHubSettings{AppID: github.AppID, ClientID: github.ClientID, ClientSecret: github.ClientSecret,
+			PrivateKeyFile: github.PrivateKeyFile, WebhookSecret: github.WebhookSecret, TokenKey: github.TokenKey, PublicURL: github.PublicURL}
+	}
 	return settings, false, nil
 }
 func main() {

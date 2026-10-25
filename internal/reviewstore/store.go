@@ -235,6 +235,9 @@ func (store *Store) initialize(path string) error {
 	if err := initializeAuthentication(transaction); err != nil {
 		return err
 	}
+	if err := initializeGitHub(transaction); err != nil {
+		return err
+	}
 	if _, err := transaction.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
 		return err
 	}
@@ -297,6 +300,8 @@ func (store *Store) PruneExpired(now time.Time) error {
 	if err := endStreams(transaction); err != nil {
 		return err
 	}
-
+	if err := pruneGitHub(transaction, now.UnixMilli()); err != nil {
+		return err
+	}
 	return transaction.Commit()
 }

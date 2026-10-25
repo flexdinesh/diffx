@@ -59,7 +59,8 @@ func TestAdditiveSchemaUpgradesInPlace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.Exec("PRAGMA user_version=11"); err != nil {
+	// Schema 11 had no GitHub integration tables.
+	if _, err := store.db.Exec("DROP TABLE github_follows; DROP TABLE github_connections; DROP TABLE github_oauth_states; DROP TABLE github_deliveries; DROP TABLE github_pull_requests; PRAGMA user_version=11"); err != nil {
 		t.Fatal(err)
 	}
 	store.Close()
@@ -68,6 +69,9 @@ func TestAdditiveSchemaUpgradesInPlace(t *testing.T) {
 		t.Fatalf("schema 11 must upgrade in place: %v", err)
 	}
 	defer store.Close()
+	if _, err := store.GitHub().Follows(t.Context(), user.ID); err != nil {
+		t.Fatalf("upgrade did not create integration tables: %v", err)
+	}
 	var version int
 	if err := store.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != schemaVersion {
 		t.Fatalf("upgraded version %d %v", version, err)
@@ -75,6 +79,35 @@ func TestAdditiveSchemaUpgradesInPlace(t *testing.T) {
 	again, err := store.User("owner", "owner")
 	if err != nil || again.ID != user.ID {
 		t.Fatalf("upgrade lost state: %+v %v", again, err)
+	}
+}
+
+func TestFailedUpgradeRollsBack(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A conflicting object makes the schema 12 statements fail midway.
+	if _, err := store.db.Exec("DROP TABLE github_follows; DROP TABLE github_oauth_states; CREATE VIEW github_follows AS SELECT 1 AS owner_id; PRAGMA user_version=11"); err != nil {
+		t.Fatal(err)
+	}
+	store.Close()
+	if store, err := Open(path); err == nil {
+		store.Close()
+		t.Fatal("conflicting upgrade succeeded")
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var version, tables int
+	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 11 {
+		t.Fatalf("failed upgrade advanced version: %d %v", version, err)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name='github_oauth_states'").Scan(&tables); err != nil || tables != 0 {
+		t.Fatalf("failed upgrade kept partial tables: %d %v", tables, err)
 	}
 }
 

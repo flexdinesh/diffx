@@ -72,6 +72,11 @@ personal lifecycle discovery.
 - `reviewdata`: storage-independent identities, results and errors.
 - `reviewsession`: a resolved review and its source/policy capabilities.
 - `identityservice`: account, password, session and API-token policies.
+- `github`: GitHub wire adapter: app JWT, installation tokens, OAuth web flow,
+  REST reads, webhook signatures and payloads. No storage or diffx policy.
+- `githubsync`: GitHub integration rules: which accounts may follow which
+  repositories, sealed user tokens, webhook deduplication, coalesced pull
+  request refresh intent and reconciliation. Remote composition only.
 - `reviewstore`: SQLite transactions, identity persistence, stored reads,
   retention and queue adapter.
 - `ingestionqueue`: admission/lease contract and worker failure policy; jobs fail
