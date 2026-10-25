@@ -83,8 +83,13 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 		return settings, false, err
 	}
 	if github := values.GitHub; github.Enabled() {
+		internal, err := values.InternalAddress(settings.Listen)
+		if err != nil {
+			return settings, false, err
+		}
 		settings.GitHub = &remoteserver.GitHubSettings{AppID: github.AppID, ClientID: github.ClientID, ClientSecret: github.ClientSecret,
-			PrivateKeyFile: github.PrivateKeyFile, WebhookSecret: github.WebhookSecret, TokenKey: github.TokenKey, PublicURL: github.PublicURL}
+			PrivateKeyFile: github.PrivateKeyFile, WebhookSecret: github.WebhookSecret, TokenKey: github.TokenKey, PublicURL: github.PublicURL,
+			InternalListen: internal, FetcherSecret: github.FetcherSecret}
 	}
 	return settings, false, nil
 }

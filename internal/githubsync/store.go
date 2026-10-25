@@ -3,6 +3,8 @@ package githubsync
 import (
 	"context"
 	"errors"
+
+	"github.com/flexdinesh/diffx/internal/ingestion"
 )
 
 // ErrNotFound reports an absent connection, follow or OAuth state.
@@ -68,4 +70,35 @@ type Store interface {
 	RequestRefresh(ctx context.Context, ref PullRequestRef, retentionRun string, now int64) error
 	// KnownOpen lists pull request numbers last observed open.
 	KnownOpen(ctx context.Context, repositoryID int64) ([]int, error)
+
+	// ClaimRefresh leases the oldest pending, available pull request until
+	// leaseUntil, fencing earlier leases. ErrNotFound means none is pending.
+	ClaimRefresh(ctx context.Context, token string, now, leaseUntil int64) (Lease, error)
+	// RecordLease stores what the lease will publish. ErrLeaseLost when fenced.
+	RecordLease(ctx context.Context, lease Lease, leased []byte, now int64) error
+	// Leased returns the recorded lease for a current token. ErrLeaseLost when fenced or expired.
+	Leased(ctx context.Context, repositoryID int64, number int, token string, now int64) (Lease, []byte, error)
+	// ReleaseRefresh ends a failed lease; the pull request stays pending until retryAt.
+	ReleaseRefresh(ctx context.Context, lease Lease, retryAt int64, detail string) error
+	// CompleteRefresh atomically admits every submission, marks the leased
+	// generation refreshed and records the observed state. A generation
+	// requested during the lease stays pending.
+	CompleteRefresh(ctx context.Context, lease Lease, state string, admissions []Admission, now int64) error
+}
+
+var ErrLeaseLost = errors.New("fetch lease lost")
+
+// Lease is one claimed refresh of a pull request at a generation.
+type Lease struct {
+	Ref          PullRequestRef
+	Token        string
+	Generation   int64
+	RetentionRun string
+	Attempt      int
+}
+
+// Admission is one account's submission of a fetched snapshot.
+type Admission struct {
+	OwnerID string
+	Request ingestion.Request
 }

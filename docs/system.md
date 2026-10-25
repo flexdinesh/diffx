@@ -157,6 +157,30 @@ delivery. Resync's run identity makes the resulting submissions fresh, extending
 retention of pull requests idle since their last change; startup
 reconciliation and webhooks do not. There is no periodic poll.
 
+`diffx-fetcher` runs in its own container and turns refresh intent into
+snapshots. It leases one pull request at a time from the server's internal
+listener (`DIFFX_SERVER_INTERNAL_PORT`, default 7979, never published),
+authenticated by `DIFFX_SERVER_FETCHER_SECRET`; the public listener does not
+serve the protocol. Leasing reads the pull request with the app's installation
+credentials and hands out a token narrowed to that repository with
+`contents:read`; the fetcher never holds the app key, a user token or an
+account. A deleted pull request is recorded closed and a repository without
+active followers completes without a fetch. The fetcher keeps a partial-clone
+mirror per repository, fetches the leased head and base, and collects the
+branch comparison offline. A result is accepted only for the current lease
+token and only if it captures the leased head and base commits; failures retry
+with exponential backoff capped at an hour, and an expired lease is reclaimable.
+
+The server, not the fetcher, authors the observation: the `github` source and
+trigger, the repository key shared with HTTPS checkouts of the same remote, a
+checkout and branch identity per pull request, the pull request URL as root,
+`PR #N` as worktree, the head branch, GitHub's update time as collection and
+activity time, and the `pullRequest` metadata. Its submission ID hashes that
+payload and any Resync run, so refetching an unchanged pull request replays and
+a push, edit or state change is a fresh observation in the same stream. Every
+follower with verified access is admitted in one transaction with completing
+the lease; a refresh requested during the lease stays pending.
+
 ### Browse and review
 
 The comparison selector reads scopes of the open observation. It does not

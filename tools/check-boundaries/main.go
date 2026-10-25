@@ -22,6 +22,7 @@ var allowed = map[string][]string{
 		"internal/diffsource", "internal/hooks", "internal/ingestion", "internal/localserver",
 		"internal/review", "internal/reviewstore", "internal/submission", "internal/version",
 	},
+	"cmd/diffx-fetcher":       {"internal/config", "internal/fetcher", "internal/fetchprotocol", "internal/version"},
 	"cmd/diffx-server":        {"internal/config", "internal/identityservice", "internal/remoteserver", "internal/reviewstore", "internal/version"},
 	"internal/browser":        {},
 	"internal/collector":      {"internal/diffsource", "internal/ingestion", "internal/review"},
@@ -31,8 +32,11 @@ var allowed = map[string][]string{
 	"internal/diffsource":     {"internal/processlock", "internal/review"},
 	// GitHub wire adapter; integration policy lives in githubsync.
 	"internal/github":     {},
-	"internal/githubsync": {"internal/github"},
-	"internal/hooks":      {"internal/ingestion", "internal/processlock", "internal/submission"},
+	"internal/githubsync": {"internal/fetchprotocol", "internal/github", "internal/ingestion", "internal/review"},
+	// The fetcher mirrors GitHub repositories and collects them offline.
+	"internal/fetcher":       {"internal/collector", "internal/diffsource", "internal/fetchprotocol", "internal/ingestion"},
+	"internal/fetchprotocol": {"internal/ingestion"},
+	"internal/hooks":         {"internal/ingestion", "internal/processlock", "internal/submission"},
 	"internal/httpapi": {
 		"internal/review", "internal/reviewdata", "internal/reviewsession", "internal/contextservice",
 		"internal/reviewservice", "internal/ingestion", "internal/processmetrics", "packages/api",
@@ -48,7 +52,7 @@ var allowed = map[string][]string{
 	"internal/processlock":    {},
 	"internal/processmetrics": {},
 	"internal/remoteserver": {
-		"internal/contextservice", "internal/github", "internal/githubsync", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/review",
+		"internal/contextservice", "internal/fetchprotocol", "internal/github", "internal/githubsync", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/review",
 		"internal/reviewstore", "internal/serverapp", "internal/webui", "packages/api",
 	},
 	"internal/review":        {},
@@ -84,7 +88,7 @@ func checkPackage(pkg listedPackage) []string {
 	var violations []string
 	for _, dependency := range pkg.Imports {
 		if dependency == "os/exec" && !slices.Contains([]string{
-			"internal/browser", "internal/diffsource", "internal/hooks", "internal/localserver",
+			"internal/browser", "internal/diffsource", "internal/fetcher", "internal/hooks", "internal/localserver",
 		}, name) {
 			violations = append(violations, fmt.Sprintf("%s must not execute processes", name))
 		}

@@ -16,14 +16,59 @@ services:
       DIFFX_SERVER_SIGNUP_ENABLED: "${DIFFX_SERVER_SIGNUP_ENABLED:-false}"
       # Loopback HTTP development only. Use false behind production HTTPS.
       DIFFX_SERVER_INSECURE_COOKIES: "${DIFFX_SERVER_INSECURE_COOKIES:-true}"
+      # GitHub App integration: set all or none (empty disables it), then start
+      # with `--profile github`. Mount the private key read-only in an override
+      # file and point PRIVATE_KEY_FILE at it.
+      DIFFX_SERVER_GITHUB_APP_ID: "${DIFFX_SERVER_GITHUB_APP_ID:-}"
+      DIFFX_SERVER_GITHUB_CLIENT_ID: "${DIFFX_SERVER_GITHUB_CLIENT_ID:-}"
+      DIFFX_SERVER_GITHUB_PRIVATE_KEY_FILE: "${DIFFX_SERVER_GITHUB_PRIVATE_KEY_FILE:-}"
+      DIFFX_SERVER_GITHUB_PUBLIC_URL: "${DIFFX_SERVER_GITHUB_PUBLIC_URL:-}"
+      DIFFX_SERVER_GITHUB_CLIENT_SECRET: "${DIFFX_SERVER_GITHUB_CLIENT_SECRET:-}"
+      DIFFX_SERVER_GITHUB_WEBHOOK_SECRET: "${DIFFX_SERVER_GITHUB_WEBHOOK_SECRET:-}"
+      DIFFX_SERVER_GITHUB_TOKEN_KEY: "${DIFFX_SERVER_GITHUB_TOKEN_KEY:-}"
+      # The fetcher listener (internal port 7979) is reachable only on the fetch
+      # network; never publish it.
+      DIFFX_SERVER_FETCHER_SECRET: "${DIFFX_SERVER_FETCHER_SECRET:-}"
     ports:
       # Only the published host port varies; local `diffx [PATH]` uses 7981-7990.
       - "127.0.0.1:${DIFFX_SERVER_PORT:-7980}:7980"
+    networks:
+      - default
+      - fetch
     volumes:
       - diffx-data:/data
     read_only: true
     restart: unless-stopped
     stop_grace_period: 30s
 
+  # Mirrors leased pull requests from GitHub; it has no published ports.
+  fetcher:
+    profiles: ["github"]
+    build:
+      context: .
+      target: fetcher
+    image: diffx-fetcher:local
+    environment:
+      DIFFX_FETCHER_SERVER_URL: http://server:7979
+      DIFFX_FETCHER_SECRET: "${DIFFX_SERVER_FETCHER_SECRET:-}"
+      DIFFX_FETCHER_DISK_LIMIT_GB: "${DIFFX_FETCHER_DISK_LIMIT_GB:-20}"
+      DIFFX_FETCHER_CONCURRENCY: "${DIFFX_FETCHER_CONCURRENCY:-2}"
+    networks:
+      - fetch
+    volumes:
+      - diffx-mirrors:/mirrors
+    tmpfs:
+      - /tmp
+    read_only: true
+    depends_on:
+      - server
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+networks:
+  # Shared by server and fetcher only; the fetcher also reaches GitHub through it.
+  fetch:
+
 volumes:
   diffx-data:
+  diffx-mirrors:

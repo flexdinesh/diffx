@@ -95,6 +95,7 @@ func TestGitHubConfigIsAllOrNothingWithSecretsFromEnvironment(t *testing.T) {
 		"DIFFX_SERVER_GITHUB_APP_ID": "12", "DIFFX_SERVER_GITHUB_CLIENT_ID": "client", "DIFFX_SERVER_GITHUB_PRIVATE_KEY_FILE": "/keys/app.pem",
 		"DIFFX_SERVER_GITHUB_PUBLIC_URL": "https://diffx.example.com", "DIFFX_SERVER_GITHUB_CLIENT_SECRET": "secret",
 		"DIFFX_SERVER_GITHUB_WEBHOOK_SECRET": "hook", "DIFFX_SERVER_GITHUB_TOKEN_KEY": key,
+		"DIFFX_SERVER_FETCHER_SECRET": strings.Repeat("f", 32),
 	}
 	for name, value := range complete {
 		t.Setenv(name, value)
@@ -108,6 +109,8 @@ func TestGitHubConfigIsAllOrNothingWithSecretsFromEnvironment(t *testing.T) {
 		{"DIFFX_SERVER_GITHUB_PUBLIC_URL", "http://diffx.example.com", "https origin"},
 		{"DIFFX_SERVER_GITHUB_PUBLIC_URL", "https://diffx.example.com/app", "https origin"},
 		{"DIFFX_SERVER_GITHUB_TOKEN_KEY", "short", "32 random bytes"},
+		{"DIFFX_SERVER_FETCHER_SECRET", "", "DIFFX_SERVER_FETCHER_SECRET"},
+		{"DIFFX_SERVER_FETCHER_SECRET", "short", "at least 32 characters"},
 	} {
 		t.Run(tc.name+"="+tc.value, func(t *testing.T) {
 			t.Setenv(tc.name, tc.value)
@@ -134,5 +137,36 @@ func TestGitHubConfigIsAllOrNothingWithSecretsFromEnvironment(t *testing.T) {
 	}
 	if (GitHub{}).Validate(false) != nil || (GitHub{}).Enabled() {
 		t.Fatal("absent integration must be valid and disabled")
+	}
+}
+
+func TestInternalListenerSharesHostOnSeparatePort(t *testing.T) {
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	values, err := LoadServerFile("")
+	if err != nil || values.InternalPort != DefaultInternalPort {
+		t.Fatalf("default internal port: %+v %v", values, err)
+	}
+	if address, err := values.InternalAddress("0.0.0.0:7980"); err != nil || address != "0.0.0.0:7979" {
+		t.Fatalf("internal address %q %v", address, err)
+	}
+	t.Setenv("DIFFX_SERVER_INTERNAL_PORT", "7980")
+	values, err = LoadServerFile("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := values.InternalAddress("0.0.0.0:7980"); err == nil {
+		t.Fatal("internal listener accepted the public port")
+	}
+}
+
+func TestEmptyGitHubEnvironmentDisablesIntegration(t *testing.T) {
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	for _, name := range []string{"APP_ID", "CLIENT_ID", "PRIVATE_KEY_FILE", "PUBLIC_URL", "CLIENT_SECRET", "WEBHOOK_SECRET", "TOKEN_KEY"} {
+		t.Setenv("DIFFX_SERVER_GITHUB_"+name, "")
+	}
+	t.Setenv("DIFFX_SERVER_FETCHER_SECRET", "")
+	values, err := LoadServerFile("")
+	if err != nil || values.GitHub.Enabled() || values.GitHub.Validate(false) != nil {
+		t.Fatalf("empty passthrough must disable GitHub: %+v %v", values.GitHub, err)
 	}
 }

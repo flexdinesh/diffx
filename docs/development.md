@@ -242,6 +242,13 @@ set `DIFFX_SERVER_INSECURE_COOKIES=false` behind production HTTPS. The fixed
 `diffx` project name keeps one
 volume regardless of the checkout directory.
 For other settings, use image env overrides or a Compose override file.
+The GitHub integration adds the `github` profile: set every
+`DIFFX_SERVER_GITHUB_*` variable and `DIFFX_SERVER_FETCHER_SECRET`, mount the
+app's private key in an override file, then run
+`docker compose --profile github up`. The `fetcher` service (`--target fetcher`,
+Alpine with Git 2.44+) keeps mirrors in the `diffx-mirrors` volume, capped by
+`DIFFX_FETCHER_DISK_LIMIT_GB` (default 20), and reaches the server's internal
+port 7979 only on the `fetch` network.
 Only one server may own a SQLite database; competing starts fail rather than
 share ownership. SIGTERM stops HTTP and workers before releasing storage;
 unfinished admitted jobs recover from the durable queue after leases expire.
