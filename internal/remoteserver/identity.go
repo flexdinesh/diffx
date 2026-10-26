@@ -39,9 +39,10 @@ type principal struct {
 	purpose identityservice.Purpose
 }
 type accountJSON struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-	Admin    bool   `json:"admin"`
+	ID       string  `json:"id"`
+	Username string  `json:"username"`
+	Email    *string `json:"email"`
+	Admin    bool    `json:"admin"`
 }
 type bootstrapJSON struct {
 	Mode          string       `json:"mode"`
@@ -50,10 +51,18 @@ type bootstrapJSON struct {
 	CSRFToken     *string      `json:"csrfToken"`
 }
 
-func (remote *transport) bootstrap(w http.ResponseWriter, p principal) {
+func (remote *transport) bootstrap(w http.ResponseWriter, r *http.Request, p principal) {
 	result := bootstrapJSON{Mode: "remote", GoogleEnabled: remote.identity.GoogleEnabled()}
 	if p.session != nil {
-		result.User = &accountJSON{p.account.ID, p.account.Username, p.account.Admin}
+		email, err := remote.identity.GoogleEmail(r.Context(), p.account.ID)
+		if err != nil {
+			identityError(w, err)
+			return
+		}
+		result.User = &accountJSON{ID: p.account.ID, Username: p.account.Username, Admin: p.account.Admin}
+		if email != "" {
+			result.User.Email = &email
+		}
 		result.CSRFToken = &p.session.CSRFToken
 	}
 	writeJSON(w, 200, result)
@@ -116,7 +125,7 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			problem(w, 405, "Method not allowed")
 			return
 		}
-		remote.bootstrap(w, p)
+		remote.bootstrap(w, r, p)
 		return
 	}
 	if !strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/mcp") && !strings.HasPrefix(r.URL.Path, "/control/") {
@@ -332,7 +341,7 @@ func (remote *transport) auth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	remote.cookie(w, session.Secret, session.ExpiresAt)
-	remote.bootstrap(w, principal{account: session.Account, session: &session})
+	remote.bootstrap(w, r, principal{account: session.Account, session: &session})
 }
 func (remote *transport) cookie(w http.ResponseWriter, secret string, expiry time.Time) {
 	cookie := &http.Cookie{Name: sessionCookie, Value: secret, Path: "/", HttpOnly: true, Secure: !remote.settings.InsecureCookies, SameSite: http.SameSiteLaxMode, Expires: expiry}

@@ -177,7 +177,7 @@ func TestInviteSignupThenGoogleSignInByStableSubject(t *testing.T) {
 		t.Fatalf("state reused: %s", w.Header().Get("Location"))
 	}
 	w = identityRequest(handler, "GET", "/api/v2/bootstrap", "", member, "", "")
-	if !strings.Contains(w.Body.String(), `"username":"alice.smith","admin":false`) {
+	if !strings.Contains(w.Body.String(), `"username":"alice.smith","email":"alice.smith@example.com","admin":false`) {
 		t.Fatalf("member identity: %s", w.Body.String())
 	}
 	if w := identityRequest(handler, "POST", "/api/v2/invites/lookup", `{"token":"`+secret+`"}`, nil, "", ""); w.Code != 404 {
@@ -192,7 +192,7 @@ func TestInviteSignupThenGoogleSignInByStableSubject(t *testing.T) {
 	state = fake.authorize(t, authorize, "renamed", "subject-a", "alice@new.example.com", true)
 	again := sessionFrom(t, callback(handler, state, "renamed", flow))
 	w = identityRequest(handler, "GET", "/api/v2/bootstrap", "", again, "", "")
-	if !strings.Contains(w.Body.String(), `"username":"alice.smith"`) {
+	if !strings.Contains(w.Body.String(), `"username":"alice.smith","email":"alice@new.example.com"`) {
 		t.Fatalf("email change changed account: %s", w.Body.String())
 	}
 	w = identityRequest(handler, "GET", "/api/v2/admin/users", "", admin, "", "")

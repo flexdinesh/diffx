@@ -1,6 +1,6 @@
 import { api, errorDetail, readBootstrap } from "@diffx/api";
 import { ArrowLeftIcon, UserRoundIcon } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ErrorState } from "@/components/error-state";
 import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
@@ -31,18 +31,206 @@ export function AccountButton({ variant }: { variant: "rail" | "shell" }) {
   );
 }
 
+const prose = "mb-4 leading-copy text-secondary";
+
+/** Failed outcomes the Google callback reports through `/?signin=`. */
+const signInFailures: Record<string, string> = {
+  "no-account":
+    "No diffx account uses that Google account. Ask the admin for an invite.",
+  "invite-mismatch":
+    "That Google account does not match the invited email, or Google has not verified it. Open the invite link again and choose the invited account.",
+  "invite-invalid":
+    "The invite link is invalid, expired or already used. Ask the admin for a new one.",
+  failed: "Google sign-in failed. Try again.",
+};
+
+/** Reads and clears the callback outcome so a reload does not repeat it. */
+function takeSignInOutcome() {
+  const url = new URL(window.location.href);
+  const outcome = url.searchParams.get("signin");
+  if (outcome === null) return "";
+  url.searchParams.delete("signin");
+  window.history.replaceState(window.history.state, "", url);
+  return outcome;
+}
+
 /** Members sign in with Google; accounts come only from invites. */
 export function SignIn() {
+  const { state } = useIdentity();
+  const [outcome] = useState(takeSignInOutcome);
+  const google =
+    state.status === "ready" &&
+    state.bootstrap.mode === "remote" &&
+    state.bootstrap.googleEnabled;
+  const failure = signInFailures[outcome];
   return (
     <main className="account-page auth-page">
       <a className="brand" href="/">
         diffx
       </a>
       <h1 className="mb-2 text-xl font-semibold">Sign in</h1>
-      <p className="mb-4 leading-copy text-secondary">
-        Sign-in is not available on this server yet. Ask its admin for an
-        invite.
-      </p>
+      {outcome === "cancelled" && (
+        <p className={prose} role="status">
+          Google sign-in was cancelled.
+        </p>
+      )}
+      {failure && <ErrorState message={failure} className="mb-4" />}
+      {google ? (
+        <>
+          <p className={prose}>
+            Use the Google account your invite was sent to.
+          </p>
+          <ContinueWithGoogle />
+        </>
+      ) : (
+        <p className={prose}>
+          Sign-in is not available on this server yet. Ask its admin for an
+          invite.
+        </p>
+      )}
+    </main>
+  );
+}
+
+/** Starts Google sign-in, accepting the invite when one is given. */
+function ContinueWithGoogle({ invite }: { invite?: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function start() {
+    setBusy(true);
+    setError("");
+    try {
+      const { data, error } =
+        invite === undefined
+          ? await api.POST("/api/v2/auth/google", { body: {} })
+          : await api.POST("/api/v2/invites/google", {
+              body: { token: invite },
+            });
+      if (!data)
+        throw new Error(
+          errorDetail(error, "Unable to start Google sign-in. Try again."),
+        );
+      window.location.assign(data.authorizeUrl);
+    } catch (failure: unknown) {
+      setError(
+        errorDetail(failure, "Unable to start Google sign-in. Try again."),
+      );
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      {error && <ErrorState message={error} className="mb-4" />}
+      <Button
+        touch
+        className="self-start"
+        disabled={busy}
+        aria-busy={busy}
+        onClick={() => void start()}
+      >
+        Continue with Google
+      </Button>
+    </>
+  );
+}
+
+function fragmentToken() {
+  return new URLSearchParams(window.location.hash.slice(1)).get("t") ?? "";
+}
+
+type InviteState =
+  | { status: "loading" }
+  | { status: "invalid" }
+  | { status: "error"; message: string }
+  | { status: "ready"; email: string; expiresAt: number };
+
+/** Accepts an invite link: its secret stays in the fragment, never a request URL. */
+export function InviteSignUp() {
+  const [token, setToken] = useState(fragmentToken);
+  const [invite, setInvite] = useState<InviteState>({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    // Another link opened in this tab changes only the fragment.
+    const changed = () => {
+      const next = fragmentToken();
+      window.history.replaceState(null, "", "/invite");
+      if (next) setToken(next);
+    };
+    window.addEventListener("hashchange", changed);
+    return () => window.removeEventListener("hashchange", changed);
+  }, []);
+  useEffect(() => {
+    // The secret stays out of history once read.
+    window.history.replaceState(null, "", "/invite");
+    if (!token) {
+      setInvite({ status: "invalid" });
+      return;
+    }
+    const controller = new AbortController();
+    setInvite({ status: "loading" });
+    void api
+      .POST("/api/v2/invites/lookup", {
+        body: { token },
+        signal: controller.signal,
+      })
+      .then(({ data, error, response }) => {
+        if (controller.signal.aborted) return;
+        if (response.status === 404) {
+          setInvite({ status: "invalid" });
+          return;
+        }
+        if (!data)
+          throw new Error(errorDetail(error, "Unable to load the invite"));
+        setInvite({
+          status: "ready",
+          email: data.email,
+          expiresAt: data.expiresAt,
+        });
+      })
+      .catch((failure: unknown) => {
+        if (!controller.signal.aborted)
+          setInvite({
+            status: "error",
+            message: errorDetail(failure, "Unable to load the invite"),
+          });
+      });
+    return () => controller.abort();
+  }, [token, attempt]);
+  return (
+    <main className="account-page auth-page">
+      <a className="brand" href="/">
+        diffx
+      </a>
+      <h1 className="mb-2 text-xl font-semibold">Join diffx</h1>
+      {invite.status === "loading" && (
+        <p className={prose} role="status">
+          Checking your invite…
+        </p>
+      )}
+      {invite.status === "error" && (
+        <ErrorState
+          message={invite.message}
+          className="mb-4"
+          touch
+          onRetry={() => setAttempt((value) => value + 1)}
+        />
+      )}
+      {invite.status === "invalid" && (
+        <p className={prose}>
+          This invite link is invalid, expired or already used. Ask the admin
+          for a new one.
+        </p>
+      )}
+      {invite.status === "ready" && (
+        <>
+          <p className={prose}>
+            You are invited as <strong>{invite.email}</strong>. Continue with
+            the Google account for that email. The invite expires{" "}
+            {new Date(invite.expiresAt).toLocaleString()}.
+          </p>
+          <ContinueWithGoogle invite={token} />
+        </>
+      )}
     </main>
   );
 }
@@ -223,11 +411,33 @@ function CredentialForm({
   );
 }
 
+/** A signed-in account page: the way back to reviews, then its content. */
+export function AccountPage({
+  username,
+  children,
+}: {
+  username: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="account-shell">
+      <header className="topbar account-topbar">
+        <Button variant="shell" onClick={() => navigate("/")}>
+          <ArrowLeftIcon aria-hidden="true" /> Reviews
+        </Button>
+        <span className="header-actions">{username}</span>
+      </header>
+      <main className="account-page settings-page">{children}</main>
+    </div>
+  );
+}
+
 export function AccountSettings() {
   const { state, signedOut } = useIdentity();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   if (state.status !== "ready" || !state.bootstrap.user) return null;
+  const user = state.bootstrap.user;
   async function logout() {
     setBusy(true);
     setError("");
@@ -243,41 +453,44 @@ export function AccountSettings() {
     }
   }
   return (
-    <div className="account-shell">
-      <header className="topbar account-topbar">
-        <Button variant="shell" onClick={() => navigate("/")}>
-          <ArrowLeftIcon aria-hidden="true" /> Reviews
-        </Button>
-        <span className="header-actions">{state.bootstrap.user.username}</span>
-      </header>
-      <main className="account-page settings-page">
-        <h1 className="mb-2 text-xl font-semibold">Account settings</h1>
-        <p className="mb-4 leading-copy text-secondary">
-          Signed in as <strong>{state.bootstrap.user.username}</strong>.
-        </p>
-        <AccountTokens />
-        <AccountGitHub />
-        {state.bootstrap.user.admin && <PasswordSettings />}
-        <section
-          className="mt-8 border-t border-separator pt-6"
-          aria-labelledby="session-title"
+    <AccountPage username={user.username}>
+      <h1 className="mb-2 text-xl font-semibold">Account settings</h1>
+      <p className={prose}>
+        Signed in as <strong>{user.username}</strong>
+        {user.email !== null && <> with Google as {user.email}</>}.
+      </p>
+      {user.admin && (
+        <Button
+          variant="outline"
+          touch
+          className="mb-4"
+          onClick={() => navigate("/admin")}
         >
-          <h2 id="session-title" className="mb-2 text-md font-semibold">
-            Browser session
-          </h2>
-          {error && <ErrorState message={error} className="mb-4" />}
-          <Button
-            variant="outline"
-            touch
-            disabled={busy}
-            aria-busy={busy}
-            onClick={() => void logout()}
-          >
-            Sign out
-          </Button>
-        </section>
-      </main>
-    </div>
+          Manage accounts and invites
+        </Button>
+      )}
+      <AccountTokens />
+      <AccountGitHub />
+      {user.admin && <PasswordSettings />}
+      <section
+        className="mt-8 border-t border-separator pt-6"
+        aria-labelledby="session-title"
+      >
+        <h2 id="session-title" className="mb-2 text-md font-semibold">
+          Browser session
+        </h2>
+        {error && <ErrorState message={error} className="mb-4" />}
+        <Button
+          variant="outline"
+          touch
+          disabled={busy}
+          aria-busy={busy}
+          onClick={() => void logout()}
+        >
+          Sign out
+        </Button>
+      </section>
+    </AccountPage>
   );
 }
 

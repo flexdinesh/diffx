@@ -823,6 +823,8 @@ export interface components {
     AccountUser: {
       id: string;
       username: string;
+      /** @description The latest email Google reported for the account; null for the admin. */
+      email: string | null;
       /** @description The single account that signs in with a password and manages other accounts. */
       admin: boolean;
     };

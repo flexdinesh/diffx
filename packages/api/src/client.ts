@@ -25,6 +25,8 @@ export type ApiCollectionFailure = components["schemas"]["CollectionFailure"];
 export type ApiPullRequest = components["schemas"]["PullRequest"];
 export type ApiGitHubConnection = components["schemas"]["GitHubConnection"];
 export type ApiGitHubRepository = components["schemas"]["GitHubRepository"];
+export type ApiAdminUser = components["schemas"]["AdminUser"];
+export type ApiInvite = components["schemas"]["Invite"];
 
 export function errorDetail(error: unknown, fallback: string) {
   if (error instanceof Error) return error.message;
@@ -76,6 +78,7 @@ export function readBootstrap(value: unknown): ApiBootstrap {
     value.user.id.length > 0 &&
     typeof value.user.username === "string" &&
     value.user.username.length > 0 &&
+    (typeof value.user.email === "string" || value.user.email === null) &&
     typeof value.user.admin === "boolean" &&
     typeof value.csrfToken === "string" &&
     value.csrfToken.length > 0
@@ -86,6 +89,7 @@ export function readBootstrap(value: unknown): ApiBootstrap {
       user: {
         id: value.user.id,
         username: value.user.username,
+        email: value.user.email,
         admin: value.user.admin,
       },
       csrfToken: value.csrfToken,

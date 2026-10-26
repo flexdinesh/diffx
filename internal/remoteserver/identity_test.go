@@ -239,7 +239,7 @@ func TestPasswordLoginIsAdminOnly(t *testing.T) {
 		t.Fatalf("public signup route: %d", w.Code)
 	}
 	w := identityRequest(handler, "GET", "/api/v2/bootstrap", "", cookie, "", "")
-	if strings.Contains(w.Body.String(), "signupEnabled") || !strings.Contains(w.Body.String(), `"googleEnabled":false`) || !strings.Contains(w.Body.String(), `"admin":true`) {
+	if strings.Contains(w.Body.String(), "signupEnabled") || !strings.Contains(w.Body.String(), `"googleEnabled":false`) || !strings.Contains(w.Body.String(), `"email":null,"admin":true`) {
 		t.Fatalf("bootstrap: %s", w.Body.String())
 	}
 }
