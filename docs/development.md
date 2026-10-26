@@ -187,6 +187,7 @@ building the image.
 | `DIFFX_SERVER_RETENTION_DAYS`   | `7`             | `7`               | `--retention-days DAYS` |
 | `DIFFX_SERVER_PUBLIC_URL`       | Unset           | Unset             | `--public-url URL`      |
 | `DIFFX_SERVER_INSECURE_COOKIES` | `false`         | Compose: `true`   | `--insecure-cookies`    |
+| `DIFFX_SERVER_GOOGLE_CLIENT_ID` | Unset           | Unset             | None                    |
 
 The server listens on 7980 so a local `diffx [PATH]` (7981–7990) and the server
 run side by side. The `DIFFX_SERVER_` prefix keeps deployment variables from
@@ -202,7 +203,11 @@ unset, the link uses the listen address. `memory` and `:memory:` disable
 persistence.
 
 The admin signs in at `/admin/login`; every other account signs in with Google
-and comes from an admin invite. Create a named token in Settings. Use the
+and comes from an admin invite. Google sign-in needs
+`DIFFX_SERVER_GOOGLE_CLIENT_ID`, `DIFFX_SERVER_GOOGLE_CLIENT_SECRET` (environment
+only, never the config file) and `DIFFX_SERVER_PUBLIC_URL`; register
+`<public URL>/api/v2/auth/google/callback` as the OAuth client's redirect URI.
+Without them the server runs admin-only and cannot create invites. Create a named token in Settings. Use the
 `collector` preset for producers, or `api` for review APIs/MCP. Token secrets are
 shown once; expiry defaults to 90 days (selectable 1–365). Tokens cannot manage
 accounts. Browser sessions are seven-day opaque cookies with CSRF protection on

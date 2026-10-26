@@ -144,6 +144,23 @@ func TestRemoteIdentityConfigPrecedence(t *testing.T) {
 	}
 }
 
+func TestRemoteGoogleSignInSettings(t *testing.T) {
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	settings, _, err := parseSettings(nil, io.Discard)
+	if err != nil || settings.Google != nil {
+		t.Fatalf("Google sign-in without configuration: %+v %v", settings.Google, err)
+	}
+	t.Setenv("DIFFX_SERVER_GOOGLE_CLIENT_ID", "client")
+	t.Setenv("DIFFX_SERVER_GOOGLE_CLIENT_SECRET", "secret")
+	if _, _, err := parseSettings(nil, io.Discard); err == nil {
+		t.Fatal("Google sign-in accepted without a public URL")
+	}
+	settings, _, err = parseSettings([]string{"--public-url", "https://diffx.example.com"}, io.Discard)
+	if err != nil || settings.Google == nil || settings.Google.ClientID != "client" || settings.Google.ClientSecret != "secret" {
+		t.Fatalf("Google sign-in settings: %+v %v", settings.Google, err)
+	}
+}
+
 func TestRemoteRejectsInvalidDeploymentSettings(t *testing.T) {
 	for _, tc := range []struct{ key, value string }{
 		{"DIFFX_SERVER_HOST", "localhost"},

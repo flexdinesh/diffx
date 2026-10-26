@@ -32,7 +32,18 @@ type ServerValues struct {
 	// InternalPort listens beside Port, on the same host, when GitHub is enabled.
 	InternalPort int    `json:"internalPort"`
 	GitHub       GitHub `json:"github"`
+	Google       Google `json:"google"`
 }
+
+// Google configures Google sign-in for invited accounts. The secret comes only
+// from DIFFX_SERVER_GOOGLE_CLIENT_SECRET, never the config file.
+type Google struct {
+	ClientID     string `json:"clientId"`
+	ClientSecret string `json:"-"`
+}
+
+// Enabled reports whether any Google setting is present; Validate requires all.
+func (google Google) Enabled() bool { return google != Google{} }
 
 // GitHub configures the optional GitHub App integration. Secrets come only from
 // DIFFX_SERVER_GITHUB_* environment variables, never the config file.
@@ -100,10 +111,20 @@ func validOrigin(raw string, insecureCookies bool) bool {
 		(public.Scheme == "https" || public.Scheme == "http" && insecureCookies)
 }
 
-// ValidatePublicURL checks the optional origin used in links the server issues.
-func (values ServerValues) ValidatePublicURL() error {
+// ValidateIdentity checks the optional origin used in links the server issues,
+// and Google sign-in, which needs both credentials and that origin.
+func (values ServerValues) ValidateIdentity() error {
 	if values.PublicURL != "" && !validOrigin(values.PublicURL, values.InsecureCookies) {
 		return errors.New("publicUrl must be an https origin such as https://diffx.example.com (http only with insecure cookies)")
+	}
+	if !values.Google.Enabled() {
+		return nil
+	}
+	if values.Google.ClientID == "" || values.Google.ClientSecret == "" {
+		return errors.New("incomplete Google sign-in; set both DIFFX_SERVER_GOOGLE_CLIENT_ID and DIFFX_SERVER_GOOGLE_CLIENT_SECRET")
+	}
+	if values.PublicURL == "" {
+		return errors.New("Google sign-in needs DIFFX_SERVER_PUBLIC_URL for its callback")
 	}
 	return nil
 }
@@ -141,6 +162,8 @@ func LoadServerFile(path string) (ServerValues, error) {
 		{"DIFFX_SERVER_HOST", &values.Host},
 		{"DIFFX_SERVER_STATE", &values.State},
 		{"DIFFX_SERVER_PUBLIC_URL", &values.PublicURL},
+		{"DIFFX_SERVER_GOOGLE_CLIENT_ID", &values.Google.ClientID},
+		{"DIFFX_SERVER_GOOGLE_CLIENT_SECRET", &values.Google.ClientSecret},
 		{"DIFFX_SERVER_GITHUB_CLIENT_ID", &values.GitHub.ClientID},
 		{"DIFFX_SERVER_GITHUB_PRIVATE_KEY_FILE", &values.GitHub.PrivateKeyFile},
 		{"DIFFX_SERVER_GITHUB_PUBLIC_URL", &values.GitHub.PublicURL},

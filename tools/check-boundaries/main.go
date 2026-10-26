@@ -31,7 +31,9 @@ var allowed = map[string][]string{
 	"internal/controlapi":     {"internal/config", "internal/review"},
 	"internal/diffsource":     {"internal/processlock", "internal/review"},
 	// GitHub wire adapter; integration policy lives in githubsync.
-	"internal/github":     {},
+	"internal/github": {},
+	// Google sign-in wire adapter; account policy lives in identityservice.
+	"internal/google":     {},
 	"internal/githubsync": {"internal/fetchprotocol", "internal/github", "internal/ingestion", "internal/review"},
 	// The fetcher mirrors GitHub repositories and collects them offline.
 	"internal/fetcher":       {"internal/collector", "internal/diffsource", "internal/fetchprotocol", "internal/ingestion"},
@@ -42,7 +44,7 @@ var allowed = map[string][]string{
 		"internal/reviewservice", "internal/ingestion", "internal/processmetrics", "packages/api",
 	},
 	"internal/ingestion":       {"internal/review"},
-	"internal/identityservice": {},
+	"internal/identityservice": {"internal/google"},
 	"internal/ingestionqueue":  {"internal/review", "internal/ingestion"},
 	"internal/localserver": {
 		"internal/config", "internal/contextservice", "internal/controlapi", "internal/ingestion", "internal/processlock",
@@ -52,14 +54,14 @@ var allowed = map[string][]string{
 	"internal/processlock":    {},
 	"internal/processmetrics": {},
 	"internal/remoteserver": {
-		"internal/contextservice", "internal/fetchprotocol", "internal/github", "internal/githubsync", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/review",
+		"internal/contextservice", "internal/fetchprotocol", "internal/github", "internal/githubsync", "internal/google", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/review",
 		"internal/reviewstore", "internal/serverapp", "internal/webui", "packages/api",
 	},
 	"internal/review":        {},
 	"internal/reviewdata":    {"internal/review", "internal/ingestion"},
 	"internal/reviewservice": {"internal/review", "internal/reviewdata", "internal/reviewsession", "internal/contextservice", "internal/ingestion"},
 	"internal/reviewsession": {"internal/review"},
-	"internal/reviewstore":   {"internal/githubsync", "internal/identityservice", "internal/review", "internal/reviewdata", "internal/ingestion", "internal/ingestionqueue", "internal/processlock"},
+	"internal/reviewstore":   {"internal/githubsync", "internal/google", "internal/identityservice", "internal/review", "internal/reviewdata", "internal/ingestion", "internal/ingestionqueue", "internal/processlock"},
 	"internal/serverapp": {
 		"internal/contextservice", "internal/httpapi", "internal/ingestion", "internal/ingestionqueue",
 		"internal/mcpapi", "internal/review", "internal/reviewdata", "internal/reviewservice", "internal/version",

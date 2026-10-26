@@ -71,8 +71,10 @@ personal lifecycle discovery.
 - `reviewservice`: shared snapshot reads, comments, marks and capability checks.
 - `reviewdata`: storage-independent identities, results and errors.
 - `reviewsession`: a resolved review and its source/policy capabilities.
-- `identityservice`: account, admin setup, password, session, API-token and
-  account administration policies.
+- `identityservice`: account, admin setup, password, session, API-token,
+  account administration, invite and Google sign-in policies.
+- `google`: Google OpenID Connect wire adapter: authorization URL with PKCE and
+  nonce, code exchange and ID token claim checks. No storage or diffx policy.
 - `github`: GitHub wire adapter: app JWT, installation tokens, OAuth web flow,
   REST reads, webhook signatures and payloads. No storage or diffx policy.
 - `githubsync`: GitHub integration rules: which accounts may follow which

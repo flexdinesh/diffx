@@ -364,6 +364,19 @@ concurrent attempts yield one admin. Only the admin signs in with a password, at
 login is indistinguishable from a wrong password. Offline `user reset-password`
 recovers only the admin.
 
+Accounts other than the admin exist only through invites. The admin invites an
+email; the link carries a hashed one-time secret in its fragment, is shown once,
+expires after 48 hours and replaces that email's pending invite. Accepting
+requires Google sign-in reporting a verified email equal to the invite's, and
+uses the invite and creates the account in one transaction. The username derives
+from the email. Google accounts are identified by their stable subject, not
+email: a changed email keeps the account and updates its recorded email. Google
+sign-in uses the authorization code flow with PKCE, state and nonce; a short-lived
+HttpOnly cookie binds the flow to the starting browser and each state is consumed
+once. A Google account without an account or invite cannot sign up. Without Google
+configuration the server runs admin-only: Google routes are absent and invites
+cannot be created.
+
 The admin lists accounts and disables, enables or deletes any account except
 itself. Disabling revokes the account's browser sessions and API tokens in the
 same transaction and refuses new ones; enabling restores sign-in, not those

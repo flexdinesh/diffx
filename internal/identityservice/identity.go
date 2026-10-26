@@ -108,18 +108,24 @@ type Store interface {
 	DeleteIdentityToken(context.Context, string, string) error
 	ResolveIdentityToken(context.Context, string, time.Time) (TokenIdentity, error)
 	IdentityAccounts(context.Context) ([]Account, error)
+	GoogleStore
 }
 
 type Service struct {
 	store     Store
+	google    GoogleClient
 	now       func() time.Time
 	dummyHash string
 }
 
-func New(store Store) *Service {
+func New(store Store, options ...Option) *Service {
 	// A well-formed fixed dummy verifier pays the same Argon2 cost on misses.
 	const dummy = "$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-	return &Service{store: store, now: time.Now, dummyHash: dummy}
+	service := &Service{store: store, now: time.Now, dummyHash: dummy}
+	for _, option := range options {
+		option(service)
+	}
+	return service
 }
 
 func canonicalUsername(username string) (string, error) {

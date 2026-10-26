@@ -100,7 +100,10 @@ DIFFX_SERVER_INSECURE_COOKIES=true DIFFX_SERVER_STATE=./test-data/state.db diffx
 
 Open the setup link the server logs to create the admin account. The admin signs
 in with that password at `/admin/login`; everyone else signs in with Google from
-an admin invite. Then open the top-right account settings to create
+an admin invite. Invites need a Google OAuth web client: set
+`DIFFX_SERVER_GOOGLE_CLIENT_ID`, `DIFFX_SERVER_GOOGLE_CLIENT_SECRET` and
+`DIFFX_SERVER_PUBLIC_URL`, and register
+`<public URL>/api/v2/auth/google/callback` as its redirect URI. Then open the top-right account settings to create
 a named API token. `collector` tokens support sync and plugins; `api` tokens also
 support the user's review REST/MCP APIs. Both expire after 90 days by default
 (selectable 1–365 days), can be revoked, and show their secret only once. Browser

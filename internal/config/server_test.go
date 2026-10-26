@@ -140,6 +140,43 @@ func TestGitHubConfigIsAllOrNothingWithSecretsFromEnvironment(t *testing.T) {
 	}
 }
 
+func TestGoogleSignInNeedsBothCredentialsAndPublicURL(t *testing.T) {
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	t.Setenv("DIFFX_SERVER_GOOGLE_CLIENT_ID", "client")
+	t.Setenv("DIFFX_SERVER_GOOGLE_CLIENT_SECRET", "secret")
+	t.Setenv("DIFFX_SERVER_PUBLIC_URL", "https://diffx.example.com")
+	values, err := LoadServerFile("")
+	if err != nil || !values.Google.Enabled() || values.ValidateIdentity() != nil {
+		t.Fatalf("complete Google sign-in: %+v %v", values.Google, err)
+	}
+	for _, tc := range []struct{ name, want string }{
+		{"DIFFX_SERVER_GOOGLE_CLIENT_SECRET", "DIFFX_SERVER_GOOGLE_CLIENT_SECRET"},
+		{"DIFFX_SERVER_GOOGLE_CLIENT_ID", "DIFFX_SERVER_GOOGLE_CLIENT_ID"},
+		{"DIFFX_SERVER_PUBLIC_URL", "DIFFX_SERVER_PUBLIC_URL"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(tc.name, "")
+			values, err := LoadServerFile("")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := values.ValidateIdentity(); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("validation %v, want %q", err, tc.want)
+			}
+		})
+	}
+	path := filepath.Join(t.TempDir(), "server.json")
+	if err := os.WriteFile(path, []byte(`{"google":{"clientId":"client","clientSecret":"in-file"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadServerFile(path); err == nil || !strings.Contains(err.Error(), "clientSecret") {
+		t.Fatalf("secret accepted from config file: %v", err)
+	}
+	if (Google{}).Enabled() || (ServerValues{}).ValidateIdentity() != nil {
+		t.Fatal("absent Google sign-in must be valid and disabled")
+	}
+}
+
 func TestInternalListenerSharesHostOnSeparatePort(t *testing.T) {
 	t.Setenv("DIFFX_SERVER_CONFIG", "")
 	values, err := LoadServerFile("")

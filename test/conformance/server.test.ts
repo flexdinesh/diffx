@@ -400,6 +400,20 @@ test("Go distribution implements the API contract", async (t) => {
   assert.equal(users.response.status, 200);
   assert.equal(users.data?.users.length, 1);
   conforms("AdminUser", users.data?.users[0]);
+  const invites = await remote.GET("/api/v2/admin/invites", {
+    headers: { Cookie: cookie },
+  });
+  assert.equal(invites.response.status, 200);
+  assert.deepEqual(invites.data?.invites, []);
+  const inviteWithoutGoogle = await remote.POST("/api/v2/admin/invites", {
+    headers: accountHeaders,
+    body: { email: "member@example.com" },
+  });
+  assert.equal(inviteWithoutGoogle.response.status, 409);
+  const googleWithoutConfig = await remote.POST("/api/v2/auth/google", {
+    body: {},
+  });
+  assert.equal(googleWithoutConfig.response.status, 404);
   const missingCSRF = await remote.POST("/api/v2/account/tokens", {
     headers: { Cookie: cookie },
     body: { name: "Denied", purpose: "api", expiresInDays: 90 },
