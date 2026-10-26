@@ -22,7 +22,7 @@ paths:
   /api/v2/auth/login:
     post:
       operationId: login
-      description: Distributed only. Same-origin JSON request; creates a browser session. Signup requires explicit server configuration.
+      description: Distributed only. Admin password sign-in; same-origin JSON request creating a browser session. Every other account signs in with Google, and any refusal is the same 401.
       requestBody:
         required: true
         content:
@@ -41,35 +41,59 @@ paths:
         "401":
           $ref: "#/components/responses/Problem"
         "403":
-          $ref: "#/components/responses/Problem"
-        "409":
           $ref: "#/components/responses/Problem"
         "429":
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
-  /api/v2/auth/signup:
+  /api/v2/setup:
+    get:
+      operationId: getSetup
+      description: Distributed only. Whether the server still needs its admin. Never exposes the setup secret.
+      responses:
+        "200":
+          description: Setup status.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [required]
+                properties:
+                  required:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Problem"
     post:
-      operationId: signup
-      description: Distributed only. Same-origin JSON request; creates a browser session. Signup requires explicit server configuration.
+      operationId: completeSetup
+      description: Distributed only. Create the admin from the one-time secret the server logged at startup (the setup link's `#t=` fragment) and sign it in. The secret expires after 24 hours and is replaced on each start until used.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/PasswordCredentials"
+              type: object
+              additionalProperties: false
+              required: [token, username, password]
+              properties:
+                token:
+                  type: string
+                username:
+                  type: string
+                password:
+                  type: string
       responses:
         "200":
-          description: Authenticated browser identity.
+          description: Admin browser identity.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Bootstrap"
         "400":
           $ref: "#/components/responses/Problem"
-        "401":
-          $ref: "#/components/responses/Problem"
         "403":
+          $ref: "#/components/responses/Problem"
+        "404":
           $ref: "#/components/responses/Problem"
         "409":
           $ref: "#/components/responses/Problem"
@@ -230,6 +254,95 @@ paths:
           description: Credential revoked.
         "400":
           $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/admin/users:
+    get:
+      security:
+        - browserSession: []
+      operationId: listAdminUsers
+      description: Every account, including disabled ones. Admin browser session only.
+      responses:
+        "200":
+          description: Accounts.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [users]
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AdminUser"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/admin/users/{userId}:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    delete:
+      security:
+        - browserSession: []
+      operationId: deleteAdminUser
+      description: Delete the account and everything it owns. The admin account cannot be deleted. Admin browser session only.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/admin/users/{userId}/disable:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    post:
+      security:
+        - browserSession: []
+      operationId: disableAdminUser
+      description: Block sign-in and revoke every browser session and API token. The admin account cannot be disabled. Admin browser session only.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Disabled.
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/admin/users/{userId}/enable:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    post:
+      security:
+        - browserSession: []
+      operationId: enableAdminUser
+      description: Allow sign-in again. Revoked sessions and tokens stay revoked. Admin browser session only.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Enabled.
         "401":
           $ref: "#/components/responses/Problem"
         "403":
@@ -1076,6 +1189,12 @@ components:
       description: Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials.
       schema:
         type: string
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
     ContextId:
       name: contextId
       in: path
@@ -1135,22 +1254,44 @@ components:
     AccountUser:
       type: object
       additionalProperties: false
-      required: [id, username]
+      required: [id, username, admin]
       properties:
         id:
           type: string
         username:
           type: string
+        admin:
+          type: boolean
+          description: The single account that signs in with a password and manages other accounts.
+    AdminUser:
+      type: object
+      additionalProperties: false
+      required: [id, username, email, admin, disabled, createdAt]
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        email:
+          type: [string, "null"]
+          description: The latest email Google reported for the account; null for the admin.
+        admin:
+          type: boolean
+        disabled:
+          type: boolean
+        createdAt:
+          type: integer
+          format: int64
     Bootstrap:
       oneOf:
         - type: object
           additionalProperties: false
-          required: [mode, signupEnabled, user, csrfToken, collect, input]
+          required: [mode, googleEnabled, user, csrfToken, collect, input]
           properties:
             mode:
               type: string
               enum: [local]
-            signupEnabled:
+            googleEnabled:
               type: boolean
               enum: [false]
             user:
@@ -1166,13 +1307,14 @@ components:
               description: What this process serves. `checkouts` reviews discovered checkouts; `capture` reviews one fixed patch (piped stdin or a fixture) and has nothing to switch to.
         - type: object
           additionalProperties: false
-          required: [mode, signupEnabled, user, csrfToken]
+          required: [mode, googleEnabled, user, csrfToken]
           properties:
             mode:
               type: string
               enum: [remote]
-            signupEnabled:
+            googleEnabled:
               type: boolean
+              description: Whether members can sign in with Google.
             user:
               oneOf:
                 - $ref: "#/components/schemas/AccountUser"

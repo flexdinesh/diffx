@@ -77,11 +77,8 @@ func webhook(handler http.Handler, delivery, signature, body string) int {
 }
 
 func TestGitHubRoutesAbsentWithoutConfiguration(t *testing.T) {
-	store, handler := identityHandler(t, Settings{SignupEnabled: true})
-	if _, err := identityservice.New(store).Provision(t.Context(), "user", testPassword); err != nil {
-		t.Fatal(err)
-	}
-	cookie, _ := loginIdentity(t, handler, "user")
+	store, handler := identityHandler(t, Settings{})
+	cookie, _ := memberSession(t, store, "user")
 	if w := identityRequest(handler, "GET", "/api/v2/github/connection", "", cookie, "", ""); w.Code != 404 {
 		t.Fatalf("unconfigured connection: %d", w.Code)
 	}
@@ -92,13 +89,9 @@ func TestGitHubRoutesAbsentWithoutConfiguration(t *testing.T) {
 
 func TestGitHubConnectFollowAndWebhookBoundaries(t *testing.T) {
 	api := fakeGitHubAPI(t)
-	store, handler := identityHandler(t, Settings{SignupEnabled: true, GitHub: githubSettings(t, api.URL)})
-	identity := identityservice.New(store)
-	if _, err := identity.Provision(t.Context(), "user", testPassword); err != nil {
-		t.Fatal(err)
-	}
+	store, handler := identityHandler(t, Settings{GitHub: githubSettings(t, api.URL)})
 	token := provisionToken(t, store, "automation", identityservice.PurposeAPI)
-	cookie, csrf := loginIdentity(t, handler, "user")
+	cookie, csrf := memberSession(t, store, "user")
 
 	body := `{"action":"opened","number":1,"installation":{"id":5},"repository":{"id":10,"full_name":"octo/app"}}`
 	if code := webhook(handler, "d1", "sha256=00", body); code != 401 {
@@ -159,15 +152,9 @@ func TestGitHubConnectFollowAndWebhookBoundaries(t *testing.T) {
 
 func TestGitHubCallbackRefusesForeignAndMissingSessions(t *testing.T) {
 	api := fakeGitHubAPI(t)
-	store, handler := identityHandler(t, Settings{SignupEnabled: true, GitHub: githubSettings(t, api.URL)})
-	identity := identityservice.New(store)
-	for _, name := range []string{"alice", "bob"} {
-		if _, err := identity.Provision(t.Context(), name, testPassword); err != nil {
-			t.Fatal(err)
-		}
-	}
-	alice, csrf := loginIdentity(t, handler, "alice")
-	bob, _ := loginIdentity(t, handler, "bob")
+	store, handler := identityHandler(t, Settings{GitHub: githubSettings(t, api.URL)})
+	alice, csrf := memberSession(t, store, "alice")
+	bob, _ := memberSession(t, store, "bob")
 	w := identityRequest(handler, "POST", "/api/v2/github/connection", "", alice, csrf, "")
 	var started struct {
 		AuthorizeURL string `json:"authorizeUrl"`
@@ -208,7 +195,7 @@ func TestFetchProtocolOnlyOnInternalListenerWithSecret(t *testing.T) {
 	t.Cleanup(func() { store.Close() })
 	settings := githubSettings(t, fakeGitHubAPI(t).URL)
 	settings.FetcherSecret = strings.Repeat("s", 32)
-	public, internal, closeServices, _, err := compose(t.Context(), store, fstest.MapFS{"index.html": {Data: []byte("app shell")}}, Settings{SignupEnabled: true, GitHub: settings})
+	public, internal, closeServices, _, err := compose(t.Context(), store, fstest.MapFS{"index.html": {Data: []byte("app shell")}}, Settings{GitHub: settings})
 	if err != nil {
 		t.Fatal(err)
 	}

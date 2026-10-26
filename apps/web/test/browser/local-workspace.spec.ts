@@ -1793,9 +1793,11 @@ for (const mode of ["local", "remote"]) {
       route.fulfill({
         json: {
           mode,
-          signupEnabled: false,
+          googleEnabled: false,
           user:
-            mode === "remote" ? { id: "account-a", username: "alice" } : null,
+            mode === "remote"
+              ? { id: "account-a", username: "alice", admin: false }
+              : null,
           csrfToken: mode === "remote" ? "csrf" : null,
           collect: mode === "local",
           input: "checkouts",
@@ -1925,7 +1927,7 @@ test("local first launch waits for collection with an empty catalog", async ({
     route.fulfill({
       json: {
         mode: "local",
-        signupEnabled: false,
+        googleEnabled: false,
         user: null,
         csrfToken: null,
         collect: true,
@@ -2033,7 +2035,7 @@ for (const initialHeads of ["stored", "arriving"]) {
       route.fulfill({
         json: {
           mode: "local",
-          signupEnabled: false,
+          googleEnabled: false,
           user: null,
           csrfToken: null,
           collect: true,
@@ -2112,7 +2114,7 @@ test("local root waits for collection to open its default over earlier heads", a
     route.fulfill({
       json: {
         mode: "local",
-        signupEnabled: false,
+        googleEnabled: false,
         user: null,
         csrfToken: null,
         collect: true,
@@ -2175,7 +2177,7 @@ test("unresolved navigation joins collection without reporting a missing stream"
     route.fulfill({
       json: {
         mode: "local",
-        signupEnabled: false,
+        googleEnabled: false,
         user: null,
         csrfToken: null,
         collect: true,
@@ -2280,7 +2282,7 @@ for (const path of ["/", "/streams/local-stream"]) {
       route.fulfill({
         json: {
           mode: "local",
-          signupEnabled: false,
+          googleEnabled: false,
           user: null,
           csrfToken: null,
           collect: true,
@@ -2337,7 +2339,7 @@ test("local startup reports failed checkouts while opening collected changes", a
     route.fulfill({
       json: {
         mode: "local",
-        signupEnabled: false,
+        googleEnabled: false,
         user: null,
         csrfToken: null,
         collect: true,
@@ -2371,7 +2373,7 @@ test("local live URLs sync the checkouts on every load", async ({ page }) => {
     route.fulfill({
       json: {
         mode: "local",
-        signupEnabled: false,
+        googleEnabled: false,
         user: null,
         csrfToken: null,
         collect: true,
@@ -2478,7 +2480,7 @@ test("local sync collects every checkout without replacing the open review", asy
     route.fulfill({
       json: {
         mode: "local",
-        signupEnabled: false,
+        googleEnabled: false,
         user: null,
         csrfToken: null,
         collect: true,
@@ -2571,8 +2573,8 @@ test("each remote account baselines its own seen heads", async ({ page }) => {
     route.fulfill({
       json: {
         mode: "remote",
-        signupEnabled: false,
-        user: { id: "account-b", username: "bob" },
+        googleEnabled: false,
+        user: { id: "account-b", username: "bob", admin: false },
         csrfToken: "csrf",
         collect: false,
       },
@@ -2680,7 +2682,7 @@ test("scope history keeps live snapshot and draft through newer heads, then foll
     route.fulfill({
       json: {
         mode: "local",
-        signupEnabled: false,
+        googleEnabled: false,
         user: null,
         csrfToken: null,
         collect: true,
@@ -2917,8 +2919,8 @@ test("saved comparison preferences belong to the active account", async ({
     route.fulfill({
       json: {
         mode: "remote",
-        signupEnabled: false,
-        user: { id: account, username: account },
+        googleEnabled: false,
+        user: { id: account, username: account, admin: false },
         csrfToken: "test",
         collect: false,
       },
@@ -2944,8 +2946,8 @@ test("pull request reviews show GitHub identity and a sanitized description; clo
     route.fulfill({
       json: {
         mode: "remote",
-        signupEnabled: false,
-        user: { id: "account-a", username: "alice" },
+        googleEnabled: false,
+        user: { id: "account-a", username: "alice", admin: false },
         csrfToken: "csrf",
         collect: false,
       },

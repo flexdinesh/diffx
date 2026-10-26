@@ -158,7 +158,7 @@ test("Go distribution implements the API contract", async (t) => {
   conforms("Bootstrap", localBootstrap.data);
   assert.deepEqual(localBootstrap.data, {
     mode: "local",
-    signupEnabled: false,
+    googleEnabled: false,
     user: null,
     csrfToken: null,
     collect: false,
@@ -320,17 +320,18 @@ test("Go distribution implements the API contract", async (t) => {
     remoteBinary,
     ["--listen", `127.0.0.1:${remotePort}`, "--state", "memory"],
     {
-      stdio: "ignore",
+      stdio: ["ignore", "ignore", "pipe"],
       env: {
         ...process.env,
-        DIFFX_SERVER_USERNAME: "contract-user",
-        DIFFX_SERVER_PASSWORD: "contract-password-000001",
-        DIFFX_SERVER_SIGNUP_ENABLED: "false",
+        DIFFX_SERVER_PUBLIC_URL: "http://diffx.test",
         DIFFX_SERVER_INSECURE_COOKIES: "true",
       },
     },
   );
   t.after(() => remoteServer.kill("SIGTERM"));
+  let serverLog = "";
+  remoteServer.stderr.setEncoding("utf8");
+  remoteServer.stderr.on("data", (chunk: string) => (serverLog += chunk));
   const remoteUrl = `http://127.0.0.1:${remotePort}`;
   await waitForServer(remoteUrl);
   const remote = createApiClient({ baseUrl: remoteUrl });
@@ -338,14 +339,46 @@ test("Go distribution implements the API contract", async (t) => {
   conforms("Bootstrap", remoteBootstrap.data);
   assert.deepEqual(remoteBootstrap.data, {
     mode: "remote",
-    signupEnabled: false,
+    googleEnabled: false,
     user: null,
     csrfToken: null,
   });
-  const disabledSignup = await remote.POST("/api/v2/auth/signup", {
-    body: { username: "second-user", password: "contract-password-000002" },
+  const retiredSignup = await fetch(`${remoteUrl}/api/v2/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: "second-user",
+      password: "contract-password-000002",
+    }),
   });
-  assert.equal(disabledSignup.response.status, 403);
+  assert.equal(retiredSignup.status, 401);
+  const pendingSetup = await remote.GET("/api/v2/setup");
+  assert.deepEqual(pendingSetup.data, { required: true });
+  let setupToken = "";
+  for (let attempt = 0; !setupToken && attempt < 40; attempt++) {
+    setupToken =
+      /http:\/\/diffx\.test\/setup#t=(\S+)/.exec(serverLog)?.[1] ?? "";
+    if (!setupToken) await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.ok(setupToken, `setup link not logged: ${serverLog}`);
+  const setup = await remote.POST("/api/v2/setup", {
+    body: {
+      token: setupToken,
+      username: "contract-user",
+      password: "contract-password-000001",
+    },
+  });
+  assert.equal(setup.response.status, 200);
+  conforms("Bootstrap", setup.data);
+  assert.equal(setup.data?.mode === "remote" && setup.data.user?.admin, true);
+  const reusedSetup = await remote.POST("/api/v2/setup", {
+    body: {
+      token: setupToken,
+      username: "second-user",
+      password: "contract-password-000002",
+    },
+  });
+  assert.equal(reusedSetup.response.status, 404);
   const login = await remote.POST("/api/v2/auth/login", {
     body: {
       username: "contract-user",
@@ -361,6 +394,12 @@ test("Go distribution implements the API contract", async (t) => {
   const cookie = login.response.headers.get("set-cookie")?.split(";")[0];
   assert.ok(cookie);
   const accountHeaders = { Cookie: cookie, "X-CSRF-Token": csrf };
+  const users = await remote.GET("/api/v2/admin/users", {
+    headers: { Cookie: cookie },
+  });
+  assert.equal(users.response.status, 200);
+  assert.equal(users.data?.users.length, 1);
+  conforms("AdminUser", users.data?.users[0]);
   const missingCSRF = await remote.POST("/api/v2/account/tokens", {
     headers: { Cookie: cookie },
     body: { name: "Denied", purpose: "api", expiresInDays: 90 },

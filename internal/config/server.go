@@ -26,8 +26,7 @@ type ServerValues struct {
 	Host            string `json:"host"`
 	Port            int    `json:"port"`
 	State           string `json:"state"`
-	Username        string `json:"username"`
-	SignupEnabled   bool   `json:"signupEnabled"`
+	PublicURL       string `json:"publicUrl"`
 	InsecureCookies bool   `json:"insecureCookies"`
 	RetentionDays   int    `json:"retentionDays"`
 	// InternalPort listens beside Port, on the same host, when GitHub is enabled.
@@ -81,9 +80,7 @@ func (github GitHub) Validate(insecureCookies bool) error {
 	if len(missing) > 0 {
 		return fmt.Errorf("incomplete GitHub integration; also set %s", strings.Join(missing, ", "))
 	}
-	public, err := url.Parse(github.PublicURL)
-	if err != nil || public.Host == "" || public.User != nil || public.RawQuery != "" || public.Fragment != "" || strings.TrimSuffix(public.Path, "/") != "" ||
-		public.Scheme != "https" && (public.Scheme != "http" || !insecureCookies) {
+	if !validOrigin(github.PublicURL, insecureCookies) {
 		return errors.New("GitHub publicUrl must be an https origin such as https://diffx.example.com (http only with insecure cookies)")
 	}
 	key, err := base64.StdEncoding.DecodeString(github.TokenKey)
@@ -92,6 +89,21 @@ func (github GitHub) Validate(insecureCookies bool) error {
 	}
 	if len(github.FetcherSecret) < 32 {
 		return errors.New("DIFFX_SERVER_FETCHER_SECRET must be at least 32 characters, such as the output of: openssl rand -base64 32")
+	}
+	return nil
+}
+
+// validOrigin accepts a browser-facing origin; plain HTTP is development only.
+func validOrigin(raw string, insecureCookies bool) bool {
+	public, err := url.Parse(raw)
+	return err == nil && public.Host != "" && public.User == nil && public.RawQuery == "" && public.Fragment == "" && strings.TrimSuffix(public.Path, "/") == "" &&
+		(public.Scheme == "https" || public.Scheme == "http" && insecureCookies)
+}
+
+// ValidatePublicURL checks the optional origin used in links the server issues.
+func (values ServerValues) ValidatePublicURL() error {
+	if values.PublicURL != "" && !validOrigin(values.PublicURL, values.InsecureCookies) {
+		return errors.New("publicUrl must be an https origin such as https://diffx.example.com (http only with insecure cookies)")
 	}
 	return nil
 }
@@ -128,7 +140,7 @@ func LoadServerFile(path string) (ServerValues, error) {
 	}{
 		{"DIFFX_SERVER_HOST", &values.Host},
 		{"DIFFX_SERVER_STATE", &values.State},
-		{"DIFFX_SERVER_USERNAME", &values.Username},
+		{"DIFFX_SERVER_PUBLIC_URL", &values.PublicURL},
 		{"DIFFX_SERVER_GITHUB_CLIENT_ID", &values.GitHub.ClientID},
 		{"DIFFX_SERVER_GITHUB_PRIVATE_KEY_FILE", &values.GitHub.PrivateKeyFile},
 		{"DIFFX_SERVER_GITHUB_PUBLIC_URL", &values.GitHub.PublicURL},
@@ -169,7 +181,6 @@ func LoadServerFile(path string) (ServerValues, error) {
 		name   string
 		target *bool
 	}{
-		{"DIFFX_SERVER_SIGNUP_ENABLED", &values.SignupEnabled},
 		{"DIFFX_SERVER_INSECURE_COOKIES", &values.InsecureCookies},
 	} {
 		if raw, exists := os.LookupEnv(field.name); exists {

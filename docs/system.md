@@ -353,15 +353,28 @@ records; producer paths do not identify server files.
 Accounts have stable opaque IDs independent of username, passwords, browser
 sessions and API tokens. Username matching is case-insensitive and usernames are
 fixed in this version. Local mode automatically resolves one stable OS-backed
-owner; users never manage local identity. Remote mode uses username/password
-login. Signup is disabled unless explicitly enabled; operator provisioning
-remains available. Bootstrap username/password creates the first account once,
-never replaces changed passwords, and never generates default credentials.
+owner; users never manage local identity. A remote server has exactly one admin,
+the only account with a password; there is no public signup and no default
+credential. While no admin exists, each start stores a hashed one-time setup
+secret for 24 hours, replacing the previous one, and logs it as
+`<public URL>/setup#t=…`. The fragment keeps the secret out of request logs.
+Setup consumes the secret and creates the admin in one transaction, so
+concurrent attempts yield one admin. Only the admin signs in with a password, at
+`/admin/login`; every other account signs in with Google, and a refused password
+login is indistinguishable from a wrong password. Offline `user reset-password`
+recovers only the admin.
+
+The admin lists accounts and disables, enables or deletes any account except
+itself. Disabling revokes the account's browser sessions and API tokens in the
+same transaction and refuses new ones; enabling restores sign-in, not those
+credentials. Deleting removes the account and everything it owns, including
+queued ingestion jobs. Both stop the account's active services, and the
+ingestion worker refuses jobs for unavailable accounts.
 
 Passwords use salted Argon2id hashes. Browser login creates a revocable opaque
 seven-day server-side session in an HttpOnly, Secure, SameSite=Lax cookie. Unsafe
 browser requests require a session CSRF token, including account management.
-Password changes revoke existing sessions. Login/signup admission is bounded and
+Password changes revoke existing sessions. Login and setup admission is bounded and
 login failures do not disclose whether a username exists. Plain HTTP development
 must explicitly opt into insecure cookies; production uses HTTPS.
 

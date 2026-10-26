@@ -21,7 +21,12 @@ import {
   IdentityStatus,
   useIdentity,
 } from "./identity-context.tsx";
-import { SignIn, AccountSettings } from "./account.tsx";
+import {
+  AccountSettings,
+  AdminSetup,
+  AdminSignIn,
+  SignIn,
+} from "./account.tsx";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const root = document.getElementById("root");
@@ -34,18 +39,25 @@ function ApplicationRoutes() {
     window.addEventListener("popstate", changed);
     return () => window.removeEventListener("popstate", changed);
   }, []);
-  const localSettings =
-    state.status === "ready" &&
-    state.bootstrap.mode === "local" &&
-    path === "/settings";
+  const ready = state.status === "ready";
+  const remote = ready && state.bootstrap.mode === "remote";
+  const signedIn = ready && state.bootstrap.user !== null;
+  // Local mode has no account pages; signed-in users have no sign-in pages.
+  const misplaced =
+    ready &&
+    ((!remote && path === "/settings") ||
+      (signedIn && (path === "/setup" || path === "/admin/login")));
   useEffect(() => {
-    if (!localSettings) return;
+    if (!misplaced) return;
     window.history.replaceState(null, "", "/");
     setPath("/");
-  }, [localSettings]);
+  }, [misplaced]);
   if (state.status !== "ready") return <IdentityStatus />;
-  if (state.bootstrap.mode === "remote" && !state.bootstrap.user)
+  if (state.bootstrap.mode === "remote" && !state.bootstrap.user) {
+    if (path === "/setup") return <AdminSetup />;
+    if (path === "/admin/login") return <AdminSignIn />;
     return <SignIn />;
+  }
   if (path === "/settings" && state.bootstrap.mode === "remote")
     return <AccountSettings />;
   return (

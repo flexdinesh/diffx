@@ -41,18 +41,19 @@ type principal struct {
 type accountJSON struct {
 	ID       string `json:"id"`
 	Username string `json:"username"`
+	Admin    bool   `json:"admin"`
 }
 type bootstrapJSON struct {
 	Mode          string       `json:"mode"`
-	SignupEnabled bool         `json:"signupEnabled"`
+	GoogleEnabled bool         `json:"googleEnabled"`
 	User          *accountJSON `json:"user"`
 	CSRFToken     *string      `json:"csrfToken"`
 }
 
 func (remote *transport) bootstrap(w http.ResponseWriter, p principal) {
-	result := bootstrapJSON{Mode: "remote", SignupEnabled: remote.settings.SignupEnabled}
+	result := bootstrapJSON{Mode: "remote"}
 	if p.session != nil {
-		result.User = &accountJSON{p.account.ID, p.account.Username}
+		result.User = &accountJSON{p.account.ID, p.account.Username, p.account.Admin}
 		result.CSRFToken = &p.session.CSRFToken
 	}
 	writeJSON(w, 200, result)
@@ -89,7 +90,7 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	// Login remains available with an expired browser cookie. Explicit bearer
 	// credentials are always validated; never silently fall back to cookies.
-	authForm := r.URL.Path == "/api/v2/auth/login" || r.URL.Path == "/api/v2/auth/signup"
+	authForm := r.URL.Path == "/api/v2/auth/login" || r.URL.Path == "/api/v2/setup"
 	public := r.URL.Path == "/api/v2/bootstrap" || (!strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/mcp") && !strings.HasPrefix(r.URL.Path, "/control/"))
 	p, err := remote.authenticate(r)
 	if errors.Is(err, identityservice.ErrAuthentication) && r.Header.Get("Authorization") == "" && (public || authForm) {
@@ -131,6 +132,14 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		remote.githubAccount(w, r, p)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/v2/admin/") {
+		if p.session == nil || !p.account.Admin {
+			problem(w, 403, "Admin browser session required")
+			return
+		}
+		remote.admin(w, r, p)
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/v2/account/") || r.URL.Path == "/api/v2/auth/logout" {
@@ -246,13 +255,23 @@ func (remote *transport) static(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(raw)
 	}
 }
+
+// auth serves the credential forms: admin password login and one-time admin
+// setup. Both are bounded like login because each verifies a secret.
 func (remote *transport) auth(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		problem(w, 405, "Method not allowed")
+	if r.URL.Path == "/api/v2/setup" && r.Method == http.MethodGet {
+		required, err := remote.identity.SetupRequired(r.Context())
+		if err != nil {
+			identityError(w, err)
+			return
+		}
+		writeJSON(w, 200, struct {
+			Required bool `json:"required"`
+		}{required})
 		return
 	}
-	if r.URL.Path == "/api/v2/auth/signup" && !remote.settings.SignupEnabled {
-		problem(w, 403, "Signup is disabled")
+	if r.Method != http.MethodPost {
+		problem(w, 405, "Method not allowed")
 		return
 	}
 	select {
@@ -268,23 +287,32 @@ func (remote *transport) auth(w http.ResponseWriter, r *http.Request) {
 		problem(w, 429, "Too many authentication attempts")
 		return
 	}
-	var input struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-	if !decodeJSON(w, r, &input) {
-		return
-	}
 	var session identityservice.Session
 	var err error
-	if r.URL.Path == "/api/v2/auth/signup" {
-		_, err = remote.identity.Provision(r.Context(), input.Username, input.Password)
-		if err != nil {
-			identityError(w, err)
+	if r.URL.Path == "/api/v2/setup" {
+		var input struct {
+			Token    string `json:"token"`
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if !decodeJSON(w, r, &input) {
 			return
 		}
+		session, err = remote.identity.CompleteSetup(r.Context(), input.Token, input.Username, input.Password)
+		if errors.Is(err, identityservice.ErrNotFound) {
+			problem(w, 404, "Setup link is invalid, expired or already used")
+			return
+		}
+	} else {
+		var input struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if !decodeJSON(w, r, &input) {
+			return
+		}
+		session, err = remote.identity.Login(r.Context(), input.Username, input.Password)
 	}
-	session, err = remote.identity.Login(r.Context(), input.Username, input.Password)
 	if err != nil {
 		identityError(w, err)
 		return
@@ -450,6 +478,8 @@ func identityError(w http.ResponseWriter, err error) {
 		problem(w, 409, "Username unavailable")
 	case errors.Is(err, identityservice.ErrNotFound):
 		problem(w, 404, "Not found")
+	case errors.Is(err, identityservice.ErrForbidden):
+		problem(w, 403, "The admin account cannot be changed here")
 	default:
 		problem(w, 500, "Server could not process request")
 	}

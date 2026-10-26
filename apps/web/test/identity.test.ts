@@ -6,7 +6,7 @@ test("server mode requires explicit bootstrap and consistent session identity", 
   assert.deepEqual(
     readBootstrap({
       mode: "local",
-      signupEnabled: false,
+      googleEnabled: false,
       user: null,
       csrfToken: null,
       collect: true,
@@ -14,7 +14,7 @@ test("server mode requires explicit bootstrap and consistent session identity", 
     }),
     {
       mode: "local",
-      signupEnabled: false,
+      googleEnabled: false,
       user: null,
       csrfToken: null,
       collect: true,
@@ -24,34 +24,48 @@ test("server mode requires explicit bootstrap and consistent session identity", 
   assert.deepEqual(
     readBootstrap({
       mode: "remote",
-      signupEnabled: false,
+      googleEnabled: false,
       user: null,
       csrfToken: null,
     }),
-    { mode: "remote", signupEnabled: false, user: null, csrfToken: null },
+    { mode: "remote", googleEnabled: false, user: null, csrfToken: null },
+  );
+  assert.deepEqual(
+    readBootstrap({
+      mode: "remote",
+      googleEnabled: true,
+      user: { id: "owner", username: "alice", admin: true },
+      csrfToken: "secret",
+    }),
+    {
+      mode: "remote",
+      googleEnabled: true,
+      user: { id: "owner", username: "alice", admin: true },
+      csrfToken: "secret",
+    },
   );
   for (const invalid of [
     null,
     {},
     {
       mode: "local",
-      signupEnabled: true,
+      googleEnabled: true,
       user: null,
       csrfToken: null,
       collect: false,
       input: "capture",
     },
-    { mode: "local", signupEnabled: false, user: null, csrfToken: null },
+    { mode: "local", googleEnabled: false, user: null, csrfToken: null },
     {
       mode: "local",
-      signupEnabled: false,
+      googleEnabled: false,
       user: null,
       csrfToken: null,
       collect: false,
     },
     {
       mode: "local",
-      signupEnabled: false,
+      googleEnabled: false,
       user: null,
       csrfToken: null,
       collect: false,
@@ -59,11 +73,17 @@ test("server mode requires explicit bootstrap and consistent session identity", 
     },
     {
       mode: "remote",
-      signupEnabled: false,
-      user: { id: "owner", username: "alice" },
+      googleEnabled: false,
+      user: { id: "owner", username: "alice", admin: false },
       csrfToken: null,
     },
-    { mode: "remote", signupEnabled: false, user: null, csrfToken: "secret" },
+    {
+      mode: "remote",
+      googleEnabled: false,
+      user: { id: "owner", username: "alice" },
+      csrfToken: "secret",
+    },
+    { mode: "remote", googleEnabled: false, user: null, csrfToken: "secret" },
   ])
     assert.throws(
       () => readBootstrap(invalid),
