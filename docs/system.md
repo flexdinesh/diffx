@@ -377,8 +377,8 @@ once. A Google account without an account or invite cannot sign up. Without Goog
 configuration the server runs admin-only: Google routes are absent and invites
 cannot be created.
 
-The admin lists accounts and disables, enables or deletes any account except
-itself. Disabling revokes the account's browser sessions and API tokens in the
+The admin manages accounts and invites at `/admin`, linked from its Settings.
+It lists accounts and disables, enables or deletes any account except itself. Disabling revokes the account's browser sessions and API tokens in the
 same transaction and refuses new ones; enabling restores sign-in, not those
 credentials. Deleting removes the account and everything it owns, including
 queued ingestion jobs. Both stop the account's active services, and the

@@ -1,17 +1,32 @@
 import { type Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 
-function bootstrap(signedIn: boolean, admin = false) {
+interface RemoteOptions {
+  googleEnabled?: boolean;
+  email?: string | null;
+}
+function bootstrap(
+  signedIn: boolean,
+  admin = false,
+  { googleEnabled = false, email = null }: RemoteOptions = {},
+) {
   return {
     mode: "remote",
-    googleEnabled: false,
-    user: signedIn ? { id: "account-a", username: "alice", admin } : null,
+    googleEnabled,
+    user: signedIn
+      ? { id: "account-a", username: "alice", email, admin }
+      : null,
     csrfToken: signedIn ? "session-csrf" : null,
   };
 }
-async function remote(page: Page, signedIn = true, admin = false) {
+async function remote(
+  page: Page,
+  signedIn = true,
+  admin = false,
+  options: RemoteOptions = {},
+) {
   await page.route("**/api/v2/bootstrap", (route) =>
-    route.fulfill({ json: bootstrap(signedIn, admin) }),
+    route.fulfill({ json: bootstrap(signedIn, admin, options) }),
   );
   await page.route("**/api/v2/contexts?*", (route) =>
     route.fulfill({ json: { contexts: [], nextCursor: null } }),
@@ -514,4 +529,308 @@ test("expired GitHub authorization asks to connect again and disconnect confirms
   await expect(
     page.getByRole("button", { name: "Connect GitHub", exact: true }),
   ).toBeVisible();
+});
+
+test("Google sign-in starts without CSRF and reports the callback outcome once", async ({
+  page,
+}) => {
+  await remote(page, false, false, { googleEnabled: true });
+  let started: unknown;
+  await page.route("**/api/v2/auth/google", (route) => {
+    expect(route.request().headers()["x-csrf-token"]).toBeUndefined();
+    started = route.request().postDataJSON();
+    return route.fulfill({
+      json: { authorizeUrl: "https://accounts.google.test/auth?state=s" },
+    });
+  });
+  await page.route("https://accounts.google.test/**", (route) =>
+    route.fulfill({ contentType: "text/html", body: "<h1>Google</h1>" }),
+  );
+  await page.goto("/?signin=no-account");
+  await expect(page.getByRole("alert")).toHaveText(
+    "No diffx account uses that Google account. Ask the admin for an invite.",
+  );
+  expect(new URL(page.url()).search).toBe("");
+  await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Continue with Google" }).click();
+  await expect(page.getByRole("heading", { name: "Google" })).toBeVisible();
+  expect(started).toEqual({});
+  expect(page.url()).toBe("https://accounts.google.test/auth?state=s");
+});
+
+test("without Google configuration sign in offers no Google action", async ({
+  page,
+}) => {
+  await remote(page, false);
+  await page.goto("/?signin=cancelled");
+  await expect(
+    page.getByText("Sign-in is not available on this server yet.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Continue with Google" }),
+  ).toHaveCount(0);
+});
+
+test("an invite link shows its email, hides its secret and starts Google sign-in with it", async ({
+  page,
+}) => {
+  await remote(page, false, false, { googleEnabled: true });
+  await page.route("**/api/v2/invites/lookup", (route) => {
+    expect(route.request().postDataJSON()).toEqual({ token: "invite-secret" });
+    return route.fulfill({
+      json: { email: "bob@example.com", expiresAt: Date.now() + 86_400_000 },
+    });
+  });
+  let started: unknown;
+  await page.route("**/api/v2/invites/google", (route) => {
+    started = route.request().postDataJSON();
+    return route.fulfill({
+      json: { authorizeUrl: "https://accounts.google.test/auth?state=i" },
+    });
+  });
+  await page.route("https://accounts.google.test/**", (route) =>
+    route.fulfill({ contentType: "text/html", body: "<h1>Google</h1>" }),
+  );
+  await page.goto("/invite#t=invite-secret");
+  await expect(page.getByRole("heading", { name: "Join diffx" })).toBeVisible();
+  await expect(page.getByText("bob@example.com")).toBeVisible();
+  expect(new URL(page.url()).hash).toBe("");
+  expect(page.url()).not.toContain("invite-secret");
+  await page.getByRole("button", { name: "Continue with Google" }).click();
+  await expect(page.getByRole("heading", { name: "Google" })).toBeVisible();
+  expect(started).toEqual({ token: "invite-secret" });
+});
+
+test("an unusable invite link says so without a Google action", async ({
+  page,
+}) => {
+  await remote(page, false, false, { googleEnabled: true });
+  await page.route("**/api/v2/invites/lookup", (route) =>
+    route.fulfill({
+      status: 404,
+      json: { detail: "Invite link is invalid, expired or already used" },
+    }),
+  );
+  await page.goto("/invite#t=used-secret");
+  await expect(
+    page.getByText("This invite link is invalid, expired or already used.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Continue with Google" }),
+  ).toHaveCount(0);
+});
+
+test("members see their Google email and cannot open the admin page", async ({
+  page,
+}) => {
+  await remote(page, true, false, { email: "alice@example.com" });
+  await page.goto("/settings");
+  await expect(
+    page.getByText("with Google as alice@example.com", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Manage accounts and invites" }),
+  ).toHaveCount(0);
+  await page.goto("/admin");
+  await expect(
+    page.getByRole("heading", { name: "No review contexts yet" }),
+  ).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe("/");
+});
+
+test("the admin invites by email, sees the link once and revokes it", async ({
+  page,
+}) => {
+  await remote(page, true, true, { googleEnabled: true });
+  const now = Date.now();
+  const pending = {
+    id: "invite-a",
+    email: "bob@example.com",
+    status: "pending",
+    createdAt: now,
+    expiresAt: now + 48 * 3_600_000,
+    usedBy: null,
+  };
+  let invites: unknown[] = [
+    {
+      ...pending,
+      id: "invite-old",
+      email: "carol@example.com",
+      status: "used",
+      usedBy: "carol",
+    },
+  ];
+  await page.route("**/api/v2/admin/users", (route) =>
+    route.fulfill({
+      json: {
+        users: [
+          {
+            id: "account-a",
+            username: "alice",
+            email: null,
+            admin: true,
+            disabled: false,
+            createdAt: now,
+          },
+        ],
+      },
+    }),
+  );
+  await page.route("**/api/v2/admin/invites", (route) => {
+    if (route.request().method() === "POST") {
+      expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
+      expect(route.request().postDataJSON()).toEqual({
+        email: "bob@example.com",
+      });
+      invites = [pending, ...invites];
+      return route.fulfill({
+        status: 201,
+        json: {
+          invite: pending,
+          url: "https://diffx.example.com/invite#t=one-time",
+        },
+      });
+    }
+    return route.fulfill({ json: { invites } });
+  });
+  await page.route("**/api/v2/admin/invites/invite-a", (route) => {
+    expect(route.request().method()).toBe("DELETE");
+    expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
+    invites = invites.map((invite) =>
+      invite === pending ? { ...pending, status: "revoked" } : invite,
+    );
+    return route.fulfill({ status: 204 });
+  });
+  await page.goto("/settings");
+  await page
+    .getByRole("button", { name: "Manage accounts and invites" })
+    .click();
+  await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe("/admin");
+  await expect(page.getByText("Joined as carol")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete alice" })).toHaveCount(
+    0,
+  );
+  await page.getByLabel("Email", { exact: true }).fill("bob@example.com");
+  await page.getByRole("button", { name: "Create invite" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Send this invite link" }),
+  ).toBeVisible();
+  await expect(page.locator("pre")).toHaveText(
+    "https://diffx.example.com/invite#t=one-time",
+  );
+  await page
+    .getByRole("button", { name: "Revoke invite for bob@example.com" })
+    .click();
+  const confirm = page.getByRole("dialog", {
+    name: "Revoke invite for bob@example.com?",
+  });
+  await confirm.getByRole("button", { name: "Revoke invite" }).click();
+  await expect(confirm).toBeHidden();
+  await expect(
+    page.getByRole("heading", { name: "Send this invite link" }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Revoked", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Revoke invite for bob@example.com" }),
+  ).toHaveCount(0);
+});
+
+test("the admin disables, enables and deletes accounts after confirmation", async ({
+  page,
+}) => {
+  await remote(page, true, true);
+  let member = {
+    id: "account-b",
+    username: "bob",
+    email: "bob@example.com",
+    admin: false,
+    disabled: false,
+    createdAt: Date.now(),
+  };
+  let deleted = false;
+  await page.route("**/api/v2/admin/invites", (route) =>
+    route.fulfill({ json: { invites: [] } }),
+  );
+  await page.route("**/api/v2/admin/users", (route) =>
+    route.fulfill({
+      json: {
+        users: [
+          {
+            id: "account-a",
+            username: "alice",
+            email: null,
+            admin: true,
+            disabled: false,
+            createdAt: Date.now(),
+          },
+          ...(deleted ? [] : [member]),
+        ],
+      },
+    }),
+  );
+  const calls: string[] = [];
+  await page.route("**/api/v2/admin/users/account-b**", (route) => {
+    expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
+    const path = new URL(route.request().url()).pathname;
+    calls.push(`${route.request().method()} ${path}`);
+    if (path.endsWith("/disable")) member = { ...member, disabled: true };
+    else if (path.endsWith("/enable")) member = { ...member, disabled: false };
+    else deleted = true;
+    return route.fulfill({ status: 204 });
+  });
+  await page.goto("/admin");
+  await expect(
+    page.getByText("Invites need Google sign-in.", { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Email", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText("bob@example.com", { exact: false }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Disable bob" }).click();
+  const disable = page.getByRole("dialog", { name: "Disable bob?" });
+  await expect(disable.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await disable.getByRole("button", { name: "Disable account" }).click();
+  await expect(disable).toBeHidden();
+  await expect(page.getByText("Disabled", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Enable bob" }).click();
+  await expect(page.getByRole("button", { name: "Disable bob" })).toBeVisible();
+  await page.getByRole("button", { name: "Delete bob" }).click();
+  const remove = page.getByRole("dialog", { name: "Delete bob?" });
+  await remove.getByRole("button", { name: "Delete account" }).click();
+  await expect(remove).toBeHidden();
+  await expect(page.getByText("bob@example.com", { exact: false })).toHaveCount(
+    0,
+  );
+  expect(calls).toEqual([
+    "POST /api/v2/admin/users/account-b/disable",
+    "POST /api/v2/admin/users/account-b/enable",
+    "DELETE /api/v2/admin/users/account-b",
+  ]);
+});
+
+test("another invite link opened in the same tab loads that invite", async ({
+  page,
+}) => {
+  await remote(page, false, false, { googleEnabled: true });
+  await page.route("**/api/v2/invites/lookup", (route) => {
+    const { token } = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        email: token === "second" ? "carol@example.com" : "bob@example.com",
+        expiresAt: Date.now() + 86_400_000,
+      },
+    });
+  });
+  await page.goto("/invite#t=first");
+  await expect(page.getByText("bob@example.com")).toBeVisible();
+  await page.evaluate(() => {
+    window.location.hash = "t=second";
+  });
+  await expect(page.getByText("carol@example.com")).toBeVisible();
+  expect(new URL(page.url()).hash).toBe("");
 });

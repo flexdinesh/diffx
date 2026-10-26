@@ -1796,7 +1796,12 @@ for (const mode of ["local", "remote"]) {
           googleEnabled: false,
           user:
             mode === "remote"
-              ? { id: "account-a", username: "alice", admin: false }
+              ? {
+                  id: "account-a",
+                  username: "alice",
+                  email: null,
+                  admin: false,
+                }
               : null,
           csrfToken: mode === "remote" ? "csrf" : null,
           collect: mode === "local",
@@ -2574,7 +2579,7 @@ test("each remote account baselines its own seen heads", async ({ page }) => {
       json: {
         mode: "remote",
         googleEnabled: false,
-        user: { id: "account-b", username: "bob", admin: false },
+        user: { id: "account-b", username: "bob", email: null, admin: false },
         csrfToken: "csrf",
         collect: false,
       },
@@ -2920,7 +2925,7 @@ test("saved comparison preferences belong to the active account", async ({
       json: {
         mode: "remote",
         googleEnabled: false,
-        user: { id: account, username: account, admin: false },
+        user: { id: account, username: account, email: null, admin: false },
         csrfToken: "test",
         collect: false,
       },
@@ -2947,7 +2952,7 @@ test("pull request reviews show GitHub identity and a sanitized description; clo
       json: {
         mode: "remote",
         googleEnabled: false,
-        user: { id: "account-a", username: "alice", admin: false },
+        user: { id: "account-a", username: "alice", email: null, admin: false },
         csrfToken: "csrf",
         collect: false,
       },

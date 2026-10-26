@@ -25,8 +25,10 @@ import {
   AccountSettings,
   AdminSetup,
   AdminSignIn,
+  InviteSignUp,
   SignIn,
 } from "./account.tsx";
+import { AdminPage } from "./admin.tsx";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const root = document.getElementById("root");
@@ -42,11 +44,17 @@ function ApplicationRoutes() {
   const ready = state.status === "ready";
   const remote = ready && state.bootstrap.mode === "remote";
   const signedIn = ready && state.bootstrap.user !== null;
-  // Local mode has no account pages; signed-in users have no sign-in pages.
+  const admin = signedIn && state.bootstrap.user?.admin === true;
+  // Local mode has no account pages; signed-in users have no sign-in pages;
+  // only the admin has the admin page.
   const misplaced =
     ready &&
-    ((!remote && path === "/settings") ||
-      (signedIn && (path === "/setup" || path === "/admin/login")));
+    ((!remote && (path === "/settings" || path === "/admin")) ||
+      (signedIn &&
+        (path === "/setup" ||
+          path === "/admin/login" ||
+          path === "/invite" ||
+          (path === "/admin" && !admin))));
   useEffect(() => {
     if (!misplaced) return;
     window.history.replaceState(null, "", "/");
@@ -56,10 +64,12 @@ function ApplicationRoutes() {
   if (state.bootstrap.mode === "remote" && !state.bootstrap.user) {
     if (path === "/setup") return <AdminSetup />;
     if (path === "/admin/login") return <AdminSignIn />;
+    if (path === "/invite") return <InviteSignUp />;
     return <SignIn />;
   }
   if (path === "/settings" && state.bootstrap.mode === "remote")
     return <AccountSettings />;
+  if (path === "/admin" && admin) return <AdminPage />;
   return (
     <SessionProvider key={state.bootstrap.user?.id ?? "local"}>
       <SessionShell>

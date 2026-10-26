@@ -28,6 +28,15 @@ interface Identity {
   signedOut: () => void;
 }
 const IdentityContext = createContext<Identity | null>(null);
+/** Requests made without a browser session; their 401s are not sign-outs. */
+const anonymous = new Set([
+  "/api/v2/bootstrap",
+  "/api/v2/auth/login",
+  "/api/v2/setup",
+  "/api/v2/auth/google",
+  "/api/v2/invites/lookup",
+  "/api/v2/invites/google",
+]);
 
 export function navigate(path: string) {
   window.history.pushState(null, "", path);
@@ -58,13 +67,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const middleware: ApiMiddleware = {
       onRequest({ request }) {
-        const path = new URL(request.url).pathname;
-        if (
-          path === "/api/v2/bootstrap" ||
-          path === "/api/v2/auth/login" ||
-          path === "/api/v2/setup"
-        )
-          return request;
+        if (anonymous.has(new URL(request.url).pathname)) return request;
         const csrf = current.current?.csrfToken;
         if (csrf && request.method !== "GET" && request.method !== "HEAD")
           request.headers.set("X-CSRF-Token", csrf);
@@ -76,8 +79,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         if (
           response.status === 401 &&
           !request.signal.aborted &&
-          new URL(request.url).pathname !== "/api/v2/auth/login" &&
-          new URL(request.url).pathname !== "/api/v2/setup"
+          !anonymous.has(new URL(request.url).pathname)
         )
           signedOut();
       },

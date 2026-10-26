@@ -1489,12 +1489,15 @@ components:
     AccountUser:
       type: object
       additionalProperties: false
-      required: [id, username, admin]
+      required: [id, username, email, admin]
       properties:
         id:
           type: string
         username:
           type: string
+        email:
+          type: [string, "null"]
+          description: The latest email Google reported for the account; null for the admin.
         admin:
           type: boolean
           description: The single account that signs in with a password and manages other accounts.

@@ -151,6 +151,15 @@ func (store *Store) GoogleAccount(ctx context.Context, identity google.Identity,
 	return account, disabled, err
 }
 
+func (store *Store) GoogleEmail(ctx context.Context, accountID string) (string, error) {
+	var email string
+	err := store.db.QueryRowContext(ctx, `SELECT email FROM google_identities WHERE user_id=?`, accountID).Scan(&email)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return email, err
+}
+
 func (store *Store) PutGoogleFlow(ctx context.Context, stateHash string, flow identityservice.GoogleFlow) error {
 	// Expired flows are removed when new ones start; consumed flows are deleted.
 	if _, err := store.db.ExecContext(ctx, `DELETE FROM google_auth_states WHERE expires_at<=?`, time.Now().UnixMilli()); err != nil {

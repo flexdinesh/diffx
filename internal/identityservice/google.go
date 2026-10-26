@@ -95,12 +95,20 @@ type GoogleStore interface {
 	AcceptInvite(ctx context.Context, inviteID string, account Account, identity google.Identity, now time.Time) error
 	// GoogleAccount resolves a linked subject, recording the latest email.
 	GoogleAccount(ctx context.Context, identity google.Identity, now time.Time) (account Account, disabled bool, err error)
+	// GoogleEmail is the latest email Google reported for the account; "" for
+	// accounts without a Google identity.
+	GoogleEmail(ctx context.Context, accountID string) (string, error)
 	PutGoogleFlow(ctx context.Context, stateHash string, flow GoogleFlow) error
 	// TakeGoogleFlow consumes an unexpired flow exactly once.
 	TakeGoogleFlow(ctx context.Context, stateHash string, now time.Time) (GoogleFlow, error)
 }
 
 func (service *Service) GoogleEnabled() bool { return service.google != nil }
+
+// GoogleEmail is the account's latest Google email, or "" for the admin.
+func (service *Service) GoogleEmail(ctx context.Context, accountID string) (string, error) {
+	return service.store.GoogleEmail(ctx, accountID)
+}
 
 func canonicalEmail(email string) (string, error) {
 	email = strings.ToLower(strings.TrimSpace(email))

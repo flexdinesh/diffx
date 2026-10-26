@@ -100,7 +100,7 @@ DIFFX_SERVER_INSECURE_COOKIES=true DIFFX_SERVER_STATE=./test-data/state.db diffx
 
 Open the setup link the server logs to create the admin account. The admin signs
 in with that password at `/admin/login`; everyone else signs in with Google from
-an admin invite. Invites need a Google OAuth web client: set
+an admin invite created at `/admin`. Invites need a Google OAuth web client: set
 `DIFFX_SERVER_GOOGLE_CLIENT_ID`, `DIFFX_SERVER_GOOGLE_CLIENT_SECRET` and
 `DIFFX_SERVER_PUBLIC_URL`, and register
 `<public URL>/api/v2/auth/google/callback` as its redirect URI. Then open the top-right account settings to create
