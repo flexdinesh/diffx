@@ -1,6 +1,6 @@
 import { api, errorDetail, readBootstrap } from "@diffx/api";
 import { ArrowLeftIcon, UserRoundIcon } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { ErrorState } from "@/components/error-state";
 import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
@@ -31,27 +31,133 @@ export function AccountButton({ variant }: { variant: "rail" | "shell" }) {
   );
 }
 
+/** Members sign in with Google; accounts come only from invites. */
 export function SignIn() {
-  const { state, establish } = useIdentity();
-  const [signup, setSignup] = useState(false);
+  return (
+    <main className="account-page auth-page">
+      <a className="brand" href="/">
+        diffx
+      </a>
+      <h1 className="mb-2 text-xl font-semibold">Sign in</h1>
+      <p className="mb-4 leading-copy text-secondary">
+        Sign-in is not available on this server yet. Ask its admin for an
+        invite.
+      </p>
+    </main>
+  );
+}
+
+/** Password sign-in for the admin only, at the unlinked /admin/login. */
+export function AdminSignIn() {
+  return (
+    <main className="account-page auth-page">
+      <a className="brand" href="/">
+        diffx
+      </a>
+      <h1 className="mb-2 text-xl font-semibold">Admin sign in</h1>
+      <p className="mb-4 leading-copy text-secondary">
+        Manage this server and review your collected changes.
+      </p>
+      <CredentialForm
+        path="/api/v2/auth/login"
+        token=""
+        submitLabel="Sign in"
+        failure="Unable to sign in. Try again."
+      />
+    </main>
+  );
+}
+
+/** One-time admin creation from the setup link the server logged at startup. */
+export function AdminSetup() {
+  const [token] = useState(
+    () => new URLSearchParams(window.location.hash.slice(1)).get("t") ?? "",
+  );
+  const [setup, setSetup] = useState<"loading" | "required" | "complete">(
+    "loading",
+  );
+  const [error, setError] = useState("");
+  useEffect(() => {
+    // The secret stays out of history once read.
+    window.history.replaceState(null, "", "/setup");
+    const controller = new AbortController();
+    void api
+      .GET("/api/v2/setup", { signal: controller.signal })
+      .then(({ data, error }) => {
+        if (controller.signal.aborted) return;
+        if (!data)
+          throw new Error(errorDetail(error, "Unable to load setup status"));
+        setSetup(data.required ? "required" : "complete");
+      })
+      .catch((failure: unknown) => {
+        if (!controller.signal.aborted)
+          setError(errorDetail(failure, "Unable to load setup status"));
+      });
+    return () => controller.abort();
+  }, []);
+  return (
+    <main className="account-page auth-page">
+      <a className="brand" href="/">
+        diffx
+      </a>
+      <h1 className="mb-2 text-xl font-semibold">Set up diffx</h1>
+      {error && <ErrorState message={error} />}
+      {setup === "complete" && (
+        <p className="mb-4 leading-copy text-secondary">
+          This server already has an admin.{" "}
+          <a href="/admin/login">Sign in as admin</a>.
+        </p>
+      )}
+      {setup === "required" && !token && (
+        <p className="mb-4 leading-copy text-secondary">
+          Open the setup link from the server log to create the admin account.
+        </p>
+      )}
+      {setup === "required" && token && (
+        <>
+          <p className="mb-4 leading-copy text-secondary">
+            Create the admin account. It signs in with this password and invites
+            everyone else.
+          </p>
+          <CredentialForm
+            path="/api/v2/setup"
+            token={token}
+            submitLabel="Create admin"
+            failure="Unable to create the admin. Try again."
+          />
+        </>
+      )}
+    </main>
+  );
+}
+
+function CredentialForm({
+  path,
+  token,
+  submitLabel,
+  failure,
+}: {
+  path: "/api/v2/auth/login" | "/api/v2/setup";
+  token: string;
+  submitLabel: string;
+  failure: string;
+}) {
+  const { establish } = useIdentity();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const signupEnabled =
-    state.status === "ready" && state.bootstrap.signupEnabled;
+  const creating = path === "/api/v2/setup";
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
     setBusy(true);
     setError("");
     try {
-      const { data, error } = await api.POST(
-        signup ? "/api/v2/auth/signup" : "/api/v2/auth/login",
-        { body: { username, password } },
-      );
-      if (!data)
-        throw new Error(errorDetail(error, "Unable to sign in. Try again."));
+      const { data, error } = creating
+        ? await api.POST(path, { body: { token, username, password } })
+        : await api.POST(path, { body: { username, password } });
+      if (!data) throw new Error(errorDetail(error, failure));
       const bootstrap = readBootstrap(data);
       if (
         bootstrap.mode !== "remote" ||
@@ -63,82 +169,57 @@ export function SignIn() {
         );
       establish(bootstrap);
       setPassword("");
-    } catch (failure: unknown) {
-      setError(errorDetail(failure, "Unable to sign in. Try again."));
+    } catch (failed: unknown) {
+      setError(errorDetail(failed, failure));
     } finally {
       setBusy(false);
     }
   }
   return (
-    <main className="account-page auth-page">
-      <a className="brand" href="/">
-        diffx
-      </a>
-      <h1 className="mb-2 text-xl font-semibold">
-        {signup ? "Create your account" : "Sign in"}
-      </h1>
-      <p className="mb-4 leading-copy text-secondary">
-        Review your collected changes on this server.
-      </p>
-      <form className="account-form" onSubmit={submit}>
-        <label htmlFor="username">Username</label>
-        <Input
-          id="username"
-          name="username"
-          autoComplete="username"
-          touch
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
-          required
-          minLength={3}
-          maxLength={32}
-          disabled={busy}
-        />
-        <label htmlFor="password">Password</label>
-        <Input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete={signup ? "new-password" : "current-password"}
-          touch
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-          minLength={signup ? 12 : undefined}
-          maxLength={128}
-          disabled={busy}
-        />
-        {signup && (
-          <p className="text-sm leading-copy text-secondary">
-            Use at least 12 characters.
-          </p>
-        )}
-        {error && <ErrorState message={error} />}
-        <Button
-          type="submit"
-          touch
-          className="mt-2 justify-self-start"
-          disabled={busy}
-          aria-busy={busy}
-        >
-          {signup ? "Create account" : "Sign in"}
-        </Button>
-      </form>
-      {signupEnabled && (
-        <Button
-          variant="link"
-          touch
-          disabled={busy}
-          onClick={() => {
-            setSignup((value) => !value);
-            setError("");
-            setPassword("");
-          }}
-        >
-          {signup ? "Already have an account? Sign in" : "Create an account"}
-        </Button>
+    <form className="account-form" onSubmit={submit}>
+      <label htmlFor="username">Username</label>
+      <Input
+        id="username"
+        name="username"
+        autoComplete="username"
+        touch
+        value={username}
+        onChange={(event) => setUsername(event.target.value)}
+        required
+        minLength={3}
+        maxLength={32}
+        disabled={busy}
+      />
+      <label htmlFor="password">Password</label>
+      <Input
+        id="password"
+        name="password"
+        type="password"
+        autoComplete={creating ? "new-password" : "current-password"}
+        touch
+        value={password}
+        onChange={(event) => setPassword(event.target.value)}
+        required
+        minLength={creating ? 12 : undefined}
+        maxLength={128}
+        disabled={busy}
+      />
+      {creating && (
+        <p className="text-sm leading-copy text-secondary">
+          Use at least 12 characters.
+        </p>
       )}
-    </main>
+      {error && <ErrorState message={error} />}
+      <Button
+        type="submit"
+        touch
+        className="mt-2 justify-self-start"
+        disabled={busy}
+        aria-busy={busy}
+      >
+        {submitLabel}
+      </Button>
+    </form>
   );
 }
 
@@ -176,7 +257,7 @@ export function AccountSettings() {
         </p>
         <AccountTokens />
         <AccountGitHub />
-        <PasswordSettings />
+        {state.bootstrap.user.admin && <PasswordSettings />}
         <section
           className="mt-8 border-t border-separator pt-6"
           aria-labelledby="session-title"

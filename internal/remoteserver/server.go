@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,11 +23,10 @@ import (
 )
 
 type Settings struct {
-	Listen          string
-	State           string
-	Username        string
-	Password        string
-	SignupEnabled   bool
+	Listen string
+	State  string
+	// PublicURL is the browser-facing origin used in the logged setup link.
+	PublicURL       string
 	InsecureCookies bool
 	RetentionDays   int
 	GitHub          *GitHubSettings
@@ -57,6 +58,19 @@ func (registry *registry) get(account identityservice.Account) (application, err
 	app := application{service, serverapp.Handler(registry.ctx, service, registry.store, registry.assets, "", serverapp.Options{Queue: registry.store.Queue()})}
 	registry.applications[account.ID] = app
 	return app, nil
+}
+
+// remove stops a deleted or disabled owner's services; a later request for an
+// enabled account activates them again.
+func (registry *registry) remove(accountID string) error {
+	registry.mu.Lock()
+	app, ok := registry.applications[accountID]
+	delete(registry.applications, accountID)
+	registry.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	return app.service.Close()
 }
 func (registry *registry) close() error {
 	registry.mu.Lock()
@@ -106,9 +120,6 @@ func MultiHandler(ctx context.Context, store *reviewstore.Store, assets fs.FS, o
 // internal fetcher handler.
 func compose(ctx context.Context, store *reviewstore.Store, assets fs.FS, settings Settings) (http.Handler, http.Handler, func() error, []serverapp.Task, error) {
 	identity := identityservice.New(store)
-	if err := bootstrap(ctx, identity, settings); err != nil {
-		return nil, nil, nil, nil, err
-	}
 	github, err := composeGitHub(store, settings.GitHub)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -141,24 +152,6 @@ func compose(ctx context.Context, store *reviewstore.Store, assets fs.FS, settin
 		internal = fetchHandler(github, settings.GitHub.FetcherSecret)
 	}
 	return remote, internal, applications.close, tasks, nil
-}
-func bootstrap(ctx context.Context, identity *identityservice.Service, settings Settings) error {
-	if (settings.Username == "") != (settings.Password == "") {
-		return errors.New("DIFFX_SERVER_USERNAME and DIFFX_SERVER_PASSWORD must be supplied together")
-	}
-	if settings.Username != "" {
-		if _, err := identity.Bootstrap(ctx, settings.Username, settings.Password); err != nil {
-			return err
-		}
-	}
-	accounts, err := identity.Accounts(ctx)
-	if err != nil {
-		return err
-	}
-	if len(accounts) == 0 && !settings.SignupEnabled {
-		return errors.New("remote server needs a provisioned user, bootstrap username/password, or signup enabled")
-	}
-	return nil
 }
 func Run(ctx context.Context, settings Settings, ready func(string)) error {
 	if settings.State == "" {
@@ -203,9 +196,20 @@ func Run(ctx context.Context, settings Settings, ready func(string)) error {
 		defer internalServer.Close()
 		endpoints = append(endpoints, serverapp.Endpoint{Server: internalServer, Listener: internalListener})
 	}
+	setup, err := identityservice.New(store).PrepareSetup(ctx)
+	if err != nil {
+		return err
+	}
 	return serverapp.Run(ctx, endpoints, append(tasks, serverapp.Prune(store.PruneExpired)), func() {
 		if ready != nil {
 			ready(listener.Addr().String())
+		}
+		if setup != "" {
+			origin := strings.TrimSuffix(settings.PublicURL, "/")
+			if origin == "" {
+				origin = "http://" + listener.Addr().String()
+			}
+			log.Printf("diffx-server setup: no admin yet; within %s open %s/setup#t=%s", identityservice.SetupLifetime, origin, setup)
 		}
 	})
 }

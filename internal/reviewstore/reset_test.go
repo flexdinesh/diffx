@@ -27,7 +27,7 @@ func TestOlderSchemaRefusedWithoutReset(t *testing.T) {
 			store.Close()
 			t.Fatal("accepted older schema")
 		} else {
-			for _, text := range []string{path, "schema 10 is older than supported schema 12", "supporting schema 10", "automatic reset is disabled", "back up", "SQLite sidecar files", "--state /path/to/new-state.db", "no saved reviews or server accounts"} {
+			for _, text := range []string{path, "schema 10 is older than supported schema 13", "supporting schema 10", "automatic reset is disabled", "back up", "SQLite sidecar files", "--state /path/to/new-state.db", "no saved reviews or server accounts"} {
 				if !strings.Contains(err.Error(), text) {
 					t.Fatalf("missing recovery guidance %q: %v", text, err)
 				}
@@ -50,35 +50,47 @@ func TestOlderSchemaRefusedWithoutReset(t *testing.T) {
 }
 
 func TestAdditiveSchemaUpgradesInPlace(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "state.db")
-	store, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	user, err := store.User("owner", "owner")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Schema 11 had no GitHub integration tables.
-	if _, err := store.db.Exec("DROP TABLE github_follows; DROP TABLE github_connections; DROP TABLE github_oauth_states; DROP TABLE github_deliveries; DROP TABLE github_pull_requests; PRAGMA user_version=11"); err != nil {
-		t.Fatal(err)
-	}
-	store.Close()
-	store, err = Open(path)
-	if err != nil {
-		t.Fatalf("schema 11 must upgrade in place: %v", err)
-	}
-	defer store.Close()
-	if _, err := store.GitHub().Follows(t.Context(), user.ID); err != nil {
-		t.Fatalf("upgrade did not create integration tables: %v", err)
-	}
-	var version int
-	if err := store.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != schemaVersion {
-		t.Fatalf("upgraded version %d %v", version, err)
-	}
-	again, err := store.User("owner", "owner")
-	if err != nil || again.ID != user.ID {
-		t.Fatalf("upgrade lost state: %+v %v", again, err)
+	// Schema 11 had no GitHub integration tables; neither it nor schema 12 had
+	// administration or Google sign-in tables.
+	administration := "DROP TABLE google_auth_states; DROP TABLE account_invites; DROP TABLE google_identities; DROP TABLE disabled_accounts; DROP TABLE admin_setup; DROP TABLE admin_account; "
+	for version, statements := range map[int]string{
+		11: "DROP TABLE github_follows; DROP TABLE github_connections; DROP TABLE github_oauth_states; DROP TABLE github_deliveries; DROP TABLE github_pull_requests; " + administration,
+		12: administration,
+	} {
+		t.Run(fmt.Sprintf("schema %d", version), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "state.db")
+			store, err := Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			user, err := store.User("owner", "owner")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.db.Exec(fmt.Sprintf("%sPRAGMA user_version=%d", statements, version)); err != nil {
+				t.Fatal(err)
+			}
+			store.Close()
+			store, err = Open(path)
+			if err != nil {
+				t.Fatalf("schema %d must upgrade in place: %v", version, err)
+			}
+			defer store.Close()
+			if _, err := store.GitHub().Follows(t.Context(), user.ID); err != nil {
+				t.Fatalf("upgrade did not create integration tables: %v", err)
+			}
+			if exists, err := store.AdminExists(t.Context()); err != nil || exists {
+				t.Fatalf("upgrade did not create administration tables: %v %v", exists, err)
+			}
+			var upgraded int
+			if err := store.db.QueryRow("PRAGMA user_version").Scan(&upgraded); err != nil || upgraded != schemaVersion {
+				t.Fatalf("upgraded version %d %v", upgraded, err)
+			}
+			again, err := store.User("owner", "owner")
+			if err != nil || again.ID != user.ID {
+				t.Fatalf("upgrade lost state: %+v %v", again, err)
+			}
+		})
 	}
 }
 
@@ -88,7 +100,7 @@ func TestFailedUpgradeRollsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A conflicting object makes the schema 12 statements fail midway.
+	// A conflicting object makes the schema 13 statements fail midway.
 	if _, err := store.db.Exec("DROP TABLE github_follows; DROP TABLE github_oauth_states; CREATE VIEW github_follows AS SELECT 1 AS owner_id; PRAGMA user_version=11"); err != nil {
 		t.Fatal(err)
 	}

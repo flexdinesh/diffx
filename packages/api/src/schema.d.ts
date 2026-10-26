@@ -30,7 +30,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Distributed only. Same-origin JSON request; creates a browser session. Signup requires explicit server configuration. */
+    /** @description Distributed only. Admin password sign-in; same-origin JSON request creating a browser session. Every other account signs in with Google, and any refusal is the same 401. */
     post: operations["login"];
     delete?: never;
     options?: never;
@@ -38,17 +38,18 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/v2/auth/signup": {
+  "/api/v2/setup": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    get?: never;
+    /** @description Distributed only. Whether the server still needs its admin. Never exposes the setup secret. */
+    get: operations["getSetup"];
     put?: never;
-    /** @description Distributed only. Same-origin JSON request; creates a browser session. Signup requires explicit server configuration. */
-    post: operations["signup"];
+    /** @description Distributed only. Create the admin from the one-time secret the server logged at startup (the setup link's `#t=` fragment) and sign it in. The secret expires after 24 hours and is replaced on each start until used. */
+    post: operations["completeSetup"];
     delete?: never;
     options?: never;
     head?: never;
@@ -119,6 +120,80 @@ export interface paths {
     post?: never;
     /** @description Revoke an account token immediately. Distributed browser sessions only. */
     delete: operations["revokeAccountToken"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/admin/users": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Every account, including disabled ones. Admin browser session only. */
+    get: operations["listAdminUsers"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/admin/users/{userId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        userId: components["parameters"]["UserId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** @description Delete the account and everything it owns. The admin account cannot be deleted. Admin browser session only. */
+    delete: operations["deleteAdminUser"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/admin/users/{userId}/disable": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        userId: components["parameters"]["UserId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Block sign-in and revoke every browser session and API token. The admin account cannot be disabled. Admin browser session only. */
+    post: operations["disableAdminUser"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/admin/users/{userId}/enable": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        userId: components["parameters"]["UserId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Allow sign-in again. Revoked sessions and tokens stay revoked. Admin browser session only. */
+    post: operations["enableAdminUser"];
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -627,13 +702,25 @@ export interface components {
     AccountUser: {
       id: string;
       username: string;
+      /** @description The single account that signs in with a password and manages other accounts. */
+      admin: boolean;
+    };
+    AdminUser: {
+      id: string;
+      username: string;
+      /** @description The latest email Google reported for the account; null for the admin. */
+      email: string | null;
+      admin: boolean;
+      disabled: boolean;
+      /** Format: int64 */
+      createdAt: number;
     };
     Bootstrap:
       | {
           /** @enum {string} */
           mode: "local";
           /** @enum {boolean} */
-          signupEnabled: false;
+          googleEnabled: false;
           user: null;
           csrfToken: null;
           /** @description Whether this process can collect its selected checkouts again through POST /api/v2/collections. */
@@ -647,7 +734,8 @@ export interface components {
       | {
           /** @enum {string} */
           mode: "remote";
-          signupEnabled: boolean;
+          /** @description Whether members can sign in with Google. */
+          googleEnabled: boolean;
           user: components["schemas"]["AccountUser"] | null;
           csrfToken: string | null;
         };
@@ -1130,6 +1218,7 @@ export interface components {
   parameters: {
     /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
     CsrfToken: string;
+    UserId: string;
     ContextId: string;
     Scope: components["schemas"]["DiffMode"];
     DiffId: string;
@@ -1191,12 +1280,34 @@ export interface operations {
       400: components["responses"]["Problem"];
       401: components["responses"]["Problem"];
       403: components["responses"]["Problem"];
-      409: components["responses"]["Problem"];
       429: components["responses"]["Problem"];
       default: components["responses"]["Problem"];
     };
   };
-  signup: {
+  getSetup: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Setup status. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            required: boolean;
+          };
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  completeSetup: {
     parameters: {
       query?: never;
       header?: never;
@@ -1205,11 +1316,15 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["PasswordCredentials"];
+        "application/json": {
+          token: string;
+          username: string;
+          password: string;
+        };
       };
     };
     responses: {
-      /** @description Authenticated browser identity. */
+      /** @description Admin browser identity. */
       200: {
         headers: {
           [name: string]: unknown;
@@ -1219,8 +1334,8 @@ export interface operations {
         };
       };
       400: components["responses"]["Problem"];
-      401: components["responses"]["Problem"];
       403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
       409: components["responses"]["Problem"];
       429: components["responses"]["Problem"];
       default: components["responses"]["Problem"];
@@ -1375,6 +1490,112 @@ export interface operations {
         content?: never;
       };
       400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  listAdminUsers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Accounts. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            users: components["schemas"]["AdminUser"][];
+          };
+        };
+      };
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  deleteAdminUser: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path: {
+        userId: components["parameters"]["UserId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  disableAdminUser: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path: {
+        userId: components["parameters"]["UserId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Disabled. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  enableAdminUser: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path: {
+        userId: components["parameters"]["UserId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Enabled. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
       401: components["responses"]["Problem"];
       403: components["responses"]["Problem"];
       404: components["responses"]["Problem"];

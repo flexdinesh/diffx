@@ -14,7 +14,7 @@ import (
 )
 
 func TestLocalIdentityIsAutomaticWithoutAccountManagement(t *testing.T) {
-	t.Setenv("DIFFX_SERVER_SIGNUP_ENABLED", "true")
+	t.Setenv("DIFFX_SERVER_PUBLIC_URL", "https://diffx.example.com")
 	store, err := reviewstore.Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -33,7 +33,7 @@ func TestLocalIdentityIsAutomaticWithoutAccountManagement(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	var bootstrap struct {
 		Mode          string          `json:"mode"`
-		SignupEnabled bool            `json:"signupEnabled"`
+		GoogleEnabled bool            `json:"googleEnabled"`
 		User          json.RawMessage `json:"user"`
 		CSRFToken     json.RawMessage `json:"csrfToken"`
 		Collect       json.RawMessage `json:"collect"`
@@ -42,12 +42,12 @@ func TestLocalIdentityIsAutomaticWithoutAccountManagement(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &bootstrap); err != nil {
 		t.Fatal(err)
 	}
-	if response.Code != http.StatusOK || bootstrap.Mode != "local" || bootstrap.SignupEnabled || string(bootstrap.User) != "null" || string(bootstrap.CSRFToken) != "null" || string(bootstrap.Collect) != "false" || bootstrap.Input != "capture" {
+	if response.Code != http.StatusOK || bootstrap.Mode != "local" || bootstrap.GoogleEnabled || string(bootstrap.User) != "null" || string(bootstrap.CSRFToken) != "null" || string(bootstrap.Collect) != "false" || bootstrap.Input != "capture" {
 		t.Fatalf("local composition exposed remote identity: %d %s", response.Code, response.Body.String())
 	}
 	for method, paths := range map[string][]string{
-		http.MethodPost: {"/api/v2/auth/signup", "/api/v2/auth/login", "/api/v2/auth/logout", "/api/v2/account/tokens"},
-		http.MethodGet:  {"/api/v2/account/tokens"},
+		http.MethodPost: {"/api/v2/setup", "/api/v2/auth/login", "/api/v2/auth/logout", "/api/v2/account/tokens"},
+		http.MethodGet:  {"/api/v2/account/tokens", "/api/v2/setup", "/api/v2/admin/users"},
 		http.MethodPut:  {"/api/v2/account/password"},
 	} {
 		for _, path := range paths {

@@ -142,8 +142,8 @@ runtime directories (`DIFFX_RUNTIME_DIR`) and in-memory state for lifecycle test
 must not register inputs in the personal service. `DIFFX_EXIT_ON_STDIN_CLOSE`
 is a foreground development-process lifecycle hook.
 
-Stop running processes before upgrading. Schema 11 databases upgrade in place to
-schema 12 and survive restart; incompatible schemas are refused without resetting data. Local
+Stop running processes before upgrading. Schema 11 and 12 databases upgrade in place to
+schema 13 and survive restart; incompatible schemas are refused without resetting data. Local
 `diffx` offers to back up older state and start fresh on a terminal;
 `--reset-state` does so without asking, keeping only the newest backup beside
 the database. Server state never resets: back up the state directory while
@@ -151,9 +151,10 @@ stopped and explicitly choose a new database path. In-memory state does not surv
 submissions apply the current setting, while exact retries preserve expiry.
 
 For isolated production-user tests, start `diffx-server` with a temporary
-persistent database and bootstrap username/password. Login and create API tokens
-through Settings, which works before any upload. Signup activates accounts without
-a restart when enabled. Operator commands require stopping the database owner.
+persistent database and open the setup link it logs to create the admin. Sign in
+and create API tokens through Settings, which works before any upload. New
+accounts activate without a restart. Operator commands require stopping the
+database owner.
 Credentials scope REST, MCP, jobs and events. Local mode automatically supplies
 its stable owner and exposes no account UI or management routes. Do not provision
 against the running personal service.
@@ -163,14 +164,13 @@ against the running personal service.
 Build both binaries with `mise run build`, then run server mode directly:
 
 ```sh
-DIFFX_SERVER_USERNAME=alice DIFFX_SERVER_PASSWORD=… \
-  DIFFX_SERVER_INSECURE_COOKIES=true DIFFX_SERVER_STATE=./test-data/state.db ./dist/diffx-server
+DIFFX_SERVER_INSECURE_COOKIES=true DIFFX_SERVER_STATE=./test-data/state.db ./dist/diffx-server
 ```
 
 Or use the checked-in Compose setup:
 
 ```sh
-DIFFX_SERVER_USERNAME=alice DIFFX_SERVER_PASSWORD=… mise run docker:up
+mise run docker:up
 docker compose logs server
 mise run docker:down
 ```
@@ -185,9 +185,7 @@ building the image.
 | `DIFFX_SERVER_PORT`             | `7980`          | `7980`            | `--listen HOST:PORT`    |
 | `DIFFX_SERVER_STATE`            | `data/state.db` | `/data/state.db`  | `--state PATH`          |
 | `DIFFX_SERVER_RETENTION_DAYS`   | `7`             | `7`               | `--retention-days DAYS` |
-| `DIFFX_SERVER_USERNAME`         | Unset           | Unset             | `--username NAME`       |
-| `DIFFX_SERVER_PASSWORD`         | Unset           | Unset             | None                    |
-| `DIFFX_SERVER_SIGNUP_ENABLED`   | `false`         | `false`           | `--signup-enabled`      |
+| `DIFFX_SERVER_PUBLIC_URL`       | Unset           | Unset             | `--public-url URL`      |
 | `DIFFX_SERVER_INSECURE_COOKIES` | `false`         | Compose: `true`   | `--insecure-cookies`    |
 
 The server listens on 7980 so a local `diffx [PATH]` (7981–7990) and the server
@@ -195,31 +193,35 @@ run side by side. The `DIFFX_SERVER_` prefix keeps deployment variables from
 configuring the CLI, and the CLI's `DIFFX_LOCAL_*`/`DIFFX_REMOTE_*` from
 configuring the server.
 
-Bootstrap requires both username and password. It creates the first account once
-and never replaces passwords on restart. No default credentials or admin-token
-file is generated. Signup remains disabled unless explicitly enabled. `memory`
-and `:memory:` disable persistence.
+While no admin exists, each start logs a one-time setup link,
+`<public URL>/setup#t=…`, valid for 24 hours; a restart replaces it. The link
+creates the single admin with a username and password. No default credentials
+are generated and there is no public signup. `DIFFX_SERVER_PUBLIC_URL` is the
+browser-facing https origin used in that link (http only with insecure cookies);
+unset, the link uses the listen address. `memory` and `:memory:` disable
+persistence.
 
-Sign in with username/password and create a named token in Settings. Use the
+The admin signs in at `/admin/login`; every other account signs in with Google
+and comes from an admin invite. Create a named token in Settings. Use the
 `collector` preset for producers, or `api` for review APIs/MCP. Token secrets are
 shown once; expiry defaults to 90 days (selectable 1–365). Tokens cannot manage
 accounts. Browser sessions are seven-day opaque cookies with CSRF protection on
 unsafe requests. Secure cookies are the binary/image default; explicitly enable
 insecure cookies only for HTTP development. Production requires HTTPS.
 
-With the server stopped, operator commands read passwords from stdin:
+If the admin loses its password, stop the server and reset it; the command reads
+the password from stdin and refuses non-admin accounts:
 
 ```sh
-diffx-server user create --username bob --state ./test-data/state.db --password-stdin < /path/to/private-password
 diffx-server user reset-password --username alice --state ./test-data/state.db --password-stdin < /path/to/private-password
 ```
 
-Password reset revokes browser sessions. Restart the server after provisioning.
+Password reset revokes browser sessions. Restart the server afterwards.
 
 Precedence is defaults → explicit JSON file → env vars → explicit flags. Use
 `--config-file FILE` or `DIFFX_SERVER_CONFIG` to select a server config. The file
-supports `host`, `port`, `state`, `username`, `retentionDays`, `signupEnabled` and
-`insecureCookies`. Bootstrap passwords are supplied through env vars. The file
+supports `host`, `port`, `state`, `publicUrl`, `retentionDays` and
+`insecureCookies`. The file
 must exist and
 can be mounted read-only; startup never creates it or a config lock. Personal
 CLI config, `DIFFX_RUNTIME_DIR`, producer URL settings and external web assets
@@ -235,7 +237,7 @@ starting with a fresh database; a volume is not a backup.
 
 Set `DIFFX_SERVER_PORT=7979 mise run docker:up` for a different published host
 port; the container always listens on 7980. Compose also accepts
-bootstrap username/password, retention, signup and insecure-cookie overrides,
+public URL, retention and insecure-cookie overrides,
 from the shell or a git-ignored `.env` beside `compose.yaml`. Compose defaults to
 insecure cookies because its HTTP listener is published on loopback; explicitly
 set `DIFFX_SERVER_INSECURE_COOKIES=false` behind production HTTPS. The fixed

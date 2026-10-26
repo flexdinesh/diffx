@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -20,13 +21,12 @@ import (
 )
 
 func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings, bool, error) {
-	settings := remoteserver.Settings{Password: os.Getenv("DIFFX_SERVER_PASSWORD")}
+	var settings remoteserver.Settings
 	flags := flag.NewFlagSet("diffx-server", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.StringVar(&settings.Listen, "listen", net.JoinHostPort("127.0.0.1", strconv.Itoa(config.DefaultServerPort)), "HTTP listen address; terminate TLS at the deployment boundary")
 	flags.StringVar(&settings.State, "state", "", "SQLite database path")
-	flags.StringVar(&settings.Username, "username", "", "bootstrap username; password comes from DIFFX_SERVER_PASSWORD")
-	flags.BoolVar(&settings.SignupEnabled, "signup-enabled", false, "allow public signup")
+	flags.StringVar(&settings.PublicURL, "public-url", "", "browser-facing https origin used in the logged admin setup link")
 	flags.BoolVar(&settings.InsecureCookies, "insecure-cookies", false, "allow browser sessions over HTTP for development")
 	flags.IntVar(&settings.RetentionDays, "retention-days", 7, "snapshot retention in days")
 	path := flags.String("config-file", "", "optional read-only server JSON config path; defaults to DIFFX_SERVER_CONFIG")
@@ -55,11 +55,8 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 	if !visited["state"] || settings.State == "" {
 		settings.State = values.State
 	}
-	if !visited["username"] {
-		settings.Username = values.Username
-	}
-	if !visited["signup-enabled"] {
-		settings.SignupEnabled = values.SignupEnabled
+	if !visited["public-url"] {
+		settings.PublicURL = values.PublicURL
 	}
 	if !visited["insecure-cookies"] {
 		settings.InsecureCookies = values.InsecureCookies
@@ -73,8 +70,9 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 	if settings.State == "" {
 		return settings, false, fmt.Errorf("state must be a database path or memory")
 	}
-	if (settings.Username == "") != (settings.Password == "") {
-		return settings, false, fmt.Errorf("DIFFX_SERVER_USERNAME and DIFFX_SERVER_PASSWORD must be supplied together")
+	values.PublicURL, values.InsecureCookies = settings.PublicURL, settings.InsecureCookies
+	if err := values.ValidatePublicURL(); err != nil {
+		return settings, false, err
 	}
 	if _, err := remoteserver.Retention(settings.RetentionDays); err != nil {
 		return settings, false, err
@@ -124,17 +122,18 @@ func main() {
 	}
 }
 
-// Offline administration shares the server's exclusive database lock.
-// Passwords are read from an explicitly selected environment variable or stdin;
-// they are never command arguments or printed output.
+// Offline admin recovery shares the server's exclusive database lock. Only the
+// admin has a password; the setup link creates it. Passwords are read from an
+// explicitly selected environment variable or stdin; they are never command
+// arguments or printed output.
 func manageUser(arguments []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	if len(arguments) == 0 || (arguments[0] != "create" && arguments[0] != "reset-password") {
-		return fmt.Errorf("usage: diffx-server user create|reset-password --username NAME --password-env VAR|--password-stdin [--state PATH]")
+	if len(arguments) == 0 || arguments[0] != "reset-password" {
+		return fmt.Errorf("usage: diffx-server user reset-password --username ADMIN --password-env VAR|--password-stdin [--state PATH]")
 	}
 	operation := arguments[0]
 	flags := flag.NewFlagSet("diffx-server user "+operation, flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	username := flags.String("username", "", "account username")
+	username := flags.String("username", "", "admin username")
 	state := flags.String("state", "", "SQLite database path; server must be stopped")
 	configPath := flags.String("config-file", "", "optional server JSON config path")
 	passwordEnv := flags.String("password-env", "", "read password from this environment variable")
@@ -173,11 +172,9 @@ func manageUser(arguments []string, stdin io.Reader, stdout, stderr io.Writer) e
 		return err
 	}
 	defer store.Close()
-	identity := identityservice.New(store)
-	if operation == "create" {
-		_, err = identity.Provision(context.Background(), *username, password)
-	} else {
-		err = identity.ResetPassword(context.Background(), *username, password)
+	err = identityservice.New(store).ResetPassword(context.Background(), *username, password)
+	if errors.Is(err, identityservice.ErrNotFound) {
+		return fmt.Errorf("no admin account named %s", *username)
 	}
 	if err != nil {
 		return err

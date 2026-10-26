@@ -18,6 +18,8 @@ var (
 	ErrInvalidInput   = errors.New("invalid identity input")
 	ErrConflict       = errors.New("username already exists")
 	ErrNotFound       = errors.New("identity not found")
+	// ErrForbidden refuses an administrative action on the admin account itself.
+	ErrForbidden = errors.New("identity operation not permitted")
 )
 
 type Purpose string
@@ -28,11 +30,23 @@ const (
 	SessionLifetime              = 7 * 24 * time.Hour
 	DefaultTokenLifetime         = 90 * 24 * time.Hour
 	MaximumTokenLifetime         = 365 * 24 * time.Hour
+	SetupLifetime                = 24 * time.Hour
 )
 
+// Account is an authenticated owner. Admin marks the single account that
+// signs in with a password and manages other accounts.
 type Account struct {
 	ID       string
 	Username string
+	Admin    bool
+}
+
+// AccountSummary is the administrative view of an account.
+type AccountSummary struct {
+	Account
+	Email     string
+	Disabled  bool
+	CreatedAt time.Time
 }
 
 type PasswordCredential struct {
@@ -68,9 +82,21 @@ type TokenIdentity struct {
 }
 
 // Store operations preserve credential races atomically. Password replacement
-// revokes sessions in its transaction; session creation compares the verified hash.
+// revokes sessions in its transaction; session creation compares the verified hash
+// and refuses disabled accounts.
 type Store interface {
-	CreateAccount(context.Context, Account, string, bool, time.Time) (Account, error)
+	// PutAdminSetup replaces the pending setup secret while no admin exists and
+	// reports whether it was stored.
+	PutAdminSetup(context.Context, string, time.Time) (bool, error)
+	AdminExists(context.Context) (bool, error)
+	// CreateAdmin consumes the unexpired setup secret and creates the admin in
+	// one transaction; a missing, expired or used secret is ErrNotFound.
+	CreateAdmin(ctx context.Context, account Account, passwordHash, setupHash string, now time.Time) error
+	AccountSummaries(context.Context) ([]AccountSummary, error)
+	// SetAccountDisabled revokes sessions and tokens when disabling. Both it and
+	// DeleteAccount refuse the admin with ErrForbidden.
+	SetAccountDisabled(ctx context.Context, accountID string, disabled bool, at time.Time) error
+	DeleteAccount(context.Context, string) error
 	AccountPassword(context.Context, string) (PasswordCredential, error)
 	AccountPasswordByID(context.Context, string) (PasswordCredential, error)
 	ReplacePassword(context.Context, string, string, string) error
@@ -130,33 +156,55 @@ func credentialHash(secret string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func (service *Service) Provision(ctx context.Context, username, password string) (Account, error) {
-	return service.provision(ctx, username, password, false)
+// PrepareSetup issues a one-time admin setup secret while no admin exists,
+// replacing any earlier one. It returns "" once an admin exists. The secret is
+// stored hashed, so each start issues a new one.
+func (service *Service) PrepareSetup(ctx context.Context) (string, error) {
+	secret, err := opaqueSecret()
+	if err != nil {
+		return "", err
+	}
+	stored, err := service.store.PutAdminSetup(ctx, credentialHash(secret), service.now().Add(SetupLifetime))
+	if err != nil || !stored {
+		return "", err
+	}
+	return secret, nil
 }
 
-func (service *Service) Bootstrap(ctx context.Context, username, password string) (Account, error) {
-	return service.provision(ctx, username, password, true)
+func (service *Service) SetupRequired(ctx context.Context) (bool, error) {
+	exists, err := service.store.AdminExists(ctx)
+	return !exists, err
 }
 
-func (service *Service) provision(ctx context.Context, username, password string, bootstrap bool) (Account, error) {
+// CompleteSetup creates the admin from a valid setup secret and signs it in.
+func (service *Service) CompleteSetup(ctx context.Context, secret, username, password string) (Session, error) {
 	username, err := canonicalUsername(username)
 	if err != nil {
-		return Account{}, err
+		return Session{}, err
 	}
 	if err := validatePassword(password); err != nil {
-		return Account{}, err
+		return Session{}, err
+	}
+	if len(secret) != 43 {
+		return Session{}, ErrNotFound
 	}
 	hash, err := hashPassword(password)
 	if err != nil {
-		return Account{}, err
+		return Session{}, err
 	}
 	id, err := opaqueSecret()
 	if err != nil {
-		return Account{}, err
+		return Session{}, err
 	}
-	return service.store.CreateAccount(ctx, Account{ID: id, Username: username}, hash, bootstrap, service.now())
+	account := Account{ID: id, Username: username, Admin: true}
+	if err := service.store.CreateAdmin(ctx, account, hash, credentialHash(secret), service.now()); err != nil {
+		return Session{}, err
+	}
+	return service.issueSession(ctx, account, hash)
 }
 
+// Login accepts passwords only for the admin; every other failure is the same
+// ErrAuthentication, so it never reveals which accounts exist or use Google.
 func (service *Service) Login(ctx context.Context, username, password string) (Session, error) {
 	username, invalid := canonicalUsername(username)
 	if len(password) > 128 {
@@ -170,9 +218,15 @@ func (service *Service) Login(ctx context.Context, username, password string) (S
 	if err != nil {
 		return Session{}, err
 	}
-	if !verifyPassword(credential.Hash, password) {
+	if !verifyPassword(credential.Hash, password) || !credential.Account.Admin {
 		return Session{}, ErrAuthentication
 	}
+	return service.issueSession(ctx, credential.Account, credential.Hash)
+}
+
+// issueSession fences on the credential the caller verified: a concurrent
+// password change or disable makes issuance fail.
+func (service *Service) issueSession(ctx context.Context, account Account, expected string) (Session, error) {
 	secret, err := opaqueSecret()
 	if err != nil {
 		return Session{}, err
@@ -182,10 +236,10 @@ func (service *Service) Login(ctx context.Context, username, password string) (S
 		return Session{}, err
 	}
 	expires := service.now().Add(SessionLifetime)
-	if err := service.store.CreateSession(ctx, credential.Account.ID, credential.Hash, credentialHash(secret), csrf, expires); err != nil {
+	if err := service.store.CreateSession(ctx, account.ID, expected, credentialHash(secret), csrf, expires); err != nil {
 		return Session{}, err
 	}
-	return Session{Account: credential.Account, Secret: secret, CSRFToken: csrf, ExpiresAt: expires}, nil
+	return Session{Account: account, Secret: secret, CSRFToken: csrf, ExpiresAt: expires}, nil
 }
 
 func (service *Service) AuthenticateSession(ctx context.Context, secret string) (Session, error) {
@@ -210,7 +264,7 @@ func (service *Service) ChangePassword(ctx context.Context, accountID, current, 
 	if err != nil {
 		return err
 	}
-	if len(current) > 128 || !verifyPassword(credential.Hash, current) {
+	if len(current) > 128 || !verifyPassword(credential.Hash, current) || !credential.Account.Admin {
 		return ErrAuthentication
 	}
 	hash, err := hashPassword(password)
@@ -220,6 +274,7 @@ func (service *Service) ChangePassword(ctx context.Context, accountID, current, 
 	return service.store.ReplacePassword(ctx, accountID, credential.Hash, hash)
 }
 
+// ResetPassword recovers the admin offline; other accounts have no password.
 func (service *Service) ResetPassword(ctx context.Context, username, password string) error {
 	username, err := canonicalUsername(username)
 	if err != nil {
@@ -231,6 +286,9 @@ func (service *Service) ResetPassword(ctx context.Context, username, password st
 	credential, err := service.store.AccountPassword(ctx, username)
 	if err != nil {
 		return err
+	}
+	if !credential.Account.Admin {
+		return ErrNotFound
 	}
 	hash, err := hashPassword(password)
 	if err != nil {
@@ -284,6 +342,25 @@ func (service *Service) AuthenticateToken(ctx context.Context, secret string) (T
 	return service.store.ResolveIdentityToken(ctx, credentialHash(secret), service.now())
 }
 
+// Accounts lists enabled accounts, the owners the ingestion worker may serve.
 func (service *Service) Accounts(ctx context.Context) ([]Account, error) {
 	return service.store.IdentityAccounts(ctx)
+}
+
+func (service *Service) AccountSummaries(ctx context.Context) ([]AccountSummary, error) {
+	return service.store.AccountSummaries(ctx)
+}
+
+func (service *Service) DisableAccount(ctx context.Context, accountID string) error {
+	return service.store.SetAccountDisabled(ctx, accountID, true, service.now())
+}
+
+func (service *Service) EnableAccount(ctx context.Context, accountID string) error {
+	return service.store.SetAccountDisabled(ctx, accountID, false, service.now())
+}
+
+// DeleteAccount removes the account and every review, token and integration
+// it owns.
+func (service *Service) DeleteAccount(ctx context.Context, accountID string) error {
+	return service.store.DeleteAccount(ctx, accountID)
 }

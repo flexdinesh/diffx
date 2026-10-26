@@ -71,7 +71,8 @@ personal lifecycle discovery.
 - `reviewservice`: shared snapshot reads, comments, marks and capability checks.
 - `reviewdata`: storage-independent identities, results and errors.
 - `reviewsession`: a resolved review and its source/policy capabilities.
-- `identityservice`: account, password, session and API-token policies.
+- `identityservice`: account, admin setup, password, session, API-token and
+  account administration policies.
 - `github`: GitHub wire adapter: app JWT, installation tokens, OAuth web flow,
   REST reads, webhook signatures and payloads. No storage or diffx policy.
 - `githubsync`: GitHub integration rules: which accounts may follow which
@@ -111,8 +112,10 @@ management routes. Remote composition resolves sessions or API tokens to opaque
 account IDs before application access. Review operations receive an owner without
 mode branches. `remoteserver` activates owner-scoped services on demand, including
 for accounts created after startup; requests, events and workers share that owner
-registry and its shutdown lifetime. Identity service owns credential rules;
-transports own cookies, CSRF and route permissions.
+registry and its shutdown lifetime; disabling or deleting an account stops its
+services. Identity service owns credential and administration rules, including
+the single admin; transports own cookies, CSRF and route permissions, such as
+admin routes requiring the admin's browser session.
 
 The frontend identity owner loads the explicit server mode before mounting review
 state. Distributed login and settings work without any observations. Account
@@ -198,13 +201,14 @@ uses `X-Diffx-State` to pin submission and polling to the destination identity;
 older protocols are rejected. Release artifacts use the explicit `diffx` project
 name, independent of the checkout directory.
 
-Schema 12 preserves current state across starts. Schema 11 moved review state
+Schema 13 preserves current state across starts. It adds administration and
+Google sign-in tables; schema 12 added GitHub integration tables. Schema 11 moved review state
 from each snapshot scope to its stream and scope, because comments and reviewed
 marks must survive new collections and snapshot deletion. Schema 11 and later
 upgrade in place: later schemas only add tables and indexes, so opening runs the
 idempotent creation statements and records the new version in one transaction,
-because durable server volumes must gain GitHub integration state without an
-operator reset. A schema change that alters existing tables needs a new
+because durable server volumes must gain GitHub integration and administration
+state without an operator reset. A schema change that alters existing tables needs a new
 compatibility floor instead. Older-than-11, future and unrecognized schemas are
 refused; opening a database never resets it. `reviewstore.Reset` is the only reset: under the
 ownership lock it moves current or older diffx state and its SQLite sidecars to

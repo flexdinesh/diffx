@@ -15,6 +15,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
+	"github.com/flexdinesh/diffx/internal/testsupport"
 )
 
 func identityHandler(t *testing.T, settings Settings) (*reviewstore.Store, http.Handler) {
@@ -63,8 +64,16 @@ func loginIdentity(t *testing.T, handler http.Handler, name string) (*http.Cooki
 	}
 	return cookies[0], *result.CSRFToken
 }
+
+// memberSession signs in a passwordless member, as Google sign-in does.
+func memberSession(t *testing.T, store *reviewstore.Store, name string) (*http.Cookie, string) {
+	t.Helper()
+	session := testsupport.RemoteSession(t, store, testsupport.RemoteAccount(t, store, name))
+	return &http.Cookie{Name: sessionCookie, Value: session.Secret}, session.CSRFToken
+}
 func TestRemoteSessionCSRFAndTokenLifecycle(t *testing.T) {
-	store, handler := identityHandler(t, Settings{Username: "alice", Password: testPassword})
+	store, handler := identityHandler(t, Settings{})
+	testsupport.RemoteAdmin(t, store, "alice", testPassword)
 	cookie, csrf := loginIdentity(t, handler, "alice")
 	if !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode || cookie.Path != "/" {
 		t.Fatalf("session cookie: %+v", cookie)
@@ -116,7 +125,7 @@ func TestRemoteSessionCSRFAndTokenLifecycle(t *testing.T) {
 	if w.Code != 403 {
 		t.Fatal("api token managed account")
 	}
-	otherCookie, otherCSRF := loginIdentity(t, handler, "other")
+	otherCookie, otherCSRF := memberSession(t, store, "member")
 	w = identityRequest(handler, "DELETE", "/api/v2/account/tokens/"+created.Token.ID, "", otherCookie, otherCSRF, "")
 	if w.Code != 404 {
 		t.Fatal("foreign token revoked")
@@ -147,11 +156,23 @@ func TestRemoteSessionCSRFAndTokenLifecycle(t *testing.T) {
 		}
 	}
 }
-func TestSignupActivatesAccountWithoutRestart(t *testing.T) {
-	_, handler := identityHandler(t, Settings{SignupEnabled: true, InsecureCookies: true})
-	w := identityRequest(handler, "POST", "/api/v2/auth/signup", `{"username":"newuser","password":"`+testPassword+`"}`, nil, "", "")
+func TestSetupActivatesAdminWithoutRestart(t *testing.T) {
+	store, handler := identityHandler(t, Settings{InsecureCookies: true})
+	setup, err := identityservice.New(store).PrepareSetup(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := identityRequest(handler, "GET", "/api/v2/setup", "", nil, "", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"required":true`) {
+		t.Fatalf("setup required: %d %s", w.Code, w.Body.String())
+	}
+	w = identityRequest(handler, "POST", "/api/v2/setup", `{"token":"`+strings.Repeat("x", 43)+`","username":"admin","password":"`+testPassword+`"}`, nil, "", "")
+	if w.Code != 404 {
+		t.Fatalf("forged setup: %d %s", w.Code, w.Body.String())
+	}
+	w = identityRequest(handler, "POST", "/api/v2/setup", `{"token":"`+setup+`","username":"admin","password":"`+testPassword+`"}`, nil, "", "")
 	if w.Code != 200 {
-		t.Fatalf("signup: %d %s", w.Code, w.Body.String())
+		t.Fatalf("setup: %d %s", w.Code, w.Body.String())
 	}
 	cookies := w.Result().Cookies()
 	if len(cookies) != 1 || cookies[0].Secure {
@@ -161,8 +182,16 @@ func TestSignupActivatesAccountWithoutRestart(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.User == nil || result.CSRFToken == nil {
-		t.Fatal("signup identity absent")
+	if result.User == nil || !result.User.Admin || result.CSRFToken == nil {
+		t.Fatal("setup identity absent")
+	}
+	w = identityRequest(handler, "GET", "/api/v2/setup", "", nil, "", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"required":false`) {
+		t.Fatalf("setup still required: %d %s", w.Code, w.Body.String())
+	}
+	w = identityRequest(handler, "POST", "/api/v2/setup", `{"token":"`+setup+`","username":"second","password":"`+testPassword+`"}`, nil, "", "")
+	if w.Code != 404 {
+		t.Fatalf("setup reused: %d", w.Code)
 	}
 	w = identityRequest(handler, "POST", "/api/v2/account/tokens", `{"name":"collector","purpose":"collector","expiresInDays":1}`, cookies[0], *result.CSRFToken, "")
 	if w.Code != 201 {
@@ -177,7 +206,7 @@ func TestSignupActivatesAccountWithoutRestart(t *testing.T) {
 	server := httptest.NewServer(handler)
 	defer server.Close()
 	patch := "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-before\n+after\n"
-	input, err := collector.CollectPatch(t.Context(), patch, t.TempDir(), collector.Options{SourceID: "signup", SubmissionID: "first"})
+	input, err := collector.CollectPatch(t.Context(), patch, t.TempDir(), collector.Options{SourceID: "setup", SubmissionID: "first"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,12 +224,29 @@ func TestSignupActivatesAccountWithoutRestart(t *testing.T) {
 		t.Fatalf("new owner handler did not activate: %d %s", w.Code, w.Body.String())
 	}
 }
-func TestAuthFormsGuardAndRateLimit(t *testing.T) {
-	_, handler := identityHandler(t, Settings{Username: "alice", Password: testPassword})
-	w := identityRequest(handler, "POST", "/api/v2/auth/signup", `{}`, nil, "", "")
-	if w.Code != 403 {
-		t.Fatal("signup enabled by default")
+func TestPasswordLoginIsAdminOnly(t *testing.T) {
+	store, handler := identityHandler(t, Settings{})
+	testsupport.RemoteAdmin(t, store, "alice", testPassword)
+	testsupport.RemoteAccount(t, store, "member")
+	for _, body := range []string{`{"username":"member","password":""}`, `{"username":"member","password":"` + testPassword + `"}`, `{"username":"nobody","password":"` + testPassword + `"}`, `{"username":"alice","password":"wrong-password-value"}`} {
+		w := identityRequest(handler, "POST", "/api/v2/auth/login", body, nil, "", "")
+		if w.Code != 401 || !strings.Contains(w.Body.String(), "Authentication required") {
+			t.Fatalf("login %s: %d %s", body, w.Code, w.Body.String())
+		}
 	}
+	cookie, csrf := loginIdentity(t, handler, "alice")
+	if w := identityRequest(handler, "POST", "/api/v2/auth/signup", `{"username":"new","password":"`+testPassword+`"}`, cookie, csrf, ""); w.Code != 404 {
+		t.Fatalf("public signup route: %d", w.Code)
+	}
+	w := identityRequest(handler, "GET", "/api/v2/bootstrap", "", cookie, "", "")
+	if strings.Contains(w.Body.String(), "signupEnabled") || !strings.Contains(w.Body.String(), `"googleEnabled":false`) || !strings.Contains(w.Body.String(), `"admin":true`) {
+		t.Fatalf("bootstrap: %s", w.Body.String())
+	}
+}
+func TestAuthFormsGuardAndRateLimit(t *testing.T) {
+	store, handler := identityHandler(t, Settings{})
+	testsupport.RemoteAdmin(t, store, "alice", testPassword)
+	var w *httptest.ResponseRecorder
 	for _, test := range []struct {
 		header, value string
 		want          int
@@ -224,7 +270,8 @@ func TestAuthFormsGuardAndRateLimit(t *testing.T) {
 func TestRevocationAndExpiryCloseActiveStreams(t *testing.T) {
 	for _, action := range []string{"logout", "reset", "revoke", "expire"} {
 		t.Run(action, func(t *testing.T) {
-			store, handler := identityHandler(t, Settings{Username: "alice", Password: testPassword, InsecureCookies: true})
+			store, handler := identityHandler(t, Settings{InsecureCookies: true})
+			testsupport.RemoteAdmin(t, store, "alice", testPassword)
 			identity := identityservice.New(store)
 			session, err := identity.Login(t.Context(), "alice", testPassword)
 			if err != nil {

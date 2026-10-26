@@ -61,10 +61,7 @@ func start(t *testing.T, state string, remote bool) deployment {
 		}
 		var account identityservice.Account
 		if len(accounts) == 0 {
-			account, err = identity.Provision(t.Context(), "team", "test-password-at-least-twelve-characters")
-			if err != nil {
-				t.Fatal(err)
-			}
+			account = testsupport.RemoteAccount(t, store, "team")
 		} else {
 			for _, existing := range accounts {
 				if existing.Username == "team" {

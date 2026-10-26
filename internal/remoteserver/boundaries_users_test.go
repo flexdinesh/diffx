@@ -1,12 +1,16 @@
 package remoteserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -19,14 +23,18 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func TestRunPasswordAccountPersistsAcrossRestart(t *testing.T) {
+func TestRunSetupAdminPersistsAcrossRestart(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state.db")
+	var logs syncBuffer
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
 	var accountID string
+	client := &http.Client{Timeout: 3 * time.Second}
 	for attempt := 0; attempt < 2; attempt++ {
 		ctx, cancel := context.WithCancel(t.Context())
 		ready, done := make(chan string, 1), make(chan error, 1)
 		go func() {
-			done <- Run(ctx, Settings{State: state, Listen: "127.0.0.1:0", Username: "admin", Password: testPassword, InsecureCookies: true}, func(address string) { ready <- address })
+			done <- Run(ctx, Settings{State: state, Listen: "127.0.0.1:0", PublicURL: "https://diffx.example.com", InsecureCookies: true}, func(address string) { ready <- address })
 		}()
 		var address string
 		select {
@@ -38,7 +46,24 @@ func TestRunPasswordAccountPersistsAcrossRestart(t *testing.T) {
 			cancel()
 			t.Fatal("startup timeout")
 		}
-		response, err := (&http.Client{Timeout: 3 * time.Second}).Post("http://"+address+"/api/v2/auth/login", "application/json", strings.NewReader(`{"username":"admin","password":"`+testPassword+`"}`))
+		path, body := "/api/v2/auth/login", `{"username":"admin","password":"`+testPassword+`"}`
+		if attempt == 0 {
+			// The link is logged just after ready reports the address.
+			var link string
+			found := false
+			for deadline := time.Now().Add(3 * time.Second); !found && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+				_, link, found = strings.Cut(logs.String(), "open https://diffx.example.com/setup#t=")
+			}
+			if !found {
+				cancel()
+				t.Fatalf("setup link not logged: %q", logs.String())
+			}
+			path, body = "/api/v2/setup", `{"token":"`+strings.TrimSpace(link)+`","username":"admin","password":"`+testPassword+`"}`
+		} else if strings.Count(logs.String(), "setup#t=") != 1 {
+			cancel()
+			t.Fatal("setup link logged after admin exists")
+		}
+		response, err := client.Post("http://"+address+path, "application/json", strings.NewReader(body))
 		if err != nil {
 			cancel()
 			t.Fatal(err)
@@ -46,9 +71,9 @@ func TestRunPasswordAccountPersistsAcrossRestart(t *testing.T) {
 		var result bootstrapJSON
 		err = json.NewDecoder(response.Body).Decode(&result)
 		response.Body.Close()
-		if err != nil || response.StatusCode != 200 || result.User == nil {
+		if err != nil || response.StatusCode != 200 || result.User == nil || !result.User.Admin {
 			cancel()
-			t.Fatalf("login: %v status%d", err, response.StatusCode)
+			t.Fatalf("%s: %v status%d", path, err, response.StatusCode)
 		}
 		if attempt == 0 {
 			accountID = result.User.ID
@@ -66,6 +91,24 @@ func TestRunPasswordAccountPersistsAcrossRestart(t *testing.T) {
 			t.Fatal("shutdown timeout")
 		}
 	}
+}
+
+// syncBuffer collects log output written by the server goroutine.
+type syncBuffer struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (buffer *syncBuffer) Write(data []byte) (int, error) {
+	buffer.mu.Lock()
+	defer buffer.mu.Unlock()
+	return buffer.buffer.Write(data)
+}
+
+func (buffer *syncBuffer) String() string {
+	buffer.mu.Lock()
+	defer buffer.mu.Unlock()
+	return buffer.buffer.String()
 }
 
 type credentialTransport struct {

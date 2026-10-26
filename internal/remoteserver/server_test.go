@@ -26,10 +26,7 @@ const testPassword = "test-password-at-least-twelve-bytes"
 func provisionToken(t *testing.T, store *reviewstore.Store, name string, purpose identityservice.Purpose) string {
 	t.Helper()
 	identity := identityservice.New(store)
-	account, err := identity.Provision(t.Context(), name, testPassword)
-	if err != nil {
-		t.Fatal(err)
-	}
+	account := testsupport.RemoteAccount(t, store, name)
 	token, err := identity.CreateToken(t.Context(), account.ID, "test", purpose, time.Time{})
 	if err != nil {
 		t.Fatal(err)
@@ -250,61 +247,6 @@ func TestMultiUserRESTMCPAndEventIsolation(t *testing.T) {
 	}
 }
 
-func TestPasswordBootstrapSurvivesRestart(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "state.db")
-	store, err := reviewstore.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	settings := Settings{Username: "admin", Password: testPassword}
-	identity := identityservice.New(store)
-	if err := bootstrap(t.Context(), identity, settings); err != nil {
-		t.Fatal(err)
-	}
-	session, err := identity.Login(t.Context(), "admin", testPassword)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := identity.ChangePassword(t.Context(), session.Account.ID, testPassword, "changed-password-123"); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	store, err = reviewstore.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	identity = identityservice.New(store)
-	if err := bootstrap(t.Context(), identity, settings); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := identity.Login(t.Context(), "admin", testPassword); err == nil {
-		t.Fatal("restart replaced changed password")
-	}
-	again, err := identity.Login(t.Context(), "admin", "changed-password-123")
-	if err != nil || again.Account.ID != session.Account.ID {
-		t.Fatalf("restart identity: %+v %v", again, err)
-	}
-}
-func TestEmptyServerRequiresExplicitIdentityPolicy(t *testing.T) {
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	identity := identityservice.New(store)
-	for _, settings := range []Settings{{}, {Username: "admin"}, {Password: testPassword}} {
-		if err := bootstrap(t.Context(), identity, settings); err == nil {
-			t.Fatal("missing policy accepted")
-		}
-	}
-	if err := bootstrap(t.Context(), identity, Settings{SignupEnabled: true}); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestRetentionDurationValidation(t *testing.T) {
 	for days, expected := range map[int]time.Duration{0: 7 * 24 * time.Hour, 7: 7 * 24 * time.Hour, 1: 24 * time.Hour, 30: 30 * 24 * time.Hour} {
 		actual, err := Retention(days)
@@ -325,8 +267,17 @@ func TestRemoteRunShutdownClosesActiveEventStream(t *testing.T) {
 	defer cancel()
 	ready := make(chan string, 1)
 	done := make(chan error, 1)
+	state := filepath.Join(t.TempDir(), "reviews.sqlite")
+	store, err := reviewstore.Open(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testsupport.RemoteAdmin(t, store, "account", testPassword)
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
 	go func() {
-		done <- Run(ctx, Settings{Listen: "127.0.0.1:0", State: filepath.Join(t.TempDir(), "reviews.sqlite"), Username: "account", Password: testPassword, InsecureCookies: true}, func(address string) { ready <- address })
+		done <- Run(ctx, Settings{Listen: "127.0.0.1:0", State: state, InsecureCookies: true}, func(address string) { ready <- address })
 	}()
 	var address string
 	select {

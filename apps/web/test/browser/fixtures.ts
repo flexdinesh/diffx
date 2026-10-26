@@ -88,7 +88,7 @@ export async function withReviewNavigation(
     route.fulfill({
       json: {
         mode: "local",
-        signupEnabled: false,
+        googleEnabled: false,
         user: null,
         csrfToken: null,
         collect,

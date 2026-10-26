@@ -66,11 +66,10 @@ mise run docker:down
 Compose publishes HTTP on `127.0.0.1:7980`, outside the local 7981–7990 range,
 and preserves the named SQLite volume when stopped or recreated. Set
 `DIFFX_SERVER_PORT=7979` to publish another host port. The project is named
-`diffx`, so its volume is shared by every checkout. Before first start, put
-`DIFFX_SERVER_USERNAME=alice` and `DIFFX_SERVER_PASSWORD=…` in a git-ignored
-`.env` beside `compose.yaml`. No default account/password is generated. These
-bootstrap credentials create the first account once; restarts preserve password
-changes. Signup is disabled by default. Compose explicitly enables insecure
+`diffx`, so its volume is shared by every checkout. On first start, find the
+setup link in `docker compose logs server` and open it within 24 hours to create
+the admin account; each restart before setup logs a new link. No default
+account/password is generated and there is no public signup. Compose explicitly enables insecure
 cookies for loopback HTTP development; set `DIFFX_SERVER_INSECURE_COOKIES=false`
 and deploy behind HTTPS for remote access.
 See [server development](https://github.com/flexdinesh/diffx/blob/main/docs/development.md#server-development) for configuration
@@ -85,8 +84,8 @@ docker run --name diffx-server --read-only -p 127.0.0.1:7980:7980 \
   --mount source=diffx-data,target=/data diffx-server:local
 ```
 
-The env file supplies bootstrap username/password; plain HTTP development also
-requires `DIFFX_SERVER_INSECURE_COOKIES=true`. The volume contains observations,
+Plain HTTP development requires `DIFFX_SERVER_INSECURE_COOKIES=true` in the env
+file; behind HTTPS, set `DIFFX_SERVER_PUBLIC_URL` so the logged setup link uses it. The volume contains observations,
 jobs, accounts and credential hashes.
 The image runs without Git or a repository mount, as an unprivileged user.
 SIGTERM drains HTTP and stops the worker; durable unfinished jobs recover after
@@ -96,11 +95,12 @@ Build/install the remote server with Go:
 
 ```sh
 go install github.com/flexdinesh/diffx/cmd/diffx-server@edge
-DIFFX_SERVER_USERNAME=alice DIFFX_SERVER_PASSWORD=… \
-  DIFFX_SERVER_INSECURE_COOKIES=true DIFFX_SERVER_STATE=./test-data/state.db diffx-server
+DIFFX_SERVER_INSECURE_COOKIES=true DIFFX_SERVER_STATE=./test-data/state.db diffx-server
 ```
 
-Sign in with username/password, then open the top-right account settings to create
+Open the setup link the server logs to create the admin account. The admin signs
+in with that password at `/admin/login`; everyone else signs in with Google from
+an admin invite. Then open the top-right account settings to create
 a named API token. `collector` tokens support sync and plugins; `api` tokens also
 support the user's review REST/MCP APIs. Both expire after 90 days by default
 (selectable 1–365 days), can be revoked, and show their secret only once. Browser
@@ -108,18 +108,16 @@ sessions use secure cookies; API/MCP and collectors use bearer tokens. Multiple
 users share one SQLite database with private data per account. Local `diffx`
 automatically supplies its owner and has no login or account settings.
 
-Set `DIFFX_SERVER_SIGNUP_ENABLED=true` to allow signup; invitations are not yet
-supported. For operator provisioning or password recovery, stop the server, run:
+The admin can disable or delete accounts from the admin page; disabling revokes
+the account's sessions and tokens, and deleting removes everything it owns. If
+the admin loses its password, stop the server and run:
 
 ```sh
-diffx-server user create --username bob --state /data/state.db --password-stdin < /path/to/private-password
 diffx-server user reset-password --username alice --state /data/state.db --password-stdin < /path/to/private-password
 ```
 
 Then restart the server. Password reset revokes browser sessions; API token
-ownership is independent of passwords. Bootstrap requires both
-`DIFFX_SERVER_USERNAME` and `DIFFX_SERVER_PASSWORD`; it never overwrites an existing
-account's password. Deploy behind TLS with secure cookies.
+ownership is independent of passwords. Deploy behind TLS with secure cookies.
 Use `--retention-days 14` or config/environment to change server retention.
 The server defaults to `127.0.0.1:7980` and `./data/state.db`, independent of
 personal CLI settings. Its image defaults to `0.0.0.0:7980` and `/data/state.db`;

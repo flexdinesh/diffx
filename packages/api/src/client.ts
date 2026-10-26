@@ -47,7 +47,7 @@ export function readBootstrap(value: unknown): ApiBootstrap {
   if (!object(value)) throw new Error("Invalid server identity response");
   if (
     value.mode === "local" &&
-    value.signupEnabled === false &&
+    value.googleEnabled === false &&
     value.user === null &&
     value.csrfToken === null &&
     typeof value.collect === "boolean" &&
@@ -55,18 +55,18 @@ export function readBootstrap(value: unknown): ApiBootstrap {
   )
     return {
       mode: "local",
-      signupEnabled: false,
+      googleEnabled: false,
       user: null,
       csrfToken: null,
       collect: value.collect,
       input: value.input,
     };
-  if (value.mode !== "remote" || typeof value.signupEnabled !== "boolean")
+  if (value.mode !== "remote" || typeof value.googleEnabled !== "boolean")
     throw new Error("Invalid server identity response");
   if (value.user === null && value.csrfToken === null)
     return {
       mode: "remote",
-      signupEnabled: value.signupEnabled,
+      googleEnabled: value.googleEnabled,
       user: null,
       csrfToken: null,
     };
@@ -76,13 +76,18 @@ export function readBootstrap(value: unknown): ApiBootstrap {
     value.user.id.length > 0 &&
     typeof value.user.username === "string" &&
     value.user.username.length > 0 &&
+    typeof value.user.admin === "boolean" &&
     typeof value.csrfToken === "string" &&
     value.csrfToken.length > 0
   )
     return {
       mode: "remote",
-      signupEnabled: value.signupEnabled,
-      user: { id: value.user.id, username: value.user.username },
+      googleEnabled: value.googleEnabled,
+      user: {
+        id: value.user.id,
+        username: value.user.username,
+        admin: value.user.admin,
+      },
       csrfToken: value.csrfToken,
     };
   throw new Error("Invalid server identity response");

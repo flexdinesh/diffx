@@ -1,18 +1,17 @@
 import { type Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 
-const account = { id: "account-a", username: "alice" };
-function bootstrap(signedIn: boolean, signupEnabled = false) {
+function bootstrap(signedIn: boolean, admin = false) {
   return {
     mode: "remote",
-    signupEnabled,
-    user: signedIn ? account : null,
+    googleEnabled: false,
+    user: signedIn ? { id: "account-a", username: "alice", admin } : null,
     csrfToken: signedIn ? "session-csrf" : null,
   };
 }
-async function remote(page: Page, signedIn = true, signupEnabled = false) {
+async function remote(page: Page, signedIn = true, admin = false) {
   await page.route("**/api/v2/bootstrap", (route) =>
-    route.fulfill({ json: bootstrap(signedIn, signupEnabled) }),
+    route.fulfill({ json: bootstrap(signedIn, admin) }),
   );
   await page.route("**/api/v2/contexts?*", (route) =>
     route.fulfill({ json: { contexts: [], nextCursor: null } }),
@@ -59,56 +58,79 @@ test("bootstrap failure stays an error and retries without inferring local mode"
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 });
 
-test("disabled signup and invalid login preserve recovery", async ({
+test("members get no password form; invalid admin login preserves recovery", async ({
   page,
 }) => {
   await remote(page, false);
   await page.route("**/api/v2/auth/login", (route) =>
     route.fulfill({
       status: 401,
-      json: { detail: "Invalid username or password" },
+      json: { detail: "Authentication required" },
     }),
   );
   await page.goto("/");
-  await expect(
-    page.getByRole("button", { name: "Create an account" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
+  await page.goto("/admin/login");
   await page.getByLabel("Username", { exact: true }).fill("alice");
   await page.getByLabel("Password", { exact: true }).fill("incorrect-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText(
-    "Invalid username or password",
-  );
+  await expect(page.getByRole("alert")).toHaveText("Authentication required");
   await expect(page.getByLabel("Username", { exact: true })).toHaveValue(
     "alice",
   );
 });
 
-test("signup opens an empty account whose settings work before any review", async ({
+test("the setup link creates the admin once and keeps its secret out of the URL", async ({
   page,
 }) => {
-  await remote(page, false, true);
-  await page.route("**/api/v2/auth/signup", (route) =>
-    route.fulfill({ json: bootstrap(true, true) }),
-  );
-  await page.goto("/");
-  await page.getByRole("button", { name: "Create an account" }).click();
+  await remote(page, false);
+  await page.route("**/api/v2/setup", (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({ json: { required: true } });
+    expect(route.request().postDataJSON()).toEqual({
+      token: "setup-secret",
+      username: "alice",
+      password: "a-secure-password",
+    });
+    return route.fulfill({ json: bootstrap(true, true) });
+  });
+  await page.goto("/setup#t=setup-secret");
+  await expect(
+    page.getByRole("heading", { name: "Set up diffx" }),
+  ).toBeVisible();
+  expect(new URL(page.url()).hash).toBe("");
   await page.getByLabel("Username", { exact: true }).fill("alice");
   await page.getByLabel("Password", { exact: true }).fill("a-secure-password");
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Create admin", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "No review contexts yet" }),
   ).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe("/");
   await page.getByRole("button", { name: "Account settings" }).click();
-  await expect(page).toHaveURL(/\/settings$/);
-  await expect(
-    page.getByRole("heading", { name: "Account settings" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Password" })).toBeVisible();
   await expect(
     page.getByText("No tokens yet.", { exact: false }),
   ).toBeVisible();
+});
+
+test("a completed setup points to admin sign in", async ({ page }) => {
+  await remote(page, false);
+  await page.route("**/api/v2/setup", (route) =>
+    route.fulfill({ json: { required: false } }),
+  );
+  await page.goto("/setup#t=stale-secret");
+  await expect(
+    page.getByRole("link", { name: "Sign in as admin" }),
+  ).toHaveAttribute("href", "/admin/login");
+  await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
+});
+
+test("member settings have no password section", async ({ page }) => {
+  await remote(page);
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "API tokens" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Password" })).toHaveCount(0);
 });
 
 test("collector token secret appears once, with owner CSRF and revocation", async ({
@@ -283,7 +305,7 @@ test("expired account requests remove workspace identity and return to sign in",
 test("password change sends CSRF and signs out after revoking browser sessions", async ({
   page,
 }) => {
-  await remote(page);
+  await remote(page, true, true);
   await page.route("**/api/v2/account/password", (route) => {
     expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
     expect(route.request().postDataJSON()).toEqual({
@@ -303,7 +325,7 @@ test("password change sends CSRF and signs out after revoking browser sessions",
     .getByRole("button", { name: "Change password and sign out" })
     .click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
-  await expect(page.getByLabel("Password", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
 });
 
 test("logout failure stays recoverable and success disposes account UI", async ({

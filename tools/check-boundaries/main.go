@@ -67,7 +67,7 @@ var allowed = map[string][]string{
 	"internal/submission": {"internal/ingestion", "internal/processlock"},
 	// Test helpers are classified, but production packages cannot import them.
 	"internal/testsupport": {
-		"internal/contextservice", "internal/ingestion", "internal/ingestionqueue", "internal/review",
+		"internal/contextservice", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/review",
 		"internal/reviewstore", "internal/serverapp", "internal/webui",
 	},
 	"internal/version": {},

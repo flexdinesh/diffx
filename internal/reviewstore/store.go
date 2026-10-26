@@ -17,7 +17,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 12
+const schemaVersion = 13
 
 // additiveSchema is the oldest schema that opens by upgrading in place. Each
 // later schema only creates tables and indexes, so the idempotent initialization

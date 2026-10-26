@@ -16,7 +16,7 @@ func localBootstrap(capabilities Capabilities) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(struct {
 			Mode          string  `json:"mode"`
-			SignupEnabled bool    `json:"signupEnabled"`
+			GoogleEnabled bool    `json:"googleEnabled"`
 			User          *string `json:"user"`
 			CSRFToken     *string `json:"csrfToken"`
 			Collect       bool    `json:"collect"`

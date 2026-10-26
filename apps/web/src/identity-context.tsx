@@ -62,7 +62,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         if (
           path === "/api/v2/bootstrap" ||
           path === "/api/v2/auth/login" ||
-          path === "/api/v2/auth/signup"
+          path === "/api/v2/setup"
         )
           return request;
         const csrf = current.current?.csrfToken;
@@ -77,7 +77,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
           response.status === 401 &&
           !request.signal.aborted &&
           new URL(request.url).pathname !== "/api/v2/auth/login" &&
-          new URL(request.url).pathname !== "/api/v2/auth/signup"
+          new URL(request.url).pathname !== "/api/v2/setup"
         )
           signedOut();
       },

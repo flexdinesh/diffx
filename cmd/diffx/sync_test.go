@@ -25,6 +25,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/review"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/submission"
+	"github.com/flexdinesh/diffx/internal/testsupport"
 	"github.com/flexdinesh/diffx/internal/webui"
 )
 
@@ -445,10 +446,7 @@ func TestSyncRotatedTokenRecoversOnlyItsOwnersAttemptedPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreign, err := identity.Provision(t.Context(), "other", "other-password-at-least-twelve-characters")
-	if err != nil {
-		t.Fatal(err)
-	}
+	foreign := testsupport.RemoteAccount(t, fixture.store, "other")
 	foreignToken, err := identity.CreateToken(t.Context(), foreign.ID, "foreign", identityservice.PurposeCollector, time.Time{})
 	if err != nil {
 		t.Fatal(err)
@@ -586,10 +584,7 @@ func TestHookRotatedEnvironmentTokenRecoversOwnersRemovedCheckout(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreign, err := identity.Provision(t.Context(), "other", "other-password-at-least-twelve-characters")
-	if err != nil {
-		t.Fatal(err)
-	}
+	foreign := testsupport.RemoteAccount(t, fixture.store, "other")
 	foreignToken, err := identity.CreateToken(t.Context(), foreign.ID, "foreign", identityservice.PurposeCollector, time.Time{})
 	if err != nil {
 		t.Fatal(err)

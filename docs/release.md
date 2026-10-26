@@ -41,8 +41,8 @@ arm64. Windows archives are also published. Archives include the native binary,
 README, and license. The embedded web application needs no installed Node.js
 runtime.
 
-Stop running binaries before upgrading. Schema 11 state upgrades in place to
-schema 12 and survives subsequent starts; older, future or unrecognized schemas are refused without
+Stop running binaries before upgrading. Schema 11 and 12 state upgrades in place to
+schema 13 and survives subsequent starts; older, future or unrecognized schemas are refused without
 resetting data. Local `diffx` offers to back up older state beside it and start
 fresh, or does so with `--reset-state`. For servers, back up the state directory
 and explicitly choose a fresh database path if discarding incompatible state. Upgrade server and collectors
