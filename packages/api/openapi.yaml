@@ -101,6 +101,108 @@ paths:
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v2/auth/google:
+    post:
+      operationId: startGoogleSignIn
+      description: Distributed only, when Google sign-in is configured (otherwise 404). Start Google sign-in for an existing account. Sets an HttpOnly flow cookie binding the authorization to this browser; navigate to `authorizeUrl` within 10 minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        "200":
+          $ref: "#/components/responses/GoogleAuthorization"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/auth/google/callback:
+    get:
+      operationId: completeGoogleSignIn
+      description: Distributed only. Google redirects the browser here; the state and the flow cookie authenticate it, so it accepts cross-site navigation. Every outcome redirects to the app; failures add `?signin=` with `cancelled`, `no-account`, `invite-mismatch`, `invite-invalid` or `failed`. A Google account is identified by its subject, so a changed email keeps the account.
+      parameters:
+        - { in: query, name: state, required: false, schema: { type: string } }
+        - { in: query, name: code, required: false, schema: { type: string } }
+        - { in: query, name: error, required: false, schema: { type: string } }
+      responses:
+        "303":
+          description: Redirect to the app, signed in on success.
+          headers:
+            Location:
+              required: true
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/invites/lookup:
+    post:
+      operationId: lookupInvite
+      description: Distributed only, when Google sign-in is configured. Resolve a pending invite from its link's `#t=` secret. The secret travels in the body so it stays out of request logs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteToken"
+      responses:
+        "200":
+          description: Pending invite.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [email, expiresAt]
+                properties:
+                  email:
+                    type: string
+                  expiresAt:
+                    type: integer
+                    format: int64
+        "400":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/invites/google:
+    post:
+      operationId: startInviteGoogleSignIn
+      description: Distributed only, when Google sign-in is configured. Start Google sign-in that accepts a pending invite. The callback creates the account only when Google reports a verified email equal to the invite's; the invite is used once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteToken"
+      responses:
+        "200":
+          $ref: "#/components/responses/GoogleAuthorization"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v2/auth/logout:
     post:
       security:
@@ -343,6 +445,99 @@ paths:
       responses:
         "204":
           description: Enabled.
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/admin/invites:
+    get:
+      security:
+        - browserSession: []
+      operationId: listInvites
+      description: Every invite, newest first. Never exposes invite secrets. Admin browser session only.
+      responses:
+        "200":
+          description: Invites.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [invites]
+                properties:
+                  invites:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Invite"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      security:
+        - browserSession: []
+      operationId: createInvite
+      description: Invite an email to sign up with Google. Replaces the email's pending invite. The link is returned only here and expires after 48 hours. 409 when Google sign-in is not configured or an account already uses the email. Admin browser session only.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email]
+              properties:
+                email:
+                  type: string
+      responses:
+        "201":
+          description: Created invite and its one-time link.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [invite, url]
+                properties:
+                  invite:
+                    $ref: "#/components/schemas/Invite"
+                  url:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/admin/invites/{inviteId}:
+    parameters:
+      - name: inviteId
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      security:
+        - browserSession: []
+      operationId: revokeInvite
+      description: Revoke a pending invite. Used or revoked invites are 404. Admin browser session only.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Revoked.
         "401":
           $ref: "#/components/responses/Problem"
         "403":
@@ -1250,7 +1445,47 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/Problem"
+    GoogleAuthorization:
+      description: Google authorization to navigate to.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [authorizeUrl]
+            properties:
+              authorizeUrl:
+                type: string
   schemas:
+    InviteToken:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: The secret from the invite link's `#t=` fragment.
+    Invite:
+      type: object
+      additionalProperties: false
+      required: [id, email, status, createdAt, expiresAt, usedBy]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        status:
+          type: string
+          enum: [pending, used, expired, revoked]
+        createdAt:
+          type: integer
+          format: int64
+        expiresAt:
+          type: integer
+          format: int64
+        usedBy:
+          type: [string, "null"]
+          description: Username of the account the invite created; null until used or after that account is deleted.
     AccountUser:
       type: object
       additionalProperties: false

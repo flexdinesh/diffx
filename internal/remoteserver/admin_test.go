@@ -62,7 +62,7 @@ func TestAdminRoutesRequireAdminBrowserSession(t *testing.T) {
 	for _, test := range []struct {
 		method, path string
 		want         int
-	}{{"POST", "/api/v2/admin/users/missing/disable", 404}, {"GET", "/api/v2/admin/users/" + memberID + "/disable", 405}, {"POST", "/api/v2/admin/users/" + memberID + "/promote", 404}, {"POST", "/api/v2/admin/invites", 404}} {
+	}{{"POST", "/api/v2/admin/users/missing/disable", 404}, {"GET", "/api/v2/admin/users/" + memberID + "/disable", 405}, {"POST", "/api/v2/admin/users/" + memberID + "/promote", 404}, {"POST", "/api/v2/admin/settings", 404}} {
 		if w := identityRequest(handler, test.method, test.path, "", cookie, csrf, ""); w.Code != test.want {
 			t.Fatalf("%s %s: %d want %d", test.method, test.path, w.Code, test.want)
 		}

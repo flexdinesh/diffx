@@ -96,3 +96,45 @@ func TestTokenPolicy(t *testing.T) {
 		t.Fatalf("max expiry rejected: %v", err)
 	}
 }
+
+func TestUsernameFromEmailAlwaysValid(t *testing.T) {
+	for email, want := range map[string]string{
+		"Alice.Smith@example.com":                 "alice.smith",
+		"a@example.com":                           "a-user",
+		"_.@example.com":                          "user",
+		"bob+diffx@example.com":                   "bobdiffx",
+		"x_y-@example.com":                        "x_y",
+		strings.Repeat("long", 12) + "@gmail.com": strings.Repeat("long", 8),
+	} {
+		got := usernameFromEmail(email)
+		if got != want {
+			t.Fatalf("%s: %q want %q", email, got, want)
+		}
+		if _, err := canonicalUsername(got); err != nil {
+			t.Fatalf("%s derived invalid username %q: %v", email, got, err)
+		}
+	}
+}
+
+func TestEmailPolicyAndInviteStatus(t *testing.T) {
+	for _, input := range []string{"", "alice", "alice@", "@example.com", "alice@example", "a b@example.com", "a@b@example.com"} {
+		if _, err := canonicalEmail(input); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("accepted %q", input)
+		}
+	}
+	if email, err := canonicalEmail("  Alice@Example.COM "); err != nil || email != "alice@example.com" {
+		t.Fatalf("canonical email: %q %v", email, err)
+	}
+	now := time.Unix(1700000000, 0)
+	used, revoked := now, now
+	for invite, want := range map[*Invite]InviteStatus{
+		{ExpiresAt: now.Add(time.Second)}:                    InvitePending,
+		{ExpiresAt: now}:                                     InviteExpired,
+		{ExpiresAt: now.Add(time.Hour), UsedAt: &used}:       InviteUsed,
+		{ExpiresAt: now.Add(time.Hour), RevokedAt: &revoked}: InviteRevoked,
+	} {
+		if got := invite.Status(now); got != want {
+			t.Fatalf("status %+v: %s want %s", invite, got, want)
+		}
+	}
+}

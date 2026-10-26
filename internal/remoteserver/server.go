@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/contextservice"
+	"github.com/flexdinesh/diffx/internal/google"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/ingestionqueue"
@@ -30,6 +31,28 @@ type Settings struct {
 	InsecureCookies bool
 	RetentionDays   int
 	GitHub          *GitHubSettings
+	// Google enables Google sign-in and invites; it requires PublicURL.
+	Google *GoogleSettings
+}
+
+type GoogleSettings struct {
+	ClientID     string
+	ClientSecret string
+	// authorizeURL and tokenURL replace Google in tests.
+	authorizeURL, tokenURL string
+}
+
+// composeIdentity composes account rules with Google sign-in when configured.
+func composeIdentity(store *reviewstore.Store, settings Settings) *identityservice.Service {
+	if settings.Google == nil {
+		return identityservice.New(store)
+	}
+	var options []google.Option
+	if settings.Google.tokenURL != "" {
+		options = append(options, google.WithEndpoints(settings.Google.authorizeURL, settings.Google.tokenURL))
+	}
+	redirect := strings.TrimSuffix(settings.PublicURL, "/") + googleCallback
+	return identityservice.New(store, identityservice.WithGoogle(google.New(settings.Google.ClientID, settings.Google.ClientSecret, redirect, options...)))
 }
 
 type application struct {
@@ -119,7 +142,7 @@ func MultiHandler(ctx context.Context, store *reviewstore.Store, assets fs.FS, o
 // compose returns the public handler and, when GitHub is configured, the
 // internal fetcher handler.
 func compose(ctx context.Context, store *reviewstore.Store, assets fs.FS, settings Settings) (http.Handler, http.Handler, func() error, []serverapp.Task, error) {
-	identity := identityservice.New(store)
+	identity := composeIdentity(store, settings)
 	github, err := composeGitHub(store, settings.GitHub)
 	if err != nil {
 		return nil, nil, nil, nil, err

@@ -51,7 +51,7 @@ type bootstrapJSON struct {
 }
 
 func (remote *transport) bootstrap(w http.ResponseWriter, p principal) {
-	result := bootstrapJSON{Mode: "remote"}
+	result := bootstrapJSON{Mode: "remote", GoogleEnabled: remote.identity.GoogleEnabled()}
 	if p.session != nil {
 		result.User = &accountJSON{p.account.ID, p.account.Username, p.account.Admin}
 		result.CSRFToken = &p.session.CSRFToken
@@ -84,13 +84,18 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if remote.githubPublic(w, r) {
 		return
 	}
+	if r.URL.Path == googleCallback {
+		remote.googleCallbackRoute(w, r)
+		return
+	}
 	if !serverapp.SameOrigin(r) {
 		problem(w, 403, "Cross-origin access denied")
 		return
 	}
 	// Login remains available with an expired browser cookie. Explicit bearer
 	// credentials are always validated; never silently fall back to cookies.
-	authForm := r.URL.Path == "/api/v2/auth/login" || r.URL.Path == "/api/v2/setup"
+	authForm := r.URL.Path == "/api/v2/auth/login" || r.URL.Path == "/api/v2/setup" || r.URL.Path == "/api/v2/auth/google" ||
+		r.URL.Path == "/api/v2/invites/lookup" || r.URL.Path == "/api/v2/invites/google"
 	public := r.URL.Path == "/api/v2/bootstrap" || (!strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/mcp") && !strings.HasPrefix(r.URL.Path, "/control/"))
 	p, err := remote.authenticate(r)
 	if errors.Is(err, identityservice.ErrAuthentication) && r.Header.Get("Authorization") == "" && (public || authForm) {
@@ -256,8 +261,9 @@ func (remote *transport) static(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// auth serves the credential forms: admin password login and one-time admin
-// setup. Both are bounded like login because each verifies a secret.
+// auth serves the credential forms: admin password login, one-time admin setup,
+// Google sign-in starts and invite lookups. All are bounded like login because
+// each verifies a secret or starts a sign-in.
 func (remote *transport) auth(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/api/v2/setup" && r.Method == http.MethodGet {
 		required, err := remote.identity.SetupRequired(r.Context())
@@ -285,6 +291,14 @@ func (remote *transport) auth(w http.ResponseWriter, r *http.Request) {
 	if !remote.limiter.allow(r.RemoteAddr) {
 		w.Header().Set("Retry-After", "60")
 		problem(w, 429, "Too many authentication attempts")
+		return
+	}
+	switch r.URL.Path {
+	case "/api/v2/auth/google", "/api/v2/invites/google":
+		remote.googleStart(w, r)
+		return
+	case "/api/v2/invites/lookup":
+		remote.inviteLookup(w, r)
 		return
 	}
 	var session identityservice.Session

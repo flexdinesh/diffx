@@ -56,6 +56,74 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v2/auth/google": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Distributed only, when Google sign-in is configured (otherwise 404). Start Google sign-in for an existing account. Sets an HttpOnly flow cookie binding the authorization to this browser; navigate to `authorizeUrl` within 10 minutes. */
+    post: operations["startGoogleSignIn"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/auth/google/callback": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Distributed only. Google redirects the browser here; the state and the flow cookie authenticate it, so it accepts cross-site navigation. Every outcome redirects to the app; failures add `?signin=` with `cancelled`, `no-account`, `invite-mismatch`, `invite-invalid` or `failed`. A Google account is identified by its subject, so a changed email keeps the account. */
+    get: operations["completeGoogleSignIn"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/invites/lookup": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Distributed only, when Google sign-in is configured. Resolve a pending invite from its link's `#t=` secret. The secret travels in the body so it stays out of request logs. */
+    post: operations["lookupInvite"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/invites/google": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Distributed only, when Google sign-in is configured. Start Google sign-in that accepts a pending invite. The callback creates the account only when Google reports a verified email equal to the invite's; the invite is used once. */
+    post: operations["startInviteGoogleSignIn"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v2/auth/logout": {
     parameters: {
       query?: never;
@@ -194,6 +262,43 @@ export interface paths {
     /** @description Allow sign-in again. Revoked sessions and tokens stay revoked. Admin browser session only. */
     post: operations["enableAdminUser"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/admin/invites": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Every invite, newest first. Never exposes invite secrets. Admin browser session only. */
+    get: operations["listInvites"];
+    put?: never;
+    /** @description Invite an email to sign up with Google. Replaces the email's pending invite. The link is returned only here and expires after 48 hours. 409 when Google sign-in is not configured or an account already uses the email. Admin browser session only. */
+    post: operations["createInvite"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/admin/invites/{inviteId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        inviteId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** @description Revoke a pending invite. Used or revoked invites are 404. Admin browser session only. */
+    delete: operations["revokeInvite"];
     options?: never;
     head?: never;
     patch?: never;
@@ -699,6 +804,22 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    InviteToken: {
+      /** @description The secret from the invite link's `#t=` fragment. */
+      token: string;
+    };
+    Invite: {
+      id: string;
+      email: string;
+      /** @enum {string} */
+      status: "pending" | "used" | "expired" | "revoked";
+      /** Format: int64 */
+      createdAt: number;
+      /** Format: int64 */
+      expiresAt: number;
+      /** @description Username of the account the invite created; null until used or after that account is deleted. */
+      usedBy: string | null;
+    };
     AccountUser: {
       id: string;
       username: string;
@@ -1214,6 +1335,17 @@ export interface components {
         "application/problem+json": components["schemas"]["Problem"];
       };
     };
+    /** @description Google authorization to navigate to. */
+    GoogleAuthorization: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        "application/json": {
+          authorizeUrl: string;
+        };
+      };
+    };
   };
   parameters: {
     /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
@@ -1337,6 +1469,106 @@ export interface operations {
       403: components["responses"]["Problem"];
       404: components["responses"]["Problem"];
       409: components["responses"]["Problem"];
+      429: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  startGoogleSignIn: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": Record<string, never>;
+      };
+    };
+    responses: {
+      200: components["responses"]["GoogleAuthorization"];
+      400: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      429: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  completeGoogleSignIn: {
+    parameters: {
+      query?: {
+        state?: string;
+        code?: string;
+        error?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Redirect to the app, signed in on success. */
+      303: {
+        headers: {
+          Location: string;
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  lookupInvite: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InviteToken"];
+      };
+    };
+    responses: {
+      /** @description Pending invite. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            email: string;
+            /** Format: int64 */
+            expiresAt: number;
+          };
+        };
+      };
+      400: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      429: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  startInviteGoogleSignIn: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InviteToken"];
+      };
+    };
+    responses: {
+      200: components["responses"]["GoogleAuthorization"];
+      400: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
       429: components["responses"]["Problem"];
       default: components["responses"]["Problem"];
     };
@@ -1590,6 +1822,95 @@ export interface operations {
     requestBody?: never;
     responses: {
       /** @description Enabled. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  listInvites: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Invites. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            invites: components["schemas"]["Invite"][];
+          };
+        };
+      };
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  createInvite: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          email: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Created invite and its one-time link. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            invite: components["schemas"]["Invite"];
+            url: string;
+          };
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  revokeInvite: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path: {
+        inviteId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked. */
       204: {
         headers: {
           [name: string]: unknown;

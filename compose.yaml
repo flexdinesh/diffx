@@ -13,6 +13,10 @@ services:
       # Until the admin exists, each start logs a one-time setup link on this
       # origin; no default credentials are generated.
       DIFFX_SERVER_PUBLIC_URL: "${DIFFX_SERVER_PUBLIC_URL:-}"
+      # Google sign-in for invited accounts: set both (empty runs admin-only).
+      # Needs DIFFX_SERVER_PUBLIC_URL for the callback.
+      DIFFX_SERVER_GOOGLE_CLIENT_ID: "${DIFFX_SERVER_GOOGLE_CLIENT_ID:-}"
+      DIFFX_SERVER_GOOGLE_CLIENT_SECRET: "${DIFFX_SERVER_GOOGLE_CLIENT_SECRET:-}"
       # Loopback HTTP development only. Use false behind production HTTPS.
       DIFFX_SERVER_INSECURE_COOKIES: "${DIFFX_SERVER_INSECURE_COOKIES:-true}"
       # GitHub App integration: set all or none (empty disables it), then start

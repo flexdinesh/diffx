@@ -71,8 +71,11 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 		return settings, false, fmt.Errorf("state must be a database path or memory")
 	}
 	values.PublicURL, values.InsecureCookies = settings.PublicURL, settings.InsecureCookies
-	if err := values.ValidatePublicURL(); err != nil {
+	if err := values.ValidateIdentity(); err != nil {
 		return settings, false, err
+	}
+	if values.Google.Enabled() {
+		settings.Google = &remoteserver.GoogleSettings{ClientID: values.Google.ClientID, ClientSecret: values.Google.ClientSecret}
 	}
 	if _, err := remoteserver.Retention(settings.RetentionDays); err != nil {
 		return settings, false, err
