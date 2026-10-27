@@ -7,7 +7,8 @@
     "build": "vite build",
     "dev": "vite",
     "test": "pnpm test:unit && pnpm test:browser",
-    "test:unit": "node --test test/*.test.ts",
+    "test:unit": "node --test test/*.test.ts && pnpm test:dom",
+    "test:dom": "node --import tsx --import ./test/dom/setup.ts --test test/dom/*.test.ts",
     "test:browser": "playwright test",
     "test:browser:install": "playwright install chromium",
     "typecheck": "tsc --noEmit -p tsconfig.json"
@@ -30,11 +31,15 @@
   "devDependencies": {
     "@playwright/test": "catalog:",
     "@tailwindcss/vite": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@types/jsdom": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "jsdom": "catalog:",
     "tailwindcss": "catalog:",
+    "tsx": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "webmcp-types": "catalog:"

@@ -52,50 +52,6 @@ test("local mode has no account UI and settings resolves to reviews", async ({
   ).toHaveCount(0);
 });
 
-test("bootstrap failure stays an error and retries without inferring local mode", async ({
-  page,
-}) => {
-  let failed = true;
-  await page.route("**/api/v2/bootstrap", (route) =>
-    route.fulfill(
-      failed
-        ? { status: 503, json: { detail: "Identity unavailable" } }
-        : { json: bootstrap(false) },
-    ),
-  );
-  await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "Cannot load diffx" }),
-  ).toBeVisible();
-  await expect(page.getByText("Identity unavailable")).toBeVisible();
-  failed = false;
-  await page.getByRole("button", { name: "Retry" }).click();
-  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
-});
-
-test("members get no password form; invalid admin login preserves recovery", async ({
-  page,
-}) => {
-  await remote(page, false);
-  await page.route("**/api/v2/auth/login", (route) =>
-    route.fulfill({
-      status: 401,
-      json: { detail: "Authentication required" },
-    }),
-  );
-  await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
-  await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
-  await page.goto("/admin/login");
-  await page.getByLabel("Username", { exact: true }).fill("alice");
-  await page.getByLabel("Password", { exact: true }).fill("incorrect-password");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("Authentication required");
-  await expect(page.getByLabel("Username", { exact: true })).toHaveValue(
-    "alice",
-  );
-});
-
 test("the setup link creates the admin once and keeps its secret out of the URL", async ({
   page,
 }) => {
@@ -127,25 +83,6 @@ test("the setup link creates the admin once and keeps its secret out of the URL"
   await expect(
     page.getByText("No tokens yet.", { exact: false }),
   ).toBeVisible();
-});
-
-test("a completed setup points to admin sign in", async ({ page }) => {
-  await remote(page, false);
-  await page.route("**/api/v2/setup", (route) =>
-    route.fulfill({ json: { required: false } }),
-  );
-  await page.goto("/setup#t=stale-secret");
-  await expect(
-    page.getByRole("link", { name: "Sign in as admin" }),
-  ).toHaveAttribute("href", "/admin/login");
-  await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
-});
-
-test("member settings have no password section", async ({ page }) => {
-  await remote(page);
-  await page.goto("/settings");
-  await expect(page.getByRole("heading", { name: "API tokens" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Password" })).toHaveCount(0);
 });
 
 test("collector token secret appears once, with owner CSRF and revocation", async ({
@@ -277,91 +214,6 @@ test("token form chooses access and expiry from labeled selects", async ({
   await page.getByRole("button", { name: "Create token", exact: true }).click();
   await expect(page.getByRole("button", { name: "Copy token" })).toBeVisible();
   expect(body).toEqual({ name: "Agent", purpose: "api", expiresInDays: 365 });
-});
-
-test("token list load failure retries with the shared Retry action", async ({
-  page,
-}) => {
-  await remote(page);
-  let failed = true;
-  await page.route("**/api/v2/account/tokens", (route) =>
-    route.fulfill(
-      failed
-        ? { status: 503, json: { detail: "Tokens unavailable" } }
-        : { json: { tokens: [] } },
-    ),
-  );
-  await page.goto("/settings");
-  await expect(page.getByRole("alert")).toContainText("Tokens unavailable");
-  await expect(page.getByLabel("Token name")).toHaveCount(0);
-  failed = false;
-  await page.getByRole("button", { name: "Retry", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveCount(0);
-  await expect(page.getByLabel("Token name")).toBeVisible();
-});
-
-test("expired account requests remove workspace identity and return to sign in", async ({
-  page,
-}) => {
-  await remote(page);
-  await page.route("**/api/v2/account/tokens", (route) =>
-    route.fulfill({ status: 401, json: { detail: "Session expired" } }),
-  );
-  await page.goto("/settings");
-  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Account settings" }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Account settings" }),
-  ).toHaveCount(0);
-});
-
-test("password change sends CSRF and signs out after revoking browser sessions", async ({
-  page,
-}) => {
-  await remote(page, true, true);
-  await page.route("**/api/v2/account/password", (route) => {
-    expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
-    expect(route.request().postDataJSON()).toEqual({
-      currentPassword: "old-password-123",
-      newPassword: "new-password-456",
-    });
-    return route.fulfill({ status: 204 });
-  });
-  await page.goto("/settings");
-  await page
-    .getByLabel("Current password", { exact: true })
-    .fill("old-password-123");
-  await page
-    .getByLabel("New password", { exact: true })
-    .fill("new-password-456");
-  await page
-    .getByRole("button", { name: "Change password and sign out" })
-    .click();
-  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
-  await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
-});
-
-test("logout failure stays recoverable and success disposes account UI", async ({
-  page,
-}) => {
-  await remote(page);
-  let failed = true;
-  await page.route("**/api/v2/auth/logout", (route) => {
-    expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
-    return route.fulfill(
-      failed
-        ? { status: 503, json: { detail: "Logout unavailable" } }
-        : { status: 204 },
-    );
-  });
-  await page.goto("/settings");
-  await page.getByRole("button", { name: "Sign out", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("Logout unavailable");
-  failed = false;
-  await page.getByRole("button", { name: "Sign out", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 });
 
 test("GitHub settings stay absent until the server configures the integration", async ({
@@ -558,21 +410,6 @@ test("Google sign-in starts without CSRF and reports the callback outcome once",
   expect(page.url()).toBe("https://accounts.google.test/auth?state=s");
 });
 
-test("without Google configuration sign in offers no Google action", async ({
-  page,
-}) => {
-  await remote(page, false);
-  await page.goto("/?signin=cancelled");
-  await expect(
-    page.getByText("Sign-in is not available on this server yet.", {
-      exact: false,
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Continue with Google" }),
-  ).toHaveCount(0);
-});
-
 test("an invite link shows its email, hides its secret and starts Google sign-in with it", async ({
   page,
 }) => {
@@ -601,27 +438,6 @@ test("an invite link shows its email, hides its secret and starts Google sign-in
   await page.getByRole("button", { name: "Continue with Google" }).click();
   await expect(page.getByRole("heading", { name: "Google" })).toBeVisible();
   expect(started).toEqual({ token: "invite-secret" });
-});
-
-test("an unusable invite link says so without a Google action", async ({
-  page,
-}) => {
-  await remote(page, false, false, { googleEnabled: true });
-  await page.route("**/api/v2/invites/lookup", (route) =>
-    route.fulfill({
-      status: 404,
-      json: { detail: "Invite link is invalid, expired or already used" },
-    }),
-  );
-  await page.goto("/invite#t=used-secret");
-  await expect(
-    page.getByText("This invite link is invalid, expired or already used.", {
-      exact: false,
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Continue with Google" }),
-  ).toHaveCount(0);
 });
 
 test("members see their Google email and cannot open the admin page", async ({

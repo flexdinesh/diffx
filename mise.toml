@@ -181,19 +181,12 @@ run = "pnpm test"
 description = "Run release-tool tests"
 run = "pnpm test:release"
 
-# Suites after the build are independent; run them concurrently.
 [tasks.check]
-description = "Run all repository checks and test suites"
-run = [
-  { task = "check:ci" },
-  { tasks = [
-    "test:contracts:rules",
-    "docs:check",
-    "test:js",
-    "test:release",
-    "test:go",
-  ] },
-]
+description = "Run all repository checks, serialized across linked worktrees"
+shell = "bash -e -o pipefail -c"
+# Only bounded runner compilation precedes admission. The entire check pipeline
+# runs under the Git-common-directory lock, independently for every invocation.
+run = "GOMAXPROCS=2 go build -p 2 -o dist/check-runner ./tools/check-runner && exec dist/check-runner check"
 
 [tasks."test:contracts"]
 description = "Build and run architecture, boundary, shared-rule, Go and real HTTP contracts"
@@ -225,17 +218,8 @@ run = [
 # Race tests run the same Go suite with the detector, replacing test:go.
 [tasks."check:push"]
 description = "Full pre-push checks, race tests, and generated-file consistency"
-run = [
-  { task = "check:ci" },
-  { tasks = [
-    "test:contracts:rules",
-    "docs:check",
-    "test:js",
-    "test:release",
-    "test:race",
-  ] },
-  { task = "check:generated" },
-]
+shell = "bash -e -o pipefail -c"
+run = "GOMAXPROCS=2 go build -p 2 -o dist/check-runner ./tools/check-runner && exec dist/check-runner check:push"
 
 [tasks."release:publish"]
 description = "Publish the checked-out release tag with GoReleaser"

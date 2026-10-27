@@ -779,9 +779,13 @@ Pierre's line-surface mixes/inset strokes. Changes to exceptions need a concrete
 role, rationale and contract test in the same PR. Do not exempt entire
 components.
 
-Gallery goldens (`apps/web/test/gallery`) are exact Chromium/Linux screenshots
-of every variant in both themes, plus a 390px touch check. They run with the
-local browser suite; an intended visual change regenerates them in the same PR.
+The development gallery remains available for reviewing variants and themes.
+Exhaustive gallery browser tests and screenshot goldens are not maintained.
+Use production component/hook DOM tests for behavior independent of layout;
+retain Chromium coverage for critical review journeys, real rendering, geometry,
+scrolling, selection, responsive behavior and focus. Full local checks keep these
+critical suites mandatory, with one Chromium worker and heavy phases serialized
+across linked worktrees.
 
 Static checks cannot prove responsive behavior, accessibility, visual hierarchy
 or correctness of styles assembled at runtime. Use existing browser tests and
