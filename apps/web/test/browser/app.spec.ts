@@ -951,6 +951,56 @@ test("reset reviewed clears file review marks and disables when empty", async ({
   await expect(reset).toBeDisabled();
 });
 
+test("marking a file reviewed mid-scroll shows the next file from its top", async ({
+  page,
+}) => {
+  // The file is taller than the viewer, so its next file starts out of view.
+  await page.setViewportSize({ width: 1280, height: 260 });
+  await page.goto("/");
+  await showDiff(page);
+  const path = "src/hooks/useClipboard.ts";
+  const next = "src/styles/theme.css";
+  const viewer = page.locator("#viewer");
+  const file = (name: string) =>
+    viewer.locator("diffs-container").filter({ hasText: name });
+  // Sticky headers always sit at the top, so measure whole files instead.
+  const top = async (name: string) => {
+    const [viewerBox, fileBox] = await Promise.all([
+      viewer.boundingBox(),
+      file(name).boundingBox(),
+    ]);
+    return viewerBox && fileBox
+      ? fileBox.y - viewerBox.y
+      : Number.POSITIVE_INFINITY;
+  };
+
+  await page.locator(`#file-tree [data-path="${path}"]`).click();
+  await expect
+    .poll(async () => Math.abs(await top(path)))
+    .toBeLessThanOrEqual(1);
+  await page.locator(".diff-code-view").evaluate((element) => {
+    element.scrollTop += 60;
+  });
+  expect(await top(path)).toBeLessThan(-50);
+  // A pointer click would first scroll the sticky toggle to its natural place.
+  await page
+    .getByRole("button", { name: `Mark ${path} reviewed` })
+    .evaluate((element) => {
+      if (element instanceof HTMLElement) element.click();
+    });
+  await expect(
+    page.getByRole("button", { name: `Mark ${path} unreviewed` }),
+  ).toBeVisible();
+  // The collapsed file keeps its header in place and the next file follows it.
+  await expect
+    .poll(async () => Math.abs(await top(path)))
+    .toBeLessThanOrEqual(1);
+  const collapsed = await file(path).boundingBox();
+  if (!collapsed) throw new Error("Missing collapsed file");
+  expect(await top(next)).toBeGreaterThanOrEqual(collapsed.height);
+  expect(await top(next)).toBeLessThan(collapsed.height + 20);
+});
+
 test("hide reviewed files filters the tree and diff together", async ({
   page,
 }) => {

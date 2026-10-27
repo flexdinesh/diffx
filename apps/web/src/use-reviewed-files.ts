@@ -94,13 +94,14 @@ export function useReviewedFiles(
     reload.current();
   }, [repository?.revision, key]);
 
+  // Resolves whether this toggle was applied.
   const toggleReviewed = useCallback(
     async (file: ChangedFile) => {
       const owner = requests.current;
       const currentRepository = latest.current.repository;
-      if (owner?.key !== key || currentRepository?.id !== diffId) return;
+      if (owner?.key !== key || currentRepository?.id !== diffId) return false;
       const request = owner.beginWrite(file.id);
-      if (!request) return;
+      if (!request) return false;
       const marked = latest.current.entries.get(file.id) === file.fingerprint;
       setPending((current) => new Set(current).add(file.id));
       setFailure(null);
@@ -130,7 +131,7 @@ export function useReviewedFiles(
                 signal: request.signal,
               },
             );
-        if (!request.isCurrent()) return;
+        if (!request.isCurrent()) return false;
         if (!result.response.ok)
           throw new Error(
             errorDetail(result.error, "Unable to update reviewed file"),
@@ -149,12 +150,14 @@ export function useReviewedFiles(
           else next.add(file.path);
           return next;
         });
+        return true;
       } catch (cause) {
         if (request.isCurrent())
           setFailure({
             kind: "write",
             message: errorDetail(cause, "Unable to update reviewed file"),
           });
+        return false;
       } finally {
         const current = request.isCurrent();
         request.finish();

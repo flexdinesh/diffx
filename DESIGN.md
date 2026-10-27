@@ -539,6 +539,8 @@ at `/design.html` (see `docs/development.md`).
   and Alt+J/K. Marking the file in view hides it at once and moves selection to
   its next visible neighbor. Empty results say “All files reviewed” with a
   “Show reviewed files” action; comment navigation to a hidden file shows them.
+  When shown, marking a file scrolled past its top keeps its collapsed header
+  at the viewport top, so the next file starts from its first line.
 - Navigating from the file list briefly pulses the destination file header with
   the accent for about one second. Reduced-motion mode uses static feedback that
   remains visible long enough to identify the destination without animation.

@@ -189,6 +189,7 @@ export function DiffWorkspace() {
     navigationTarget,
     commentNavigationTarget,
     navigateComment,
+    hideReviewed,
     viewer,
   } = useNavigation();
   const { isReviewed, toggleReviewed, pending } = useReviewedFilesState();
@@ -783,7 +784,29 @@ export function DiffWorkspace() {
                     aria-pressed={isReviewed(file)}
                     disabled={pending.has(file.id) || pending.has("*")}
                     aria-busy={pending.has(file.id)}
-                    onClick={() => toggleReviewed(file)}
+                    onClick={async () => {
+                      // Marking a file scrolled past its top collapses it above
+                      // the viewport; restore its header there so the next file
+                      // shows from its top. Hidden files hand off in navigation.
+                      const instance = viewer.current?.getInstance();
+                      const top = instance?.getTopForItem(file.path);
+                      const scrolledInto =
+                        !hideReviewed &&
+                        !isReviewed(file) &&
+                        top !== undefined &&
+                        instance !== undefined &&
+                        instance.getScrollTop() > top;
+                      if (!(await toggleReviewed(file)) || !scrolledInto)
+                        return;
+                      requestAnimationFrame(() => {
+                        viewer.current?.scrollTo({
+                          type: "item",
+                          id: file.path,
+                          align: "start",
+                          behavior: "instant",
+                        });
+                      });
+                    }}
                   >
                     <svg
                       className="review-checkbox"
