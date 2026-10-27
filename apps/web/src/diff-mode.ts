@@ -1,6 +1,7 @@
-import type { ApiContext, ApiRepositoryDiff } from "@diffx/api";
+import type { ApiContext, ApiDiffMode, ApiRepositoryDiff } from "@diffx/api";
 import { contextIsPiped } from "./project-picker.ts";
-export type DiffMode = ApiRepositoryDiff["mode"];
+/** A review scope. Commit diffs are a read-only view, never a scope. */
+export type DiffMode = ApiDiffMode;
 export type ComparisonKind = NonNullable<ApiRepositoryDiff["comparisonKind"]>;
 
 export function isDiffMode(value: unknown): value is DiffMode {
@@ -47,6 +48,18 @@ export function defaultScope(context: ApiContext): DiffMode {
   return find("committed") ?? uncommitted ?? scopes[0] ?? "all";
 }
 
+/** The scope holding the whole branch, preferring committed changes. */
+export function branchChanges(context: ApiContext) {
+  const entries = context.capabilities.diff.scopes.values.map((scope) => ({
+    scope,
+    kind: comparisonKind(context, scope),
+  }));
+  return (
+    entries.find(({ kind }) => kind === "committed") ??
+    entries.find(({ kind }) => kind === "combined")
+  );
+}
+
 export function selectedScope(
   context: ApiContext,
   explicit: string | null,
@@ -73,6 +86,8 @@ export function comparisonLabel(kind: ComparisonKind) {
       return "Branch changes";
     case "patch":
       return "Piped patch";
+    case "commit":
+      return "Commits";
     default:
       return "Uncommitted";
   }
@@ -87,6 +102,7 @@ export function emptyComparison(context: ApiContext, scope: DiffMode) {
     committed: "No branch changes",
     combined: "No net combined changes",
     patch: "No file changes in this input",
+    commit: "No file changes in this commit",
   };
   const otherChanges =
     context.scopeSummaries?.filter(

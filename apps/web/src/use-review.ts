@@ -6,6 +6,7 @@ import {
   type ApiRepositoryDiff as RepositoryDiff,
 } from "@diffx/api";
 import type { ReviewComment } from "./review-comments.ts";
+import { isDiffMode } from "./diff-mode.ts";
 import {
   type Dispatch,
   type SetStateAction,
@@ -211,7 +212,9 @@ export function useReview(
         setFeedback("Finish or cancel your current draft first.");
         return;
       }
-      if (!repository) return;
+      // Commit views are read-only; comments belong to review scopes.
+      if (!repository || !isDiffMode(repository.mode)) return;
+      const scope = repository.mode;
       const context =
         diff && range
           ? commentContext(diff, range)
@@ -234,7 +237,7 @@ export function useReview(
         diffId: repository.id,
         versionId: repository.versionId,
         path: file.path,
-        scope: repository.mode,
+        scope,
         fingerprint: file.fingerprint,
         ...context,
         body: "",

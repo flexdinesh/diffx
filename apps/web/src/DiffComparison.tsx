@@ -17,16 +17,17 @@ import { useSession } from "./session-context.tsx";
 
 export function DiffComparison() {
   const session = useSession();
-  const { mode, repository, scopeAvailable } = useDiffSource();
-  if (!scopeAvailable) return null;
+  const { mode, repository, scopeAvailable, commit } = useDiffSource();
+  if (commit ? !commit.summary : !scopeAvailable) return null;
   const comparison = diffComparison(
     session,
     mode,
     repository?.head,
     repository?.comparisonKind,
+    commit?.summary,
   );
   return (
-    <Popover key={mode}>
+    <Popover key={commit?.oid ?? mode}>
       <PopoverTrigger
         aria-label={`Diff comparison: ${comparison.summary}`}
         render={

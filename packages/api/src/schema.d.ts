@@ -637,6 +637,82 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v2/contexts/{contextId}/commits": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+      };
+      cookie?: never;
+    };
+    /** @description Captured branch commits, oldest first. Empty unless the observation captured a branch comparison's commits. Commit views are read-only; comments and review marks belong to comparison scopes. */
+    get: operations["listCommitsV2"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/contexts/{contextId}/commits/{oid}/diff": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        oid: components["parameters"]["CommitOid"];
+      };
+      cookie?: never;
+    };
+    get: operations["getCommitDiffV2"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/contexts/{contextId}/commits/{oid}/files/{fileId}/patch": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        oid: components["parameters"]["CommitOid"];
+      };
+      cookie?: never;
+    };
+    get: operations["getCommitFilePatchV2"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/contexts/{contextId}/commits/{oid}/files/{fileId}/contents": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        oid: components["parameters"]["CommitOid"];
+      };
+      cookie?: never;
+    };
+    get: operations["getCommitFileContentsV2"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v2/contexts/{contextId}/comments": {
     parameters: {
       query?: never;
@@ -1008,6 +1084,49 @@ export interface components {
         [key: string]: components["schemas"]["FilePatch"];
       };
     };
+    Commit: {
+      oid: string;
+      /** @description Parent commits; merge commits have several and no captured diff. */
+      parents: string[];
+      /** @description Stable Git patch ID; equal across a rebase that keeps the commit's changes. Absent for merges and patches too large to identify. */
+      patchId?: string;
+      subject: string;
+      /** @description Commit message after the subject, as plain text. */
+      body: string;
+      authorName: string;
+      /**
+       * Format: int64
+       * @description Unix milliseconds.
+       */
+      authoredAt: number;
+      /**
+       * Format: int64
+       * @description Unix milliseconds.
+       */
+      committedAt: number;
+    };
+    IngestionCommit: components["schemas"]["Commit"] & {
+      snapshot?: components["schemas"]["RepositoryDiff"];
+      /** @description File previews keyed by snapshot file ID. */
+      patches?: {
+        [key: string]: components["schemas"]["FilePatch"];
+      };
+    };
+    CommitSummary: components["schemas"]["Commit"] & {
+      merge: boolean;
+      fileCount: number;
+      additions: number;
+      deletions: number;
+    };
+    CommitList: {
+      commits: components["schemas"]["CommitSummary"][];
+      /** @description Older commits of the range that were not captured. */
+      omitted: number;
+    };
+    CommitRange: {
+      count: number;
+      omitted: number;
+    };
     IngestionJob: {
       id: string;
       submissionId: string;
@@ -1029,6 +1148,10 @@ export interface components {
       contentHash?: string;
       metadata: components["schemas"]["ObservationMetadata"];
       scopes: components["schemas"]["IngestionScope"][];
+      /** @description Optional. A branch comparison's newest commits of merge base..HEAD, oldest first, ending at the captured HEAD. Install the server before collectors that send commits. */
+      commits?: components["schemas"]["IngestionCommit"][];
+      /** @description Commits in merge base..HEAD, including those beyond the captured 100. Required with commits. */
+      commitsTotal?: number;
     };
     ContextPage: {
       contexts: components["schemas"]["Context"][];
@@ -1066,6 +1189,8 @@ export interface components {
       lastChangedAt: number;
       /** @description Captured comparisons and stored file counts, independent of live checkout availability. */
       scopeSummaries?: components["schemas"]["ScopeSummary"][];
+      /** @description Captured branch commits. Absent when none were captured. */
+      commits?: components["schemas"]["CommitRange"];
       /** @description Distinct changed paths across all captured scopes, independent of the selected scope. Null when change metadata is unknown. */
       changedFileCount: number | null;
       /** Format: int64 */
@@ -1097,6 +1222,17 @@ export interface components {
     };
     /** @enum {string} */
     DiffMode: "all" | "staged" | "unstaged" | "uncommitted" | "committed";
+    /**
+     * @description A review scope, or `commit` for a captured commit's own diff, which is never a review scope.
+     * @enum {string}
+     */
+    DiffViewMode:
+      | "all"
+      | "staged"
+      | "unstaged"
+      | "uncommitted"
+      | "committed"
+      | "commit";
     /** @enum {string} */
     ComparisonKind:
       | "combined"
@@ -1104,7 +1240,8 @@ export interface components {
       | "staged"
       | "unstaged"
       | "committed"
-      | "patch";
+      | "patch"
+      | "commit";
     ScopeSummary: {
       scope: components["schemas"]["DiffMode"];
       comparisonKind: components["schemas"]["ComparisonKind"];
@@ -1166,7 +1303,7 @@ export interface components {
       name: string;
       branch: string;
       head: string | null;
-      mode: components["schemas"]["DiffMode"];
+      mode: components["schemas"]["DiffViewMode"];
       comparisonKind?: components["schemas"]["ComparisonKind"];
       files: components["schemas"]["ChangedFile"][];
       revision: string;
@@ -1355,6 +1492,7 @@ export interface components {
     UserId: string;
     ContextId: string;
     Scope: components["schemas"]["DiffMode"];
+    CommitOid: string;
     DiffId: string;
     VersionId: string;
     VersionIdPath: string;
@@ -2511,6 +2649,107 @@ export interface operations {
     requestBody?: never;
     responses: {
       /** @description Complete before and after contents. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FileContents"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  listCommitsV2: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Captured commits. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CommitList"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  getCommitDiffV2: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        oid: components["parameters"]["CommitOid"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The commit's diff against its first parent. Merge commits have none. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RepositoryDiff"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  getCommitFilePatchV2: {
+    parameters: {
+      query: {
+        fileVersion: components["parameters"]["FileVersion"];
+      };
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        oid: components["parameters"]["CommitOid"];
+        fileId: components["parameters"]["FileId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description File patch within the commit. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FilePatch"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  getCommitFileContentsV2: {
+    parameters: {
+      query: {
+        fileVersion: components["parameters"]["FileVersion"];
+      };
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        oid: components["parameters"]["CommitOid"];
+        fileId: components["parameters"]["FileId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Complete contents before and after the commit. */
       200: {
         headers: {
           [name: string]: unknown;

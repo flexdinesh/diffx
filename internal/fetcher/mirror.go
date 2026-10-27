@@ -15,6 +15,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/diffsource"
 	"github.com/flexdinesh/diffx/internal/fetchprotocol"
 	"github.com/flexdinesh/diffx/internal/ingestion"
+	"github.com/flexdinesh/diffx/internal/review"
 )
 
 // remote resolves a leased repository's fetch URL and the only Git transport
@@ -174,21 +175,48 @@ func (repository mirror) verify(ctx context.Context, job fetchprotocol.Job) erro
 	return nil
 }
 
-// prefetch downloads only blobs on either side of the pull request diff, so
-// offline collection can read every patch and full file contents.
+// prefetch downloads only blobs on either side of the pull request diff and
+// of each captured commit's own diff, so offline collection can read every
+// patch and full file contents.
 func (repository mirror) prefetch(ctx context.Context, job fetchprotocol.Job) error {
-	raw, err := repository.git(ctx, false, "", "merge-base", job.BaseSHA, job.HeadSHA)
+	mergeBase, err := repository.git(ctx, false, "", "merge-base", job.BaseSHA, job.HeadSHA)
 	if err != nil {
 		return fmt.Errorf("find merge base: %w", err)
 	}
+	mergeBase = strings.TrimSpace(mergeBase)
 	// Without rename detection both sides of every change are listed.
-	raw, err = repository.git(ctx, false, "", "diff-tree", "-r", "--raw", "--no-abbrev", "--no-renames", "-z", strings.TrimSpace(raw), job.HeadSHA)
+	raw, err := repository.git(ctx, false, "", "diff-tree", "-r", "--raw", "--no-abbrev", "--no-renames", "-z", mergeBase, job.HeadSHA)
 	if err != nil {
 		return err
 	}
 	blobs, err := changedBlobs(raw)
 	if err != nil {
 		return err
+	}
+	// Collection captures the newest commits; merges carry no diff.
+	commits, err := repository.git(ctx, false, "", "rev-list", "--no-merges", fmt.Sprintf("--max-count=%d", review.MaxCommits), mergeBase+".."+job.HeadSHA, "--")
+	if err != nil {
+		return fmt.Errorf("list commits: %w", err)
+	}
+	seen := make(map[string]bool, len(blobs))
+	for _, blob := range blobs {
+		seen[blob] = true
+	}
+	for _, commit := range strings.Fields(commits) {
+		raw, err := repository.git(ctx, false, "", "diff-tree", "-r", "--raw", "--no-abbrev", "--no-renames", "--no-commit-id", "--root", "-z", commit)
+		if err != nil {
+			return err
+		}
+		changed, err := changedBlobs(raw)
+		if err != nil {
+			return err
+		}
+		for _, blob := range changed {
+			if !seen[blob] {
+				seen[blob] = true
+				blobs = append(blobs, blob)
+			}
+		}
 	}
 	missing, err := repository.missing(ctx, blobs)
 	if err != nil || len(missing) == 0 {

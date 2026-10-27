@@ -342,6 +342,24 @@ such detail into a token. New layout spacing must use the scale.
   “Show description” disclosure, collapsed by default and persisted per
   browser. The description is `MarkdownText`, bounded by `--reading-width`, and
   scrolls within the banner rather than pushing the diff away.
+- Commits is a read-only lens over a branch's captured commits, never a review
+  scope. The comparison menu lists it last, after a separator, with a count
+  badge. A toolbar subcontrol (its own row below 768px, like the Uncommitted
+  segments) holds outline-muted “Older commit” / “Newer commit” icon buttons
+  (Alt+[ / Alt+], disabled at either end) around an outline-muted `ui/combobox`
+  trigger: muted mono short SHA, subject, muted `n/total`. Rows show the short
+  SHA, subject, mono green/red +/− (or “Merge commit”) and age, oldest first;
+  the filter matches subject, author and SHA prefix, and a muted footer counts
+  older commits that were not captured. Below the toolbar, a `--panel` banner
+  in the pull request pattern shows a commit icon, muted mono SHA, semibold
+  subject, “Merge commit” status `Badge` for merges, author and age, with a
+  “Show message” disclosure: plain preformatted text bounded by
+  `--reading-width`, scrolling within the banner. File headers replace Reviewed
+  and file comments with an outline-muted “Open in Branch changes” action
+  (“Open” below 768px); line selection, hide-reviewed and reviewed progress are
+  absent. Merge commits and commits missing from the snapshot keep their
+  selection and explain themselves in the empty state with a “View Branch
+  changes” action. The footer reads `abc1234^ → abc1234`.
 - A newer head for the viewed stream shows a one-line `--accent-bg` notice below
   the header with an outline-muted “View latest” action. Never swap the open review.
 - Unopened arrivals are marked only by the column's and rail's accent dots and
@@ -657,7 +675,7 @@ Do not add motion for decoration. New animation must honor
 - Use 1012px for drawer navigation/tighter gutters and 768px for compact mobile
   chrome. Synchronize drawer behavior with `use-sidebar.ts`.
 - The compact comparison menu offers only captured choices: Uncommitted,
-  Branch changes, Combined, or Piped patch. Selection closes the menu.
+  Branch changes, Combined, Piped patch, or Commits. Selection closes the menu.
   Uncommitted exposes All / Staged / Unstaged in that semantic order when
   captured. The footer describes the selected comparison's captured baseline.
   An unavailable URL scope remains selected with an explanation and the

@@ -134,6 +134,111 @@ test("Local workspace collection implements the API contract", async (t) => {
   assert.deepEqual(collection.data?.failures, []);
 });
 
+test("Captured branch commits implement the API contract", async (t) => {
+  const home = mkdtempSync(join(tmpdir(), "diffx-commits-"));
+  const root = join(home, "repository");
+  mkdirSync(root, { recursive: true });
+  const git = (...args: string[]) =>
+    execFileSync(
+      "git",
+      [
+        "-C",
+        root,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        ...args,
+      ],
+      { stdio: "ignore" },
+    );
+  git("init", "-q", "--initial-branch=main");
+  writeFileSync(join(root, "file.txt"), "before\n");
+  git("add", ".");
+  git("commit", "-qm", "initial");
+  git("switch", "-q", "--create", "feature");
+  writeFileSync(join(root, "file.txt"), "first\n");
+  git("commit", "-qam", "First change");
+  writeFileSync(join(root, "file.txt"), "second\n");
+  git("commit", "-qam", "Second change");
+  const port = await freePort();
+  const server = spawn(
+    binary,
+    [root, "--state", "memory", "--no-browser", "--port", String(port)],
+    {
+      stdio: "ignore",
+      env: {
+        ...process.env,
+        DIFFX_RUNTIME_DIR: join(home, "runtime"),
+        DIFFX_CONFIG_PATH: join(home, "config.json"),
+        DIFFX_SOURCE_ID: "conformance",
+      },
+    },
+  );
+  t.after(() => {
+    server.kill("SIGTERM");
+    rmSync(home, { recursive: true, force: true });
+  });
+  const url = `http://127.0.0.1:${port}`;
+  await waitForServer(url);
+  const client = createApiClient({ baseUrl: url });
+  const collection = await client.POST("/api/v2/collections");
+  const context = collection.data?.contexts[0];
+  assert.ok(context);
+  conforms("Context", context);
+  assert.deepEqual(context.commits, { count: 2, omitted: 0 });
+  const path = { contextId: context.id };
+  const listed = await client.GET("/api/v2/contexts/{contextId}/commits", {
+    params: { path },
+  });
+  conforms("CommitList", listed.data);
+  const commits = listed.data?.commits ?? [];
+  assert.deepEqual(
+    commits.map((commit) => commit.subject),
+    ["First change", "Second change"],
+  );
+  const second = commits[1];
+  assert.ok(second && !second.merge && second.fileCount === 1);
+  const diff = await client.GET(
+    "/api/v2/contexts/{contextId}/commits/{oid}/diff",
+    { params: { path: { ...path, oid: second.oid } } },
+  );
+  conforms("RepositoryDiff", diff.data);
+  assert.equal(diff.data?.mode, "commit");
+  assert.equal(diff.data?.comparisonKind, "commit");
+  const file = diff.data?.files[0];
+  assert.ok(file);
+  const patch = await client.GET(
+    "/api/v2/contexts/{contextId}/commits/{oid}/files/{fileId}/patch",
+    {
+      params: {
+        path: { ...path, oid: second.oid, fileId: file.id },
+        query: { fileVersion: file.fingerprint },
+      },
+    },
+  );
+  conforms("FilePatch", patch.data);
+  assert.match(patch.data?.patch ?? "", /\+second/);
+  assert.doesNotMatch(patch.data?.patch ?? "", /\+first/);
+  const contents = await client.GET(
+    "/api/v2/contexts/{contextId}/commits/{oid}/files/{fileId}/contents",
+    {
+      params: {
+        path: { ...path, oid: second.oid, fileId: file.id },
+        query: { fileVersion: file.fingerprint },
+      },
+    },
+  );
+  conforms("FileContents", contents.data);
+  assert.deepEqual(contents.data, { before: "first\n", after: "second\n" });
+  const missing = await client.GET(
+    "/api/v2/contexts/{contextId}/commits/{oid}/diff",
+    { params: { path: { ...path, oid: "0".repeat(40) } } },
+  );
+  assert.equal(missing.response.status, 404);
+  conforms("Problem", missing.error);
+});
+
 test("Go distribution implements the API contract", async (t) => {
   const port = await freePort();
   const server = spawn(

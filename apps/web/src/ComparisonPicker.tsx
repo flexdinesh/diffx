@@ -1,4 +1,5 @@
 import { ChevronDownIcon } from "lucide-react";
+import { CountBadge } from "@/components/count-badge";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/segmented-control";
 import {
@@ -6,15 +7,20 @@ import {
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useDiffSource } from "./app-state.tsx";
+import { CommitStepper } from "./CommitStepper.tsx";
 import { comparisonKind, comparisonLabel } from "./diff-mode.ts";
+import { pluralize } from "./format.ts";
 import { useSession } from "./session-context.tsx";
 
 export function ComparisonPicker() {
   const session = useSession();
-  const { mode, changeMode, scopeAvailable } = useDiffSource();
+  const { mode, changeMode, scopeAvailable, commit, openCommits } =
+    useDiffSource();
+  const commitCount = session.commits?.count ?? 0;
   const scopes = session.capabilities.diff.scopes.values;
   const entries = scopes.map((scope) => ({
     scope,
@@ -29,11 +35,14 @@ export function ComparisonPicker() {
     entries.find(({ kind }) => kind === "combined"),
     entries.find(({ kind }) => kind === "patch"),
   ].flatMap((entry) => (entry ? [entry] : []));
-  const selected = scopeAvailable
-    ? comparisonLabel(comparisonKind(session, mode))
-    : "Unavailable comparison";
+  const commitsLabel = comparisonLabel("commit");
+  const selected = commit
+    ? commitsLabel
+    : scopeAvailable
+      ? comparisonLabel(comparisonKind(session, mode))
+      : "Unavailable comparison";
   const localSelected =
-    scopeAvailable && local.some(({ scope }) => scope === mode);
+    !commit && scopeAvailable && local.some(({ scope }) => scope === mode);
   return (
     <>
       <DropdownMenu>
@@ -54,6 +63,10 @@ export function ComparisonPicker() {
           <DropdownMenuRadioGroup
             value={selected}
             onValueChange={(value) => {
+              if (value === commitsLabel) {
+                if (!commit) openCommits();
+                return;
+              }
               const next = choices.find(
                 ({ kind }) => comparisonLabel(kind) === value,
               );
@@ -69,6 +82,19 @@ export function ComparisonPicker() {
                 {comparisonLabel(kind)}
               </DropdownMenuRadioItem>
             ))}
+            {(commitCount > 0 || commit) && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuRadioItem closeOnClick value={commitsLabel}>
+                  {commitsLabel}
+                  <CountBadge
+                    className="ml-auto"
+                    count={commitCount}
+                    label={pluralize(commitCount, "commit")}
+                  />
+                </DropdownMenuRadioItem>
+              </>
+            )}
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -93,6 +119,7 @@ export function ComparisonPicker() {
           />
         </div>
       )}
+      <CommitStepper />
     </>
   );
 }

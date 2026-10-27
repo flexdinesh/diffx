@@ -23,16 +23,62 @@ const previewWindowBytes = 16 * 1024 * 1024;
 const notLoadedMessage =
   "Not loaded: 16 MiB of previews loaded. Use Load more to continue.";
 
-async function getDiff(contextId: string, mode: DiffMode, signal: AbortSignal) {
-  const { data, error } = await api.GET(
-    "/api/v2/contexts/{contextId}/diffs/current",
-    {
-      params: { path: { contextId }, query: { scope: mode } },
-      signal,
-    },
-  );
+/** A review scope's current diff, or one captured commit's read-only diff. */
+export type DiffTarget =
+  | { kind: "scope"; mode: DiffMode }
+  | { kind: "commit"; oid: string };
+
+async function getDiff(
+  contextId: string,
+  target: DiffTarget,
+  signal: AbortSignal,
+) {
+  const { data, error } =
+    target.kind === "commit"
+      ? await api.GET("/api/v2/contexts/{contextId}/commits/{oid}/diff", {
+          params: { path: { contextId, oid: target.oid } },
+          signal,
+        })
+      : await api.GET("/api/v2/contexts/{contextId}/diffs/current", {
+          params: { path: { contextId }, query: { scope: target.mode } },
+          signal,
+        });
   if (!data) throw new Error(errorDetail(error, "Unable to load changes"));
   return data;
+}
+
+async function getPatch(
+  contextId: string,
+  target: DiffTarget,
+  data: RepositoryDiff,
+  file: ChangedFile,
+  signal: AbortSignal,
+) {
+  return target.kind === "commit"
+    ? api.GET(
+        "/api/v2/contexts/{contextId}/commits/{oid}/files/{fileId}/patch",
+        {
+          params: {
+            path: { contextId, oid: target.oid, fileId: file.id },
+            query: { fileVersion: file.fingerprint },
+          },
+          signal,
+        },
+      )
+    : api.GET(
+        "/api/v2/contexts/{contextId}/diffs/{diffId}/files/{fileId}/patch",
+        {
+          params: {
+            path: { contextId, diffId: data.id, fileId: file.id },
+            query: {
+              scope: target.mode,
+              versionId: data.versionId,
+              fileVersion: file.fingerprint,
+            },
+          },
+          signal,
+        },
+      );
 }
 function messageItem(
   file: ChangedFile,
@@ -134,9 +180,22 @@ function buildPreview(
 
 // Observations are immutable. Scope changes abort stale requests; retries reload
 // the same stored snapshot and preserve successfully loaded previews.
-export function useDiff(contextId: string, mode: DiffMode, enabled = true) {
+export function useDiff(
+  contextId: string,
+  requested: DiffTarget,
+  enabled = true,
+) {
   const [state, setState] = useState<DiffState>(initialState);
-  const key = `${contextId}:${mode}:${enabled}`;
+  const targetKey =
+    requested.kind === "commit" ? `commit:${requested.oid}` : requested.mode;
+  const key = `${contextId}:${targetKey}:${enabled}`;
+  // Effects follow the target's identity, not the caller's object.
+  const [target, setTarget] = useState(requested);
+  if (
+    (target.kind === "commit" ? `commit:${target.oid}` : target.mode) !==
+    targetKey
+  )
+    setTarget(requested);
   const [loadedKey, setLoadedKey] = useState("");
   const cache = useRef(new Map<string, Preview>());
   const refreshRef = useRef<() => void>(() => {});
@@ -162,7 +221,7 @@ export function useDiff(contextId: string, mode: DiffMode, enabled = true) {
       loadMoreRef.current = () => {};
       setState((previous) => ({ ...previous, busy: true }));
       try {
-        const data: RepositoryDiff = await getDiff(contextId, mode, signal);
+        const data: RepositoryDiff = await getDiff(contextId, target, signal);
         if (signal.aborted || disposed) return;
         const paths = new Set(data.files.map((file) => file.path));
         for (const path of cache.current.keys())
@@ -242,19 +301,12 @@ export function useDiff(contextId: string, mode: DiffMode, enabled = true) {
         }
         async function fetchPreview(file: ChangedFile): Promise<Fetched> {
           try {
-            const { data: body, error } = await api.GET(
-              "/api/v2/contexts/{contextId}/diffs/{diffId}/files/{fileId}/patch",
-              {
-                params: {
-                  path: { contextId, diffId: data.id, fileId: file.id },
-                  query: {
-                    scope: mode,
-                    versionId: data.versionId,
-                    fileVersion: file.fingerprint,
-                  },
-                },
-                signal,
-              },
+            const { data: body, error } = await getPatch(
+              contextId,
+              target,
+              data,
+              file,
+              signal,
             );
             if (!body)
               throw new Error(errorDetail(error, "Unable to load diff"));
@@ -265,7 +317,7 @@ export function useDiff(contextId: string, mode: DiffMode, enabled = true) {
             const cacheKey = JSON.stringify([
               contextId,
               data.id,
-              mode,
+              targetKey,
               file.path,
               file.fingerprint,
             ]);
@@ -342,7 +394,7 @@ export function useDiff(contextId: string, mode: DiffMode, enabled = true) {
       disposed = true;
       controller.abort();
     };
-  }, [contextId, mode, enabled, key]);
+  }, [contextId, target, targetKey, enabled, key]);
   // Never expose the previous scope during the render before effect cleanup.
   const current = loadedKey === key ? state : initialState;
   return useMemo(

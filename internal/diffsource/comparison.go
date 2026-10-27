@@ -289,6 +289,10 @@ func (source *gitSource) endpoints(mode review.DiffMode, headBase string) (compa
 		kind:   review.ComparisonUncommitted,
 	}
 	switch mode {
+	case review.DiffCommit:
+		endpoints.before = gitEndpoint{kind: objectEndpoint, revision: source.commit.parent}
+		endpoints.after = gitEndpoint{kind: objectEndpoint, revision: source.commit.oid}
+		endpoints.kind = review.ComparisonCommit
 	case review.DiffAll:
 		if source.comparison != nil {
 			endpoints.before.revision = source.comparison.BaseOID
@@ -320,7 +324,7 @@ func (source *gitSource) previewEndpoints(ctx context.Context, mode review.DiffM
 	if err := ctx.Err(); err != nil {
 		return comparisonEndpoints{}, err
 	}
-	if head != nil {
+	if head != nil && source.commit == nil {
 		return source.endpoints(mode, *head)
 	}
 	_, base, err := source.headAndBase(ctx)

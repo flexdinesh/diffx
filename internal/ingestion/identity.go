@@ -41,6 +41,15 @@ func ContentIdentity(request Request) (string, error) {
 		sort.Strings(kinds)
 		parts = append(parts, kinds)
 	}
+	// Captured commits distinguish an observation from one collected without
+	// them; omitting them preserves earlier identities.
+	if len(request.Commits) > 0 {
+		commits := make([]string, 0, len(request.Commits))
+		for _, commit := range request.Commits {
+			commits = append(commits, commit.OID)
+		}
+		parts = append(parts, map[string]any{"commits": commits, "total": request.CommitsTotal})
+	}
 	encoded, err := json.Marshal(parts)
 	if err != nil {
 		return "", err

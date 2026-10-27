@@ -80,6 +80,15 @@ uses the default branch's nearest merge base (local or remote-tracking), plus
 working changes. `--base HEAD`, or an unavailable branch baseline, provides only
 Uncommitted with its staging views. Older snapshots show the comparisons they
 actually captured. Collection never fetches Git refs.
+
+A branch snapshot also captures the branch's commits since the merge base (the
+100 newest). Choose **Commits** to step through them oldest to newest with the
+older/newer buttons, the filterable commit list, or Alt+[ and Alt+]. Each commit shows its
+message and its own diff against its first parent; merge commits have no diff.
+Commit views are read-only: comment and mark files in **Branch changes**, which
+**Open in Branch changes** on each file header opens. `?commit=<oid>` links to a
+commit.
+
 Matching captures reuse review state. Retention defaults to seven days after the
 last fresh submission; retries do not extend it.
 

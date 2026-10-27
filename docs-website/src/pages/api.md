@@ -22,6 +22,13 @@ Public v1 routes and synchronous ingestion are removed.
 filters; `latest=true` omits stale snapshots. Each context names its `streamId` and
 the stream's current `latestContextId`. Session filters search submission associations. Scoped review operations
 use `/api/v2/contexts/{id}/...`; `/api/v2/events` sends ingestion notifications.
+A context with captured branch commits carries `commits` (`count`, `omitted`).
+`GET /api/v2/contexts/{id}/commits` lists them oldest first with change totals;
+`.../commits/{oid}/diff`, `.../commits/{oid}/files/{fileId}/patch` and
+`.../contents` read one commit's diff against its first parent (mode and
+`comparisonKind` `commit`). Commits are read-only; comments and reviewed marks
+belong to comparison scopes. Ingestion requests may include up to 100 `commits`
+with `commitsTotal`; install the server before collectors that send them.
 Latest means the most recently collected submission for each source, repository,
 checkout, branch and comparison policy; arrival order breaks ties. It does not guarantee current
 filesystem state. Older snapshots stay stale when newer reviews expire.
@@ -35,7 +42,7 @@ Local data lives in `$XDG_STATE_HOME/diffx/state.db`, or
 `~/.local/state/diffx/state.db`. An isolated `DIFFX_RUNTIME_DIR` moves the
 default database, manual sync and hook state, and config into that directory.
 `--state memory` disables persistence.
-Current schema 13 state persists across restarts; schema 11 and 12 state upgrades in place. When local state comes from
+Current schema 14 state persists across restarts; schema 11 to 13 state upgrades in place. When local state comes from
 an older diffx, `diffx` asks before moving it to a backup beside the database
 and starting fresh; scripts pass `--reset-state`, which backs up and resets
 current state too. Only the newest backup is kept. Newer or unrecognized

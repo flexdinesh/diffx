@@ -56,6 +56,9 @@ interface NavigationOptions {
   refreshEnabled: boolean;
   refresh: () => void;
   changeMode: (mode: DiffMode) => void;
+  /** A read-only commit view replaces the scope's diff. */
+  viewingCommit: boolean;
+  stepCommit: (delta: -1 | 1) => boolean;
   setCollapsed: Dispatch<SetStateAction<Set<string>>>;
   isReviewed: (file: ChangedFile) => boolean;
   setFeedback: (message: string) => void;
@@ -72,6 +75,8 @@ export function useFileNavigation({
   refreshEnabled,
   refresh,
   changeMode,
+  viewingCommit,
+  stepCommit,
   setCollapsed,
   isReviewed,
   setFeedback,
@@ -108,6 +113,10 @@ export function useFileNavigation({
   const [pendingComment, setPendingComment] = useState<ReviewComment | null>(
     null,
   );
+  const [pendingFile, setPendingFile] = useState<{
+    path: string;
+    scope: DiffMode;
+  } | null>(null);
   const viewer = useRef<CodeViewHandle<CommentAnnotation, undefined>>(null);
   const search = useRef<HTMLInputElement>(null);
   const matchingFiles = useMemo(
@@ -231,7 +240,11 @@ export function useFileNavigation({
   );
   const navigateComment = useCallback(
     (comment: ReviewComment) => {
-      if (comment.scope !== mode && scopes.includes(comment.scope)) {
+      // Comments open in their scope; a commit view shows none.
+      if (
+        (comment.scope !== mode || viewingCommit) &&
+        scopes.includes(comment.scope)
+      ) {
         setPendingComment(comment);
         changeMode(comment.scope);
         return;
@@ -247,7 +260,15 @@ export function useFileNavigation({
       setFilter("");
       setPendingComment(comment);
     },
-    [mode, scopes, changeMode, repository, showSidebar, setFeedback],
+    [
+      mode,
+      viewingCommit,
+      scopes,
+      changeMode,
+      repository,
+      showSidebar,
+      setFeedback,
+    ],
   );
   // Navigate only after the requested scope and its parsed previews are installed.
   useEffect(() => {
@@ -302,6 +323,37 @@ export function useFileNavigation({
     setPendingComment(null);
   }, [pendingComment, busy, repository, filter, files, revealFile]);
 
+  // Leaves a commit view for the file in a scope's diff.
+  const openInScope = useCallback(
+    (path: string, scope: DiffMode) => {
+      setPendingFile({ path, scope });
+      changeMode(scope);
+    },
+    [changeMode],
+  );
+  useEffect(() => {
+    if (!pendingFile || busy || repository?.mode !== pendingFile.scope) return;
+    setPendingFile(null);
+    const target = repository.files.find(
+      (file) => file.path === pendingFile.path,
+    );
+    if (!target) {
+      setFeedback(`${pendingFile.path} has no net changes in this comparison.`);
+      return;
+    }
+    setFilter("");
+    if (hideReviewed && isReviewed(target)) setHideReviewed(false);
+    selectFile(target.path);
+  }, [
+    pendingFile,
+    busy,
+    repository,
+    hideReviewed,
+    isReviewed,
+    selectFile,
+    setFeedback,
+  ]);
+
   const showOutdatedComments = useCallback(() => {
     setTab("comments");
     showSidebar();
@@ -338,6 +390,19 @@ export function useFileNavigation({
         event.preventDefault();
         if (refreshEnabled) refresh();
       }
+      // Physical bracket keys, so layouts that type other characters work.
+      if (
+        viewingCommit &&
+        (event.code === "BracketLeft" || event.code === "BracketRight")
+      ) {
+        event.preventDefault();
+        if (!stepCommit(event.code === "BracketLeft" ? -1 : 1))
+          setFeedback(
+            event.code === "BracketLeft"
+              ? "This is the oldest captured commit."
+              : "This is the newest commit.",
+          );
+      }
       if (event.code === "KeyJ" || event.code === "KeyK") {
         event.preventDefault();
         const index = Math.max(
@@ -359,7 +424,17 @@ export function useFileNavigation({
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [files, activePath, showSidebar, refresh, refreshEnabled, selectFile]);
+  }, [
+    files,
+    activePath,
+    showSidebar,
+    refresh,
+    refreshEnabled,
+    selectFile,
+    viewingCommit,
+    stepCommit,
+    setFeedback,
+  ]);
 
   return useMemo(
     () => ({
@@ -384,6 +459,7 @@ export function useFileNavigation({
       search,
       viewer,
       navigateComment,
+      openInScope,
     }),
     [
       tab,
@@ -400,6 +476,7 @@ export function useFileNavigation({
       followScroll,
       showOutdatedComments,
       navigateComment,
+      openInScope,
     ],
   );
 }

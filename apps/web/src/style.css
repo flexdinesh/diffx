@@ -279,6 +279,9 @@
 .context-switch-menu {
   width: min(22rem, calc(100vw - 2 * var(--page-gutter)));
 }
+.commit-menu {
+  width: min(32rem, calc(100vw - 2 * var(--page-gutter)));
+}
 .sidebar {
   flex: 1;
   width: 100%;

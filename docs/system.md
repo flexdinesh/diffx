@@ -108,17 +108,33 @@ Uncommitted. Object-only branch recovery and piped patches retain only `all`,
 meaning Branch changes and supplied patch respectively. Every new manifest
 declares `comparisonKind`; old manifests receive a read-time interpretation
 without changing stored data. Unsupported scopes are unavailable, not empty.
-Previews are bounded per file and per scope first: a patch over 1 MiB, or full
-contents over 1 MiB on either side, are omitted with an explicit message, and
-files after the first 1000 of a scope are listed without previews. Because an
-observation is one ingestion request and one transaction, a total limit keeps
-its encoded JSON within the 64 MiB request limit with 1 MiB of headroom.
-Collection captures every scope's patches before any full contents, so full-file
-views degrade before files lose their patch. Each pass splits the remaining total
-equally between scopes in rounds, in file order, skipping a file that does not
-fit. No comparison can consume another's share, and a share a scope does not need
-goes to the others. Full-content identity remains independent of preview
-truncation.
+
+Collection with a resolved branch baseline (checkouts, object-only branch
+collection and GitHub pull requests) also captures the branch's
+`merge-base..HEAD` commits in the same observation and request. At most the 100
+newest (`review.MaxCommits`) are kept, oldest first, ending at the captured
+HEAD; `commitsTotal` counts the whole range and the rest are reported omitted.
+Each commit records its OID, parents, `git patch-id --stable` (absent for merges
+and oversized patches), subject, plain-text body (bounded to 64 KiB), author name
+without email, and authored and committed times. A non-merge commit carries its
+own diff against its first parent (a root commit against the empty tree), stored
+with mode `commit` and previews like a scope; merge commits have no diff.
+HEAD-only collection, piped patches and a branch without commits capture none.
+`commit` is not a review scope: comments and reviewed marks never target it,
+and catalog change counts and scope summaries exclude commit diffs.
+
+Previews are bounded per file and per scope or commit first: a patch over 1 MiB,
+or full contents over 1 MiB on either side, are omitted with an explicit
+message, and files after the first 1000 of a diff are listed without previews.
+Because an observation is one ingestion request and one transaction, a total
+limit keeps its encoded JSON within the 64 MiB request limit with 1 MiB of
+headroom. Collection captures comparison scope patches, then commit patches,
+then scope full contents, then commit full contents, so commits never cost a
+comparison its patches and full-file views degrade before files lose their
+patch. Each pass splits the remaining total equally between its diffs in rounds,
+in file order, skipping a file that does not fit. No diff can consume another's
+share, and a share a diff does not need goes to the others. Full-content
+identity remains independent of preview truncation.
 
 Local composition calls `contextservice.Ingest` directly as each checkout finishes
 collection. Discovery feeds up to four concurrent Git reads, while one serial
@@ -209,6 +225,12 @@ Comments and reviewed marks remain separate per stream and scope; choosing a
 new comparison does not migrate review state. Catalog change counts count
 distinct paths across every captured scope, so staged edits cancelled by
 unstaged edits do not disappear with an empty Combined diff.
+
+When commits were captured, the selector also offers Commits: a read-only lens
+on the same observation that steps oldest to newest with previous/next, a commit
+list or Alt+[ and Alt+], shows the commit message, and offers “Open in Branch
+changes” on file headers. `?commit=<oid>` selects a commit. Review state stays on
+comparison scopes.
 
 Navigation is project-driven. The Reviews column queries
 `/api/v2/contexts?latest=true`, which omits stale snapshots, and groups stream
@@ -313,8 +335,9 @@ The durable stream head survives expiry and pruning so older retained snapshots
 do not become latest through housekeeping.
 
 Opening a context or switching scope loads its stored manifest, patches and
-available contents through scoped REST endpoints. MCP uses the same stored
-context and review services. Preview reads validate scope/version and file
+available contents through scoped REST endpoints; a commit reads them through
+`/commits/{oid}/...`. MCP uses the same stored context and review services,
+reading commits through `list_commits` and a `commit` argument. Preview reads validate scope/version and file
 fingerprint through indexed stored identities, then read only that file's
 preview. They do not decode the full manifest in Go. Context resolution and
 catalog presentation project the captured source kind from stored metadata;
@@ -435,7 +458,9 @@ Snapshot retention is configurable in whole days, default seven, after the last
 fresh submission. Changing configuration preserves existing expiry until a
 fresh submission; retries do not extend it. Reads enforce
 expiry immediately; local and remote servers prune at startup and hourly,
-removing all scopes and previews. Deleting or pruning a snapshot keeps its
+removing all scopes and previews. Commit diffs share their observation's
+expiry: fresh matching submissions extend them, and pruning and deletion remove
+them. Deleting or pruning a snapshot keeps its
 stream's comments and marks while another snapshot of the stream remains; the
 same transaction deletes them with the stream's last snapshot. Compact replay
 identities and stream heads survive deletion and expiry, preventing replay
@@ -461,7 +486,10 @@ context; different content under the same identity fails with a conflict.
 A separate identity uses account, source, repository, checkout, branch, HEAD,
 source kind, scopes, explicit comparison kinds, comparison policy and producer
 content hash to reuse unexpired snapshots. Absent comparison kinds preserve the
-legacy identity algorithm for queued submissions.
+legacy identity algorithm for queued submissions. Captured commit OIDs extend
+this identity and the collector's unchanged-upload fingerprint only when
+present, so earlier identities are unchanged and a snapshot without commits is
+never reused for one with commits.
 The hash covers full content before preview truncation, including binary and
 untracked files, modes, renames and staged/unstaged state; mtime and ctime are
 excluded. Unsupported full identities fail closed and remain independent.

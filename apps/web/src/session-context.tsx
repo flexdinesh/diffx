@@ -1,4 +1,9 @@
-import { api, errorDetail, type ApiContext } from "@diffx/api";
+import {
+  api,
+  errorDetail,
+  type ApiCommitSummary,
+  type ApiContext,
+} from "@diffx/api";
 import {
   createContext,
   type ReactNode,
@@ -31,18 +36,36 @@ import {
 import { useCollection, type SyncSummary } from "./use-collection.ts";
 
 import { selectedScope, type DiffMode } from "./diff-mode.ts";
-import { saveSessionValue, sessionValue } from "./preferences.ts";
+import {
+  readSavedCommit,
+  savedCommit,
+  type CommitRequest,
+} from "./commit-view.ts";
+import {
+  removeSessionValue,
+  saveSessionValue,
+  sessionValue,
+} from "./preferences.ts";
 
 const ScopeContext = createContext<
   | (ReturnType<typeof selectedScope> & {
       changeMode: (mode: DiffMode) => void;
+      /** Requested read-only commit view; null views the scope. */
+      commit: CommitRequest | null;
+      /** Replaces history entries while stepping between commits. */
+      changeCommit: (commit: ApiCommitSummary) => void;
+      rememberCommit: (commit: ApiCommitSummary) => void;
     })
   | null
 >(null);
 const scopeFromUrl = () =>
   new URLSearchParams(window.location.search).get("scope");
+const commitFromUrl = () =>
+  new URLSearchParams(window.location.search).get("commit");
 const scopeKey = (context: ApiContext, owner: string) =>
   `diff-scope:${owner}:${streamKey(context)}`;
+const commitKey = (context: ApiContext, owner: string) =>
+  `diff-commit:${owner}:${streamKey(context)}`;
 
 type LoadState =
   | { status: "loading" }
@@ -126,6 +149,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     identity.bootstrap.collect;
   const [route, setRoute] = useState(routeFromUrl);
   const [requestedScope, setRequestedScope] = useState(scopeFromUrl);
+  const [requestedCommit, setRequestedCommit] = useState(commitFromUrl);
   const [selectedId, setSelectedId] = useState(() =>
     route.kind === "pinned" ? route.id : "",
   );
@@ -160,7 +184,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // Initial live/root resolution retains an explicit scope. Selecting a new
       // snapshot uses that stream's saved preference.
       if (!selectedRef.current) path += window.location.search;
-      else setRequestedScope(null);
+      else {
+        setRequestedScope(null);
+        setRequestedCommit(null);
+      }
       if (options?.replace || path === window.location.pathname)
         window.history.replaceState(null, "", path);
       else window.history.pushState(null, "", path);
@@ -246,6 +273,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const handleNavigation = () => {
       const next = routeFromUrl();
       setRequestedScope(scopeFromUrl());
+      setRequestedCommit(commitFromUrl());
       if (sameRoute(route, next)) return;
       setRoute(next);
       setMissing(false);
@@ -362,6 +390,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         sessionValue(scopeKey(state.session, preferenceOwner)),
       )
     : null;
+  // A URL commit wins; with no explicit view, the stream's last commit view
+  // resumes when this snapshot captured commits.
+  const remembered =
+    ready && requestedCommit === null && requestedScope === null
+      ? readSavedCommit(sessionValue(commitKey(state.session, preferenceOwner)))
+      : null;
+  const commitOid =
+    requestedCommit ??
+    (remembered && ready && state.session.commits ? remembered.oid : null);
+  const commitPatchId = remembered?.patchId ?? null;
+  const commitExplicit = requestedCommit !== null;
+  const commitRequest = useMemo<CommitRequest | null>(
+    () =>
+      commitOid === null
+        ? null
+        : commitExplicit
+          ? { kind: "explicit", oid: commitOid }
+          : { kind: "saved", oid: commitOid, patchId: commitPatchId },
+    [commitOid, commitExplicit, commitPatchId],
+  );
+  const viewingCommit = commitRequest !== null;
   const changeMode = useCallback(
     (mode: DiffMode) => {
       if (
@@ -370,7 +419,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       )
         return;
       const url = new URL(window.location.href);
-      if (url.searchParams.get("scope") === mode) return;
+      if (
+        url.searchParams.get("scope") === mode &&
+        !url.searchParams.has("commit")
+      )
+        return;
       // Pin the previous implicit choice in history before adding a new one.
       // Back must restore that choice, not the preference saved by this click.
       if (!url.searchParams.has("scope")) {
@@ -382,11 +435,50 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         url.searchParams.set("scope", previous.requestedScope);
         window.history.replaceState(null, "", url);
       }
+      url.searchParams.delete("commit");
       url.searchParams.set("scope", mode);
       window.history.pushState(null, "", url);
       setRequestedScope(mode);
+      setRequestedCommit(null);
     },
     [state, requestedScope, preferenceOwner],
+  );
+  // Entering the commit view adds history; stepping replaces it, so Back
+  // returns to the scope that was open.
+  const changeCommit = useCallback(
+    (commit: ApiCommitSummary) => {
+      if (state.status !== "ready") return;
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("commit") === commit.oid) return;
+      const stepping = viewingCommit;
+      if (!url.searchParams.has("scope") && !stepping) {
+        url.searchParams.set(
+          "scope",
+          selectedScope(
+            state.session,
+            requestedScope,
+            sessionValue(scopeKey(state.session, preferenceOwner)),
+          ).requestedScope,
+        );
+        window.history.replaceState(null, "", url);
+      }
+      url.searchParams.set("commit", commit.oid);
+      if (stepping) window.history.replaceState(null, "", url);
+      else window.history.pushState(null, "", url);
+      setRequestedCommit(commit.oid);
+    },
+    [state, requestedScope, preferenceOwner, viewingCommit],
+  );
+  // The shown commit resumes after reloads and newer snapshots.
+  const rememberCommit = useCallback(
+    (commit: ApiCommitSummary) => {
+      if (state.status === "ready")
+        saveSessionValue(
+          commitKey(state.session, preferenceOwner),
+          savedCommit(commit),
+        );
+    },
+    [state, preferenceOwner],
   );
   const scopeMode = scope?.mode;
   const scopeAvailable = scope?.scopeAvailable;
@@ -394,7 +486,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (ready && scopeAvailable && scopeMode)
       saveSessionValue(scopeKey(state.session, preferenceOwner), scopeMode);
   }, [ready, state, scopeMode, scopeAvailable, preferenceOwner]);
-  const scopeState = scope ? { ...scope, changeMode } : null;
+  // An explicit scope view ends the stream's commit view.
+  const scopeExplicit = requestedScope !== null;
+  useEffect(() => {
+    if (ready && scopeExplicit && !viewingCommit)
+      removeSessionValue(commitKey(state.session, preferenceOwner));
+  }, [ready, state, scopeExplicit, viewingCommit, preferenceOwner]);
+  const scopeState = scope
+    ? {
+        ...scope,
+        changeMode,
+        commit: commitRequest,
+        changeCommit,
+        rememberCommit,
+      }
+    : null;
   const seen = useSeenStreams(
     identity.status === "ready" ? (identity.bootstrap.user?.id ?? null) : null,
     heads.contexts,

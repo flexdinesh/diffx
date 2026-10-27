@@ -17,7 +17,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 13
+const schemaVersion = 14
 
 // additiveSchema is the oldest schema that opens by upgrading in place. Each
 // later schema only creates tables and indexes, so the idempotent initialization
@@ -291,7 +291,8 @@ func (store *Store) PruneExpired(now time.Time) error {
 		return err
 	}
 	defer transaction.Rollback()
-	if _, err := transaction.Exec(`DELETE FROM diffs WHERE id IN (SELECT s.diff_id FROM observation_scopes s JOIN contexts c ON c.id=s.context_id JOIN diffs d ON d.id=c.anchor_diff_id WHERE d.expires_at<=?)`, now.UnixMilli()); err != nil {
+	if _, err := transaction.Exec(`DELETE FROM diffs WHERE id IN (SELECT s.diff_id FROM observation_scopes s JOIN contexts c ON c.id=s.context_id JOIN diffs d ON d.id=c.anchor_diff_id WHERE d.expires_at<=?
+		UNION SELECT k.diff_id FROM observation_commits k JOIN contexts c ON c.id=k.context_id JOIN diffs d ON d.id=c.anchor_diff_id WHERE d.expires_at<=?)`, now.UnixMilli(), now.UnixMilli()); err != nil {
 		return err
 	}
 	if _, err := transaction.Exec(`DELETE FROM diffs WHERE expires_at<=?`, now.UnixMilli()); err != nil {

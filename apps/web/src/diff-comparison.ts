@@ -1,4 +1,5 @@
-import type { ApiContext } from "@diffx/api";
+import type { ApiCommitSummary, ApiContext } from "@diffx/api";
+import { shortOid } from "./commit-view.ts";
 import {
   comparisonKind,
   type ComparisonKind,
@@ -10,8 +11,11 @@ export function diffComparison(
   mode: DiffMode,
   repositoryHead: string | null | undefined,
   capturedKind?: ComparisonKind,
+  commit?: ApiCommitSummary | null,
 ) {
-  const kind = capturedKind ?? comparisonKind(context, mode);
+  const kind = commit
+    ? "commit"
+    : (capturedKind ?? comparisonKind(context, mode));
   const observation = context.observation;
   const comparison = observation?.comparison;
   const head = observation ? observation.head : repositoryHead;
@@ -24,6 +28,26 @@ export function diffComparison(
       description:
         "The supplied patch is shown as captured. No Git comparison was calculated by diffx.",
       details,
+    };
+  }
+
+  if (commit) {
+    const [parent] = commit.parents;
+    return {
+      summary: `${parent ? `${shortOid(commit.oid)}^` : "Empty tree"} → ${shortOid(commit.oid)}`,
+      description: commit.merge
+        ? "Merge commits are listed without a diff."
+        : parent
+          ? "A commit's own changes compare its first parent with the commit. Index and working tree changes are excluded."
+          : "The branch's root commit is compared with Git’s empty tree.",
+      details: [
+        { label: "Commit", value: commit.oid },
+        { label: "Parent", value: parent ?? "None (root commit)" },
+        {
+          label: "Branch",
+          value: recorded(observation?.branch ?? context.branch),
+        },
+      ],
     };
   }
 

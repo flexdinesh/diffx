@@ -32,6 +32,17 @@ func skeletonBytes(t *testing.T, request ingestion.Request) int {
 		scopes[index] = ingestion.Scope{Snapshot: scope.Snapshot, Patches: patches}
 	}
 	request.Scopes = scopes
+	commits := make([]ingestion.Commit, len(request.Commits))
+	for index, commit := range request.Commits {
+		commits[index] = commit
+		if commit.Patches != nil {
+			commits[index].Patches = make(map[string]review.FilePatch, len(commit.Patches))
+			for id := range commit.Patches {
+				commits[index].Patches[id] = review.FilePatch{Message: diffsource.Message(overBudgetMessage)}
+			}
+		}
+	}
+	request.Commits = commits
 	return encodedBytes(t, request)
 }
 

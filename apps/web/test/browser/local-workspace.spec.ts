@@ -1,6 +1,11 @@
 import { type Page, type Route } from "@playwright/test";
 import { expect, fileToggle, test, withReviewNavigation } from "./fixtures.ts";
-import type { ApiContext, ApiPullRequest, ApiRepositoryDiff } from "@diffx/api";
+import type {
+  ApiCommitSummary,
+  ApiContext,
+  ApiPullRequest,
+  ApiRepositoryDiff,
+} from "@diffx/api";
 import {
   comparisonKind,
   isDiffMode,
@@ -2800,6 +2805,227 @@ test("captured comparison default, saved stream choice, and explicit URL precede
       ...summary,
       fileCount: summary.comparisonKind === "committed" ? 1 : 0,
     })) ?? [];
+  await page.goto("/contexts/local-review");
+  await ready(page, "committed-v1");
+});
+
+function commitSummary(
+  prefix: string,
+  subject: string,
+  merge = false,
+): ApiCommitSummary {
+  return {
+    oid: prefix.padEnd(40, "0"),
+    parents: merge ? ["1".repeat(40), "2".repeat(40)] : ["f".repeat(40)],
+    ...(!merge && { patchId: `patch-${prefix}` }),
+    subject,
+    body: merge ? "" : `${subject} body.\n\nSecond paragraph.`,
+    authorName: "Ada Lovelace",
+    authoredAt: Date.now() - 3_600_000,
+    committedAt: Date.now() - 3_600_000,
+    merge,
+    fileCount: merge ? 0 : 1,
+    additions: merge ? 0 : 1,
+    deletions: merge ? 0 : 1,
+  };
+}
+
+async function committedWorkspace(page: Page) {
+  const state = Object.assign(await capturedWorkspace(page), {
+    commits: [
+      commitSummary("a1", "Add value parser"),
+      commitSummary("b2", "Merge main into feature", true),
+      commitSummary("c3", "Use parsed value"),
+    ],
+    commitDiffs: new Array<string>(),
+  });
+  state.context.commits = { count: 3, omitted: 2 };
+  await page.route("**/api/v2/contexts/*/commits", (route) =>
+    route.fulfill({ json: { commits: state.commits, omitted: 2 } }),
+  );
+  await page.route("**/api/v2/contexts/*/commits/*/diff", (route) => {
+    const oid = new URL(route.request().url()).pathname.split("/").at(-2) ?? "";
+    state.commitDiffs.push(oid);
+    const scope = state.repository("committed");
+    return route.fulfill({
+      json: {
+        ...scope,
+        id: `diff-${oid}`,
+        versionId: `commit-${oid}`,
+        head: oid,
+        mode: "commit",
+        comparisonKind: "commit",
+        revision: `commit-${oid}`,
+        files: scope.files.map((file) => ({
+          ...file,
+          indexStatus: null,
+          worktreeStatus: null,
+          fingerprint: `commit-${oid.slice(0, 2)}`,
+        })),
+      },
+    });
+  });
+  await page.route(
+    "**/api/v2/contexts/*/commits/*/files/*/patch?*",
+    (route) => {
+      const version = new URL(route.request().url()).searchParams.get(
+        "fileVersion",
+      );
+      return route.fulfill({
+        json: {
+          message: null,
+          patch: [
+            "diff --git a/src/value.ts b/src/value.ts",
+            "--- a/src/value.ts",
+            "+++ b/src/value.ts",
+            "@@ -50,1 +50,1 @@",
+            '-export const value = "before";',
+            `+export const value = "${version}";`,
+            "",
+          ].join("\n"),
+        },
+      });
+    },
+  );
+  return state;
+}
+
+test("commits step read-only through the branch and link back to its changes", async ({
+  page,
+}) => {
+  const state = await committedWorkspace(page);
+  const [first, merge, last] = state.commits;
+  if (!first || !merge || !last) throw new Error("Missing commits");
+  await page.goto("/contexts/local-review?scope=committed");
+  await ready(page, "committed-v1");
+  await page.getByRole("button", { name: /^Comparison:/ }).click();
+  await page.getByRole("menuitemradio", { name: /^Commits/ }).click();
+  await ready(page, "commit-a1");
+  expect(new URL(page.url()).searchParams.get("commit")).toBe(first.oid);
+  const stepper = page.getByRole("combobox", { name: /^Commit / });
+  await expect(stepper).toHaveAccessibleName("Commit 1 of 3: Add value parser");
+  await expect(
+    page.getByRole("button", { name: "Older commit" }),
+  ).toBeDisabled();
+  const banner = page.getByRole("region", { name: "Commit a100000" });
+  await expect(banner).toContainText("Add value parser");
+  await expect(banner).toContainText("Ada Lovelace");
+  await expect(banner.getByText("Second paragraph.")).toBeHidden();
+  await banner.getByRole("button", { name: "Show message" }).click();
+  await expect(banner.getByText("Second paragraph.")).toBeVisible();
+  // A read-only lens: no review marks, comments or hide-reviewed toggle.
+  await expect(
+    page.getByRole("button", { name: /^Mark src\/value.ts/ }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /^Leave review comment/ }),
+  ).toHaveCount(0);
+  await expect(page.locator("#hide-reviewed")).toHaveCount(0);
+  await expect(page.locator(".git-legend")).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: /^Diff comparison:/ }),
+  ).toContainText("a100000^ → a100000");
+
+  await page.keyboard.press("Alt+BracketRight");
+  await expect(stepper).toHaveAccessibleName(
+    "Commit 2 of 3: Merge main into feature",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Merge commit", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Alt+BracketRight");
+  await ready(page, "commit-c3");
+  await expect(
+    page.getByRole("button", { name: "Newer commit" }),
+  ).toBeDisabled();
+  await page.keyboard.press("Alt+BracketRight");
+  await expect(page.locator("#comment-feedback")).toHaveText(
+    "This is the newest commit.",
+  );
+  expect(state.commitDiffs).toEqual([first.oid, last.oid]);
+
+  await stepper.click();
+  await expect(page.getByText("2 older commits not captured")).toBeVisible();
+  await page.keyboard.type("parser");
+  await expect(page.getByRole("option")).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  await ready(page, "commit-a1");
+  // Stepping replaces history, so Back leaves the commit view.
+  await page.goBack();
+  await ready(page, "committed-v1");
+  await page.goForward();
+  await ready(page, "commit-a1");
+
+  await page
+    .getByRole("button", { name: "Open src/value.ts in Branch changes" })
+    .click();
+  await ready(page, "committed-v1");
+  expect(new URL(page.url()).searchParams.get("commit")).toBeNull();
+  await expect(
+    page.getByRole("button", { name: /^Mark src\/value.ts/ }),
+  ).toBeVisible();
+
+  const unknown = "e".repeat(40);
+  await page.goto(`/contexts/local-review?commit=${unknown}`);
+  await expect(
+    page.getByRole("heading", { name: "Commit not in this snapshot" }),
+  ).toBeVisible();
+  await expect(stepper).toHaveAccessibleName("Commit eeeeeee unavailable");
+  expect(state.commitDiffs).not.toContain(unknown);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/contexts/local-review?commit=${last.oid}`);
+  await ready(page, "commit-c3");
+  for (const control of [
+    page.getByRole("button", { name: /^Comparison:/ }),
+    page.getByRole("button", { name: "Older commit" }),
+    stepper,
+    page.getByRole("button", { name: "Newer commit" }),
+  ]) {
+    const bounds = await control.boundingBox();
+    if (!bounds) throw new Error("Missing mobile commit control");
+    expect(bounds.height).toBeGreaterThanOrEqual(44);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+  }
+});
+
+test("the stream resumes its commit view, following a rebase by patch ID", async ({
+  page,
+}) => {
+  const state = await committedWorkspace(page);
+  const [first, , last] = state.commits;
+  if (!first || !last) throw new Error("Missing commits");
+  await page.goto(`/contexts/local-review?commit=${last.oid}`);
+  await ready(page, "commit-c3");
+  await page.goto("/contexts/local-review");
+  await ready(page, "commit-c3");
+  expect(new URL(page.url()).searchParams.get("commit")).toBe(last.oid);
+
+  // A rebase rewrites the SHA but keeps the commit's changes.
+  const rebased = {
+    ...commitSummary("d4", "Use parsed value"),
+    patchId: "patch-c3",
+  };
+  state.commits = [first, rebased];
+  await page.goto("/contexts/local-review");
+  await ready(page, "commit-d4");
+  await expect(
+    page.getByRole("status").filter({ hasText: "not in this snapshot" }),
+  ).toHaveCount(0);
+
+  // A commit that left the branch restarts at the oldest, saying so.
+  state.commits = [first];
+  await page.goto("/contexts/local-review");
+  await ready(page, "commit-a1");
+  await expect(
+    page.getByText(
+      "Commit d400000 is not in this snapshot. Showing the oldest commit.",
+    ),
+  ).toBeVisible();
+
+  // An explicit scope ends the commit view for the stream.
+  await page.goto("/contexts/local-review?scope=committed");
+  await ready(page, "committed-v1");
   await page.goto("/contexts/local-review");
   await ready(page, "committed-v1");
 });

@@ -25,6 +25,11 @@ func initializeIngestion(tx *sql.Tx) error {
 		// an existing head must never regress when its snapshot has been pruned.
 		`CREATE TABLE IF NOT EXISTS observation_stream_heads (owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, source_id TEXT NOT NULL, repository_key TEXT NOT NULL, checkout_key TEXT NOT NULL, branch TEXT NOT NULL, comparison_policy TEXT NOT NULL DEFAULT '', context_id TEXT NOT NULL, collected_at INTEGER NOT NULL, arrival_sequence INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(owner_id,source_id,repository_key,checkout_key,branch,comparison_policy))`,
 		`CREATE TABLE IF NOT EXISTS observation_identities (owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, identity_hash TEXT NOT NULL, context_id TEXT NOT NULL REFERENCES observations(context_id) ON DELETE CASCADE, PRIMARY KEY(owner_id,identity_hash))`,
+		// Schema 14: a branch observation's captured commits, oldest first. Each
+		// non-merge commit's diff is a 'commit' mode diff sharing the
+		// observation's expiry; it is never a review scope.
+		`CREATE TABLE IF NOT EXISTS observation_commits (context_id TEXT NOT NULL REFERENCES observations(context_id) ON DELETE CASCADE, ordinal INTEGER NOT NULL, oid TEXT NOT NULL, data TEXT NOT NULL, diff_id TEXT UNIQUE REFERENCES diffs(id) ON DELETE SET NULL, version_id TEXT REFERENCES diff_versions(id) ON DELETE SET NULL, file_count INTEGER NOT NULL, additions INTEGER NOT NULL, deletions INTEGER NOT NULL, PRIMARY KEY(context_id,ordinal), UNIQUE(context_id,oid))`,
+		`CREATE TABLE IF NOT EXISTS observation_commit_ranges (context_id TEXT PRIMARY KEY REFERENCES observations(context_id) ON DELETE CASCADE, total INTEGER NOT NULL)`,
 		`CREATE INDEX IF NOT EXISTS observations_source ON observations(owner_id,source_id)`,
 		`CREATE INDEX IF NOT EXISTS observations_stream ON observations(owner_id,stream_key)`,
 		`CREATE INDEX IF NOT EXISTS observations_branch ON observations(owner_id,json_extract(metadata,'$.branch'))`,
@@ -84,7 +89,7 @@ func (store *Store) IngestContext(ctx context.Context, ownerID string, request i
 			if _, err := tx.Exec(`UPDATE contexts SET last_submitted_at=? WHERE id=?`, now, id); err != nil {
 				return Binding{}, err
 			}
-			if _, err := tx.Exec(`UPDATE diffs SET expires_at=? WHERE id IN (SELECT diff_id FROM observation_scopes WHERE context_id=?)`, now+store.retention.Milliseconds(), id); err != nil {
+			if _, err := tx.Exec(`UPDATE diffs SET expires_at=? WHERE id IN (SELECT diff_id FROM observation_scopes WHERE context_id=? UNION SELECT diff_id FROM observation_commits WHERE context_id=?)`, now+store.retention.Milliseconds(), id, id); err != nil {
 				return Binding{}, err
 			}
 			if err := putObservationSubmission(tx, ownerID, id, hash, request, sequence); err != nil {
@@ -181,6 +186,9 @@ func (store *Store) IngestContext(ctx context.Context, ownerID string, request i
 		if _, err := tx.Exec(`INSERT INTO observation_scopes(context_id,mode,diff_id,version_id) SELECT ?,?,id,(SELECT id FROM diff_versions WHERE diff_id=diffs.id) FROM diffs WHERE id=?`, id, mode, diffID); err != nil {
 			return Binding{}, err
 		}
+	}
+	if err := putObservationCommits(tx, ownerID, id, repositoryID, request, now, now+store.retention.Milliseconds()); err != nil {
+		return Binding{}, err
 	}
 	if err := putObservationSubmission(tx, ownerID, id, hash, request, sequence); err != nil {
 		return Binding{}, err
