@@ -29,7 +29,9 @@ snapshots. Select a
 repository, then an observation. Search/filter stored metadata to find
 a branch, worktree, host, source or agent run. Switch between its collected all,
 staged and unstaged scopes. Use the file tree to navigate, mark files as reviewed
-and comment on lines. **Hide reviewed files**, beside the file filter, removes
+and comment on lines. Alt+J and Alt+K move between files; Alt+M marks the
+selected file reviewed and moves to the next one, or unmarks a reviewed file.
+**Hide reviewed files**, beside the file filter, removes
 reviewed files from both the tree and the diff for that tab. **Copy unresolved** and **Copy all** export comments as
 agent-ready XML.
 

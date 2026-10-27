@@ -29,7 +29,13 @@ import { DisclosureIcon } from "@/components/disclosure";
 import { EmptyState } from "@/components/empty-state";
 import { IconButton } from "@/components/icon-button";
 import { Notice } from "@/components/notice";
+import { Shortcut } from "@/components/shortcut";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
   togglePath,
@@ -211,11 +217,11 @@ export function DiffWorkspace() {
     navigationTarget,
     commentNavigationTarget,
     navigateComment,
-    hideReviewed,
+    toggleFileReviewed,
     viewer,
     openInScope,
   } = useNavigation();
-  const { isReviewed, toggleReviewed, pending } = useReviewedFilesState();
+  const { isReviewed, pending } = useReviewedFilesState();
   const { draft } = useDraft();
   const review = useReviewState();
   // Commit views are read-only: no comments, marks or line selection.
@@ -855,48 +861,38 @@ export function DiffWorkspace() {
                       {outdated} outdated
                     </span>
                   )}
-                  <Button
-                    type="button"
-                    variant="outline-check"
-                    size="sm"
-                    aria-label={`Mark ${file.path} ${isReviewed(file) ? "unreviewed" : "reviewed"}`}
-                    aria-pressed={isReviewed(file)}
-                    disabled={pending.has(file.id) || pending.has("*")}
-                    aria-busy={pending.has(file.id)}
-                    onClick={async () => {
-                      // Marking a file scrolled past its top collapses it above
-                      // the viewport; restore its header there so the next file
-                      // shows from its top. Hidden files hand off in navigation.
-                      const instance = viewer.current?.getInstance();
-                      const top = instance?.getTopForItem(file.path);
-                      const scrolledInto =
-                        !hideReviewed &&
-                        !isReviewed(file) &&
-                        top !== undefined &&
-                        instance !== undefined &&
-                        instance.getScrollTop() > top;
-                      if (!(await toggleReviewed(file)) || !scrolledInto)
-                        return;
-                      requestAnimationFrame(() => {
-                        viewer.current?.scrollTo({
-                          type: "item",
-                          id: file.path,
-                          align: "start",
-                          behavior: "instant",
-                        });
-                      });
-                    }}
-                  >
-                    <svg
-                      className="review-checkbox"
-                      viewBox="0 0 16 16"
-                      aria-hidden="true"
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="outline-check"
+                          size="sm"
+                          aria-label={`Mark ${file.path} ${isReviewed(file) ? "unreviewed" : "reviewed"}`}
+                          aria-pressed={isReviewed(file)}
+                          disabled={pending.has(file.id) || pending.has("*")}
+                          aria-busy={pending.has(file.id)}
+                          onClick={() =>
+                            void toggleFileReviewed(file, { advance: false })
+                          }
+                        />
+                      }
                     >
-                      <rect x="2" y="2" width="12" height="12" />
-                      {isReviewed(file) && <path d="m4.5 8 2.5 2.5 4.5-5" />}
-                    </svg>
-                    Reviewed
-                  </Button>
+                      <svg
+                        className="review-checkbox"
+                        viewBox="0 0 16 16"
+                        aria-hidden="true"
+                      >
+                        <rect x="2" y="2" width="12" height="12" />
+                        {isReviewed(file) && <path d="m4.5 8 2.5 2.5 4.5-5" />}
+                      </svg>
+                      Reviewed
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Toggle selected file reviewed
+                      <Shortcut keys={{ alt: true, key: "M" }} />
+                    </TooltipContent>
+                  </Tooltip>
 
                   {commentsEnabled && (
                     <IconButton
@@ -1003,9 +999,13 @@ export function DiffWorkspace() {
         <span className="footer-details">
           <span className="footer-shortcuts">
             <kbd>Alt+J</kbd> <kbd>Alt+K</kbd> files{" "}
-            {commit && (
+            {commit ? (
               <>
                 <kbd>Alt+[</kbd> <kbd>Alt+]</kbd> commits{" "}
+              </>
+            ) : (
+              <>
+                <kbd>Alt+M</kbd> reviewed{" "}
               </>
             )}
             <kbd>Alt+/</kbd> filter

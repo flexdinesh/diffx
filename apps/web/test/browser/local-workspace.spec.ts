@@ -2922,6 +2922,14 @@ test("commits step read-only through the branch and link back to its changes", a
   ).toHaveCount(0);
   await expect(page.locator("#hide-reviewed")).toHaveCount(0);
   await expect(page.locator(".git-legend")).toBeHidden();
+  const markWrites: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/review-marks"))
+      markWrites.push(`${request.method()} ${request.url()}`);
+  });
+  await page.keyboard.press("Alt+M");
+  await expect(page.locator(".footer-shortcuts")).not.toContainText("Alt+M");
+  expect(markWrites.filter((write) => !write.startsWith("GET "))).toEqual([]);
   await expect(
     page.getByRole("button", { name: /^Diff comparison:/ }),
   ).toContainText("a100000^ → a100000");

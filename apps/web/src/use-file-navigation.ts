@@ -61,6 +61,10 @@ interface NavigationOptions {
   stepCommit: (delta: -1 | 1) => boolean;
   setCollapsed: Dispatch<SetStateAction<Set<string>>>;
   isReviewed: (file: ChangedFile) => boolean;
+  /** Resolves whether the toggle was applied. */
+  toggleReviewed: (file: ChangedFile) => Promise<boolean>;
+  /** File ids, or "*" for a reset, with a reviewed-mark write in flight. */
+  pending: ReadonlySet<string>;
   setFeedback: (message: string) => void;
   showSidebar: () => void;
   closeMobile: () => void;
@@ -79,6 +83,8 @@ export function useFileNavigation({
   stepCommit,
   setCollapsed,
   isReviewed,
+  toggleReviewed,
+  pending,
   setFeedback,
   showSidebar,
   closeMobile,
@@ -237,6 +243,39 @@ export function useFileNavigation({
       });
     },
     [revealFile],
+  );
+  // Marking a file scrolled past its top collapses it above the viewport;
+  // restore its header there so the next file shows from its top. Advancing
+  // selects the next file instead. Hidden files hand off in navigation.
+  const toggleFileReviewed = useCallback(
+    async (file: ChangedFile, { advance }: { advance: boolean }) => {
+      const marking = !isReviewed(file);
+      const instance = viewer.current?.getInstance();
+      const top = instance?.getTopForItem(file.path);
+      const scrolledInto =
+        !hideReviewed &&
+        marking &&
+        top !== undefined &&
+        instance !== undefined &&
+        instance.getScrollTop() > top;
+      if (!(await toggleReviewed(file))) return;
+      const index = files.findIndex((entry) => entry.path === file.path);
+      const next = index < 0 ? undefined : files[index + 1];
+      if (advance && marking && !hideReviewed && next) {
+        selectFile(next.path);
+        return;
+      }
+      if (!scrolledInto) return;
+      requestAnimationFrame(() => {
+        viewer.current?.scrollTo({
+          type: "item",
+          id: file.path,
+          align: "start",
+          behavior: "instant",
+        });
+      });
+    },
+    [isReviewed, hideReviewed, toggleReviewed, files, selectFile],
   );
   const navigateComment = useCallback(
     (comment: ReviewComment) => {
@@ -421,6 +460,15 @@ export function useFileNavigation({
           ];
         if (file) selectFile(file.path);
       }
+      // Commit views are read-only.
+      if (!viewingCommit && event.code === "KeyM") {
+        event.preventDefault();
+        const file = files.find((entry) => entry.path === activePath);
+        // A held key would flip the mark back and forth.
+        if (!file || event.repeat || pending.has(file.id) || pending.has("*"))
+          return;
+        void toggleFileReviewed(file, { advance: true });
+      }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -434,6 +482,8 @@ export function useFileNavigation({
     viewingCommit,
     stepCommit,
     setFeedback,
+    pending,
+    toggleFileReviewed,
   ]);
 
   return useMemo(
@@ -454,6 +504,7 @@ export function useFileNavigation({
       filteredClosed,
       setFilteredClosed,
       selectFile,
+      toggleFileReviewed,
       followScroll,
       showOutdatedComments,
       search,
@@ -473,6 +524,7 @@ export function useFileNavigation({
       closed,
       filteredClosed,
       selectFile,
+      toggleFileReviewed,
       followScroll,
       showOutdatedComments,
       navigateComment,
