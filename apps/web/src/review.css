@@ -155,6 +155,7 @@
 .comments-panel {
   flex: 1 0 calc(4 * var(--space-12));
   overflow: auto;
+  scrollbar-gutter: stable;
 }
 .comment-empty {
   color: var(--muted);

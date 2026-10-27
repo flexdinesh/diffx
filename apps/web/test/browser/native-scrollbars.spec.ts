@@ -9,6 +9,72 @@ import { resetFixtureState } from "./fixture-state.ts";
 test.use({ launchOptions: { ignoreDefaultArgs: ["--hide-scrollbars"] } });
 test.beforeEach(async ({ request }) => resetFixtureState(request));
 
+test("pane scrollbars keep a constant thin gutter as overflow changes", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 700 });
+  await page.goto("/");
+  await expect(page.locator("#viewer diffs-container").first()).toBeVisible();
+  const gutter = (selector: string) =>
+    page
+      .locator(selector)
+      .evaluate((element) =>
+        element instanceof HTMLElement
+          ? element.offsetWidth - element.clientWidth
+          : NaN,
+      );
+  const size = await page
+    .locator("html")
+    .evaluate((element) =>
+      parseFloat(
+        getComputedStyle(element).getPropertyValue("--scrollbar-size"),
+      ),
+    );
+  expect(size).toBe(10);
+
+  // Filtering the tree to one file must not widen its rows.
+  const tree = page.locator("#file-tree");
+  const row = page.locator('#file-tree [data-path="src/components/Badge.tsx"]');
+  const rowRight = async () => {
+    const box = await row.boundingBox();
+    return box ? box.x + box.width : undefined;
+  };
+  const before = await rowRight();
+  await page.getByRole("searchbox", { name: "Filter files" }).fill("Badge");
+  await expect(page.locator("#file-tree [data-path]")).toHaveCount(1);
+  await expect
+    .poll(() =>
+      tree.evaluate((element) => element.scrollHeight > element.clientHeight),
+    )
+    .toBe(false);
+  expect(await gutter("#file-tree")).toBe(size);
+  expect(await rowRight()).toBe(before);
+
+  // The diff canvas reserves its track without overflow too, so the
+  // toolbar inset and trailing actions stay put.
+  const scroller = page.locator(".diff-code-view");
+  const toggle = page.locator("#toggle-all-files");
+  const toggleRight = async () => {
+    const box = await toggle.boundingBox();
+    return box ? box.x + box.width : undefined;
+  };
+  await expect.poll(() => gutter(".diff-code-view")).toBe(size);
+  const overflowing = await toggleRight();
+  await scroller.evaluate((element) => {
+    for (const child of Array.from(element.children))
+      if (child instanceof HTMLElement) child.style.display = "none";
+  });
+  await expect
+    .poll(() =>
+      scroller.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(false);
+  expect(await gutter(".diff-code-view")).toBe(size);
+  expect(await toggleRight()).toBe(overflowing);
+});
+
 test("diff tracks fill frames and headers align with their gutters", async ({
   page,
 }) => {

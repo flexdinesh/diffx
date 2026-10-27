@@ -229,7 +229,7 @@ component internals; layout remains aligned to the 4px rhythm.
 
 Use `--page-gutter` for notices and footer: 24 desktop, 16 below
 1012px, 12 below 768px. Toolbar and file frames share `--diff-gutter`
-(12px), accounting for the viewport's native scrollbar inset. Header leading
+(12px), accounting for the viewport's constant scrollbar inset. Header leading
 content uses the same gutter; its trailing actions anchor directly to the
 shell's right edge, independently of diff scrolling.
 Use explicit margins instead of relying on browser-default paragraph spacing.
@@ -395,6 +395,15 @@ such detail into a token. New layout spacing must use the scale.
   need `min-width: 0` / `min-height: 0` so content can shrink without page overflow.
   Keep a 12rem minimum basis for sidebar content; the outer sidebar can scroll
   on short viewports or enlarged text so navigation/export/footer stay reachable.
+- Scrollbars are thin and quiet, matching Pierre's code tracks: a fixed
+  `--scrollbar-size` (10px) track with a 6px rounded thumb that appears while
+  its pane is hovered or holds focus and darkens on hover and drag. Firefox uses
+  `scrollbar-width: thin`; set `scrollbar-color` only there, since it inherits
+  into Pierre's shadow roots and disables their Chromium styling. Long-lived panes
+  that gain and lose overflow (diff viewport, file tree, comments, Reviews
+  column) set `scrollbar-gutter: stable` so content and toolbar edges never
+  shift. Menus, popovers, dialogs, the outer sidebar and the collapsed rail keep
+  `auto`. Pierre owns its in-file horizontal tracks.
 - `--reading-width` (680px default) bounds dialogs and explanatory text, never code.
 - Use flex layouts for action groups; use grids only for genuine aligned data.
   Column gaps use the spacing scale. Do not turn every grouping into a card.

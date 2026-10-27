@@ -63,6 +63,12 @@
   --focus-outline-offset: 2px;
   --focus-ring: var(--focus-outline-width) solid var(--focus-outline-color);
   --focus-offset: var(--focus-outline-offset);
+  /* Thin pane scrollbars; a fixed track so gutters never follow font size. */
+  --scrollbar-size: 10px;
+  --scrollbar-thumb-inset: 2px;
+  --scrollbar-thumb: color-mix(in srgb, var(--muted) 40%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--muted) 60%, transparent);
+  --scrollbar-thumb-active: color-mix(in srgb, var(--muted) 75%, transparent);
 
   --control-height: 2rem;
   --control-compact: 1.5rem;
