@@ -183,6 +183,13 @@
     opacity: 0.45;
   }
 }
+/* Referenced by the loading status's animate-status-pulse utility. Shares the
+   skeleton rhythm; dims only to --muted so the text stays legible. */
+@keyframes status-pulse {
+  50% {
+    color: var(--muted);
+  }
+}
 @media (max-width: 1011px) {
   .loading-sidebar {
     display: none;

@@ -664,7 +664,9 @@ Do not add motion for decoration. New animation must honor
 - Skeletons use `--border-muted`, existing spacing and radius tokens, and a gentle
   shared opacity pulse. Disable animation under `prefers-reduced-motion`. Keep
   placeholders out of the accessibility tree and tab order; label the busy region
-  with a concise status at the bottom of the review surface. Do not invent file
+  with a concise status at the bottom of the review surface. Its detail line
+  pulses between `--fg` and `--muted` on the skeleton rhythm, static under
+  reduced motion. Do not invent file
   names, counts, progress percentages or addition/deletion colors.
 - Replace skeletons as data arrives, without a minimum display delay. Stored
   manifest loading uses the same diff-frame skeleton without unmounting Pierre.

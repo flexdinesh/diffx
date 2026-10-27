@@ -639,6 +639,8 @@ main {
   --color-backdrop: var(--backdrop);
   --animate-spinner: refresh-spin var(--duration-spin) linear infinite;
   --animate-skeleton: skeleton-pulse var(--duration-pulse) ease-in-out infinite;
+  --animate-status-pulse: status-pulse var(--duration-pulse) ease-in-out
+    infinite;
 }
 
 @layer base {
