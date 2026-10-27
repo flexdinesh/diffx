@@ -21,5 +21,6 @@ combining redirected stdin with a path argument or `--path` is rejected.
 Collection does not inspect Git or attach repository identity.
 Piped diffs have only the all scope and do not
 include full file contents. Standard Git patches are limited to 16 MiB total
-and 2 MiB per file. Combined merge diffs are shown against the first parent.
+and 2 MiB per file; a file whose patch exceeds 1 MiB is listed without a
+preview. Combined merge diffs are shown against the first parent.
 Use `git show --diff-merges=separate` to review every parent separately.

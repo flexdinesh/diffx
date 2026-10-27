@@ -202,19 +202,6 @@ func TestBinaryAndOversizeContentsRemainExplicit(t *testing.T) {
 	}
 }
 
-func TestPreviewBudgetPreservesPatchWhenContentsDoNotFit(t *testing.T) {
-	patch := review.FilePatch{Patch: "patch", Contents: &review.FileContents{Before: "old contents", After: "new contents"}}
-	remaining := 8
-	applyBudget(&patch, &remaining)
-	if patch.Patch != "patch" || patch.Contents != nil || patch.Message == nil || remaining != 3 {
-		t.Fatalf("budget fallback: %+v remaining %d", patch, remaining)
-	}
-	applyBudget(&patch, &remaining)
-	if patch.Patch != "" || patch.Message == nil || remaining != 3 {
-		t.Fatalf("budget unavailable: %+v remaining %d", patch, remaining)
-	}
-}
-
 type changingSource struct {
 	diffsource.Source
 	calls int
@@ -350,7 +337,7 @@ func TestContentIdentityIncludesUnpreviewableBytes(t *testing.T) {
 	}
 }
 
-func TestContentIdentityIncludesFilesAfterAggregatePreviewBudget(t *testing.T) {
+func TestContentIdentityIncludesFilesOverPreviewLimits(t *testing.T) {
 	root := repository(t)
 	value := strings.Repeat("a", 3<<19)
 	for _, name := range []string{"a", "b", "c", "d", "e", "f", "g", "z-last"} {
@@ -359,7 +346,7 @@ func TestContentIdentityIncludesFilesAfterAggregatePreviewBudget(t *testing.T) {
 	first := collect(t, root)
 	preview := patchFor(t, first, review.DiffAll, "z-last")
 	if preview.Patch != "" || preview.Contents != nil || preview.Message == nil {
-		t.Fatalf("test must exhaust aggregate budget before last file: %+v", preview)
+		t.Fatalf("test must omit the last file's preview: %+v", preview)
 	}
 	write(t, root, "z-last", value[:len(value)-1]+"b")
 	second := collect(t, root)
