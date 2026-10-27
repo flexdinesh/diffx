@@ -30,7 +30,11 @@ const (
 	commitFields     = 7
 )
 
-// Commits lists the newest review.MaxCommits commits of a branch comparison's
+// MaxCommits is how many of a branch's newest commits Commits captures, so
+// object prefetchers cover exactly what collection reads.
+const MaxCommits = review.MaxCommits
+
+// Commits lists the newest MaxCommits commits of a branch comparison's
 // merge-base..HEAD range, oldest first. False means the source has no branch
 // baseline, so it has no commits to capture.
 func Commits(ctx context.Context, source Source) (CommitRange, bool, error) {

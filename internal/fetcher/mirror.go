@@ -15,7 +15,6 @@ import (
 	"github.com/flexdinesh/diffx/internal/diffsource"
 	"github.com/flexdinesh/diffx/internal/fetchprotocol"
 	"github.com/flexdinesh/diffx/internal/ingestion"
-	"github.com/flexdinesh/diffx/internal/review"
 )
 
 // remote resolves a leased repository's fetch URL and the only Git transport
@@ -194,7 +193,7 @@ func (repository mirror) prefetch(ctx context.Context, job fetchprotocol.Job) er
 		return err
 	}
 	// Collection captures the newest commits; merges carry no diff.
-	commits, err := repository.git(ctx, false, "", "rev-list", "--no-merges", fmt.Sprintf("--max-count=%d", review.MaxCommits), mergeBase+".."+job.HeadSHA, "--")
+	commits, err := repository.git(ctx, false, "", "rev-list", "--no-merges", fmt.Sprintf("--max-count=%d", diffsource.MaxCommits), mergeBase+".."+job.HeadSHA, "--")
 	if err != nil {
 		return fmt.Errorf("list commits: %w", err)
 	}
