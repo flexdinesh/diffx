@@ -61,9 +61,9 @@ func Run(ctx context.Context, settings Settings, runtimeDir string, initial *ing
 		}
 		defer output.Close()
 		logger := log.New(output, "diffx: ", log.LstdFlags)
-		return runServer(ctx, cancel, settings, runtimeDir, instanceID, collection, nil, reset, published, logger)
+		return runServer(ctx, cancel, settings, runtimeDir, instanceID, Input{Collection: collection}, reset, published, logger)
 	}
-	return runServer(ctx, cancel, settings, "", instanceID, collection, nil, reset, published, log.New(os.Stderr, "diffx: ", log.LstdFlags))
+	return runServer(ctx, cancel, settings, "", instanceID, Input{Collection: collection}, reset, published, log.New(os.Stderr, "diffx: ", log.LstdFlags))
 }
 
 // StateReset is an entry point's decision to replace local state. Remote
@@ -115,7 +115,8 @@ func resetState(path string, reset StateReset) error {
 
 // runServer scopes reads to the capture or discovered checkouts. Checkout
 // discovery and collection start after serving, with an initially empty scope.
-func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings, runtimeDir, instanceID string, initial Collection, collect Collect, reset StateReset, ready func(Status, Published), logger *log.Logger) error {
+func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings, runtimeDir, instanceID string, input Input, reset StateReset, ready func(Status, Published), logger *log.Logger) error {
+	initial, collect := input.Collection, input.Collect
 	settings = normalizeSettings(settings)
 	if settings.RetentionDays < 1 || settings.RetentionDays > 106751 {
 		return errors.New("retention-days must be between 1 and 106751")
@@ -204,7 +205,7 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 	configuration := serverapp.Options{}
 	tasks := []serverapp.Task{serverapp.Prune(store.PruneExpired)}
 	if collect != nil {
-		collections := serverapp.NewCollections(service, collect, defaultContextID)
+		collections := serverapp.NewCollections(service, input.Selection, collect, defaultContextID)
 		configuration.Collections = collections
 		tasks = append(tasks, collections.Initial(func(published Published, err error) {
 			if err != nil {

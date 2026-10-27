@@ -31,14 +31,16 @@ import (
 
 func TestAdmissionCapabilitiesMatchHealthAndRoutes(t *testing.T) {
 	for _, test := range []struct {
-		name    string
-		queue   bool
-		collect bool
-		want    serverapp.Capabilities
+		name      string
+		queue     bool
+		selection serverapp.Selection
+		want      serverapp.Capabilities
+		input     string
 	}{
-		{"foreground capture", false, false, serverapp.Capabilities{}},
-		{"foreground checkout", false, true, serverapp.Capabilities{Collection: true}},
-		{"remote queued", true, false, serverapp.Capabilities{IngestionEnabled: true, QueuedIngestion: true}},
+		{"foreground capture", false, "", serverapp.Capabilities{}, "capture"},
+		{"foreground checkout", false, serverapp.SelectedCheckout, serverapp.Capabilities{Collection: true, Selection: serverapp.SelectedCheckout}, "checkout"},
+		{"foreground checkouts", false, serverapp.DiscoveredCheckouts, serverapp.Capabilities{Collection: true, Selection: serverapp.DiscoveredCheckouts}, "checkouts"},
+		{"remote queued", true, "", serverapp.Capabilities{IngestionEnabled: true, QueuedIngestion: true}, "capture"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			store, err := reviewstore.Open(":memory:")
@@ -56,8 +58,8 @@ func TestAdmissionCapabilitiesMatchHealthAndRoutes(t *testing.T) {
 			if test.queue {
 				options.Queue = store.Queue()
 			}
-			if test.collect {
-				options.Collections = serverapp.NewCollections(service, func(context.Context, func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
+			if test.selection != "" {
+				options.Collections = serverapp.NewCollections(service, test.selection, func(context.Context, func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
 					return nil, errors.New("unused")
 				}, "")
 			}
@@ -78,8 +80,8 @@ func TestAdmissionCapabilitiesMatchHealthAndRoutes(t *testing.T) {
 			if bootstrap.Collect != test.want.Collection {
 				t.Fatalf("bootstrap collect: %v, want %v", bootstrap.Collect, test.want.Collection)
 			}
-			if want := map[bool]string{false: "capture", true: "checkouts"}[test.want.Collection]; bootstrap.Input != want {
-				t.Fatalf("bootstrap input: %q, want %q", bootstrap.Input, want)
+			if bootstrap.Input != test.input {
+				t.Fatalf("bootstrap input: %q, want %q", bootstrap.Input, test.input)
 			}
 			collections := request(t, d, "GET", "/api/v2/collections", nil)
 			collections.Body.Close()
@@ -268,7 +270,7 @@ func TestCollectionIngestsEveryCheckoutAndMovesMCPDefault(t *testing.T) {
 		}
 		return collection.Failures, nil
 	}
-	server := httptest.NewServer(serverapp.Handler(t.Context(), service, store, fstest.MapFS{}, first.Context.ID, serverapp.Options{Collections: serverapp.NewCollections(service, collect, first.Context.ID)}))
+	server := httptest.NewServer(serverapp.Handler(t.Context(), service, store, fstest.MapFS{}, first.Context.ID, serverapp.Options{Collections: serverapp.NewCollections(service, serverapp.DiscoveredCheckouts, collect, first.Context.ID)}))
 	defer server.Close()
 	d := deployment{server: server}
 	mcpDiff := func() review.RepositoryDiff {

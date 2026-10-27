@@ -523,7 +523,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Local checkout mode only. Discovers the process's selected paths again and collects every checkout and linked worktree found, ingesting each as a fresh observation. Absent when the process serves piped input, a fixture or remote storage. */
+    /** @description Local checkout mode only. Collects the process's selected checkout again, or discovers its selected paths again and collects every checkout and linked worktree found, ingesting each as a fresh observation. Absent when the process serves piped input, a fixture or remote storage. */
     post: operations["collectCheckouts"];
     delete?: never;
     options?: never;
@@ -849,10 +849,10 @@ export interface components {
           /** @description Whether this process can collect its selected checkouts again through POST /api/v2/collections. */
           collect: boolean;
           /**
-           * @description What this process serves. `checkouts` reviews discovered checkouts; `capture` reviews one fixed patch (piped stdin or a fixture) and has nothing to switch to.
+           * @description What this process serves. `checkout` reviews one selected checkout; `checkouts` reviews discovered checkouts and their worktrees; `capture` reviews one fixed patch (piped stdin or a fixture) and has nothing to switch to.
            * @enum {string}
            */
-          input: "checkouts" | "capture";
+          input: "checkout" | "checkouts" | "capture";
         }
       | {
           /** @enum {string} */

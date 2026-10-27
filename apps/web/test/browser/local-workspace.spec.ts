@@ -1985,18 +1985,20 @@ test("local first launch waits for collection with an empty catalog", async ({
     ),
   ).toBe(true);
   await page.setViewportSize({ width: 1280, height: 720 });
-  // The review column shows its own placeholders beside the file tree's.
+  // Without two reviews to switch between, a local process shows no review
+  // column; only the file tree's placeholders load.
   const projects = page.getByRole("navigation", {
     name: "Reviews",
     exact: true,
   });
-  await expect(projects).toContainText("Collecting reviews…");
-  await expect(projects.locator(".projects-skeleton")).toBeVisible();
+  await expect(projects).toHaveCount(0);
   await expect(page.locator(".loading-sidebar")).toBeVisible();
-  for (const name of ["Resize reviews column", "Resize file sidebar"])
-    await expect(page.getByRole("separator", { name })).toBeVisible();
-  await expect(projects).not.toContainText("No current changes");
-  await expect(projects).not.toContainText("Agent hooks and diffx sync");
+  await expect(
+    page.getByRole("separator", { name: "Resize file sidebar" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("separator", { name: "Resize reviews column" }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "No review contexts yet" }),
   ).toHaveCount(0);
@@ -2011,6 +2013,10 @@ test("local first launch waits for collection with an empty catalog", async ({
   await expect(page).toHaveURL(/\/streams\/local-stream$/);
   expect(collections).toBe(1);
   await expect(page.locator(".session-status")).toHaveCount(0);
+  await expect(projects).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Search reviews" }),
+  ).toBeVisible();
   const reviewBounds = await page.locator(".workspace").boundingBox();
   if (!reviewBounds) throw new Error("Missing loaded workspace");
   expect(reviewBounds.x).toBeCloseTo(loadingBounds.x, 0);
@@ -2157,11 +2163,12 @@ test("local root waits for collection to open its default over earlier heads", a
   const status = page.locator("main.session-status");
   await expect(status).toContainText("Collecting latest changes");
   await expect(status).toHaveAttribute("aria-busy", "true");
-  await expect(
-    page
-      .getByRole("navigation", { name: "Reviews", exact: true })
-      .getByRole("link"),
-  ).toHaveCount(1);
+  // One review so far: nothing to switch to, so no review column.
+  const projects = page.getByRole("navigation", {
+    name: "Reviews",
+    exact: true,
+  });
+  await expect(projects).toHaveCount(0);
   await expect(page).toHaveURL(/\/$/);
   expect(opened).toEqual([]);
   if (!pending) throw new Error("Missing initial collection");
@@ -2172,6 +2179,17 @@ test("local root waits for collection to open its default over earlier heads", a
   await ready(page);
   await expect(page).toHaveURL(/\/streams\/launched-stream$/);
   expect(opened).toEqual(["launched"]);
+  // The second review brings the column, which then stays.
+  await expect(projects.getByRole("link")).toHaveCount(2);
+  heads = [launched];
+  await page.route("**/api/v2/collections*", (route) =>
+    route.fulfill({
+      json: { contexts: heads, failures: [], defaultContextId: launched.id },
+    }),
+  );
+  await page.getByRole("button", { name: "Sync all checkouts" }).click();
+  await expect(projects.getByRole("link")).toHaveCount(1);
+  await expect(projects).toBeVisible();
 });
 
 test("unresolved navigation joins collection without reporting a missing stream", async ({
@@ -2616,6 +2634,113 @@ test("each remote account baselines its own seen heads", async ({ page }) => {
   expect(
     await page.evaluate(() => localStorage.getItem("projects-seen:account-b")),
   ).toContain("web-head");
+});
+
+test("a single local checkout shows no review column but keeps search, comboboxes and sync", async ({
+  page,
+}) => {
+  const state = await localWorkspace(page);
+  await page.route("**/api/v2/bootstrap", (route) =>
+    route.fulfill({
+      json: {
+        mode: "local",
+        googleEnabled: false,
+        user: null,
+        csrfToken: null,
+        collect: true,
+        input: "checkout",
+      },
+    }),
+  );
+  const snapshot: ApiContext = {
+    ...state.context,
+    streamId: "local-stream",
+    latestContextId: state.context.id,
+  };
+  await page.route("**/api/v2/contexts?*", (route) =>
+    route.fulfill({ json: { contexts: [snapshot], nextCursor: null } }),
+  );
+  await page.route("**/api/v2/collections*", (route) =>
+    route.fulfill({
+      json: {
+        contexts: [snapshot],
+        failures: [],
+        defaultContextId: snapshot.id,
+      },
+    }),
+  );
+  await page.goto("/");
+  await ready(page);
+  await expect(
+    page.getByRole("navigation", { name: "Reviews", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator(".stream-column")).toHaveCount(0);
+  await expect(
+    page.getByRole("separator", { name: "Resize reviews column" }),
+  ).toHaveCount(0);
+  const banner = page.getByRole("banner");
+  await expect(
+    banner.getByRole("button", { name: "Search reviews" }),
+  ).toBeVisible();
+  await expect(
+    banner.getByRole("combobox", { name: /^Repository .+ Switch repository$/ }),
+  ).toBeVisible();
+  await expect(
+    banner.getByRole("button", { name: "Sync checkout" }),
+  ).toBeVisible();
+  await expect(
+    banner.getByRole("button", { name: "Sync all checkouts" }),
+  ).toHaveCount(0);
+  // The diff starts where the file sidebar ends.
+  const sidebar = await page.locator("#sidebar").boundingBox();
+  const navigation = await page.locator(".navigation-island").boundingBox();
+  if (!sidebar || !navigation) throw new Error("Missing navigation");
+  expect(sidebar.x).toBeCloseTo(navigation.x, 0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    banner.getByRole("button", { name: /^(?:Show|Hide) reviews$/ }),
+  ).toHaveCount(0);
+  await expect(
+    banner.getByRole("button", { name: "Search reviews" }),
+  ).toBeVisible();
+});
+
+test("a remote server shows the review column for a single review", async ({
+  page,
+}) => {
+  const state = await localWorkspace(page);
+  await page.route("**/api/v2/bootstrap", (route) =>
+    route.fulfill({
+      json: {
+        mode: "remote",
+        googleEnabled: false,
+        user: { id: "account-a", username: "alice", email: null, admin: false },
+        csrfToken: "csrf",
+        collect: false,
+      },
+    }),
+  );
+  const head: ApiContext = {
+    ...state.context,
+    id: "api-head",
+    repositoryId: "api",
+    name: "api",
+    streamId: "stream-api",
+    latestContextId: "api-head",
+  };
+  await page.route("**/api/v2/contexts?*", (route) =>
+    route.fulfill({ json: { contexts: [head], nextCursor: null } }),
+  );
+  await page.route("**/api/v2/contexts/*", (route) =>
+    route.fulfill({ json: head }),
+  );
+  await page.goto("/contexts/api-head");
+  await ready(page);
+  const nav = page.getByRole("navigation", { name: "Reviews", exact: true });
+  await expect(nav).toBeVisible();
+  await expect(
+    nav.getByRole("button", { name: /^Open latest in / }),
+  ).toHaveText([/^api/]);
 });
 
 async function capturedWorkspace(page: Page) {

@@ -27,6 +27,7 @@ type options struct {
 	paths            []string
 	scanDepth        int
 	scanDepthSet     bool
+	scanWorktrees    bool
 	repositorySet    bool
 	fixture          string
 	state            string
@@ -71,8 +72,8 @@ const maxScanDepth = 32
 
 // singleCheckout rejects workspace discovery outside local mode.
 func (values options) singleCheckout() error {
-	if len(values.paths) > 1 || values.scanDepthSet {
-		return errors.New("multiple --path values and --scan-depth are only supported by local mode")
+	if len(values.paths) > 1 || values.scanDepthSet || values.scanWorktrees {
+		return errors.New("multiple --path values, --scan-depth and --scan-worktrees are only supported by local mode")
 	}
 	return nil
 }
@@ -85,8 +86,9 @@ func parseOptionsMode(arguments []string, stderr io.Writer, allowHost bool) (opt
 	flags := flag.NewFlagSet("diffx", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	values := options{host: "127.0.0.1", directory: ".", trigger: "manual"}
-	flags.Var(pathList{&values.paths}, "path", "checkout path to collect; local mode accepts it repeatedly and discovers checkouts below each")
+	flags.Var(pathList{&values.paths}, "path", "checkout path to collect; local mode accepts it repeatedly and discovers checkouts and their worktrees below each")
 	flags.IntVar(&values.scanDepth, "scan-depth", 8, "local mode: directory levels searched below each path for repositories")
+	flags.BoolVar(&values.scanWorktrees, "scan-worktrees", false, "local mode: also collect the other worktrees of a checkout path's repository")
 	flags.StringVar(&values.server, "server", values.server, "remote server URL for sync; overrides remote.url")
 	flags.StringVar(&values.token, "token", values.token, "remote bearer token for sync; prefer DIFFX_REMOTE_TOKEN")
 	flags.StringVar(&values.trigger, "trigger", values.trigger, "collection trigger: manual or agent-hook")
@@ -114,7 +116,7 @@ func parseOptionsMode(arguments []string, stderr io.Writer, allowHost bool) (opt
 	flags.BoolVar(&values.noBrowser, "no-browser", false, "do not open a browser")
 	flags.BoolVar(&values.version, "version", false, "print version and exit")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "  Usage: diffx [PATH] [--host IP] [--replace] [--reset-state]")
+		fmt.Fprintln(stderr, "  Usage: diffx [PATH] [--scan-worktrees] [--host IP] [--replace] [--reset-state]")
 		fmt.Fprintln(stderr, "         diffx --path DIR [--path DIR...] [--scan-depth N]")
 		fmt.Fprintln(stderr, "         git diff | diffx [options]")
 		fmt.Fprintln(stderr, "         diffx sync [--path DIRECTORY] [--print] [--debug] [--retry]")

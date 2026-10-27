@@ -9,11 +9,11 @@ canonical record of package boundaries and architectural decisions.
 
 | Concern    | Local `diffx [PATH]`                                                | Remote `diffx-server`                    |
 | ---------- | ------------------------------------------------------------------- | ---------------------------------------- |
-| Collection | Discovered checkouts at start, live page loads and sync; stdin once | Separate finite sync or hook producer    |
+| Collection | Selected checkout(s) at start, live page loads and sync; stdin once | Separate finite sync or hook producer    |
 | Admission  | Direct application call; startup runs after serving                 | Authenticated durable queue and worker   |
 | Lifetime   | Foreground; authenticated singleton replacement                     | Foreground; graceful worker shutdown     |
 | Storage    | One owner of persistent SQLite                                      | One owner of persistent SQLite           |
-| Queries    | Discovered checkouts or capture via REST/MCP                        | Same application services via REST/MCP   |
+| Queries    | Selected checkout(s) or capture via REST/MCP                        | Same application services via REST/MCP   |
 | Access     | Public listener; private lifecycle credential                       | Account credentials wrap the application |
 | Identity   | Automatic stable local owner; no account UI                         | Account sessions and scoped API tokens   |
 
@@ -26,10 +26,14 @@ validation and legacy interpretation; context queries expose stored scope
 summaries. Selecting a comparison reads the same immutable observation and never
 triggers collection or resolves the latest stream head.
 Manual sync and hook producers collect only the selected checkout. A local
-checkout process discovers every repository under its paths (bounded depth,
-stopping at repositories, skipping hidden directories) and collects all of their
-registered worktrees, because one review process serves a developer's whole
-workspace. Stored observations cannot refresh from Git. A local checkout process
+process started on one checkout path does the same unless `--scan-worktrees`
+adds that repository's registered worktrees. A local process given `--path` or
+a directory outside a repository discovers every repository under its paths
+(bounded depth, stopping at repositories, skipping hidden directories) and
+collects all of their registered worktrees, because it serves a developer's
+whole workspace. The entry point resolves this scope once at startup
+(`collector.Workspaces`) and reports it in the bootstrap as `input: "checkout"`
+or `"checkouts"`. Stored observations cannot refresh from Git. A local checkout process
 discovers and collects again only on user request (`POST /api/v2/collections`):
 opening a live URL or pressing Sync. Discovery feeds checkouts directly to four
 collection workers through a bounded pipeline. Each finished checkout publishes

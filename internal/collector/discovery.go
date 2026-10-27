@@ -79,17 +79,27 @@ func DiscoverCheckout(ctx context.Context, input, sourceID, base string) (Discov
 	return result, nil
 }
 
+// Workspaces selects the checkouts a local process collects.
+type Workspaces struct {
+	Paths []string
+	// Depth bounds the directory levels walked below a path outside a repository.
+	Depth int
+	// LinkedWorktrees adds every registered worktree of each repository found;
+	// otherwise a repository contributes only the checkout containing its path.
+	LinkedWorktrees bool
+}
+
 // DiscoverWorkspaces finds every live checkout under the supplied paths. A path
 // inside a repository resolves to its root; otherwise directories are walked up
 // to depth levels, stopping at repositories and skipping hidden, node_modules
-// and vendor directories. Each repository contributes all registered worktrees,
-// including those outside the paths. It never fetches, switches branches,
-// creates worktrees or follows symbolic links.
-func DiscoverWorkspaces(ctx context.Context, inputs []string, depth int, sourceID, base string) (Discovery, error) {
-	return discoverWorkspaces(ctx, inputs, depth, sourceID, base, nil)
+// and vendor directories. With LinkedWorktrees, each repository contributes all
+// registered worktrees, including those outside the paths. It never fetches,
+// switches branches, creates worktrees or follows symbolic links.
+func DiscoverWorkspaces(ctx context.Context, workspaces Workspaces, sourceID, base string) (Discovery, error) {
+	return discoverWorkspaces(ctx, workspaces, sourceID, base, nil)
 }
 
-func discoverWorkspaces(ctx context.Context, inputs []string, depth int, sourceID, base string, visit func(DiscoverySource) error) (Discovery, error) {
+func discoverWorkspaces(ctx context.Context, workspaces Workspaces, sourceID, base string, visit func(DiscoverySource) error) (Discovery, error) {
 	var result Discovery
 	if base == "" {
 		base = "auto"
@@ -118,16 +128,19 @@ func discoverWorkspaces(ctx context.Context, inputs []string, depth int, sourceI
 			result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("identify repository %s: %v", root, err))
 			return nil
 		}
-		// Enumeration deduplicates physical Git stores only. Independent clones
-		// can share a repository key while retaining distinct checkout identities.
-		if seenRepositories[facts.CommonDir] {
-			return nil
-		}
-		seenRepositories[facts.CommonDir] = true
-		_, worktrees, err := diffsource.RepositoryWorktrees(ctx, root)
-		if err != nil {
-			result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("list worktrees %s: %v", root, err))
-			return nil
+		worktrees := []diffsource.Worktree{{Root: root}}
+		if workspaces.LinkedWorktrees {
+			// Enumeration deduplicates physical Git stores only. Independent clones
+			// can share a repository key while retaining distinct checkout identities.
+			if seenRepositories[facts.CommonDir] {
+				return nil
+			}
+			seenRepositories[facts.CommonDir] = true
+			_, worktrees, err = diffsource.RepositoryWorktrees(ctx, root)
+			if err != nil {
+				result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("list worktrees %s: %v", root, err))
+				return nil
+			}
 		}
 		for _, worktree := range worktrees {
 			if limitReached() {
@@ -207,7 +220,7 @@ func discoverWorkspaces(ctx context.Context, inputs []string, depth int, sourceI
 		}
 		return nil
 	}
-	for _, input := range inputs {
+	for _, input := range workspaces.Paths {
 		input, err := filepath.Abs(input)
 		if err != nil {
 			return result, err
@@ -232,7 +245,7 @@ func discoverWorkspaces(ctx context.Context, inputs []string, depth int, sourceI
 			result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("inspect %s: %v", input, err))
 			continue
 		}
-		if err := scan(input, input, depth); err != nil {
+		if err := scan(input, input, workspaces.Depth); err != nil {
 			return result, err
 		}
 	}

@@ -58,18 +58,18 @@ func TestCheckoutServerServesBeforeCollectionAndWaitsForCollectorShutdown(t *tes
 	stopped := make(chan struct{})
 	go func() {
 		defer close(stopped)
-		done <- runServer(ctx, cancel, Settings{Host: "127.0.0.1", Port: 0, State: state}, "", "async-test", Collection{},
-			func(ctx context.Context, _ func(ingestion.Request) error) ([]CollectionFailure, error) {
+		done <- runServer(ctx, cancel, Settings{Host: "127.0.0.1", Port: 0, State: state}, "", "async-test", Input{Selection: DiscoveredCheckouts,
+			Collect: func(ctx context.Context, _ func(ingestion.Request) error) ([]CollectionFailure, error) {
 				<-ctx.Done()
 				close(collectionCanceled)
 				<-release
 				return nil, ctx.Err()
-			}, StateReset{}, func(status Status, published Published) {
-				if len(published.Publications) != 0 {
-					t.Error("ready must not wait for checkout collection")
-				}
-				ready <- status
-			}, log.New(io.Discard, "", 0))
+			}}, StateReset{}, func(status Status, published Published) {
+			if len(published.Publications) != 0 {
+				t.Error("ready must not wait for checkout collection")
+			}
+			ready <- status
+		}, log.New(io.Discard, "", 0))
 	}()
 	t.Cleanup(func() {
 		cancel()

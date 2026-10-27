@@ -51,7 +51,7 @@ func TestDiscoveryFindsRepositoriesAndAllTheirWorktrees(t *testing.T) {
 	// Linked worktrees outside the scanned workspace still belong to the repository.
 	linked := filepath.Join(t.TempDir(), "linked")
 	git(t, root, "worktree", "add", "-b", "feature", linked)
-	result, err := DiscoverWorkspaces(t.Context(), []string{workspace}, 8, "machine", "auto")
+	result, err := DiscoverWorkspaces(t.Context(), Workspaces{Paths: []string{workspace}, Depth: 8, LinkedWorktrees: true}, "machine", "auto")
 	if err != nil || !slices.Equal(discoveredPaths(result), []string{root, linked}) {
 		t.Fatalf("sources %v diagnostics %v err %v", discoveredPaths(result), result.Diagnostics, err)
 	}
@@ -60,9 +60,25 @@ func TestDiscoveryFindsRepositoriesAndAllTheirWorktrees(t *testing.T) {
 	}
 	identity := result.Sources[1].Identity
 	git(t, root, "branch", "-m", "main", "master")
-	result, err = DiscoverWorkspaces(t.Context(), []string{workspace}, 8, "machine", "auto")
+	result, err = DiscoverWorkspaces(t.Context(), Workspaces{Paths: []string{workspace}, Depth: 8, LinkedWorktrees: true}, "machine", "auto")
 	if err != nil || len(result.Sources) != 2 || result.Sources[1].Identity != identity {
 		t.Fatalf("worktree identity changed: %#v %v %v", result.Sources, result.Diagnostics, err)
+	}
+}
+
+func TestDiscoveryWithoutLinkedWorktreesSelectsOnlyTheContainingCheckout(t *testing.T) {
+	root := initialized(t, filepath.Join(t.TempDir(), "project"))
+	linked := filepath.Join(t.TempDir(), "linked")
+	git(t, root, "worktree", "add", "-b", "feature", linked)
+	nested := filepath.Join(linked, "src")
+	if err := os.Mkdir(nested, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for input, want := range map[string]string{root: root, nested: linked} {
+		result, err := DiscoverWorkspaces(t.Context(), Workspaces{Paths: []string{input}, Depth: 8}, "machine", "auto")
+		if err != nil || !slices.Equal(discoveredPaths(result), []string{want}) || result.Sources[0].InputPath != input {
+			t.Fatalf("input %s: sources %v diagnostics %v err %v", input, discoveredPaths(result), result.Diagnostics, err)
+		}
 	}
 }
 
@@ -76,12 +92,12 @@ func TestDiscoveryStopsAtRepositoriesAndSkipsHiddenDirectories(t *testing.T) {
 	if err := os.Symlink(filepath.Join(workspace, ".hidden"), filepath.Join(workspace, "linked")); err != nil {
 		t.Fatal(err)
 	}
-	result, err := DiscoverWorkspaces(t.Context(), []string{workspace}, 8, "machine", "auto")
+	result, err := DiscoverWorkspaces(t.Context(), Workspaces{Paths: []string{workspace}, Depth: 8, LinkedWorktrees: true}, "machine", "auto")
 	if err != nil || !slices.Equal(discoveredPaths(result), []string{outer, visible}) {
 		t.Fatalf("sources %v diagnostics %v err %v", discoveredPaths(result), result.Diagnostics, err)
 	}
 	hidden := filepath.Join(workspace, ".hidden")
-	result, err = DiscoverWorkspaces(t.Context(), []string{hidden}, 8, "machine", "auto")
+	result, err = DiscoverWorkspaces(t.Context(), Workspaces{Paths: []string{hidden}, Depth: 8, LinkedWorktrees: true}, "machine", "auto")
 	if err != nil || !slices.Equal(discoveredPaths(result), []string{filepath.Join(hidden, "project")}) {
 		t.Fatalf("explicit hidden root skipped: %v %v %v", discoveredPaths(result), result.Diagnostics, err)
 	}
@@ -94,7 +110,7 @@ func TestDiscoveryResolvesNestedPathAndDeduplicatesOverlappingInputs(t *testing.
 	if err := os.Mkdir(nested, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	result, err := DiscoverWorkspaces(t.Context(), []string{nested, workspace, root}, 8, "machine", "auto")
+	result, err := DiscoverWorkspaces(t.Context(), Workspaces{Paths: []string{nested, workspace, root}, Depth: 8, LinkedWorktrees: true}, "machine", "auto")
 	if err != nil || !slices.Equal(discoveredPaths(result), []string{root}) || result.Sources[0].InputPath != nested {
 		t.Fatalf("overlapping inputs: %#v %v %v", result.Sources, result.Diagnostics, err)
 	}
@@ -106,7 +122,7 @@ func TestDiscoveryIncludesIndependentClonesWithSameRemote(t *testing.T) {
 	first, second := filepath.Join(workspace, "first"), filepath.Join(workspace, "second")
 	git(t, workspace, "clone", original, first)
 	git(t, workspace, "clone", original, second)
-	result, err := DiscoverWorkspaces(context.Background(), []string{workspace}, 8, "machine", "auto")
+	result, err := DiscoverWorkspaces(context.Background(), Workspaces{Paths: []string{workspace}, Depth: 8, LinkedWorktrees: true}, "machine", "auto")
 	if err != nil || !slices.Equal(discoveredPaths(result), []string{first, second}) || result.Sources[0].Identity == result.Sources[1].Identity {
 		t.Fatalf("clones lost distinct checkout identities: %#v %v %v", result.Sources, result.Diagnostics, err)
 	}
@@ -125,7 +141,7 @@ func TestDiscoveryReportsCopiedGitIdentity(t *testing.T) {
 	if err := os.CopyFS(second, os.DirFS(original)); err != nil {
 		t.Fatal(err)
 	}
-	result, err := DiscoverWorkspaces(t.Context(), []string{workspace}, 8, "machine", "auto")
+	result, err := DiscoverWorkspaces(t.Context(), Workspaces{Paths: []string{workspace}, Depth: 8, LinkedWorktrees: true}, "machine", "auto")
 	if err != nil || len(result.Sources) != 1 {
 		t.Fatalf("copied identity discovery: %#v %v %v", result.Sources, result.Diagnostics, err)
 	}
@@ -144,7 +160,7 @@ func TestDiscoveryReportsMissingWorktree(t *testing.T) {
 	if err := os.RemoveAll(linked); err != nil {
 		t.Fatal(err)
 	}
-	result, err := DiscoverWorkspaces(t.Context(), []string{root}, 8, "machine", "auto")
+	result, err := DiscoverWorkspaces(t.Context(), Workspaces{Paths: []string{root}, Depth: 8, LinkedWorktrees: true}, "machine", "auto")
 	if err != nil || !slices.Equal(discoveredPaths(result), []string{root}) || len(result.Diagnostics) != 1 || !strings.Contains(result.Diagnostics[0], "worktree unavailable") {
 		t.Fatalf("missing worktree: %v %v %v", discoveredPaths(result), result.Diagnostics, err)
 	}
@@ -153,21 +169,21 @@ func TestDiscoveryReportsMissingWorktree(t *testing.T) {
 func TestDiscoveryBoundsDepthAndReportsMissingInput(t *testing.T) {
 	workspace := t.TempDir()
 	deep := initialized(t, filepath.Join(workspace, "one", "two", "three"))
-	result, err := DiscoverWorkspaces(context.Background(), []string{workspace}, 2, "machine", "auto")
+	result, err := DiscoverWorkspaces(context.Background(), Workspaces{Paths: []string{workspace}, Depth: 2, LinkedWorktrees: true}, "machine", "auto")
 	if err != nil || len(result.Sources) != 0 {
 		t.Fatalf("deep checkout escaped discovery bound: %#v %v", result, err)
 	}
-	result, err = DiscoverWorkspaces(context.Background(), []string{workspace}, 3, "machine", "auto")
+	result, err = DiscoverWorkspaces(context.Background(), Workspaces{Paths: []string{workspace}, Depth: 3, LinkedWorktrees: true}, "machine", "auto")
 	if err != nil || !slices.Equal(discoveredPaths(result), []string{deep}) {
 		t.Fatalf("checkout within depth missed: %#v %v", result, err)
 	}
-	result, err = DiscoverWorkspaces(context.Background(), []string{filepath.Join(workspace, "missing")}, 8, "machine", "auto")
+	result, err = DiscoverWorkspaces(context.Background(), Workspaces{Paths: []string{filepath.Join(workspace, "missing")}, Depth: 8, LinkedWorktrees: true}, "machine", "auto")
 	if err != nil || len(result.Sources) != 0 || len(result.Diagnostics) == 0 {
 		t.Fatalf("missing path lacks diagnostics: %#v %v", result, err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := DiscoverWorkspaces(ctx, []string{workspace}, 8, "machine", "auto"); err == nil {
+	if _, err := DiscoverWorkspaces(ctx, Workspaces{Paths: []string{workspace}, Depth: 8, LinkedWorktrees: true}, "machine", "auto"); err == nil {
 		t.Fatal("canceled discovery succeeded")
 	}
 }
@@ -180,7 +196,7 @@ func TestCollectWorkspacesCollectsEachCheckoutIndependently(t *testing.T) {
 	write(t, second, "file.txt", "after\n")
 	git(t, second, "add", ".")
 	var requests []ingestion.Request
-	batch, err := CollectWorkspaces(t.Context(), []string{workspace}, 8, Options{SourceID: "machine", Hostname: "host", SubmissionID: "shared"}, func(input ingestion.Request) error { requests = append(requests, input); return nil })
+	batch, err := CollectWorkspaces(t.Context(), Workspaces{Paths: []string{workspace}, Depth: 8, LinkedWorktrees: true}, Options{SourceID: "machine", Hostname: "host", SubmissionID: "shared"}, func(input ingestion.Request) error { requests = append(requests, input); return nil })
 	slices.SortFunc(requests, func(a, b ingestion.Request) int { return strings.Compare(a.Metadata.Root, b.Metadata.Root) })
 	if err != nil || len(requests) != 2 || len(batch.Failures) != 0 {
 		t.Fatalf("batch %#v err %v", batch, err)
@@ -194,7 +210,7 @@ func TestCollectWorkspacesCollectsEachCheckoutIndependently(t *testing.T) {
 	if requests[0].Metadata.TriggerRoot != workspace {
 		t.Fatalf("trigger root %q", requests[0].Metadata.TriggerRoot)
 	}
-	if _, err := CollectWorkspaces(t.Context(), []string{t.TempDir()}, 8, Options{SourceID: "machine", Hostname: "host"}, func(ingestion.Request) error { return nil }); err == nil || !strings.Contains(err.Error(), "no Git checkouts found") {
+	if _, err := CollectWorkspaces(t.Context(), Workspaces{Paths: []string{t.TempDir()}, Depth: 8, LinkedWorktrees: true}, Options{SourceID: "machine", Hostname: "host"}, func(ingestion.Request) error { return nil }); err == nil || !strings.Contains(err.Error(), "no Git checkouts found") {
 		t.Fatalf("empty workspace: %v", err)
 	}
 }
@@ -208,7 +224,7 @@ func TestCollectWorkspacesCanonicalizesInputWithinItsCheckout(t *testing.T) {
 		t.Fatal(err)
 	}
 	var requests []ingestion.Request
-	if _, err := CollectWorkspaces(t.Context(), []string{alias}, 8, Options{SourceID: "machine", Hostname: "host"}, func(input ingestion.Request) error { requests = append(requests, input); return nil }); err != nil || len(requests) != 2 {
+	if _, err := CollectWorkspaces(t.Context(), Workspaces{Paths: []string{alias}, Depth: 8, LinkedWorktrees: true}, Options{SourceID: "machine", Hostname: "host"}, func(input ingestion.Request) error { requests = append(requests, input); return nil }); err != nil || len(requests) != 2 {
 		t.Fatalf("requests %d err %v", len(requests), err)
 	}
 	// Canonical checkout roots must contain the input to identify the launch checkout.
@@ -227,7 +243,7 @@ func TestCollectWorkspacesReportsFailedCheckoutWithoutBlockingOthers(t *testing.
 	// A base that cannot resolve fails only the checkout without that ref.
 	git(t, healthy, "branch", "baseline")
 	var requests []ingestion.Request
-	batch, err := CollectWorkspaces(t.Context(), []string{workspace}, 8, Options{SourceID: "machine", Hostname: "host", Base: "baseline"}, func(input ingestion.Request) error { requests = append(requests, input); return nil })
+	batch, err := CollectWorkspaces(t.Context(), Workspaces{Paths: []string{workspace}, Depth: 8, LinkedWorktrees: true}, Options{SourceID: "machine", Hostname: "host", Base: "baseline"}, func(input ingestion.Request) error { requests = append(requests, input); return nil })
 	if err != nil || len(requests) != 1 || requests[0].Metadata.Root != healthy {
 		t.Fatalf("batch %#v err %v", batch, err)
 	}
@@ -256,7 +272,7 @@ func TestCollectWorkspacesPublishesBeforeOtherCheckoutFinishes(t *testing.T) {
 	published := make(chan ingestion.Request, 2)
 	done := make(chan error, 1)
 	go func() {
-		_, err := CollectWorkspaces(t.Context(), []string{workspace}, 8, options, func(input ingestion.Request) error {
+		_, err := CollectWorkspaces(t.Context(), Workspaces{Paths: []string{workspace}, Depth: 8, LinkedWorktrees: true}, options, func(input ingestion.Request) error {
 			published <- input
 			return nil
 		})
@@ -318,7 +334,7 @@ func TestCollectWorkspacesJoinsWorkersAfterCancellationAndPublishFailure(t *test
 			published := make(chan struct{}, 1)
 			done := make(chan error, 1)
 			go func() {
-				_, err := CollectWorkspaces(ctx, []string{workspace}, 8, options, func(ingestion.Request) error {
+				_, err := CollectWorkspaces(ctx, Workspaces{Paths: []string{workspace}, Depth: 8, LinkedWorktrees: true}, options, func(ingestion.Request) error {
 					<-blocked
 					published <- struct{}{}
 					if failPublish {
@@ -410,7 +426,7 @@ exec "$DIFFX_TEST_REAL_GIT" "$@"
 	stopped := make(chan struct{})
 	go func() {
 		defer close(stopped)
-		_, err := CollectWorkspaces(ctx, []string{first, second}, 8, Options{SourceID: "machine"}, func(input ingestion.Request) error {
+		_, err := CollectWorkspaces(ctx, Workspaces{Paths: []string{first, second}, Depth: 8, LinkedWorktrees: true}, Options{SourceID: "machine"}, func(input ingestion.Request) error {
 			published <- input
 			return nil
 		})

@@ -8,7 +8,7 @@ import { ProjectPicker } from "./ProjectPicker.tsx";
 import { Navigation } from "./Navigation.tsx";
 import { SyncButton, Topbar } from "./Topbar.tsx";
 import { useCatalog, useSessionShell } from "./session-context.tsx";
-import { useShellPolicy } from "./shell-policy.ts";
+import { useShellPolicy } from "./use-shell-policy.ts";
 
 /**
  * Presents the selected review once ready, or the loading, empty and failure

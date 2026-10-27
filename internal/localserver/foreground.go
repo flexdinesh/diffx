@@ -19,13 +19,21 @@ type (
 	CollectionFailure = serverapp.CollectionFailure
 	Collect           = serverapp.Collect
 	Published         = serverapp.Published
+	Selection         = serverapp.Selection
+)
+
+const (
+	SelectedCheckout    = serverapp.SelectedCheckout
+	DiscoveredCheckouts = serverapp.DiscoveredCheckouts
 )
 
 // Input supplies a fixed capture or checkout collection to run in the
-// background at startup and again on explicit user request.
+// background at startup and again on explicit user request. Selection names
+// the scope Collect gathers.
 type Input struct {
 	Collection Collection
 	Collect    Collect
+	Selection  Selection
 }
 
 // RunForeground serializes discovery, replacement and publication. Shutdown
@@ -65,7 +73,7 @@ func RunForeground(ctx context.Context, settings Settings, input Input, confirm 
 	defer RemoveDescriptor(client.RuntimeDirectory, id)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	return runServer(ctx, cancel, settings, client.RuntimeDirectory, id, input.Collection, input.Collect, reset, func(status Status, published Published) {
+	return runServer(ctx, cancel, settings, client.RuntimeDirectory, id, input, reset, func(status Status, published Published) {
 		_ = lifecycle.Close()
 		if ready != nil {
 			ready(status, published)

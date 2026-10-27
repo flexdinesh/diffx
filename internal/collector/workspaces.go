@@ -31,7 +31,7 @@ type Batch struct {
 // publish runs serially as requests finish. Its failure cancels and joins all
 // remaining collection before returning. Four workers and a bounded result
 // buffer limit completed requests waiting to publish.
-func CollectWorkspaces(ctx context.Context, paths []string, depth int, options Options, publish func(ingestion.Request) error) (Batch, error) {
+func CollectWorkspaces(ctx context.Context, workspaces Workspaces, options Options, publish func(ingestion.Request) error) (Batch, error) {
 	options, err := defaults(options)
 	if err != nil {
 		return Batch{}, err
@@ -60,7 +60,7 @@ func CollectWorkspaces(ctx context.Context, paths []string, depth int, options O
 	}
 	discoveryDone := make(chan discovered, 1)
 	go func() {
-		value, err := discoverWorkspaces(ctx, paths, depth, options.SourceID, options.Base, func(source DiscoverySource) error {
+		value, err := discoverWorkspaces(ctx, workspaces, options.SourceID, options.Base, func(source DiscoverySource) error {
 			select {
 			case jobs <- source:
 				return nil
@@ -122,7 +122,7 @@ func CollectWorkspaces(ctx context.Context, paths []string, depth int, options O
 		return batch, discovery.err
 	}
 	if len(discovery.value.Sources) == 0 {
-		detail := "no Git checkouts found in " + strings.Join(paths, ", ")
+		detail := "no Git checkouts found in " + strings.Join(workspaces.Paths, ", ")
 		if len(batch.Diagnostics) > 0 {
 			detail += ": " + strings.Join(batch.Diagnostics, "; ")
 		}

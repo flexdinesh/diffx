@@ -1,5 +1,4 @@
 import type { ApiBootstrap } from "@diffx/api";
-import { useIdentity } from "./identity-context.tsx";
 
 /**
  * What the review shell offers, resolved once from the server's bootstrap.
@@ -13,18 +12,30 @@ export type ShellPolicy = {
    * switch to, so it shows only that diff and its file sidebar.
    */
   reviewNavigation: boolean;
+  /**
+   * When the Reviews column, rail and compact drawer toggle show. A remote
+   * server always shows them; a local checkout process waits until there are
+   * two current reviews to switch between.
+   */
+  reviewColumn: "always" | "multiple";
+  /** What Sync collects: one selected checkout or every discovered one. */
+  collection: "checkout" | "checkouts" | null;
 };
 
 export function shellPolicy(bootstrap: ApiBootstrap): ShellPolicy {
+  if (bootstrap.mode === "remote")
+    return { reviewNavigation: true, reviewColumn: "always", collection: null };
+  const collection = bootstrap.input === "capture" ? null : bootstrap.input;
   return {
-    reviewNavigation:
-      bootstrap.mode === "remote" || bootstrap.input === "checkouts",
+    reviewNavigation: collection !== null,
+    reviewColumn: "multiple",
+    collection,
   };
 }
 
-const unresolved: ShellPolicy = { reviewNavigation: false };
-
-export function useShellPolicy(): ShellPolicy {
-  const { state } = useIdentity();
-  return state.status === "ready" ? shellPolicy(state.bootstrap) : unresolved;
+/** Whether the Reviews column shows while it lists `streams` streams. */
+export function showsReviewColumn(policy: ShellPolicy, streams: number) {
+  return (
+    policy.reviewNavigation && (policy.reviewColumn === "always" || streams > 1)
+  );
 }

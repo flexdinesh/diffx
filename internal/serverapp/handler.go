@@ -35,24 +35,31 @@ type Capabilities struct {
 	IngestionEnabled bool
 	QueuedIngestion  bool
 	Collection       bool
+	// Selection is the collected checkouts' scope; empty without collection.
+	Selection Selection
 }
 
-// Input names what a local process serves: discovered checkouts, which it can
-// collect again, or one fixed capture (piped stdin or a fixture) with nothing
-// to switch to. Only checkout processes own collections.
+// Input names what a local process serves: its selected checkout or the
+// discovered checkouts, which it can collect again, or one fixed capture
+// (piped stdin or a fixture) with nothing to switch to. Only checkout
+// processes own collections.
 func (capabilities Capabilities) Input() string {
 	if capabilities.Collection {
-		return "checkouts"
+		return string(capabilities.Selection)
 	}
 	return "capture"
 }
 
 func (options Options) Capabilities() Capabilities {
-	return Capabilities{
+	capabilities := Capabilities{
 		IngestionEnabled: options.Queue != nil,
 		QueuedIngestion:  options.Queue != nil,
 		Collection:       options.Collections != nil,
 	}
+	if options.Collections != nil {
+		capabilities.Selection = options.Collections.selection
+	}
+	return capabilities
 }
 
 func Handler(ctx context.Context, service *contextservice.Service, store reviewservice.MutationStore, assets fs.FS, defaultID string, options ...Options) http.Handler {

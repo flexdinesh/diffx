@@ -15,6 +15,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/diffsource"
 	"github.com/flexdinesh/diffx/internal/hooks"
 	"github.com/flexdinesh/diffx/internal/ingestion"
+	"github.com/flexdinesh/diffx/internal/localserver"
 	"github.com/flexdinesh/diffx/internal/review"
 	buildversion "github.com/flexdinesh/diffx/internal/version"
 )
@@ -172,6 +173,7 @@ type initialInput struct {
 	Kind          string
 	Path          string
 	Paths         []string
+	Selection     localserver.Selection
 	Raw           []byte
 	SubmittedFrom string
 }

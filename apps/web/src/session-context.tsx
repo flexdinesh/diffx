@@ -11,8 +11,10 @@ import {
   useState,
 } from "react";
 import { useIdentity } from "./identity-context.tsx";
+import { showsReviewColumn } from "./shell-policy.ts";
+import { useShellPolicy } from "./use-shell-policy.ts";
 import { latestChangedContext } from "./context-activity.ts";
-import { streamKey, type SeenStreams } from "./project-nav.ts";
+import { streamCount, streamKey, type SeenStreams } from "./project-nav.ts";
 import { useSeenStreams } from "./use-seen-streams.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
 import {
@@ -74,6 +76,8 @@ interface Catalog {
   collect: (() => Promise<SyncSummary | null>) | null;
   collecting: boolean;
   collectError: string;
+  /** Whether the shell shows the Reviews column, rail and drawer toggle. */
+  reviewColumn: boolean;
 }
 /** Loading, empty and failure state for the shell shown until a review is ready. */
 export interface SessionShellState {
@@ -397,6 +401,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     heads.loaded,
     ready ? current : undefined,
   );
+  const policy = useShellPolicy();
+  const [reviewColumn, setReviewColumn] = useState(false);
+  // Once shown, the column stays for the page session, so a stream leaving the
+  // list never reflows the review beneath the reader.
+  if (!reviewColumn && showsReviewColumn(policy, streamCount(heads.contexts)))
+    setReviewColumn(true);
   const catalog = useMemo(
     () => ({
       heads,
@@ -411,6 +421,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       collect,
       collecting,
       collectError,
+      reviewColumn,
     }),
     [
       heads,
@@ -425,6 +436,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       collect,
       collecting,
       collectError,
+      reviewColumn,
     ],
   );
   // The root URL keeps waiting for changed work while showing the empty state.

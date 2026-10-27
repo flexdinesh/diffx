@@ -20,7 +20,7 @@ A local review workspace that combines a browser-based Git diff with comments th
 
 ## Operating Context
 
-- A developer runs `diffx` from a Git repository or workspace. The Go server opens the review UI in a browser, shows the checkouts and worktrees discovered under its paths, and collects them all again when the developer syncs.
+- A developer runs `diffx` from a Git repository or workspace. The Go server opens the review UI in a browser and shows that checkout (plus its other worktrees with `--scan-worktrees`) or the checkouts and worktrees discovered under its paths, collecting the same scope again when the developer syncs. With one review to look at, the Reviews column stays out of the way; it appears once there are two to switch between.
 - Reviews can cover all, staged, or unstaged changes. The file tree, reviewed-file marks, and comments help track progress.
 - Comments can be copied as agent-ready XML. The same review comments are available to compatible coding agents through MCP and, in supported browsers, WebMCP.
 - The CLI can also display a piped Git patch as a fixed review.

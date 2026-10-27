@@ -319,12 +319,16 @@ latest-stream and branch-filter rules. Selecting a stream keeps the column and
 file sidebar open. `use-stream-nav.ts`, provided by `stream-nav-context.tsx`,
 owns the column's rail/list state, width and grouping. `shell-policy.ts`
 resolves review navigation once from the bootstrap (`input: "capture"` hides
-all of it); components read that policy, never the deployment mode.
+all of it) and `use-shell-policy.ts` reads it; components read that policy,
+never the deployment mode. The policy's `reviewColumn` is `always` remotely and
+`multiple` locally: the session owner shows the column once `streamCount`
+reaches two and keeps it for the page session. Its `collection` names the Sync
+scope.
 `use-sidebar.ts` owns file sidebar visibility and width and which mobile drawer
 is open, with its focus. `Navigation.tsx` owns the island and both resize
 handles. The selected context scopes every request. The session owner exposes
 local checkout sync when bootstrap reports `collect`; loading `/` or a live
-`/streams/{streamId}` URL, the header's “Sync all checkouts” icon and Alt+R call
+`/streams/{streamId}` URL, the header's “Sync checkout” or “Sync all checkouts” icon and Alt+R call
 `POST /api/v2/collections`. Load-time sync runs in the background while a live
 URL opens its stream's first available stored head; `/` waits for the
 collection's `defaultContextId`. Collection completion never replaces an

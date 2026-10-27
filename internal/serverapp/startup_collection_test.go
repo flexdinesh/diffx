@@ -100,7 +100,7 @@ func TestInitialCollectionJoinsFirstRequestAndLaterRequestsCollectAgain(t *testi
 			service, _ := collectionService(t)
 			started, release := make(chan struct{}), make(chan struct{})
 			var calls atomic.Int32
-			collections := serverapp.NewCollections(service, func(ctx context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
+			collections := serverapp.NewCollections(service, serverapp.DiscoveredCheckouts, func(ctx context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
 				call := calls.Add(1)
 				if call == 1 {
 					close(started)
@@ -167,7 +167,7 @@ func TestInitialCollectionFailureIsReportedThenRetryCollectsAgain(t *testing.T) 
 	input := collectGit(t)
 	service, _ := collectionService(t)
 	var calls atomic.Int32
-	collections := serverapp.NewCollections(service, func(_ context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
+	collections := serverapp.NewCollections(service, serverapp.DiscoveredCheckouts, func(_ context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
 		if calls.Add(1) == 1 {
 			return nil, errors.New("checkout unavailable")
 		}
@@ -197,7 +197,7 @@ func TestExplicitSyncCollectsFreshBeforeAnyBrowserInitialRequest(t *testing.T) {
 	input := collectGit(t)
 	service, _ := collectionService(t)
 	var calls atomic.Int32
-	collections := serverapp.NewCollections(service, func(_ context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
+	collections := serverapp.NewCollections(service, serverapp.DiscoveredCheckouts, func(_ context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
 		fresh := input
 		if calls.Add(1) > 1 {
 			fresh.SubmissionID = "explicit-sync"
@@ -222,7 +222,7 @@ func TestBrowserCancellationDoesNotCancelInitialCollection(t *testing.T) {
 	service, _ := collectionService(t)
 	started, release := make(chan struct{}), make(chan struct{})
 	var calls atomic.Int32
-	collections := serverapp.NewCollections(service, func(ctx context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
+	collections := serverapp.NewCollections(service, serverapp.DiscoveredCheckouts, func(ctx context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
 		if calls.Add(1) > 1 {
 			return nil, publish(input)
 		}
@@ -267,7 +267,7 @@ func TestCollectionScopeStartsEmptyAndPublishesOnlySelectedCheckouts(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	collections := serverapp.NewCollections(service, func(_ context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
+	collections := serverapp.NewCollections(service, serverapp.DiscoveredCheckouts, func(_ context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
 		return nil, publish(input)
 	}, "")
 	assets := fstest.MapFS{"index.html": {Data: []byte("review UI")}}
@@ -324,7 +324,7 @@ func TestInitialCollectionMakesReadyCheckoutReadableWhileAnotherIsCollecting(t *
 	var releaseOnce sync.Once
 	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
 	var observed int
-	collections := serverapp.NewCollections(service, func(ctx context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
+	collections := serverapp.NewCollections(service, serverapp.DiscoveredCheckouts, func(ctx context.Context, publish func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
 		options := collector.Options{SourceID: "streaming-startup", OnSource: func(ingestion.Metadata, diffsource.Comparison) {
 			observed++
 			if observed == 2 {
@@ -335,7 +335,7 @@ func TestInitialCollectionMakesReadyCheckoutReadableWhileAnotherIsCollecting(t *
 				}
 			}
 		}}
-		batch, err := collector.CollectWorkspaces(ctx, []string{first, second}, 8, options, publish)
+		batch, err := collector.CollectWorkspaces(ctx, collector.Workspaces{Paths: []string{first, second}, Depth: 8, LinkedWorktrees: true}, options, publish)
 		failures := make([]serverapp.CollectionFailure, 0, len(batch.Failures))
 		for _, failure := range batch.Failures {
 			failures = append(failures, serverapp.CollectionFailure{Path: failure.Path, Detail: failure.Detail})

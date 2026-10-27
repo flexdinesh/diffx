@@ -75,10 +75,10 @@ export function fileToggle(scope: Page | Locator, state?: ToggleState) {
 
 /**
  * The fixture server is a capture (one fixed patch), so the shell hides review
- * navigation. Serving a checkout-process bootstrap restores the Reviews
- * column, header comboboxes and search for tests that mock several contexts.
- * Later `page.route` registrations take precedence, so tests can still
- * override it.
+ * navigation. Serving a checkout-process bootstrap restores the header
+ * comboboxes and search for tests that mock several contexts; the Reviews
+ * column also needs two current reviews (see withSecondReview). Later
+ * `page.route` registrations take precedence, so tests can still override it.
  */
 export async function withReviewNavigation(
   page: Page,
@@ -96,4 +96,39 @@ export async function withReviewNavigation(
       },
     }),
   );
+}
+
+/**
+ * A local process shows the Reviews column once it lists two current reviews.
+ * Adds a second repository's copy of the fixture's review to every catalog
+ * page, so layout tests over the single fixture review get the column.
+ */
+export async function withSecondReview(page: Page) {
+  await page.route("**/api/v2/contexts?*", async (route) => {
+    const response = await route.fetch();
+    const body: unknown = await response.json();
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      !("contexts" in body) ||
+      !Array.isArray(body.contexts)
+    )
+      return route.fulfill({ response });
+    const contexts: unknown[] = body.contexts;
+    const first = contexts[0];
+    if (typeof first !== "object" || first === null)
+      return route.fulfill({ response });
+    const second = {
+      ...first,
+      id: "second-review",
+      streamId: "second-review",
+      latestContextId: "second-review",
+      name: "second-repo",
+      repositoryId: "second-repo",
+    };
+    return route.fulfill({
+      response,
+      json: { ...body, contexts: [...contexts, second] },
+    });
+  });
 }

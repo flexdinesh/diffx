@@ -1,7 +1,7 @@
 ---
 version: 1
-slug: "apps-web-src-diffworkspace-tsx"
-primary_target: "apps/web/src/DiffWorkspace.tsx"
+slug: "src-diffworkspace-tsx"
+primary_target: "src/DiffWorkspace.tsx"
 related_targets: []
 ---
 

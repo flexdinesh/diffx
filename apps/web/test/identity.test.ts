@@ -3,6 +3,27 @@ import { test } from "node:test";
 import { readBootstrap, readAccountTokens, readCreatedToken } from "@diffx/api";
 
 test("server mode requires explicit bootstrap and consistent session identity", () => {
+  for (const input of ["checkout", "checkouts", "capture"]) {
+    const bootstrap = {
+      mode: "local",
+      googleEnabled: false,
+      user: null,
+      csrfToken: null,
+      collect: input !== "capture",
+      input,
+    };
+    assert.deepEqual(readBootstrap(bootstrap), bootstrap);
+  }
+  assert.throws(() =>
+    readBootstrap({
+      mode: "local",
+      googleEnabled: false,
+      user: null,
+      csrfToken: null,
+      collect: true,
+      input: "worktrees",
+    }),
+  );
   assert.deepEqual(
     readBootstrap({
       mode: "local",

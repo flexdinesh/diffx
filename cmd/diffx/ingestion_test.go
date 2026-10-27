@@ -49,7 +49,7 @@ func TestNonRepositoryWorkspaceFailsCollectionWithoutConsumingStdin(t *testing.T
 	}
 	defer stdin.Close()
 	values := options{directory: ".", sourceID: "test-source", trigger: "manual"}
-	input, err := acquireLocalInput(values, stdin)
+	input, err := acquireLocalInput(t.Context(), values, stdin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestNonRepositoryWorkspaceFailsCollectionWithoutConsumingStdin(t *testing.T
 		t.Fatalf("workspace input: %#v", input)
 	}
 	publications := 0
-	_, err = collectWorkspaces(t.Context(), values, input.Paths, io.Discard, func(ingestion.Request) error {
+	_, err = collectWorkspaces(t.Context(), values, input, io.Discard, func(ingestion.Request) error {
 		publications++
 		return nil
 	})
@@ -78,7 +78,7 @@ func TestPipedInputKeepsSubmissionDirectoryWithoutGitIdentity(t *testing.T) {
 	t.Chdir(root)
 	patch := []byte("diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-before\n+after\n")
 	values := options{directory: ".", sourceID: "test-source", trigger: "manual"}
-	input, err := acquireLocalInput(values, testInputFile(t, patch))
+	input, err := acquireLocalInput(t.Context(), values, testInputFile(t, patch))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,12 +128,12 @@ func TestLocalInputRejectsMissingCheckoutPathBeforeStartup(t *testing.T) {
 	}
 	for _, path := range []string{filepath.Join(root, "missing"), file} {
 		values := options{directory: path, sourceID: "test-source", trigger: "manual"}
-		if _, err := acquireLocalInput(values, nil); err == nil || !strings.Contains(err.Error(), path) {
+		if _, err := acquireLocalInput(t.Context(), values, nil); err == nil || !strings.Contains(err.Error(), path) {
 			t.Fatalf("accepted checkout path %s: %v", path, err)
 		}
 	}
 	values := options{directory: root, paths: []string{root, filepath.Join(root, "missing")}, sourceID: "test-source", trigger: "manual"}
-	if _, err := acquireLocalInput(values, nil); err == nil {
+	if _, err := acquireLocalInput(t.Context(), values, nil); err == nil {
 		t.Fatal("accepted a missing repeated checkout path")
 	}
 }
