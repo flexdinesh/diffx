@@ -113,7 +113,9 @@ export function WorkspaceLoading({ collecting }: { collecting: boolean }) {
       <DiffSkeleton />
       <div className="loading-status">
         <h1>{collecting ? "Collecting latest changes" : "Loading review"}</h1>
-        <p>{collecting ? "Reading checkouts…" : "Reading stored changes…"}</p>
+        <p className="motion-safe:animate-status-pulse">
+          {collecting ? "Reading checkouts…" : "Reading stored changes…"}
+        </p>
         <span className="ml-auto flex items-center">
           <SettingsButton />
         </span>
