@@ -1057,6 +1057,72 @@ test("hide reviewed files filters the tree and diff together", async ({
   await expect(rows).toHaveCount(10);
 });
 
+test("Alt+M toggles the selected file reviewed and advances on mark", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 4_000 });
+  await page.goto("/");
+  await showDiff(page);
+
+  const rows = page.locator("#file-tree [data-path]");
+  const current = page.locator("#file-tree [aria-current=true]");
+  const count = page.locator("#review-count");
+  const row = (path: string) =>
+    page.locator(`#file-tree [data-path="${path}"]`);
+  await expect(page.locator(".footer-shortcuts")).toContainText(
+    "Alt+M reviewed",
+  );
+  const toggle = page.getByRole("button", {
+    name: "Mark docs/legacy.md reviewed",
+  });
+  await toggle.hover();
+  const tooltip = page.locator('[data-slot="tooltip-content"]');
+  await expect(tooltip).toContainText("Toggle selected file reviewed");
+  await expect(tooltip.getByText("Alt+M", { exact: true })).toBeVisible();
+
+  // Marking selects the next file.
+  await row("docs/legacy.md").click();
+  await page.keyboard.press("Alt+M");
+  await expect(
+    page.getByRole("button", { name: "Mark docs/legacy.md unreviewed" }),
+  ).toBeVisible();
+  await expect(count).toHaveText("1 of 12 reviewed");
+  await expect(current).toHaveAttribute("data-path", "scripts/release.sh");
+
+  // Unmarking keeps the selection.
+  await row("docs/legacy.md").click();
+  await page.keyboard.press("Alt+M");
+  await expect(
+    page.getByRole("button", { name: "Mark docs/legacy.md reviewed" }),
+  ).toBeVisible();
+  await expect(count).toHaveText("0 of 12 reviewed");
+  await expect(current).toHaveAttribute("data-path", "docs/legacy.md");
+
+  // Text fields keep their own keys.
+  await page.getByRole("searchbox", { name: "Filter files" }).focus();
+  await page.keyboard.press("Alt+M");
+  await expect(count).toHaveText("0 of 12 reviewed");
+
+  // The last file stays selected.
+  const last = await rows.last().getAttribute("data-path");
+  if (!last) throw new Error("Missing last file");
+  await rows.last().click();
+  await page.keyboard.press("Alt+M");
+  await expect(
+    page.getByRole("button", { name: `Mark ${last} unreviewed` }),
+  ).toBeVisible();
+  await expect(current).toHaveAttribute("data-path", last);
+
+  // Hidden reviewed files hand off to the next visible file.
+  await page.getByRole("button", { name: "Hide reviewed files" }).click();
+  await expect(rows).toHaveCount(11);
+  await row("docs/legacy.md").click();
+  await page.keyboard.press("Alt+M");
+  await expect(rows).toHaveCount(10);
+  await expect(count).toHaveText("2 of 12 reviewed");
+  await expect(current).toHaveAttribute("data-path", "scripts/release.sh");
+});
+
 test("hiding the last unreviewed file shows the all-reviewed state", async ({
   page,
   baseURL,

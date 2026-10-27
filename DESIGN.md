@@ -568,6 +568,11 @@ at `/design.html` (see `docs/development.md`).
   “Show reviewed files” action; comment navigation to a hidden file shows them.
   When shown, marking a file scrolled past its top keeps its collapsed header
   at the viewport top, so the next file starts from its first line.
+- Alt+M toggles the selected file's reviewed mark, owned by `useFileNavigation`
+  with the header button's rule. When reviewed files are shown, a successful
+  mark selects the next file; unmarking and the header button keep selection.
+  Key repeat and in-flight writes are ignored. Read-only commit views ignore
+  Alt+M and omit its hint.
 - Navigating from the file list briefly pulses the destination file header with
   the accent for about one second. Reduced-motion mode uses static feedback that
   remains visible long enough to identify the destination without animation.

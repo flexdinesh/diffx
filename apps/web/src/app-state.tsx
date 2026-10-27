@@ -230,6 +230,8 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
     stepCommit,
     setCollapsed,
     isReviewed: reviewed.isReviewed,
+    toggleReviewed: reviewed.toggleReviewed,
+    pending: reviewed.pending,
     setFeedback: review.setFeedback,
     showSidebar,
     closeMobile,
