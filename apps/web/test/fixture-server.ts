@@ -3,10 +3,10 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
 
-function stopProcess(child: ChildProcess) {
+function stopProcess(child: ChildProcess, detached: boolean) {
   if (child.exitCode !== null || child.signalCode !== null) return;
   const processId = child.pid;
-  if (process.platform === "win32" || processId === undefined) {
+  if (!detached || processId === undefined) {
     child.kill("SIGTERM");
     return;
   }
@@ -30,6 +30,9 @@ export const repositoryRoot = fileURLToPath(
 export async function startFixtureProcess(
   options: { binary?: string; webDir?: string } = {},
 ): Promise<{ target: string; stop: () => void }> {
+  // Full checks own the process group through cancellation and queue release.
+  const detached =
+    process.platform !== "win32" && process.env.DIFFX_CHECK_RUNNER !== "1";
   const child = spawn(
     options.binary ?? "go",
     [
@@ -46,14 +49,14 @@ export async function startFixtureProcess(
     ],
     {
       cwd: repositoryRoot,
-      detached: process.platform !== "win32",
+      detached,
       env: { ...process.env, DIFFX_EXIT_ON_STDIN_CLOSE: "1" },
       stdio: ["pipe", "pipe", "inherit"],
     },
   );
   const output = child.stdout;
   if (!output) {
-    stopProcess(child);
+    stopProcess(child, detached);
     throw new Error("Unable to read Go fixture server address");
   }
   const target = await new Promise<string>((resolve, reject) => {
@@ -67,7 +70,7 @@ export async function startFixtureProcess(
       settled = true;
       clearTimeout(timer);
       lines.close();
-      stopProcess(child);
+      stopProcess(child, detached);
       reject(error);
     };
     child.once("error", fail);
@@ -87,7 +90,7 @@ export async function startFixtureProcess(
       resolve(`http://127.0.0.1:${port}`);
     });
   });
-  return { target, stop: () => stopProcess(child) };
+  return { target, stop: () => stopProcess(child, detached) };
 }
 
 export async function startFixtureServer(): Promise<{

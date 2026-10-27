@@ -191,7 +191,6 @@ for (const agent of ["pi", "opencode"]) {
     const script = `import assert from 'node:assert/strict';
       import * as adapter from ${JSON.stringify(source)};
       const before = JSON.stringify({ ...process.env });
-      assert.equal(JSON.stringify({ ...process.env }) === before, true, "host environment changed");
       ${trigger}
       assert.equal(JSON.stringify({ ...process.env }) === before, true, "host environment changed");`;
     try {

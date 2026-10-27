@@ -75,9 +75,9 @@ build.
 | Run all pre-push checks, including Go race tests           | `pnpm check:push`                |
 | Run lightweight CI checks                                  | `mise run check:ci`              |
 
-Browser tests build the web app and CLI once, then each Playwright worker runs its own
-in-memory fixture server behind a Vite preview on a free port. Tests run in parallel
-without shared review state, and concurrent runs from other worktrees do not collide.
+Browser tests reuse the full check's web and CLI builds; standalone browser runs
+build them when needed. Chromium uses one worker with an in-memory fixture server
+behind a Vite preview on a free port.
 
 `mise run setup` enables the Husky `pre-push` hook. Every push runs
 `mise run check:push`: all repository suites, boundary contracts and Go race tests, then rejects
@@ -89,8 +89,19 @@ local platform.
 Both CI and release verification run `mise run check:ci`: static checks, web and
 CLI builds, generated-file consistency, and the distribution API smoke test.
 Local `mise run check` adds dependency/design guards, behavioral contracts,
-JavaScript unit/browser suites, release-tool tests and all Go tests, running these
-suites concurrently after the build; pre-push runs the Go tests with the race
+JavaScript unit/DOM/browser suites, plugin tests, docs-site checks, release-tool
+tests and all Go tests. These critical suites remain mandatory. Full checks and
+pre-push queue the entire pipeline across linked worktrees using a process lock
+under the Git common directory, before the first application build through the
+last check and cleanup. Only compilation of the small check runner precedes the
+lock, bounded to two Go workers. Every waiting invocation runs its own checks;
+successful results are not shared between worktrees.
+Heavy phases run sequentially, with Go limited to two concurrent packages and `GOMAXPROCS=2`;
+another worktree waits instead of competing for CPU and memory. Cancellation
+stops child processes before releasing the lock; failures propagate to the caller.
+The lock coordinates linked worktrees using this runner, not independent clones
+or direct standalone suite commands. Update older branches to include the runner
+before relying on coordination with their hooks. Pre-push runs the Go tests with the race
 detector instead. Go tests time out after 3 minutes (5 with the race detector) so a
 hang fails fast. Keep these full suites and guards local. Chromium is installed
 by local setup, not CI/release workflows. CI does not run a native OS test matrix.
@@ -119,6 +130,41 @@ Start the fixture server with built web assets:
 ```sh
 mise run dev:server -- --no-browser
 ```
+
+For simultaneous frontend development, choose a distinct Vite port in each
+worktree. Mise forwards arguments after `--`; pnpm scripts take them directly:
+
+```sh
+mise run dev -- --port 5181 --strictPort
+# Equivalent:
+pnpm dev:web --port 5181 --strictPort
+```
+
+The managed Go fixture already uses `--port 0` and in-memory state. To run a
+standalone fixture on a chosen port, or let the OS select one:
+
+```sh
+mise run dev:server -- --port 7983 --no-browser
+mise run dev:server -- --port 0 --no-browser
+```
+
+For real checkout servers, build in each worktree, then run this in a separate
+terminal per session (`mktemp -d` makes a unique runtime directory each time):
+
+```sh
+mise run build
+env -u DIFFX_CONFIG_PATH -u DIFFX_LOCAL_STATE DIFFX_RUNTIME_DIR="$(mktemp -d)" ./dist/diffx . --port 0 --no-browser
+```
+
+Use the URL printed by each process; Ctrl-C stops only that session. A unique
+`DIFFX_RUNTIME_DIR` isolates lifecycle discovery, default config, SQLite state,
+producer identity and pending delivery state. Its database persists after exit;
+reuse the directory to retain that session's history, or remove it after stopping
+the process when no longer needed. Choosing a port alone does not isolate state.
+Explicit `DIFFX_CONFIG_PATH` can select shared config, and its `local.state`,
+`DIFFX_LOCAL_STATE` or `--state` can select a shared database despite distinct
+runtime directories. Unset those overrides, as above, or give each session a
+distinct state path. SQLite still permits only one owner per database.
 
 `dev --fixture` collects its fixture before starting in the foreground and does
 not use personal lifecycle discovery. `sync` collects only the selected checkout
@@ -290,10 +336,12 @@ specialized layout, dynamic geometry, and Pierre's measured rendering boundary.
 
 The dev-only gallery renders every variant: run `pnpm dev` in `apps/web` and
 open `/design.html` (`?theme=dark`, `?page=overlays`, `?page=dialog`). It is not
-part of the production build. Its goldens run with the browser suite
-(`pnpm exec playwright test --project gallery`); after an intended visual
-change, regenerate them with `--update-snapshots` and review the images.
-Baselines are Chromium on Linux.
+part of the production build. Exhaustive gallery browser tests and screenshot
+goldens are not maintained. Review affected variants in the gallery when changing
+primitives. Node tests cover pure rules; React Testing Library with jsdom covers
+production component/hook behavior that does not require layout. Keep critical
+review journeys and actual rendering, geometry, scrolling, selection, responsive
+and focus behavior in Chromium.
 
 `App.tsx` composes page sections. `main.tsx` composes sidebar and appearance
 providers around identity; `SessionProvider` owns context selection, routes

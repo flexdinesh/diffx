@@ -1,29 +1,32 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { access } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { build } from "vite";
 import { repositoryRoot } from "../fixture-server.ts";
 
-// Build the web app and CLI once; each worker then starts its own fixture
-// server from them, so tests never share review state across workers.
+// Full checks supply their builds. Standalone runs use this checkout's build
+// task, which also stages assets required by Go's embed directive.
 export default async function globalSetup() {
-  const directory = await mkdtemp(join(tmpdir(), "diffx-browser-"));
-  const webDir = join(directory, "web");
-  const binary = join(directory, "diffx");
-  await Promise.all([
-    build({
-      root: fileURLToPath(new URL("../..", import.meta.url)),
-      logLevel: "warn",
-      build: { outDir: webDir, emptyOutDir: true },
-    }),
-    promisify(execFile)("go", ["build", "-o", binary, "./cmd/diffx"], {
-      cwd: repositoryRoot,
-    }),
-  ]);
-  process.env.DIFFX_FIXTURE_BINARY = binary;
-  process.env.DIFFX_FIXTURE_WEB_DIR = webDir;
-  return () => rm(directory, { recursive: true, force: true });
+  const existingBinary = process.env.DIFFX_FIXTURE_BINARY;
+  const existingWebDir = process.env.DIFFX_FIXTURE_WEB_DIR;
+  if (existingBinary && existingWebDir) {
+    await access(existingBinary);
+    await access(join(existingWebDir, "index.html"));
+    return;
+  }
+  await promisify(execFile)("mise", ["run", "build"], {
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      GOMAXPROCS: "2",
+      GOFLAGS: `${process.env.GOFLAGS ?? ""} -p=2`,
+    },
+  });
+  process.env.DIFFX_FIXTURE_BINARY = join(repositoryRoot, "dist", "diffx");
+  process.env.DIFFX_FIXTURE_WEB_DIR = join(
+    repositoryRoot,
+    "apps",
+    "web",
+    "dist",
+  );
 }

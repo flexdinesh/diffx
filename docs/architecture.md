@@ -66,6 +66,12 @@ uses lifecycle locking, a validated descriptor and graceful shutdown; a PID
 alone is never authority. `diffx dev --fixture FILE` is isolated from
 personal lifecycle discovery.
 
+Independent local sessions use distinct `DIFFX_RUNTIME_DIR` directories and
+listeners (`--port 0` selects a free port). The runtime directory owns lifecycle
+discovery and default config/state paths; explicit config or state overrides can
+still point sessions at shared state. Each SQLite database retains one process
+owner. See [development.md](development.md) for isolated checkout commands.
+
 ## Modules own behavior
 
 - `review`: data, source contract and pure comment/patch rules.
@@ -160,7 +166,14 @@ opens reviews directly without exposing identity controls.
 guards, shared Go/TypeScript comment examples, the Go suite (including
 storage/lifecycle/queue/transport boundary tests) and real HTTP schema
 validation. Local `mise run check` and pre-push run these checks alongside the
-web unit/browser, plugin and docs-site suites. `test:contracts:rules`
+web unit/DOM/browser, plugin and docs-site suites. Full checks and pre-push keep
+critical suites mandatory and serialize across linked worktrees using the Git
+common directory and `processlock`. Heavy phases run sequentially, Chromium uses
+one worker, and Go parallelism is bounded. The runner owns child cancellation and
+cleanup before releasing the lock; failed phases fail the invocation. Build output
+is reused within the invocation. Standalone suite commands remain available and
+are outside that full-check lock.
+`test:contracts:rules`
 holds only the non-Go guards, because `check` and pre-push already run every Go
 package; no hand-maintained package list can miss a new boundary test. CI and
 release verification retain static checks, builds, generated-file consistency

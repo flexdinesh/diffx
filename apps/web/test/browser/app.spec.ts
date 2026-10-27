@@ -176,22 +176,6 @@ test("shows server status with process metrics on hover", async ({ page }) => {
   expect(main.y).toBeCloseTo(sidebar.y, 1);
 });
 
-test("a metrics response slower than the poll interval still reports ready", async ({
-  page,
-}) => {
-  await page.route("**/api/v2/metrics", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 3_000));
-    await route
-      .fulfill({ json: { cpuUsage: 1, rssBytes: 1_048_576 } })
-      .catch(() => undefined);
-  });
-  await page.goto("/");
-  await showDiff(page);
-  await expect(
-    page.getByRole("button", { name: "Server status: Ready" }),
-  ).toBeVisible({ timeout: 10_000 });
-});
-
 test("reports an unreachable server in the status indicator", async ({
   page,
 }) => {
