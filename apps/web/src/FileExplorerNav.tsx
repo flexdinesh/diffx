@@ -30,11 +30,12 @@ import { CommentsPanel } from "./CommentsPanel.tsx";
 import { type CommentCount, FileNavigation } from "./file-navigation.tsx";
 import { ancestorPaths } from "./file-tree.ts";
 import { commentInFile, commentStale } from "./review-model.ts";
+import { commitEmptyState } from "./commit-view.ts";
 import { ChangeSummary, ReviewTools } from "./ReviewTools.tsx";
 import { capabilityEnabled, useSession } from "./session-context.tsx";
 
 export function FileExplorerNav() {
-  const { repository, diff, mode } = useDiffSource();
+  const { repository, diff, mode, commit } = useDiffSource();
   const session = useSession();
   const { capabilities } = session;
   const {
@@ -60,10 +61,13 @@ export function FileExplorerNav() {
   const { isReviewed } = useReviewedFilesState();
   const commentsEnabled = capabilityEnabled(capabilities.review.comments);
   const refreshEnabled = capabilityEnabled(capabilities.diff.refresh);
-  const kind = repository?.comparisonKind ?? comparisonKind(session, mode);
+  const kind = commit
+    ? "commit"
+    : (repository?.comparisonKind ?? comparisonKind(session, mode));
   const stagingMetadataEnabled =
     kind !== "committed" &&
     kind !== "patch" &&
+    kind !== "commit" &&
     capabilityEnabled(capabilities.diff.stagingMetadata);
   const allFiles = repository?.files ?? [];
   const folderPaths = useMemo(
@@ -92,13 +96,19 @@ export function FileExplorerNav() {
     }
     return counts;
   }, [review.comments, repository, mode]);
-  const connection = !diff.connected
-    ? diff.busy && !repository
-      ? "Connecting…"
-      : "Disconnected"
-    : refreshEnabled
-      ? "Refresh available"
-      : "Fixed snapshot";
+  // Merge and unavailable commits have no diff to load.
+  const withoutDiff =
+    commit !== null &&
+    commit.status !== "error" &&
+    commitEmptyState(commit) !== null;
+  const connection =
+    !diff.connected && !withoutDiff
+      ? diff.busy && !repository
+        ? "Connecting…"
+        : "Disconnected"
+      : refreshEnabled
+        ? "Refresh available"
+        : "Fixed snapshot";
   return (
     <aside
       id="sidebar"
@@ -179,23 +189,26 @@ export function FileExplorerNav() {
                 setFilteredClosed(new Set());
               }}
             />
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Toggle
-                    id="hide-reviewed"
-                    variant="outline"
-                    size="icon"
-                    aria-label="Hide reviewed files"
-                    pressed={hideReviewed}
-                    onPressedChange={setHideReviewed}
-                  />
-                }
-              >
-                <EyeOffIcon aria-hidden="true" />
-              </TooltipTrigger>
-              <TooltipContent>Hide reviewed files</TooltipContent>
-            </Tooltip>
+            {/* Commit views are read-only, without review marks. */}
+            {!commit && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Toggle
+                      id="hide-reviewed"
+                      variant="outline"
+                      size="icon"
+                      aria-label="Hide reviewed files"
+                      pressed={hideReviewed}
+                      onPressedChange={setHideReviewed}
+                    />
+                  }
+                >
+                  <EyeOffIcon aria-hidden="true" />
+                </TooltipTrigger>
+                <TooltipContent>Hide reviewed files</TooltipContent>
+              </Tooltip>
+            )}
           </div>
           <p className="visually-hidden" role="status" aria-live="polite">
             {filter || hideReviewed

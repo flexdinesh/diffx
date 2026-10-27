@@ -46,6 +46,30 @@ func (catalog *Catalog) GetDiff(ctx context.Context, id string, scope review.Dif
 	return service.Snapshot(ctx, scope)
 }
 
+func (catalog *Catalog) GetCommits(ctx context.Context, id string) (CommitList, error) {
+	service, err := catalog.Review(ctx, id)
+	if err != nil {
+		return CommitList{}, err
+	}
+	return service.Commits(ctx)
+}
+
+func (catalog *Catalog) GetCommitDiff(ctx context.Context, id, oid string) (review.RepositoryDiff, error) {
+	service, err := catalog.Review(ctx, id)
+	if err != nil {
+		return review.RepositoryDiff{}, err
+	}
+	return service.CommitSnapshot(ctx, oid)
+}
+
+func (catalog *Catalog) GetCommitPatch(ctx context.Context, id, oid, fileID string) (review.FilePatch, error) {
+	service, err := catalog.Review(ctx, id)
+	if err != nil {
+		return review.FilePatch{}, err
+	}
+	return service.CommitPatch(ctx, oid, fileID, "")
+}
+
 func (catalog *Catalog) GetPatch(ctx context.Context, id string, scope review.DiffMode, fileID string) (review.FilePatch, error) {
 	service, err := catalog.Review(ctx, id)
 	if err != nil {

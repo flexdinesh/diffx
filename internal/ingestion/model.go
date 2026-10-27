@@ -91,14 +91,26 @@ type Scope struct {
 	Patches  map[string]review.FilePatch `json:"patches"`
 }
 
+// Commit is one captured branch commit with its diff against its first
+// parent. Merge commits carry no snapshot or patches.
+type Commit struct {
+	review.Commit
+	Snapshot *review.RepositoryDiff      `json:"snapshot,omitempty"`
+	Patches  map[string]review.FilePatch `json:"patches,omitempty"`
+}
+
 // Request is one immutable observation. Replays retain the submission ID;
 // fresh observations may reuse an existing review when ContentHash matches.
+// Commits are optional protocol 4 metadata of branch comparisons, oldest
+// first; CommitsTotal also counts commits beyond review.MaxCommits.
 type Request struct {
 	ProtocolVersion int      `json:"protocolVersion"`
 	SubmissionID    string   `json:"submissionId"`
 	ContentHash     string   `json:"contentHash,omitempty"`
 	Metadata        Metadata `json:"metadata"`
 	Scopes          []Scope  `json:"scopes"`
+	Commits         []Commit `json:"commits,omitempty"`
+	CommitsTotal    int      `json:"commitsTotal,omitempty"`
 }
 
 type Filter struct {

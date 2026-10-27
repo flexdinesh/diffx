@@ -117,6 +117,13 @@ func (handler *Handler) api(response http.ResponseWriter, request *http.Request)
 	if route, ok := parseFileRoute(pathname); ok && request.Method == http.MethodGet {
 		return true, handler.getFile(response, request, route)
 	}
+	if pathname == "/api/review/commits" && request.Method == http.MethodGet {
+		commits, err := handler.review.Commits(request.Context())
+		return true, writeResult(response, commits, err)
+	}
+	if route, ok := parseCommitRoute(pathname); ok && request.Method == http.MethodGet {
+		return true, handler.getCommit(response, request, route)
+	}
 	if (commentRoute(pathname) || agentReviewRoute(pathname)) && !handler.session.Capabilities.Review.Comments.Enabled() {
 		return true, reviewsession.NotEnabled(reviewsession.ReviewComments)
 	}
@@ -208,8 +215,11 @@ func (handler *Handler) api(response http.ResponseWriter, request *http.Request)
 	known := pathname == "/api/review/session" || pathname == "/api/review/diffs/current" ||
 		pathname == "/api/review/comments" || pathname == "/api/review/comments/import" ||
 		pathname == "/api/review/comments/export" || pathname == "/api/review/review/comments" ||
-		pathname == "/api/review/review-marks"
+		pathname == "/api/review/review-marks" || pathname == "/api/review/commits"
 	if _, ok := parseFileRoute(pathname); ok {
+		known = true
+	}
+	if _, ok := parseCommitRoute(pathname); ok {
 		known = true
 	}
 	if _, _, ok := parseVersionRoute(pathname); ok {
@@ -249,6 +259,40 @@ func parseFileRoute(pathname string) (fileRoute, bool) {
 		return fileRoute{}, false
 	}
 	return fileRoute{diffID: parts[3], fileID: parts[5], resource: parts[6]}, true
+}
+
+// commitRoute is a captured commit's diff, or one file's preview within it.
+type commitRoute struct{ oid, fileID, resource string }
+
+func parseCommitRoute(pathname string) (commitRoute, bool) {
+	parts := strings.Split(strings.TrimPrefix(pathname, "/"), "/")
+	if len(parts) < 5 || parts[0] != "api" || parts[1] != "review" || parts[2] != "commits" || parts[3] == "" {
+		return commitRoute{}, false
+	}
+	if len(parts) == 5 && parts[4] == "diff" {
+		return commitRoute{oid: parts[3], resource: "diff"}, true
+	}
+	if len(parts) == 7 && parts[4] == "files" && parts[5] != "" && (parts[6] == "patch" || parts[6] == "contents") {
+		return commitRoute{oid: parts[3], fileID: parts[5], resource: parts[6]}, true
+	}
+	return commitRoute{}, false
+}
+
+func (handler *Handler) getCommit(response http.ResponseWriter, request *http.Request, route commitRoute) error {
+	if route.resource != "diff" && request.URL.Query().Get("fileVersion") == "" {
+		return review.Error(400, "File version is required")
+	}
+	switch route.resource {
+	case "diff":
+		snapshot, err := handler.review.CommitSnapshot(request.Context(), route.oid)
+		return writeResult(response, snapshot, err)
+	case "patch":
+		patch, err := handler.review.CommitPatch(request.Context(), route.oid, route.fileID, request.URL.Query().Get("fileVersion"))
+		return writeResult(response, patch, err)
+	default:
+		contents, err := handler.review.CommitContents(request.Context(), route.oid, route.fileID, request.URL.Query().Get("fileVersion"))
+		return writeResult(response, contents, err)
+	}
 }
 
 func routeValue(pathname, prefix string) (string, bool) {

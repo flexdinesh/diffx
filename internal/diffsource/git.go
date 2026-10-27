@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,6 +60,11 @@ func (failure *gitFailure) Error() string { return failure.err.Error() }
 func (failure *gitFailure) Unwrap() error { return failure.err }
 
 func runGit(ctx context.Context, root string, maximum int, arguments ...string) (string, error) {
+	return runGitInput(ctx, root, maximum, nil, arguments...)
+}
+
+// runGitInput runs Git like runGit, reading standard input from input.
+func runGitInput(ctx context.Context, root string, maximum int, input io.Reader, arguments ...string) (string, error) {
 	commandContext, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	release, err := gitProcesses.acquire(commandContext)
@@ -70,6 +76,7 @@ func runGit(ctx context.Context, root string, maximum int, arguments ...string) 
 	command := exec.CommandContext(commandContext, "git", args...)
 	command.Dir = root
 	command.Env = gitEnvironment(os.Environ())
+	command.Stdin = input
 	output := &limitedBuffer{maximum: maximum}
 	errorOutput := &limitedBuffer{maximum: 64 * 1024}
 	command.Stdout = output
@@ -260,6 +267,8 @@ func parseStatus(output string) map[string]statusPair {
 type gitSource struct {
 	root       string
 	comparison *gitComparison
+	// commit selects one captured commit's diff against its first parent.
+	commit *commitTarget
 }
 
 func OpenRepository(ctx context.Context, directory string) (Source, error) {
@@ -310,6 +319,9 @@ func RepositoryIdentity(ctx context.Context, root string) (commonDir, worktreeDi
 func (source *gitSource) Root() string { return source.root }
 func (source *gitSource) Kind() string { return "local" }
 func (source *gitSource) Support() Support {
+	if source.commit != nil {
+		return Support{Scopes: []review.DiffMode{review.DiffCommit}, FileContents: true}
+	}
 	if source.objectsOnly() {
 		return Support{Scopes: []review.DiffMode{review.DiffAll}, FileContents: true}
 	}
@@ -326,6 +338,9 @@ func (source *gitSource) Support() Support {
 }
 
 func (source *gitSource) headAndBase(ctx context.Context) (*string, string, error) {
+	if source.commit != nil {
+		return &source.commit.oid, source.commit.parent, nil
+	}
 	if source.comparison != nil {
 		return &source.comparison.HeadOID, source.comparison.HeadOID, nil
 	}

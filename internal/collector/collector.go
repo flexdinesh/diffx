@@ -141,6 +141,12 @@ func collectRepositoryChanged(ctx context.Context, source diffsource.Source, opt
 	}
 	observation := request(metadata, scopes, options)
 	observation.ContentHash = contentHash
+	if observation.Commits, observation.CommitsTotal, err = collectCommits(ctx, source); err != nil {
+		if isChanged(err) {
+			return ingestion.Request{}, "", errChanged
+		}
+		return ingestion.Request{}, "", err
+	}
 	fingerprint := Fingerprint(observation)
 	unchanged := fingerprint != "" && fingerprint == previousFingerprint
 	if !unchanged {
@@ -184,6 +190,33 @@ func collectRepositoryChanged(ctx context.Context, source diffsource.Source, opt
 	return observation, fingerprint, nil
 }
 
+// collectCommits captures a branch comparison's newest commits, oldest first,
+// with each non-merge commit's diff against its first parent. Commits are
+// immutable objects, so they need no recheck for concurrent edits.
+func collectCommits(ctx context.Context, source diffsource.Source) ([]ingestion.Commit, int, error) {
+	listed, ok, err := diffsource.Commits(ctx, source)
+	if err != nil || !ok || len(listed.Commits) == 0 {
+		return nil, 0, err
+	}
+	commits := make([]ingestion.Commit, 0, len(listed.Commits))
+	for _, commit := range listed.Commits {
+		captured := ingestion.Commit{Commit: commit}
+		if !commit.Merge() {
+			commitSource, err := diffsource.CommitSource(ctx, source, commit)
+			if err != nil {
+				return nil, 0, err
+			}
+			snapshot, err := commitSource.Snapshot(ctx, review.DiffCommit)
+			if err != nil {
+				return nil, 0, err
+			}
+			captured.Snapshot = &snapshot
+		}
+		commits = append(commits, captured)
+	}
+	return commits, listed.Total, nil
+}
+
 // Fingerprint identifies checkout contents and stable provenance, excluding
 // submission/agent/session/time and filesystem-based snapshot revisions.
 // Empty means full identity cannot be proven; never use it to suppress a sync.
@@ -216,13 +249,20 @@ func Fingerprint(request ingestion.Request) string {
 		scopes = append(scopes, identity)
 	}
 	sort.Strings(scopes)
+	// Commits extend the identity only when captured, so an acknowledgement
+	// from a collector without commits never suppresses their first upload.
+	var commits []string
+	for _, commit := range request.Commits {
+		commits = append(commits, commit.OID)
+	}
 	identity := struct {
 		Version     string
 		Protocol    int
 		ContentHash string
 		Metadata    ingestion.Metadata
 		Scopes      []string
-	}{"collector-fingerprint-v1", request.ProtocolVersion, request.ContentHash, metadata, scopes}
+		Commits     []string `json:",omitempty"`
+	}{"collector-fingerprint-v1", request.ProtocolVersion, request.ContentHash, metadata, scopes, commits}
 	encoded, err := json.Marshal(identity)
 	if err != nil {
 		return ""

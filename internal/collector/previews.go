@@ -40,35 +40,90 @@ type previewCandidate struct {
 	base     review.FilePatch
 }
 
-// withPreviews captures every scope's patches before any full contents, so
-// full-file views degrade before files lose their patch. Each pass shares
-// what remains of the request budget between scopes; see allocate.
+// previewUnit is one captured diff receiving previews: a comparison scope or
+// a commit's own diff, read from its source.
+type previewUnit struct {
+	source   diffsource.Source
+	snapshot review.RepositoryDiff
+	patches  map[string]review.FilePatch
+}
+
+// withPreviews captures, in order, comparison scope patches, commit patches,
+// comparison scope full contents and commit full contents, so commits never
+// cost a comparison its patches and full-file views degrade before files lose
+// their patch. Each pass shares what remains of the request budget between
+// its diffs; see allocate.
 func withPreviews(ctx context.Context, source diffsource.Source, request ingestion.Request, limits previewLimits) (ingestion.Request, error) {
-	scopes := make([]ingestion.Scope, len(request.Scopes))
-	counts := make([]int, len(scopes))
-	for index, scope := range request.Scopes {
-		patches := make(map[string]review.FilePatch, len(scope.Snapshot.Files))
-		for position, file := range scope.Snapshot.Files {
+	units := make([]previewUnit, 0, len(request.Scopes)+len(request.Commits))
+	placeholders := func(snapshot review.RepositoryDiff) map[string]review.FilePatch {
+		patches := make(map[string]review.FilePatch, len(snapshot.Files))
+		for position, file := range snapshot.Files {
 			patches[file.ID] = review.FilePatch{Message: diffsource.Message(overBudgetMessage)}
 			if position >= limits.files {
 				patches[file.ID] = review.FilePatch{Message: diffsource.Message("Not captured: comparison exceeds 1000 files.")}
 			}
 		}
-		scopes[index] = ingestion.Scope{Snapshot: scope.Snapshot, Patches: patches}
-		counts[index] = min(len(scope.Snapshot.Files), limits.files)
+		return patches
+	}
+	scopes := make([]ingestion.Scope, len(request.Scopes))
+	for index, scope := range request.Scopes {
+		scopes[index] = ingestion.Scope{Snapshot: scope.Snapshot, Patches: placeholders(scope.Snapshot)}
+		units = append(units, previewUnit{source: source, snapshot: scope.Snapshot, patches: scopes[index].Patches})
 	}
 	request.Scopes = scopes
+	commits := make([]ingestion.Commit, len(request.Commits))
+	for index, commit := range request.Commits {
+		commits[index] = ingestion.Commit{Commit: commit.Commit, Snapshot: commit.Snapshot}
+		if commit.Snapshot == nil {
+			continue
+		}
+		commitSource, err := diffsource.CommitSource(ctx, source, commit.Commit)
+		if err != nil {
+			return ingestion.Request{}, err
+		}
+		commits[index].Patches = placeholders(*commit.Snapshot)
+		units = append(units, previewUnit{source: commitSource, snapshot: *commit.Snapshot, patches: commits[index].Patches})
+	}
+	if len(request.Commits) > 0 {
+		request.Commits = commits
+	}
 	skeleton, err := json.Marshal(request)
 	if err != nil {
 		return ingestion.Request{}, err
 	}
 	budget := max(limits.requestBytes-len(skeleton), 0)
-	candidates := make([][]previewCandidate, len(scopes))
-	budget, err = allocate(counts, budget, func(index, position, limit int) (int, bool, error) {
+	scopeUnits, commitUnits := units[:len(scopes)], units[len(scopes):]
+	scopeCandidates, budget, err := capturePatches(ctx, scopeUnits, budget, limits)
+	if err != nil {
+		return ingestion.Request{}, err
+	}
+	commitCandidates, budget, err := capturePatches(ctx, commitUnits, budget, limits)
+	if err != nil {
+		return ingestion.Request{}, err
+	}
+	if budget, err = captureContents(ctx, scopeUnits, scopeCandidates, budget, limits); err != nil {
+		return ingestion.Request{}, err
+	}
+	if _, err = captureContents(ctx, commitUnits, commitCandidates, budget, limits); err != nil {
+		return ingestion.Request{}, err
+	}
+	return request, nil
+}
+
+// capturePatches spends budget on each unit's file patches and returns the
+// files that may still receive full contents, plus the remaining budget.
+func capturePatches(ctx context.Context, units []previewUnit, budget int, limits previewLimits) ([][]previewCandidate, int, error) {
+	counts := make([]int, len(units))
+	for index, unit := range units {
+		counts[index] = min(len(unit.snapshot.Files), limits.files)
+	}
+	candidates := make([][]previewCandidate, len(units))
+	budget, err := allocate(counts, budget, func(index, position, limit int) (int, bool, error) {
 		if err := ctx.Err(); err != nil {
 			return 0, false, err
 		}
-		snapshot := scopes[index].Snapshot
+		source := units[index].source
+		snapshot := units[index].snapshot
 		file := snapshot.Files[position]
 		direct, err := source.Patch(ctx, snapshot.Mode, file, snapshot.Head)
 		if err != nil {
@@ -88,28 +143,38 @@ func withPreviews(ctx context.Context, source diffsource.Source, request ingesti
 		} else if !source.Support().FileContents && patch.Message == nil {
 			patch.Message = diffsource.Message("Full contents unavailable for this snapshot.")
 		}
-		cost := growth(file.ID, scopes[index].Patches[file.ID], patch)
+		cost := growth(file.ID, units[index].patches[file.ID], patch)
 		if cost > limit {
 			return cost, false, nil
 		}
-		scopes[index].Patches[file.ID] = patch
+		units[index].patches[file.ID] = patch
 		if wantsContents {
 			candidates[index] = append(candidates[index], previewCandidate{position: position, file: file, base: base})
 		}
 		return cost, true, nil
 	})
 	if err != nil {
-		return ingestion.Request{}, err
+		return nil, budget, err
 	}
 	for index := range candidates {
 		slices.SortFunc(candidates[index], func(left, right previewCandidate) int { return left.position - right.position })
+	}
+	return candidates, budget, nil
+}
+
+// captureContents spends budget on full contents for files whose patch was
+// captured and returns the remaining budget.
+func captureContents(ctx context.Context, units []previewUnit, candidates [][]previewCandidate, budget int, limits previewLimits) (int, error) {
+	counts := make([]int, len(units))
+	for index := range candidates {
 		counts[index] = len(candidates[index])
 	}
-	_, err = allocate(counts, budget, func(index, position, limit int) (int, bool, error) {
+	return allocate(counts, budget, func(index, position, limit int) (int, bool, error) {
 		if err := ctx.Err(); err != nil {
 			return 0, false, err
 		}
-		snapshot := scopes[index].Snapshot
+		source := units[index].source
+		snapshot := units[index].snapshot
 		candidate := candidates[index][position]
 		patch := candidate.base
 		contents, err := source.Contents(ctx, snapshot.Mode, candidate.file, snapshot.Head)
@@ -130,17 +195,13 @@ func withPreviews(ctx context.Context, source diffsource.Source, request ingesti
 		default:
 			return 0, false, err
 		}
-		cost := growth(candidate.file.ID, scopes[index].Patches[candidate.file.ID], patch)
+		cost := growth(candidate.file.ID, units[index].patches[candidate.file.ID], patch)
 		if cost > limit {
 			return cost, false, nil
 		}
-		scopes[index].Patches[candidate.file.ID] = patch
+		units[index].patches[candidate.file.ID] = patch
 		return cost, true, nil
 	})
-	if err != nil {
-		return ingestion.Request{}, err
-	}
-	return request, nil
 }
 
 // allocate spends budget on each scope's candidates in file order and returns

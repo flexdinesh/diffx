@@ -52,6 +52,8 @@ type ContextInfo struct {
 	ExpiresAt        *int64
 	ScopeSummaries   []review.ScopeSummary
 	ChangedFileCount *int
+	// Commits counts captured branch commits; nil when none were captured.
+	Commits *review.CommitRange
 
 	// ActivityAt is the winning submission activity for heads; captured activity otherwise.
 	ActivityAt int64

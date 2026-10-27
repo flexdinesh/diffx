@@ -28,6 +28,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/mcpapi"
 	"github.com/flexdinesh/diffx/internal/remoteserver"
 	"github.com/flexdinesh/diffx/internal/review"
+	"github.com/flexdinesh/diffx/internal/reviewservice"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/serverapp"
 	"github.com/flexdinesh/diffx/internal/testsupport"
@@ -491,7 +492,7 @@ func TestGlobalMCPDiscoversStoredReviewsAndRejectsForeignContexts(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools.Tools) != 5 {
+	if len(tools.Tools) != 6 {
 		t.Fatalf("global tools: %#v", tools)
 	}
 	call := func(name string, args map[string]any, wantError bool) *mcp.CallToolResult {
@@ -553,6 +554,88 @@ func TestGlobalMCPDiscoversStoredReviewsAndRejectsForeignContexts(t *testing.T) 
 	result, err = scoped.CallTool(t.Context(), &mcp.CallToolParams{Name: "get_review_comments", Arguments: map[string]any{"context_id": second.ContextID}})
 	if err != nil || !result.IsError {
 		t.Fatalf("scoped context override: %#v %v", result, err)
+	}
+}
+
+func TestMCPReadsCapturedCommitsWithoutCheckout(t *testing.T) {
+	root := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		command := exec.Command("git", append([]string{"-C", root, "-c", "user.name=Test", "-c", "user.email=test@example.com"}, args...)...)
+		if raw, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, raw)
+		}
+	}
+	write := func(value string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte(value), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git("init", "--initial-branch=main")
+	write("before\n")
+	git("add", ".")
+	git("commit", "-m", "initial")
+	git("switch", "--create", "feature")
+	write("first\n")
+	git("commit", "-am", "First change")
+	write("second\n")
+	git("commit", "-am", "Second change")
+	input, err := collector.Collect(t.Context(), root, collector.Options{SourceID: "container-a", Hostname: "sandbox", Trigger: "manual", SubmissionID: "turn-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	d := start(t, "", false)
+	submitted, err := testsupport.NewClient(d.server.URL, "").Submit(t.Context(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "commit-test", Version: "test"}, nil)
+	session, err := client.Connect(t.Context(), &mcp.StreamableClientTransport{Endpoint: d.server.URL + "/mcp", HTTPClient: d.server.Client(), DisableStandaloneSSE: true}, &mcp.ClientSessionOptions{ProtocolVersion: mcpapi.ProtocolVersion})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	call := func(name string, args map[string]any, target any) bool {
+		t.Helper()
+		result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: name, Arguments: args})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.IsError {
+			return false
+		}
+		raw, err := json.Marshal(result.StructuredContent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(raw, target); err != nil {
+			t.Fatal(err)
+		}
+		return true
+	}
+	id := submitted.ContextID
+	var commits reviewservice.CommitList
+	if !call("list_commits", map[string]any{"context_id": id}, &commits) || len(commits.Commits) != 2 || commits.Commits[0].Subject != "First change" {
+		t.Fatalf("list_commits: %+v", commits)
+	}
+	first := commits.Commits[0].OID
+	var snapshot review.RepositoryDiff
+	if !call("get_diff", map[string]any{"context_id": id, "commit": first}, &snapshot) || snapshot.Mode != review.DiffCommit || len(snapshot.Files) != 1 {
+		t.Fatalf("commit diff: %+v", snapshot)
+	}
+	var patch review.FilePatch
+	if !call("get_file_patch", map[string]any{"context_id": id, "commit": first, "file_id": snapshot.Files[0].ID}, &patch) || !strings.Contains(patch.Patch, "+first") || strings.Contains(patch.Patch, "+second") {
+		t.Fatalf("commit patch: %+v", patch)
+	}
+	if call("get_diff", map[string]any{"context_id": id, "commit": first, "scope": "all"}, &snapshot) {
+		t.Fatal("commit and scope combined")
+	}
+	if call("get_diff", map[string]any{"context_id": id, "commit": strings.Repeat("0", 40)}, &snapshot) {
+		t.Fatal("uncaptured commit read")
 	}
 }
 

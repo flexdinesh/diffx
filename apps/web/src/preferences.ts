@@ -97,3 +97,11 @@ export function saveSessionValue(key: string, value: string) {
     // Storage is optional.
   }
 }
+
+export function removeSessionValue(key: string) {
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    // Storage is optional.
+  }
+}

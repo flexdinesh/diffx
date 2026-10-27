@@ -99,26 +99,95 @@ func Validate(input Request) error {
 		if scope.Snapshot.Source != first.Source || scope.Snapshot.Root != first.Root || scope.Snapshot.Branch != first.Branch || !sameHead(scope.Snapshot.Head, first.Head) {
 			return fmt.Errorf("all scopes must describe the same checkout state")
 		}
-		if scope.Snapshot.Revision == "" || scope.Snapshot.Files == nil {
-			return fmt.Errorf("snapshot revision and files required")
-		}
-		files := make(map[string]bool)
-		paths := make(map[string]bool)
-		for _, file := range scope.Snapshot.Files {
-			if file.ID == "" || file.Path == "" || file.Fingerprint == "" || files[file.ID] || paths[file.Path] {
-				return fmt.Errorf("unique file identities, paths, and fingerprints required")
-			}
-			files[file.ID], paths[file.Path] = true, true
-			if _, ok := scope.Patches[file.ID]; !ok {
-				return fmt.Errorf("preview required for every file, including unavailable previews")
-			}
-		}
-		if len(files) != len(scope.Patches) {
-			return fmt.Errorf("preview identities must match snapshot files")
+		if err := validateFiles(scope.Snapshot, scope.Patches); err != nil {
+			return err
 		}
 	}
 	if !seen[review.DiffAll] {
 		return fmt.Errorf("all scope required")
+	}
+	return validateCommits(input)
+}
+
+func validateFiles(snapshot review.RepositoryDiff, patches map[string]review.FilePatch) error {
+	if snapshot.Revision == "" || snapshot.Files == nil {
+		return fmt.Errorf("snapshot revision and files required")
+	}
+	files := make(map[string]bool)
+	paths := make(map[string]bool)
+	for _, file := range snapshot.Files {
+		if file.ID == "" || file.Path == "" || file.Fingerprint == "" || files[file.ID] || paths[file.Path] {
+			return fmt.Errorf("unique file identities, paths, and fingerprints required")
+		}
+		files[file.ID], paths[file.Path] = true, true
+		if _, ok := patches[file.ID]; !ok {
+			return fmt.Errorf("preview required for every file, including unavailable previews")
+		}
+	}
+	if len(files) != len(patches) {
+		return fmt.Errorf("preview identities must match snapshot files")
+	}
+	return nil
+}
+
+// validateCommits accepts a branch comparison's newest commits, oldest first,
+// ending at the captured HEAD. Only non-merge commits carry a diff.
+func validateCommits(input Request) error {
+	if len(input.Commits) == 0 {
+		if input.CommitsTotal != 0 {
+			return fmt.Errorf("commitsTotal requires captured commits")
+		}
+		return nil
+	}
+	metadata := input.Metadata
+	if metadata.Comparison == nil || metadata.Comparison.Kind != "branch" || metadata.Head == nil {
+		return fmt.Errorf("commits require a branch comparison with captured HEAD")
+	}
+	if len(input.Commits) > review.MaxCommits || input.CommitsTotal < len(input.Commits) {
+		return fmt.Errorf("at most %d commits; commitsTotal must count every captured commit", review.MaxCommits)
+	}
+	if input.Commits[len(input.Commits)-1].OID != *metadata.Head {
+		return fmt.Errorf("commits must end at the captured HEAD")
+	}
+	seen := make(map[string]bool, len(input.Commits))
+	for _, commit := range input.Commits {
+		if !validCommit(commit.OID) || seen[commit.OID] {
+			return fmt.Errorf("commit oids must be unique lowercase Git object IDs")
+		}
+		seen[commit.OID] = true
+		for _, parent := range commit.Parents {
+			if !validCommit(parent) {
+				return fmt.Errorf("commit parents must be lowercase Git object IDs")
+			}
+		}
+		if commit.PatchID != "" && !validCommit(commit.PatchID) {
+			return fmt.Errorf("commit patchId must be a lowercase hex digest")
+		}
+		if commit.Parents == nil || commit.AuthoredAt < 0 || commit.CommittedAt < 0 {
+			return fmt.Errorf("commit parents and nonnegative times required")
+		}
+		if len(commit.Subject) > 32<<10 || len(commit.AuthorName) > 32<<10 || len(commit.Body) > 256<<10 {
+			return fmt.Errorf("commit message or author exceeds its size limit")
+		}
+		if commit.Merge() {
+			if commit.Snapshot != nil || commit.Patches != nil {
+				return fmt.Errorf("merge commits carry no diff")
+			}
+			continue
+		}
+		snapshot := commit.Snapshot
+		if snapshot == nil {
+			return fmt.Errorf("commit diff required for non-merge commits")
+		}
+		if snapshot.Mode != review.DiffCommit || snapshot.ComparisonKind != review.ComparisonCommit || snapshot.Source != "local" {
+			return fmt.Errorf("commit diff must use the commit scope and comparison kind")
+		}
+		if snapshot.Head == nil || *snapshot.Head != commit.OID || snapshot.Root != metadata.Root || snapshot.Branch != metadata.Branch {
+			return fmt.Errorf("commit diff must describe its commit in the captured checkout")
+		}
+		if err := validateFiles(*snapshot, commit.Patches); err != nil {
+			return err
+		}
 	}
 	return nil
 }

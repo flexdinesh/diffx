@@ -66,6 +66,9 @@ func newOrigin(t *testing.T) origin {
 	git(t, work, "add", ".")
 	git(t, work, "commit", "--quiet", "-m", "initial")
 	git(t, work, "switch", "--quiet", "-c", "feature")
+	// An intermediate commit's blob appears only in that commit's own diff.
+	write(t, work, "edited.txt", "middle\n")
+	git(t, work, "commit", "--quiet", "-am", "middle")
 	write(t, work, "edited.txt", "after\n")
 	write(t, work, "added.txt", "new file\n")
 	git(t, work, "rm", "--quiet", "removed.txt")
@@ -178,6 +181,16 @@ func TestRunCollectsPullRequestDiffFromMergeBaseWithContents(t *testing.T) {
 		if contents[key] != value {
 			t.Fatalf("%s contents %+v, want %+v", key, contents[key], value)
 		}
+	}
+	if len(request.Commits) != 2 || request.CommitsTotal != 2 || request.Commits[0].Subject != "middle" {
+		t.Fatalf("pull request commits: %+v", request.Commits)
+	}
+	middle := request.Commits[0]
+	if middle.Snapshot == nil || len(middle.Snapshot.Files) != 1 {
+		t.Fatalf("middle commit diff: %+v", middle.Snapshot)
+	}
+	if patch := middle.Patches[middle.Snapshot.Files[0].ID]; patch.Contents == nil || *patch.Contents != (review.FileContents{Before: "before\n", After: "middle\n"}) {
+		t.Fatalf("middle commit preview: %+v", patch)
 	}
 	mirror := filepath.Join(mirrors, "42")
 	if missing := catFileMissing(t, mirror, origin.unchanged); !missing {

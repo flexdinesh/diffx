@@ -31,6 +31,7 @@ type Context struct {
 	LastSubmittedAt  int64                           `json:"lastSubmittedAt"`
 	LastChangedAt    int64                           `json:"lastChangedAt"`
 	ScopeSummaries   []review.ScopeSummary           `json:"scopeSummaries,omitempty"`
+	Commits          *review.CommitRange             `json:"commits,omitempty"`
 	ChangedFileCount *int                            `json:"changedFileCount"`
 	ExpiresAt        *int64                          `json:"expiresAt"`
 	SubmittedFrom    *string                         `json:"submittedFrom"`
@@ -287,7 +288,7 @@ func (service *Service) present(ctx context.Context, item reviewdata.ContextInfo
 		if name == "" {
 			name = "Piped"
 		}
-		value := Context{ScopeSummaries: item.ScopeSummaries, Source: item.Source, Stale: item.Stale, ID: item.ID, Kind: "observation", Name: name, Root: &m.Root, RepositoryID: item.RepositoryID, CreatedAt: item.CreatedAt, LastSubmittedAt: item.LastSubmittedAt, LastChangedAt: item.ActivityAt, ExpiresAt: item.ExpiresAt, ChangedFileCount: item.ChangedFileCount, SubmittedFrom: item.SubmittedFrom, Observation: m, Sessions: item.Sessions, Branch: &m.Branch, WorktreeName: &m.WorktreeName, StreamID: item.StreamID, LatestContextID: item.LatestContextID, Availability: "available", Capabilities: storedCapabilities(scopes, item.Source == "local")}
+		value := Context{ScopeSummaries: item.ScopeSummaries, Commits: item.Commits, Source: item.Source, Stale: item.Stale, ID: item.ID, Kind: "observation", Name: name, Root: &m.Root, RepositoryID: item.RepositoryID, CreatedAt: item.CreatedAt, LastSubmittedAt: item.LastSubmittedAt, LastChangedAt: item.ActivityAt, ExpiresAt: item.ExpiresAt, ChangedFileCount: item.ChangedFileCount, SubmittedFrom: item.SubmittedFrom, Observation: m, Sessions: item.Sessions, Branch: &m.Branch, WorktreeName: &m.WorktreeName, StreamID: item.StreamID, LatestContextID: item.LatestContextID, Availability: "available", Capabilities: storedCapabilities(scopes, item.Source == "local")}
 		if item.Source == "stdin" {
 			value.Name, value.Stale = "Piped", false
 			value.Root, value.RepositoryID, value.Branch, value.WorktreeName = nil, nil, nil, nil

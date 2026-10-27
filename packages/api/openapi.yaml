@@ -1068,6 +1068,72 @@ paths:
                 $ref: "#/components/schemas/FileContents"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v2/contexts/{contextId}/commits:
+    parameters:
+      - $ref: "#/components/parameters/ContextId"
+    get:
+      operationId: listCommitsV2
+      description: Captured branch commits, oldest first. Empty unless the observation captured a branch comparison's commits. Commit views are read-only; comments and review marks belong to comparison scopes.
+      responses:
+        "200":
+          description: Captured commits.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommitList"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/contexts/{contextId}/commits/{oid}/diff:
+    parameters:
+      - $ref: "#/components/parameters/ContextId"
+      - $ref: "#/components/parameters/CommitOid"
+    get:
+      operationId: getCommitDiffV2
+      responses:
+        "200":
+          description: The commit's diff against its first parent. Merge commits have none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepositoryDiff"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/contexts/{contextId}/commits/{oid}/files/{fileId}/patch:
+    parameters:
+      - $ref: "#/components/parameters/ContextId"
+      - $ref: "#/components/parameters/CommitOid"
+    get:
+      operationId: getCommitFilePatchV2
+      parameters:
+        - $ref: "#/components/parameters/FileId"
+        - $ref: "#/components/parameters/FileVersion"
+      responses:
+        "200":
+          description: File patch within the commit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FilePatch"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/contexts/{contextId}/commits/{oid}/files/{fileId}/contents:
+    parameters:
+      - $ref: "#/components/parameters/ContextId"
+      - $ref: "#/components/parameters/CommitOid"
+    get:
+      operationId: getCommitFileContentsV2
+      parameters:
+        - $ref: "#/components/parameters/FileId"
+        - $ref: "#/components/parameters/FileVersion"
+      responses:
+        "200":
+          description: Complete contents before and after the commit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileContents"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v2/contexts/{contextId}/comments:
     parameters:
       - $ref: "#/components/parameters/ContextId"
@@ -1402,6 +1468,13 @@ components:
       required: true
       schema:
         $ref: "#/components/schemas/DiffMode"
+    CommitOid:
+      name: oid
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
     DiffId:
       name: diffId
       in: path
@@ -1833,6 +1906,91 @@ components:
           description: File previews keyed by snapshot file ID.
           additionalProperties:
             $ref: "#/components/schemas/FilePatch"
+    Commit:
+      type: object
+      required:
+        [oid, parents, subject, body, authorName, authoredAt, committedAt]
+      properties:
+        oid:
+          type: string
+          pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
+        parents:
+          type: array
+          description: Parent commits; merge commits have several and no captured diff.
+          items:
+            type: string
+            pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
+        patchId:
+          type: string
+          description: Stable Git patch ID; equal across a rebase that keeps the commit's changes. Absent for merges and patches too large to identify.
+        subject:
+          type: string
+        body:
+          type: string
+          description: Commit message after the subject, as plain text.
+        authorName:
+          type: string
+        authoredAt:
+          type: integer
+          format: int64
+          description: Unix milliseconds.
+        committedAt:
+          type: integer
+          format: int64
+          description: Unix milliseconds.
+    IngestionCommit:
+      allOf:
+        - $ref: "#/components/schemas/Commit"
+        - type: object
+          properties:
+            snapshot:
+              $ref: "#/components/schemas/RepositoryDiff"
+            patches:
+              type: object
+              description: File previews keyed by snapshot file ID.
+              additionalProperties:
+                $ref: "#/components/schemas/FilePatch"
+    CommitSummary:
+      allOf:
+        - $ref: "#/components/schemas/Commit"
+        - type: object
+          required: [merge, fileCount, additions, deletions]
+          properties:
+            merge:
+              type: boolean
+            fileCount:
+              type: integer
+              minimum: 0
+            additions:
+              type: integer
+              minimum: 0
+            deletions:
+              type: integer
+              minimum: 0
+    CommitList:
+      type: object
+      additionalProperties: false
+      required: [commits, omitted]
+      properties:
+        commits:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommitSummary"
+        omitted:
+          type: integer
+          minimum: 0
+          description: Older commits of the range that were not captured.
+    CommitRange:
+      type: object
+      additionalProperties: false
+      required: [count, omitted]
+      properties:
+        count:
+          type: integer
+          minimum: 1
+        omitted:
+          type: integer
+          minimum: 0
     IngestionJob:
       type: object
       additionalProperties: false
@@ -1876,6 +2034,16 @@ components:
           maxItems: 5
           items:
             $ref: "#/components/schemas/IngestionScope"
+        commits:
+          type: array
+          maxItems: 100
+          description: Optional. A branch comparison's newest commits of merge base..HEAD, oldest first, ending at the captured HEAD. Install the server before collectors that send commits.
+          items:
+            $ref: "#/components/schemas/IngestionCommit"
+        commitsTotal:
+          type: integer
+          minimum: 0
+          description: Commits in merge base..HEAD, including those beyond the captured 100. Required with commits.
     ContextPage:
       type: object
       additionalProperties: false
@@ -1956,6 +2124,9 @@ components:
           description: Captured comparisons and stored file counts, independent of live checkout availability.
           items:
             $ref: "#/components/schemas/ScopeSummary"
+        commits:
+          $ref: "#/components/schemas/CommitRange"
+          description: Captured branch commits. Absent when none were captured.
         changedFileCount:
           type: [integer, "null"]
           minimum: 0
@@ -2021,9 +2192,13 @@ components:
     DiffMode:
       type: string
       enum: [all, staged, unstaged, uncommitted, committed]
+    DiffViewMode:
+      type: string
+      description: A review scope, or `commit` for a captured commit's own diff, which is never a review scope.
+      enum: [all, staged, unstaged, uncommitted, committed, commit]
     ComparisonKind:
       type: string
-      enum: [combined, uncommitted, staged, unstaged, committed, patch]
+      enum: [combined, uncommitted, staged, unstaged, committed, patch, commit]
     ScopeSummary:
       type: object
       additionalProperties: false
@@ -2186,7 +2361,7 @@ components:
         head:
           type: [string, "null"]
         mode:
-          $ref: "#/components/schemas/DiffMode"
+          $ref: "#/components/schemas/DiffViewMode"
         comparisonKind:
           $ref: "#/components/schemas/ComparisonKind"
         files:

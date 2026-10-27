@@ -1,4 +1,10 @@
-import { emptyComparison } from "./diff-mode.ts";
+import {
+  branchChanges,
+  comparisonLabel,
+  emptyComparison,
+} from "./diff-mode.ts";
+import { commitEmptyState } from "./commit-view.ts";
+import { CommitBanner } from "./CommitBanner.tsx";
 import { DiffSkeleton } from "./WorkspaceLoading.tsx";
 import type {
   CodeViewItem,
@@ -110,19 +116,32 @@ async function loadDiffFiles(
 ) {
   const file = repository.files.find((entry) => entry.path === fileDiff.name);
   if (!file) throw new Error("File is no longer in this diff");
-  const { data: body, error } = await api.GET(
-    "/api/v2/contexts/{contextId}/diffs/{diffId}/files/{fileId}/contents",
-    {
-      params: {
-        path: { contextId, diffId: repository.id, fileId: file.id },
-        query: {
-          scope: repository.mode,
-          fileVersion: file.fingerprint,
-          versionId: repository.versionId,
-        },
-      },
-    },
-  );
+  const { mode, head } = repository;
+  const { data: body, error } =
+    mode === "commit"
+      ? await api.GET(
+          "/api/v2/contexts/{contextId}/commits/{oid}/files/{fileId}/contents",
+          {
+            params: {
+              // A commit diff's head is the commit.
+              path: { contextId, oid: head ?? "", fileId: file.id },
+              query: { fileVersion: file.fingerprint },
+            },
+          },
+        )
+      : await api.GET(
+          "/api/v2/contexts/{contextId}/diffs/{diffId}/files/{fileId}/contents",
+          {
+            params: {
+              path: { contextId, diffId: repository.id, fileId: file.id },
+              query: {
+                scope: mode,
+                fileVersion: file.fingerprint,
+                versionId: repository.versionId,
+              },
+            },
+          },
+        );
   if (!body)
     throw new Error(errorDetail(error, "Unable to load full file context"));
   return {
@@ -171,6 +190,9 @@ export function DiffWorkspace() {
     refreshEnabled,
     scopeAvailable,
     requestedScope,
+    changeMode,
+    commit,
+    retryCommits,
   } = useDiffSource();
   const session = useSession();
   const { id: contextId, capabilities } = session;
@@ -191,11 +213,15 @@ export function DiffWorkspace() {
     navigateComment,
     hideReviewed,
     viewer,
+    openInScope,
   } = useNavigation();
   const { isReviewed, toggleReviewed, pending } = useReviewedFilesState();
   const { draft } = useDraft();
   const review = useReviewState();
-  const commentsEnabled = capabilityEnabled(capabilities.review.comments);
+  // Commit views are read-only: no comments, marks or line selection.
+  const commentsEnabled =
+    capabilityEnabled(capabilities.review.comments) && !commit;
+  const branchScope = commit ? branchChanges(session) : undefined;
   const contentsEnabled = capabilityEnabled(capabilities.files.contents);
   const lineMetric = useRef<HTMLSpanElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
@@ -663,37 +689,54 @@ export function DiffWorkspace() {
     ],
   );
 
-  const loadingChanges = scopeAvailable && !repository && !diff.notice;
+  const commitEmpty = commit && commitEmptyState(commit);
+  const loadingChanges = commit
+    ? commit.status === "loading" ||
+      (commit.status === "ready" && !commitEmpty && !repository && !diff.notice)
+    : scopeAvailable && !repository && !diff.notice;
   // Matching files with none visible were all hidden as reviewed.
   const allReviewedHidden = matchingFiles.length > 0;
-  const empty = emptyComparison(session, mode);
-  const emptyTitle = !scopeAvailable
-    ? "Comparison unavailable"
-    : !repository
-      ? "Cannot load changes"
-      : allReviewedHidden
-        ? filter
-          ? "All matching files reviewed"
-          : "All files reviewed"
-        : filter
-          ? "No matching files"
-          : piped
-            ? "No file changes in this input"
-            : empty.title;
-  const emptyDescription = !scopeAvailable
-    ? `The “${requestedScope}” scope was not collected in this snapshot. Choose an available comparison above.`
-    : !repository
-      ? "Check that the server is running, then refresh."
-      : allReviewedHidden
-        ? "Reviewed files are hidden."
-        : filter
-          ? "Try a different filename or clear the filter."
-          : piped
-            ? "Run a command that emits a Git patch, then pipe it into diffx."
-            : empty.description;
+  const empty = commit
+    ? {
+        title: "No file changes in this commit",
+        description: "This commit changed only its message or metadata.",
+      }
+    : emptyComparison(session, mode);
+  const emptyTitle = commitEmpty
+    ? commitEmpty.title
+    : !commit && !scopeAvailable
+      ? "Comparison unavailable"
+      : !repository
+        ? "Cannot load changes"
+        : allReviewedHidden
+          ? filter
+            ? "All matching files reviewed"
+            : "All files reviewed"
+          : filter
+            ? "No matching files"
+            : piped
+              ? "No file changes in this input"
+              : empty.title;
+  const emptyDescription = commitEmpty
+    ? commitEmpty.description
+    : !commit && !scopeAvailable
+      ? `The “${requestedScope}” scope was not collected in this snapshot. Choose an available comparison above.`
+      : !repository
+        ? "Check that the server is running, then refresh."
+        : allReviewedHidden
+          ? "Reviewed files are hidden."
+          : filter
+            ? "Try a different filename or clear the filter."
+            : piped
+              ? "Run a command that emits a Git patch, then pipe it into diffx."
+              : empty.description;
   return (
     <main>
       <DiffToolbar />
+      <CommitBanner />
+      <Notice tone="neutral" hidden={!commit?.notice}>
+        {commit?.notice}
+      </Notice>
       <WorkspaceFeedback />
       <Notice id="notice" tone="warning" hidden={!diff.notice}>
         {diff.notice}
@@ -786,6 +829,22 @@ export function DiffWorkspace() {
                         commentStale(comment, repository),
                     ).length
                   : 0;
+              // Review actions belong to scopes; a commit links back.
+              if (commit)
+                return file && branchScope ? (
+                  <Button
+                    type="button"
+                    variant="outline-muted"
+                    size="sm"
+                    aria-label={`Open ${file.path} in ${comparisonLabel(branchScope.kind)}`}
+                    onClick={() => openInScope(file.path, branchScope.scope)}
+                  >
+                    Open
+                    <span className="max-md:hidden">
+                      in {comparisonLabel(branchScope.kind)}
+                    </span>
+                  </Button>
+                ) : null;
               return file ? (
                 <div className="flex items-center gap-1">
                   {outdated > 0 && (
@@ -893,7 +952,23 @@ export function DiffWorkspace() {
               title={emptyTitle}
               description={emptyDescription}
               action={
-                allReviewedHidden ? (
+                commit?.status === "error" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={retryCommits}
+                  >
+                    Retry
+                  </Button>
+                ) : commitEmpty && branchScope ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => changeMode(branchScope.scope)}
+                  >
+                    View {comparisonLabel(branchScope.kind)}
+                  </Button>
+                ) : allReviewedHidden ? (
                   <Button
                     type="button"
                     variant="outline"
@@ -917,15 +992,23 @@ export function DiffWorkspace() {
       </div>
       <footer className="main-footer">
         <DiffComparison />
-        <span
-          className="mobile-review-progress"
-          aria-label={`${reviewedCount} of ${allFiles.length} files reviewed`}
-        >
-          {reviewedCount}/{allFiles.length} reviewed
-        </span>
+        {!commit && (
+          <span
+            className="mobile-review-progress"
+            aria-label={`${reviewedCount} of ${allFiles.length} files reviewed`}
+          >
+            {reviewedCount}/{allFiles.length} reviewed
+          </span>
+        )}
         <span className="footer-details">
           <span className="footer-shortcuts">
-            <kbd>Alt+J</kbd> <kbd>Alt+K</kbd> files <kbd>Alt+/</kbd> filter
+            <kbd>Alt+J</kbd> <kbd>Alt+K</kbd> files{" "}
+            {commit && (
+              <>
+                <kbd>Alt+[</kbd> <kbd>Alt+]</kbd> commits{" "}
+              </>
+            )}
+            <kbd>Alt+/</kbd> filter
             {refreshEnabled && (
               <>
                 {" "}

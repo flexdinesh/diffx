@@ -207,14 +207,15 @@ uses `X-Diffx-State` to pin submission and polling to the destination identity;
 older protocols are rejected. Release artifacts use the explicit `diffx` project
 name, independent of the checkout directory.
 
-Schema 13 preserves current state across starts. It adds administration and
-Google sign-in tables; schema 12 added GitHub integration tables. Schema 11 moved review state
+Schema 14 preserves current state across starts. It adds captured branch commit
+tables (`observation_commits`, `observation_commit_ranges`); schema 13 added
+administration and Google sign-in tables and schema 12 GitHub integration tables. Schema 11 moved review state
 from each snapshot scope to its stream and scope, because comments and reviewed
 marks must survive new collections and snapshot deletion. Schema 11 and later
 upgrade in place: later schemas only add tables and indexes, so opening runs the
 idempotent creation statements and records the new version in one transaction,
-because durable server volumes must gain GitHub integration and administration
-state without an operator reset. A schema change that alters existing tables needs a new
+because durable server volumes must gain GitHub integration, administration and
+commit state without an operator reset. A schema change that alters existing tables needs a new
 compatibility floor instead. Older-than-11, future and unrecognized schemas are
 refused; opening a database never resets it. `reviewstore.Reset` is the only reset: under the
 ownership lock it moves current or older diffx state and its SQLite sidecars to
@@ -231,8 +232,8 @@ state also suggest `--reset-state`. Fresh state has no saved reviews or server
 accounts.
 Install the server first when adding optional protocol 4 metadata: older servers
 reject unknown request fields and new diff scopes. Captured comparison kinds,
-the `uncommitted` and `committed` scopes, activity and pull request metadata
-retain protocol 4. Public ingestion rejects the `github` source, the `github`
+the `uncommitted` and `committed` scopes, activity, pull request metadata and
+captured `commits` with `commitsTotal` retain protocol 4. Public ingestion rejects the `github` source, the `github`
 trigger and `pullRequest` metadata at the transport, because only the server's
 GitHub integration may claim a hosted pull request; shared validation accepts
 them for that internal admission path.

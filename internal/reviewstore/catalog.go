@@ -62,7 +62,9 @@ var contextSelect = `SELECT c.id,c.kind,json_extract(o.metadata,'$.root'),NULL,o
 	head.source_id,head.repository_key,head.checkout_key,head.branch,head.comparison_policy,
 	(SELECT hc.id FROM contexts hc JOIN diffs hd ON hd.id=hc.anchor_diff_id WHERE hc.owner_id=c.owner_id AND hc.id=head.context_id
 	 AND (hd.expires_at IS NULL OR hd.expires_at>CAST(strftime('%s','now') AS INTEGER)*1000)),
-	CASE WHEN head.context_id=c.id THEN json_extract(head_submission.metadata,'$.pullRequest') END
+	CASE WHEN head.context_id=c.id THEN json_extract(head_submission.metadata,'$.pullRequest') END,
+	(SELECT COUNT(*) FROM observation_commits k WHERE k.context_id=c.id),
+	(SELECT r.total FROM observation_commit_ranges r WHERE r.context_id=c.id)
 	FROM contexts c
 	LEFT JOIN diffs d ON d.id=c.anchor_diff_id LEFT JOIN observations o ON o.context_id=c.id
 	LEFT JOIN observation_stream_heads head ON head.owner_id=o.owner_id AND head.source_id=o.source_id
@@ -87,11 +89,16 @@ func scanContext(row scanner) (ContextInfo, error) {
 	var sessions, summaries string
 	var head [5]sql.NullString
 	var headPull sql.NullString
+	var commits int
+	var commitsTotal sql.NullInt64
 	err := row.Scan(&item.ID, &item.Kind, &item.Root, &item.LocationID, &item.RepositoryID, &item.CommonDir, &item.WorktreeKey,
 		&item.SubmittedFrom, &item.CreatedAt, &item.LastSubmittedAt, &item.ExpiresAt, &item.ActivityAt, &item.ChangedFileCount, &summaries, &item.Source, &metadata, &item.Stale, &sessions,
-		&head[0], &head[1], &head[2], &head[3], &head[4], &item.LatestContextID, &headPull)
+		&head[0], &head[1], &head[2], &head[3], &head[4], &item.LatestContextID, &headPull, &commits, &commitsTotal)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ContextInfo{}, ErrNotFound
+	}
+	if err == nil && commits > 0 {
+		item.Commits = &review.CommitRange{Count: commits, Omitted: max(int(commitsTotal.Int64)-commits, 0)}
 	}
 	if err == nil && head[0].Valid {
 		id := streamID(head[0].String, head[1].String, head[2].String, head[3].String, head[4].String)
@@ -167,7 +174,7 @@ func (store *Store) DeleteContext(ctx context.Context, ownerID, id string) error
 	if err != nil {
 		return err
 	}
-	if _, err = transaction.ExecContext(ctx, "DELETE FROM diffs WHERE owner_id=? AND id<>? AND id IN (SELECT diff_id FROM observation_scopes WHERE context_id=?)", ownerID, anchor, id); err != nil {
+	if _, err = transaction.ExecContext(ctx, "DELETE FROM diffs WHERE owner_id=? AND id<>? AND id IN (SELECT diff_id FROM observation_scopes WHERE context_id=? UNION SELECT diff_id FROM observation_commits WHERE context_id=?)", ownerID, anchor, id, id); err != nil {
 		return err
 	}
 	if _, err = transaction.ExecContext(ctx, "DELETE FROM diffs WHERE owner_id=? AND id=?", ownerID, anchor); err != nil {

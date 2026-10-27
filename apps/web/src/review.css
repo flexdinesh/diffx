@@ -146,7 +146,9 @@
   border-bottom: 1px solid var(--border-muted);
 }
 /* A long description scrolls within the banner and never pushes the diff away. */
-.pull-request-description {
+/* Pull request descriptions and commit messages scroll within their banner. */
+.pull-request-description,
+.commit-message {
   max-height: min(40dvh, calc(6 * var(--space-16)));
   overflow-y: auto;
 }
