@@ -274,8 +274,9 @@ such detail into a token. New layout spacing must use the scale.
   Keep the last header action's outer edge flush with the shell; never apply
   the diff scrollbar inset to header actions. Theme and snapshot deletion are
   absent from the header.
-  A local checkout process replaces Refresh with an icon-only “Sync all
-  checkouts” action (folder-sync icon) that never swaps the open review.
+  A local checkout process replaces Refresh with an icon-only sync action
+  (folder-sync icon), “Sync checkout” for one selected checkout and “Sync all
+  checkouts” for discovered checkouts, that never swaps the open review.
 - Header text uses cap-height trimming with token padding to center UI and
   monospace labels without clipping ascenders or descenders.
 - Header lead: brand and divider identify the app. The file-sidebar toggle
@@ -292,6 +293,14 @@ such detail into a token. New layout spacing must use the scale.
   still mounted, while collapsed). Piped wording, icons and grouping appear
   only there; elsewhere a stored stdin snapshot reads like any review.
   Components read the policy, never the deployment mode.
+- Review column visibility is part of that policy: a remote server always shows
+  the column; a local checkout process shows the column, rail and “Show
+  reviews” drawer toggle only once the column would list two current streams,
+  then keeps them for the page session so a stream leaving never reflows the
+  review. Until then the island holds only the file sidebar, exactly as a
+  capture's, with no placeholder or motion; search, Cmd/Ctrl+K, the header
+  comboboxes and sync remain. The column appears instantly in its persisted
+  list or rail state.
 - Review column: the leading pane of the navigation island, titled “Reviews”,
   on `--panel`, sharing the file tree and diff's top and bottom edges below the
   header. Switching streams changes everything to its right; the column stays.

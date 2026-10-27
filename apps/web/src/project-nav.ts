@@ -41,6 +41,14 @@ function currentWork(context: ApiContext) {
   return state !== "closed" && state !== "merged";
 }
 
+/** How many streams the review column lists across every repository. */
+export function streamCount(heads: ApiContext[]) {
+  return projectGroups(heads, null).reduce(
+    (total, group) => total + group.streams.length,
+    0,
+  );
+}
+
 export function projectGroups(heads: ApiContext[], seen: SeenStreams | null) {
   const groups = new Map<string, ProjectGroup>();
   for (const context of heads) {

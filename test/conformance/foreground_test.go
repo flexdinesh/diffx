@@ -230,7 +230,7 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 		t.Fatal("foreground instance unavailable")
 		return localserver.Status{}
 	}
-	original, done := start("")
+	original, done := start("", "--scan-worktrees")
 	status := await("")
 	if status.PID != original.Process.Pid {
 		t.Fatalf("wrong foreground owner: %+v", status)
@@ -247,7 +247,7 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 		t.Fatalf("no context for %s: %+v", root, page)
 		return contextservice.Context{}
 	}
-	// Local collection includes every registered worktree of the repository.
+	// --scan-worktrees includes every registered worktree of the repository.
 	if len(initial.Contexts) != 2 {
 		t.Fatalf("local collection missed sibling worktree: %+v", initial)
 	}
@@ -371,7 +371,8 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 			t.Fatalf("other checkout context %s visible: %d", id, code)
 		}
 	}
-	// Reopening the first checkout shows its repository's persistent history again.
+	// Reopening the first checkout alone shows its persistent history again,
+	// without its sibling worktree.
 	_, reopenedDone := start("", "--replace")
 	reopened := await(replacement.InstanceID)
 	select {
@@ -386,13 +387,17 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 	requestJSON(t, reopened.BrowserURL+"/api/v2/contexts", &history)
 	found := map[string]bool{}
 	for _, item := range history.Contexts {
-		if item.Root == nil || (*item.Root != first && *item.Root != second) {
+		if item.Root == nil || *item.Root != first {
 			t.Fatalf("reopened checkout showed another checkout: %+v", history)
 		}
 		found[item.ID] = true
 	}
-	if !found[entry.ID] || !found[refreshed.ID] || !found[linkedEntry.ID] {
+	if !found[entry.ID] || !found[refreshed.ID] {
 		t.Fatalf("reopened checkout lost history: %+v", history)
+	}
+	requestJSON(t, reopened.BrowserURL+"/api/v2/bootstrap", &bootstrap)
+	if bootstrap.Input != "checkout" {
+		t.Fatalf("single checkout process input: %+v", bootstrap)
 	}
 	// The server may use its five-second shutdown grace before forcing a
 	// connection closed; leave time for descriptor and ownership cleanup too.

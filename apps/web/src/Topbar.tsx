@@ -5,7 +5,7 @@ import { AccountButton } from "./account.tsx";
 import { ContextIdentity } from "./ContextIdentity.tsx";
 import { HeaderBrand, ProjectsToggle } from "./ProjectsNav.tsx";
 import { useCatalog } from "./session-context.tsx";
-import { useShellPolicy } from "./shell-policy.ts";
+import { useShellPolicy } from "./use-shell-policy.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
 
 export function CurrentContext() {
@@ -13,7 +13,10 @@ export function CurrentContext() {
   return catalog.current ? <ContextIdentity current={catalog.current} /> : null;
 }
 
-/** Collects every local checkout; shared by the review and its loading shell. */
+/**
+ * Collects the local process's checkout, or every discovered checkout; shared
+ * by the review and its loading shell.
+ */
 export function SyncButton({
   busy,
   onClick,
@@ -22,11 +25,12 @@ export function SyncButton({
   /** Omitted while the loading shell collects: the action is unavailable. */
   onClick?: () => void;
 }) {
+  const { collection } = useShellPolicy();
   return (
     <IconButton
       variant="shell"
       touch
-      label="Sync all checkouts"
+      label={collection === "checkout" ? "Sync checkout" : "Sync all checkouts"}
       shortcut={{ alt: true, key: "R" }}
       aria-busy={busy}
       disabled={!onClick}
@@ -83,9 +87,10 @@ export function Topbar({
 }) {
   const { mobile } = useSidebarState();
   const { reviewNavigation } = useShellPolicy();
+  const { reviewColumn } = useCatalog();
   return (
     <header className="topbar">
-      {mobile && reviewNavigation && <ProjectsToggle />}
+      {mobile && reviewColumn && <ProjectsToggle />}
       <HeaderBrand />
       {lead}
       <CurrentContext />

@@ -6,6 +6,7 @@ import {
   reviewedToggle,
   test,
   withReviewNavigation,
+  withSecondReview,
 } from "./fixtures.ts";
 import { resetFixtureState } from "./fixture-state.ts";
 
@@ -1799,6 +1800,7 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
   page,
 }) => {
   await withReviewNavigation(page);
+  await withSecondReview(page);
   await page.goto("/");
   const brand = page.locator(".topbar .brand");
   const filesToggle = page.getByRole("button", { name: "Hide file sidebar" });
@@ -2045,6 +2047,7 @@ test("review column and file sidebar resize independently and persist", async ({
   page,
 }) => {
   await withReviewNavigation(page);
+  await withSecondReview(page);
   await page.goto("/");
   const column = page.locator(".stream-column");
   const files = page.locator(".navigation-panel");
@@ -2383,6 +2386,7 @@ test("drawer aligns its header and retains desktop navigation density", async ({
   page,
 }) => {
   await withReviewNavigation(page);
+  await withSecondReview(page);
   await page.setViewportSize({ width: 1280, height: 844 });
   await page.goto("/");
   await showDiff(page);

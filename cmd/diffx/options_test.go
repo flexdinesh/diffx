@@ -64,8 +64,12 @@ func TestWorkspaceOptionsParseAndStayLocal(t *testing.T) {
 		t.Fatalf("workspace options: %#v %v", values, err)
 	}
 	values, err = parseOptions([]string{"repo"}, io.Discard)
-	if err != nil || len(values.paths) != 1 || values.paths[0] != "repo" || values.scanDepth != 8 {
+	if err != nil || len(values.paths) != 1 || values.paths[0] != "repo" || values.scanDepth != 8 || values.scanWorktrees {
 		t.Fatalf("positional path: %#v %v", values, err)
+	}
+	values, err = parseOptions([]string{"repo", "--scan-worktrees"}, io.Discard)
+	if err != nil || !values.scanWorktrees || values.paths[0] != "repo" {
+		t.Fatalf("scan worktrees: %#v %v", values, err)
 	}
 	for _, arguments := range [][]string{{"--scan-depth", "-1"}, {"--scan-depth", "33"}, {"--path", "one", "two"}} {
 		if _, err := parseOptions(arguments, io.Discard); err == nil {
@@ -75,6 +79,8 @@ func TestWorkspaceOptionsParseAndStayLocal(t *testing.T) {
 	for _, arguments := range [][]string{
 		{"sync", "--path", "one", "--path", "two"},
 		{"sync", "--scan-depth", "2"},
+		{"sync", "--scan-worktrees"},
+		{"dev", "--fixture", "patch.diff", "--scan-worktrees"},
 		{"dev", "--fixture", "patch.diff", "--scan-depth", "2"},
 	} {
 		if err := run(t.Context(), arguments, nil, io.Discard, io.Discard); err == nil || !strings.Contains(err.Error(), "only supported by local mode") {

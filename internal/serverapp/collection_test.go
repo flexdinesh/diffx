@@ -123,7 +123,7 @@ func TestOlderCollectionRemainsSuccessfulWithoutRegressingStreamHead(t *testing.
 		t.Fatalf("successful older collection lost its default: %+v, %v", fallback, ok)
 	}
 	var handler *Collections
-	handler = NewCollections(service, func(_ context.Context, publish func(ingestion.Request) error) ([]CollectionFailure, error) {
+	handler = NewCollections(service, DiscoveredCheckouts, func(_ context.Context, publish func(ingestion.Request) error) ([]CollectionFailure, error) {
 		request.SubmissionID = "earlier-clock-again"
 		if err := publish(request); err != nil {
 			return nil, err

@@ -34,7 +34,7 @@ import {
 } from "./project-nav.ts";
 import { NewMark, StreamIcon, useNow } from "./ProjectsNav.tsx";
 import { useCatalog } from "./session-context.tsx";
-import { useShellPolicy } from "./shell-policy.ts";
+import { useShellPolicy } from "./use-shell-policy.ts";
 
 /**
  * The open review's repository, branch and worktree. With review navigation,

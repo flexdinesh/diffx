@@ -11,6 +11,7 @@ import {
   relativeAge,
   repoMonogram,
   streamMatches,
+  streamCount,
   streamMeta,
   streamTitle,
 } from "../src/project-nav.ts";
@@ -82,6 +83,22 @@ test("projects list current changed streams by recent activity", () => {
     ],
   );
   assert.equal(groups[1]?.lastActivity, 20);
+});
+
+test("stream count matches the streams the review column lists", () => {
+  assert.equal(streamCount([]), 0);
+  assert.equal(
+    streamCount([
+      head("api", "api", 10),
+      head("clean", "api", 40, { changedFileCount: 0 }),
+      head("stale", "api", 50, { stale: true }),
+    ]),
+    1,
+  );
+  assert.equal(
+    streamCount([head("main", "api", 10), head("other", "api", 20)]),
+    2,
+  );
 });
 
 test("a repository opens to its most active stream", () => {

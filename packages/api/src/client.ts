@@ -53,7 +53,9 @@ export function readBootstrap(value: unknown): ApiBootstrap {
     value.user === null &&
     value.csrfToken === null &&
     typeof value.collect === "boolean" &&
-    (value.input === "checkouts" || value.input === "capture")
+    (value.input === "checkout" ||
+      value.input === "checkouts" ||
+      value.input === "capture")
   )
     return {
       mode: "local",

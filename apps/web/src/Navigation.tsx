@@ -1,15 +1,16 @@
 import { useRef, type ReactNode } from "react";
 import { FileTreeSkeleton } from "./WorkspaceLoading.tsx";
 import { ProjectsNav } from "./ProjectsNav.tsx";
-import { useShellPolicy } from "./shell-policy.ts";
+import { useCatalog } from "./session-context.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
 import { useStreamNavState } from "./stream-nav-context.tsx";
 
 /**
  * One navigation island: the review column, then the open review's file
- * sidebar. Each pane owns its width and resize boundary. Without review
- * navigation (a capture) only the file sidebar remains; the island hides,
- * still mounted, while that sidebar is collapsed.
+ * sidebar. Each pane owns its width and resize boundary. Without the review
+ * column (a capture, or a local process with one review to switch to) only
+ * the file sidebar remains; the island hides, still mounted, while that
+ * sidebar is collapsed.
  */
 export function Navigation({
   children,
@@ -20,15 +21,15 @@ export function Navigation({
 }) {
   const sidebar = useSidebarState();
   const streams = useStreamNavState();
-  const { reviewNavigation } = useShellPolicy();
+  const { reviewColumn } = useCatalog();
   const files = Boolean(children) || loading;
   const filesWidth = files && !sidebar.collapsed ? sidebar.width : 0;
-  const rail = !reviewNavigation || streams.state === "rail";
+  const rail = !reviewColumn || streams.state === "rail";
   const empty =
-    !reviewNavigation && !sidebar.mobile && (!files || sidebar.collapsed);
+    !reviewColumn && !sidebar.mobile && (!files || sidebar.collapsed);
   return (
     <div className="navigation-island" data-empty={empty || undefined}>
-      {reviewNavigation && (
+      {reviewColumn && (
         <div className={`stream-column${rail ? " is-rail" : ""}`}>
           <ProjectsNav />
           <PaneResizer

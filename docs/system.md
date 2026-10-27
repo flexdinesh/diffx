@@ -36,16 +36,21 @@ The application core has two compositions. See [architecture.md](architecture.md
 for contracts, durability rules and migration details.
 
 `diffx [PATH]` is one foreground process: serve UI/REST/MCP immediately, then
-discover and collect the checkouts under its paths and ingest directly in a
-background task. Discovery feeds four workers as checkouts are found; a serial
+collect its selected checkout, or discover and collect the checkouts under its
+paths, and ingest directly in a background task. Discovery feeds four workers as checkouts are found; a serial
 publisher ingests each completed checkout immediately, so its snapshot becomes queryable
 while slower checkouts continue. Publication commits and emits the existing
 ingestion event for each observation. The UI opens available snapshots and shows
 loading feedback only for missing data; failures remain visible with Retry.
-Omitted paths mean the current directory; `--path` repeats and `--scan-depth` (default 8) bounds the
-search. Every path must be an existing directory; missing paths fail before serving. Captured snapshots remain fixed after edits and branch switches until the
+Omitted paths mean the current directory. A bare or positional path inside a
+checkout selects only that checkout; `--scan-worktrees` adds its repository's
+other registered worktrees, and `--scan-depth` is rejected because a checkout
+has no directory search. `--path` (repeatable) and a positional directory
+outside a repository discover checkouts and all their worktrees, with
+`--scan-depth` (default 8) bounding the search. The scope is decided at startup
+and every later sync reuses it. Every path must be an existing directory; missing paths fail before serving. Captured snapshots remain fixed after edits and branch switches until the
 user requests collection by loading a live URL or pressing Sync, which discovers
-the paths again and ingests a new snapshot of every checkout; nothing watches Git.
+the paths again and ingests a new snapshot of every checkout in scope; nothing watches Git.
 Piped input is validated and collected once before serving.
 The home-directory database survives process termination, but each process
 serves only the checkouts it discovered (every branch and earlier run of them)
@@ -79,7 +84,9 @@ and review operations. Their lifecycle and submission delivery differ.
 Collection resolves the baseline and all supported comparison scopes together with
 full-content identity and bounded immutable previews. It never fetches refs.
 Sync and hook collection select one checkout, resolving nested paths to its
-root; their other registered worktrees are not collected. Local collection
+root; their other registered worktrees are not collected. A local process
+started on one checkout path collects that checkout the same way unless
+`--scan-worktrees` is given. Otherwise local collection
 resolves each path inside a repository to its root, otherwise walks up to the
 scan depth, stopping at repositories and skipping hidden, `node_modules` and
 `vendor` directories, then collects every registered worktree of each repository
@@ -227,7 +234,11 @@ head, the UI waits for collection; failures remain visible and offer Retry.
 Otherwise `/` opens the most recently active changed head's live URL. Startup
 selection and the local default MCP context use the same collection default.
 The Reviews column leads the navigation island, beside the open review's file
-sidebar, aligned with the diff below the header. Switching streams replaces
+sidebar, aligned with the diff below the header. A remote server always shows
+it. A local checkout process shows it, its rail and the compact drawer toggle
+only once the column would list two current streams, then keeps it for the
+page session; until then the island holds only the file sidebar, while search,
+the header comboboxes and sync remain. Switching streams replaces
 everything to its right and keeps the column. It collapses to a rail of
 repository marks. A repository (its rail mark or its name in the list) opens
 its most active stream; the list's chevron alone collapses or expands it. The

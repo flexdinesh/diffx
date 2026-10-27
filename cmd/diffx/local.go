@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/collector"
+	"github.com/flexdinesh/diffx/internal/diffsource"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/localserver"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
@@ -31,7 +32,7 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 	if values.serverSet || values.tokenSet || values.branch != "" || values.fixture != "" || values.print || values.retry {
 		return errors.New("local mode accepts a checkout path or piped diff; use sync for remote collection or dev --fixture for fixtures")
 	}
-	input, err := acquireLocalInput(values, stdin)
+	input, err := acquireLocalInput(ctx, values, stdin)
 	if err != nil {
 		return err
 	}
@@ -48,9 +49,9 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 	if input.Kind == "worktree" {
 		label = strings.Join(input.Paths, ", ")
 		collect := func(ctx context.Context, publish func(ingestion.Request) error) ([]localserver.CollectionFailure, error) {
-			return collectWorkspaces(ctx, values, input.Paths, stderr, publish)
+			return collectWorkspaces(ctx, values, input, stderr, publish)
 		}
-		selected = localserver.Input{Collect: collect}
+		selected = localserver.Input{Collect: collect, Selection: input.Selection}
 	} else {
 		request, err := collectInitialInput(ctx, values, input)
 		if err != nil {
@@ -142,14 +143,16 @@ func askYes(ctx context.Context, stdin *os.File, stderr io.Writer, question stri
 	}
 }
 
-// collectWorkspaces collects every checkout discovered under the selected
-// paths. Discovery diagnostics go to stderr; failures stay in the collection.
-func collectWorkspaces(ctx context.Context, values options, paths []string, stderr io.Writer, publish func(ingestion.Request) error) ([]localserver.CollectionFailure, error) {
+// collectWorkspaces collects the input's selected checkout or every checkout
+// discovered under its paths. Discovery diagnostics go to stderr; failures stay
+// in the collection.
+func collectWorkspaces(ctx context.Context, values options, input initialInput, stderr io.Writer, publish func(ingestion.Request) error) ([]localserver.CollectionFailure, error) {
 	settings, err := collectionOptions(values)
 	if err != nil {
 		return nil, err
 	}
-	batch, err := collector.CollectWorkspaces(ctx, paths, values.scanDepth, settings, publish)
+	workspaces := collector.Workspaces{Paths: input.Paths, Depth: values.scanDepth, LinkedWorktrees: input.Selection == localserver.DiscoveredCheckouts}
+	batch, err := collector.CollectWorkspaces(ctx, workspaces, settings, publish)
 	for _, diagnostic := range batch.Diagnostics {
 		fmt.Fprintf(stderr, "  diffx: %s\n", diagnostic)
 	}
@@ -163,7 +166,7 @@ func collectWorkspaces(ctx context.Context, values options, paths []string, stde
 	return failures, nil
 }
 
-func acquireLocalInput(values options, stdin *os.File) (initialInput, error) {
+func acquireLocalInput(ctx context.Context, values options, stdin *os.File) (initialInput, error) {
 	piped := false
 	if stdin != nil {
 		var err error
@@ -194,5 +197,30 @@ func acquireLocalInput(values options, stdin *os.File) (initialInput, error) {
 		}
 		paths = append(paths, absolute)
 	}
-	return initialInput{Kind: "worktree", Paths: paths}, nil
+	selection, err := checkoutSelection(ctx, values, paths)
+	if err != nil {
+		return initialInput{}, err
+	}
+	return initialInput{Kind: "worktree", Paths: paths, Selection: selection}, nil
+}
+
+// checkoutSelection scopes a bare or positional checkout path to that checkout
+// unless --scan-worktrees adds its repository's other worktrees. --path, and a
+// directory outside a repository, discover every checkout and worktree below.
+func checkoutSelection(ctx context.Context, values options, paths []string) (localserver.Selection, error) {
+	if values.pathSet || len(paths) != 1 {
+		return localserver.DiscoveredCheckouts, nil
+	}
+	if _, err := diffsource.OpenRepository(ctx, paths[0]); errors.Is(err, diffsource.ErrNotRepository) {
+		return localserver.DiscoveredCheckouts, nil
+	} else if err != nil {
+		return "", err
+	}
+	if values.scanDepthSet {
+		return "", errors.New("--scan-depth bounds directory search; a checkout path has none. Use --scan-worktrees for its worktrees")
+	}
+	if values.scanWorktrees {
+		return localserver.DiscoveredCheckouts, nil
+	}
+	return localserver.SelectedCheckout, nil
 }

@@ -150,17 +150,28 @@ func FailureSummary(failures []CollectionFailure) string {
 	return strings.Join(details, "; ")
 }
 
+// Selection names which checkouts a local process collects.
+type Selection string
+
+const (
+	// SelectedCheckout collects only the checkout the process was started for.
+	SelectedCheckout Selection = "checkout"
+	// DiscoveredCheckouts collects every checkout discovered under the paths.
+	DiscoveredCheckouts Selection = "checkouts"
+)
+
 // Collections serializes checkout collection and publication. The first UI
 // load request joins startup, including when startup finished before the browser opened.
 // Later requests collect fresh snapshots. A disconnected browser does not cancel
 // startup, whose lifetime belongs to the foreground process.
 type Collections struct {
-	mu      sync.Mutex
-	pending *collectionResult
-	gate    chan struct{}
-	service *contextservice.Service
-	collect Collect
-	current *defaultContext
+	mu        sync.Mutex
+	pending   *collectionResult
+	gate      chan struct{}
+	service   *contextservice.Service
+	selection Selection
+	collect   Collect
+	current   *defaultContext
 }
 
 type collectionResult struct {
@@ -169,8 +180,8 @@ type collectionResult struct {
 	err       error
 }
 
-func NewCollections(service *contextservice.Service, collect Collect, defaultID string) *Collections {
-	return &Collections{service: service, collect: collect, current: &defaultContext{id: defaultID}, gate: make(chan struct{}, 1)}
+func NewCollections(service *contextservice.Service, selection Selection, collect Collect, defaultID string) *Collections {
+	return &Collections{service: service, selection: selection, collect: collect, current: &defaultContext{id: defaultID}, gate: make(chan struct{}, 1)}
 }
 
 // Initial reserves the startup result before serving requests and returns the

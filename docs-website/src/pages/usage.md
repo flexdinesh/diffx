@@ -10,22 +10,27 @@ Capture the checkouts under the selected paths in one foreground process:
 ```sh
 diffx
 diffx .
+diffx . --scan-worktrees
 diffx /path/to/repo --host 0.0.0.0
+diffx ~/work --scan-depth 4
 diffx --path ~/work --path ~/oss --scan-depth 4
 diffx . --replace
 diffx . --base HEAD --no-browser
 ```
 
 Collection and ingestion run in-process. The same process serves the web UI,
-REST and MCP until Ctrl-C. The path defaults to the current directory; repeat
-`--path` for several. A path inside a repository resolves to its checkout;
-otherwise diffx searches up to `--scan-depth` levels (default 8) below it,
-stopping at each repository and skipping hidden, `node_modules` and `vendor`
-directories. Every registered worktree of each repository found is collected,
-including worktrees outside the paths. Once collection finishes, the browser
+REST and MCP until Ctrl-C. The path defaults to the current directory. When
+that path, or one positional path, is inside a repository, diffx collects only
+that checkout; add `--scan-worktrees` to also collect the repository's other
+worktrees (`--scan-depth` does not apply there). With `--path` (repeat it for
+several) or a directory outside a repository, a path inside a repository
+resolves to its checkout; otherwise diffx searches up to `--scan-depth` levels
+(default 8) below it, stopping at each repository and skipping hidden,
+`node_modules` and `vendor` directories. Every registered worktree of each
+repository found is collected, including worktrees outside the paths. Once collection finishes, the browser
 opens the changed checkout containing the path, otherwise the most recently
 active changed snapshot; later edits and branch switches do not change it until you sync, which
-discovers the paths again and captures a new snapshot of every checkout. A
+collects the same scope again and captures a new snapshot of every checkout in it. A
 checkout that fails to collect is reported without blocking the others and never
 substitutes an empty diff. Observations and comments persist across restarts in
 the shared local database; each process shows only its discovered checkouts or

@@ -6,7 +6,9 @@ description: Navigate projects, snapshots, comments and reviewed marks.
 # Reviewing changes
 
 The Reviews column lists repositories by recent activity, each with its current
-streams: one per source, checkout, branch and comparison. Each stream shows its
+streams: one per source, checkout, branch and comparison. A local diffx shows
+the column once there are at least two current streams to switch between; a
+remote server always shows it. Each stream shows its
 newest snapshot only; clean or merged streams and superseded snapshots are hidden.
 A dot marks streams with changes you have not opened in this browser. Click a
 repository's name to open its most active stream; its chevron expands or
@@ -15,7 +17,8 @@ collapsed across visits, and each mark opens that repository's latest stream.
 The header names the open review's repository, branch and worktree; the
 repository and branch are menus you can type into to filter, then press Enter
 to switch. In a local checkout
-process, **Sync all checkouts** (Alt+R) collects every checkout again; like a
+process, **Sync checkout** or **Sync all checkouts** (Alt+R) collects the
+process's checkouts again; like a
 remote arrival, a newer snapshot of the open stream is announced, not swapped in.
 Collapsed files and folders are remembered across reloads in the same tab. When a newer snapshot
 arrives for the stream you are reviewing, a notice offers **View latest** without
