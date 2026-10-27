@@ -2550,6 +2550,44 @@ test("file comments remain available without a text diff", async ({ page }) => {
   ).toContainText("Review this binary asset");
 });
 
+test("previews load in file order 16 MiB at a time", async ({ page }) => {
+  // Each preview counts 6 MiB, so a 16 MiB window holds two files.
+  const padding = "a".repeat(6 * 1024 * 1024);
+  await page.route("**/files/*/patch?*", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        patch: "",
+        message: "Loaded preview",
+        contents: { before: padding, after: "" },
+      }),
+    }),
+  );
+  await page.setViewportSize({ width: 1280, height: 4_000 });
+  await page.goto("/");
+  const files = page.locator("#viewer diffs-container");
+  const notice = page
+    .locator('[data-slot="notice"]')
+    .filter({ hasText: "not loaded" });
+  // Several 6 MiB previews parse before the window pauses.
+  await expect(notice).toHaveText(/10 files not loaded/, { timeout: 15_000 });
+  await expect(files).toHaveCount(12);
+  for (const [index, text] of [
+    "Loaded preview",
+    "Loaded preview",
+    "Not loaded",
+    "Not loaded",
+  ].entries())
+    await expect(files.nth(index)).toContainText(text);
+  await expect(files.nth(11)).toContainText("Not loaded");
+
+  await notice.getByRole("button", { name: "Load more" }).click();
+  await expect(notice).toHaveText(/8 files not loaded/);
+  for (const index of [2, 3])
+    await expect(files.nth(index)).toContainText("Loaded preview");
+  await expect(files.nth(4)).toContainText("Not loaded");
+});
+
 test("diff file and folder collapse state survives reload within the tab", async ({
   page,
 }) => {

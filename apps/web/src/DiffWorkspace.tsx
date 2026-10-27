@@ -698,6 +698,26 @@ export function DiffWorkspace() {
       <Notice id="notice" tone="warning" hidden={!diff.notice}>
         {diff.notice}
       </Notice>
+      <Notice
+        tone="neutral"
+        hidden={!diff.unloaded}
+        action={
+          diff.unloaded > 0 && (
+            <Button
+              type="button"
+              variant="outline-muted"
+              size="sm"
+              disabled={diff.busy}
+              onClick={diff.loadMore}
+            >
+              Load more
+            </Button>
+          )
+        }
+      >
+        {diff.unloaded} {diff.unloaded === 1 ? "file" : "files"} not loaded ·
+        previews load 16 MiB at a time
+      </Notice>
       <p className="visually-hidden" role="status" aria-live="polite">
         {selectionFeedback}
       </p>

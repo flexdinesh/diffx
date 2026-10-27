@@ -3,7 +3,6 @@ package collector
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -118,49 +117,6 @@ func TestUncommittedRecreatedAndUntrackedContents(t *testing.T) {
 		if files := scopeFor(t, request, mode).Snapshot.Files; len(files) != 1 || files[0].Path != "tracked" {
 			t.Fatalf("untracked included in %s: %+v", mode, files)
 		}
-	}
-}
-
-func TestBranchScopePreviewQuotasPreserveEveryComparison(t *testing.T) {
-	root := repository(t)
-	writeFiles := func(value string) {
-		for i := range 4 {
-			write(t, root, fmt.Sprintf("file-%d", i), strings.Repeat(value, 1<<19)+"\n")
-		}
-	}
-	writeFiles("a")
-	git(t, root, "add", ".")
-	git(t, root, "commit", "-m", "base")
-	git(t, root, "switch", "-c", "feature")
-	writeFiles("b")
-	git(t, root, "commit", "-am", "committed")
-	writeFiles("c")
-	git(t, root, "add", ".")
-	writeFiles("d")
-	request := collect(t, root)
-	quota := previewBudget / len(request.Scopes)
-	total := 0
-	for _, scope := range request.Scopes {
-		size, unavailable := 0, 0
-		for _, patch := range scope.Patches {
-			size += len(patch.Patch)
-			if patch.Contents != nil {
-				size += len(patch.Contents.Before) + len(patch.Contents.After)
-			}
-			if patch.Patch == "" && patch.Contents == nil && patch.Message != nil {
-				unavailable++
-			}
-		}
-		if size == 0 || size > quota || unavailable == 0 {
-			t.Fatalf("%s preview bytes %d, quota %d, unavailable %d", scope.Snapshot.Mode, size, quota, unavailable)
-		}
-		if patch := patchFor(t, request, scope.Snapshot.Mode, "file-0"); patch.Contents == nil {
-			t.Fatalf("%s starved by an earlier scope", scope.Snapshot.Mode)
-		}
-		total += size
-	}
-	if total > previewBudget {
-		t.Fatalf("aggregate bytes %d exceed budget %d", total, previewBudget)
 	}
 }
 

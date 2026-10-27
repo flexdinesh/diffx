@@ -108,10 +108,17 @@ Uncommitted. Object-only branch recovery and piped patches retain only `all`,
 meaning Branch changes and supplied patch respectively. Every new manifest
 declares `comparisonKind`; old manifests receive a read-time interpretation
 without changing stored data. Unsupported scopes are unavailable, not empty.
-The 16 MiB aggregate preview budget is divided equally across captured scopes;
-this prevents one comparison consuming the others' previews, at the cost of
-earlier truncation within a large scope. Full-content identity remains independent
-of preview truncation.
+Previews are bounded per file and per scope first: a patch over 1 MiB, or full
+contents over 1 MiB on either side, are omitted with an explicit message, and
+files after the first 1000 of a scope are listed without previews. Because an
+observation is one ingestion request and one transaction, a total limit keeps
+its encoded JSON within the 64 MiB request limit with 1 MiB of headroom.
+Collection captures every scope's patches before any full contents, so full-file
+views degrade before files lose their patch. Each pass splits the remaining total
+equally between scopes in rounds, in file order, skipping a file that does not
+fit. No comparison can consume another's share, and a share a scope does not need
+goes to the others. Full-content identity remains independent of preview
+truncation.
 
 Local composition calls `contextservice.Ingest` directly as each checkout finishes
 collection. Discovery feeds up to four concurrent Git reads, while one serial

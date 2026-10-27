@@ -21,8 +21,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const previewBudget = 16 << 20
-
 type Options struct {
 	SourceID         string
 	Hostname         string
@@ -145,19 +143,14 @@ func collectRepositoryChanged(ctx context.Context, source diffsource.Source, opt
 	observation.ContentHash = contentHash
 	fingerprint := Fingerprint(observation)
 	unchanged := fingerprint != "" && fingerprint == previousFingerprint
-	for index, snapshot := range snapshots {
-		remaining := previewBudget / len(snapshots)
-		if unchanged {
-			break
-		}
-		scope, err := collectScope(ctx, source, snapshot, &remaining)
+	if !unchanged {
+		observation, err = withPreviews(ctx, source, observation, defaultPreviewLimits)
 		if err != nil {
 			if isChanged(err) {
 				return ingestion.Request{}, "", errChanged
 			}
 			return ingestion.Request{}, "", err
 		}
-		observation.Scopes[index] = scope
 	}
 	for _, snapshot := range snapshots {
 		latest, err := source.Snapshot(ctx, snapshot.Mode)
@@ -237,62 +230,6 @@ func Fingerprint(request ingestion.Request) string {
 	return hash(string(encoded))
 }
 
-func collectScope(ctx context.Context, source diffsource.Source, snapshot review.RepositoryDiff, remaining *int) (ingestion.Scope, error) {
-	patches := make(map[string]review.FilePatch, len(snapshot.Files))
-	for _, file := range snapshot.Files {
-		if err := ctx.Err(); err != nil {
-			return ingestion.Scope{}, err
-		}
-		if *remaining == 0 {
-			patches[file.ID] = review.FilePatch{Message: diffsource.Message("Comparison exceeds its share of the 16 MiB aggregate preview limit.")}
-			continue
-		}
-		patch, err := source.Patch(ctx, snapshot.Mode, file, snapshot.Head)
-		if err != nil {
-			return ingestion.Scope{}, err
-		}
-		if source.Support().FileContents && patch.Contents == nil && !file.Binary && file.Status != "U" && !nonTextPreview(patch) {
-			contents, err := source.Contents(ctx, snapshot.Mode, file, snapshot.Head)
-			if err == nil {
-				patch.Contents = &contents
-				patch.Message = nil
-			} else if diffsource.PreviewUnavailable(err) {
-				if err := ctx.Err(); err != nil {
-					return ingestion.Scope{}, err
-				}
-				if patch.Message == nil {
-					patch.Message = diffsource.Message("Full contents unavailable: file is binary or exceeds the preview limit.")
-				}
-			} else {
-				return ingestion.Scope{}, err
-			}
-		} else if !source.Support().FileContents && patch.Message == nil {
-			patch.Message = diffsource.Message("Full contents unavailable for this snapshot.")
-		}
-		applyBudget(&patch, remaining)
-		patches[file.ID] = patch
-	}
-	return ingestion.Scope{Snapshot: snapshot, Patches: patches}, nil
-}
-
-func applyBudget(patch *review.FilePatch, remaining *int) {
-	size := len(patch.Patch)
-	if patch.Contents != nil {
-		size += len(patch.Contents.Before) + len(patch.Contents.After)
-	}
-	if size > *remaining {
-		patch.Contents = nil
-		patch.Message = diffsource.Message("Full contents unavailable: comparison exceeds its share of the 16 MiB aggregate preview limit.")
-		size = len(patch.Patch)
-		if size > *remaining {
-			patch.Patch = ""
-			patch.Message = diffsource.Message("Comparison exceeds its share of the 16 MiB aggregate preview limit.")
-			size = 0
-		}
-	}
-	*remaining -= size
-}
-
 func nonTextPreview(patch review.FilePatch) bool {
 	if patch.Message == nil {
 		return false
@@ -330,14 +267,9 @@ func CollectPatch(ctx context.Context, raw, directory string, options Options) (
 			return ingestion.Request{}, err
 		}
 	}
-	remaining := previewBudget
-	scope, err := collectScope(ctx, source, snapshot, &remaining)
-	if err != nil {
-		return ingestion.Request{}, err
-	}
-	observation := request(metadata, []ingestion.Scope{scope}, options)
+	observation := request(metadata, []ingestion.Scope{{Snapshot: snapshot}}, options)
 	observation.ContentHash = hash("piped-content-v1", raw, string(snapshot.ComparisonKind))
-	return observation, nil
+	return withPreviews(ctx, source, observation, defaultPreviewLimits)
 }
 
 func request(metadata ingestion.Metadata, scopes []ingestion.Scope, options Options) ingestion.Request {
