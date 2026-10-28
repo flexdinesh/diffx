@@ -66,7 +66,7 @@ func prunePush(transaction *sql.Tx, now int64) error {
 }
 
 // Push adapts the store to the push service's storage contract.
-func (store *Store) Push() *PushStore { return &PushStore{store: store} }
+func (store *Store) Push() pushservice.Store { return &PushStore{store: store} }
 
 type PushStore struct{ store *Store }
 

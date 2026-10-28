@@ -51,13 +51,13 @@ func recordSubmission(tx *sql.Tx, owner string, request ingestion.Request, hash 
 	return sequence, id, err
 }
 
-// SQLiteQueue uses the same database owner as observations; it never opens a
+// IngestionQueue uses the same database owner as observations; it never opens a
 // second connection pool or permits multiple processes to bypass store ownership.
-type SQLiteQueue struct{ store *Store }
+type IngestionQueue struct{ store *Store }
 
-func (store *Store) Queue() *SQLiteQueue { return &SQLiteQueue{store: store} }
+func (store *Store) Queue() ingestionqueue.Queue { return &IngestionQueue{store: store} }
 
-func (queue *SQLiteQueue) Accept(ctx context.Context, owner string, request ingestion.Request) (ingestionqueue.Job, error) {
+func (queue *IngestionQueue) Accept(ctx context.Context, owner string, request ingestion.Request) (ingestionqueue.Job, error) {
 	tx, err := queue.store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return ingestionqueue.Job{}, err
@@ -95,7 +95,7 @@ func acceptJob(tx *sql.Tx, owner string, request ingestion.Request) (ingestionqu
 		return job, err
 	}
 	var count, bytes int64
-	if err := tx.QueryRow(`SELECT COUNT(*),COALESCE(SUM(length(CAST(payload AS BLOB))),0) FROM ingestion_jobs WHERE state IN ('queued','running','retrying')`).Scan(&count, &bytes); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*),COALESCE(SUM(octet_length(payload)),0) FROM ingestion_jobs WHERE state IN ('queued','running','retrying')`).Scan(&count, &bytes); err != nil {
 		return job, err
 	}
 	if count >= 1024 || bytes+int64(len(raw)) > 256<<20 {
@@ -123,7 +123,7 @@ func scanJob(row *sql.Row) (ingestionqueue.Job, error) {
 	return job, err
 }
 
-func (queue *SQLiteQueue) Get(ctx context.Context, owner, id string) (ingestionqueue.Job, error) {
+func (queue *IngestionQueue) Get(ctx context.Context, owner, id string) (ingestionqueue.Job, error) {
 	job, err := scanJob(queue.store.db.QueryRowContext(ctx, jobSelect+` WHERE r.owner_id=? AND j.id=?`, owner, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrNotFound
@@ -131,7 +131,7 @@ func (queue *SQLiteQueue) Get(ctx context.Context, owner, id string) (ingestionq
 	return job, err
 }
 
-func (queue *SQLiteQueue) Claim(ctx context.Context, duration time.Duration) (ingestionqueue.Delivery, error) {
+func (queue *IngestionQueue) Claim(ctx context.Context, duration time.Duration) (ingestionqueue.Delivery, error) {
 	var delivery ingestionqueue.Delivery
 	tx, err := queue.store.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -158,7 +158,7 @@ func (queue *SQLiteQueue) Claim(ctx context.Context, duration time.Duration) (in
 	return delivery, tx.Commit()
 }
 
-func (queue *SQLiteQueue) update(ctx context.Context, delivery ingestionqueue.Delivery, statement string, args ...interface{}) error {
+func (queue *IngestionQueue) update(ctx context.Context, delivery ingestionqueue.Delivery, statement string, args ...interface{}) error {
 	args = append(args, delivery.ID, delivery.Token, time.Now().UnixMilli())
 	result, err := queue.store.db.ExecContext(ctx, statement+` WHERE id=? AND lease_token=? AND state='running' AND lease_until>?`, args...)
 	if err != nil {
@@ -170,10 +170,10 @@ func (queue *SQLiteQueue) update(ctx context.Context, delivery ingestionqueue.De
 	}
 	return err
 }
-func (queue *SQLiteQueue) Renew(ctx context.Context, delivery ingestionqueue.Delivery, duration time.Duration) error {
+func (queue *IngestionQueue) Renew(ctx context.Context, delivery ingestionqueue.Delivery, duration time.Duration) error {
 	return queue.update(ctx, delivery, `UPDATE ingestion_jobs SET lease_until=?`, time.Now().Add(duration).UnixMilli())
 }
-func (queue *SQLiteQueue) Complete(ctx context.Context, delivery ingestionqueue.Delivery, id string) error {
+func (queue *IngestionQueue) Complete(ctx context.Context, delivery ingestionqueue.Delivery, id string) error {
 	err := queue.update(ctx, delivery, `UPDATE ingestion_jobs SET state='succeeded',context_id=?,payload='',detail='',lease_token=''`, id)
 	if errors.Is(err, ingestionqueue.ErrLeaseLost) {
 		job, readErr := queue.Get(ctx, delivery.OwnerID, delivery.ID)
@@ -183,11 +183,9 @@ func (queue *SQLiteQueue) Complete(ctx context.Context, delivery ingestionqueue.
 	}
 	return err
 }
-func (queue *SQLiteQueue) Retry(ctx context.Context, delivery ingestionqueue.Delivery, next time.Time, detail string) error {
+func (queue *IngestionQueue) Retry(ctx context.Context, delivery ingestionqueue.Delivery, next time.Time, detail string) error {
 	return queue.update(ctx, delivery, `UPDATE ingestion_jobs SET state='retrying',available_at=?,detail=?,lease_token=''`, next.UnixMilli(), detail)
 }
-func (queue *SQLiteQueue) Fail(ctx context.Context, delivery ingestionqueue.Delivery, detail string) error {
+func (queue *IngestionQueue) Fail(ctx context.Context, delivery ingestionqueue.Delivery, detail string) error {
 	return queue.update(ctx, delivery, `UPDATE ingestion_jobs SET state='failed',detail=?,payload='',lease_token=''`, detail)
 }
-
-var _ ingestionqueue.Queue = (*SQLiteQueue)(nil)

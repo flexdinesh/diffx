@@ -13,7 +13,6 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/github"
 	"github.com/flexdinesh/diffx/internal/githubsync"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/serverapp"
 )
 
@@ -36,7 +35,7 @@ type GitHubSettings struct {
 // maxWebhookBytes is GitHub's documented webhook payload cap.
 const maxWebhookBytes = 25 << 20
 
-func composeGitHub(store *reviewstore.Store, settings *GitHubSettings) (*githubsync.Service, error) {
+func composeGitHub(store Store, settings *GitHubSettings) (*githubsync.Service, error) {
 	if settings == nil {
 		return nil, nil
 	}

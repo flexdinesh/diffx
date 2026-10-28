@@ -10,6 +10,7 @@ func comparisonPolicy(metadata ingestion.Metadata) string {
 	return ingestion.ComparisonPolicy(metadata)
 }
 
-func comparisonPolicySQL(metadata string) string {
-	return `CASE WHEN COALESCE(json_extract(` + metadata + `,'$.comparison.kind'),'working-tree')='working-tree' THEN '' ELSE json_extract(` + metadata + `,'$.comparison.kind')||':'||json_extract(` + metadata + `,'$.comparison.baseRef') END`
+func comparisonPolicySQL(d dialect, metadata string) string {
+	kind := d.jsonText(metadata, "comparison.kind")
+	return `CASE WHEN COALESCE(` + kind + `,'working-tree')='working-tree' THEN '' ELSE ` + kind + `||':'||` + d.jsonText(metadata, "comparison.baseRef") + ` END`
 }

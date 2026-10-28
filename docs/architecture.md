@@ -100,8 +100,11 @@ owner. See [development.md](development.md) for isolated checkout commands.
   internal listener and `diffx-fetcher`.
 - `fetcher`: `diffx-fetcher`'s partial-clone mirrors and offline collection of
   leased pull request heads. It holds no account, GitHub App key or store.
-- `reviewstore`: SQLite transactions, identity persistence, stored reads,
-  retention and queue adapter.
+- `reviewstore`: SQL storage adapter: transactions, identity persistence,
+  stored reads, retention and queue. Operations and their SQL are shared; a
+  per-backend dialect owns schema statements, version records, ownership and
+  the few expressions that differ (JSON reads, aggregation, clock). SQLite is
+  the only backend.
 - `ingestionqueue`: admission/lease contract and worker failure policy; jobs fail
   permanently only for `review.Permanent` rejections (4xx except 408/429).
 - `submission`: destination identity, delivery and the acknowledgement TTL,
@@ -120,6 +123,9 @@ owner. See [development.md](development.md) for isolated checkout commands.
   browser launch and build metadata; `processmetrics`: server process metrics;
   `webui`: embedded assets. `testsupport` is test-only.
 
+`remoteserver.Store` is remote composition's storage port: the union of the
+services' ports. The entry point selects the adapter and each service receives
+only its own port, so a backend swaps without service changes.
 Interfaces live beside consumers and require the needed operation. Optional
 interface assertions must not change application behavior. Storage contracts
 describe atomic application operations, not independently committed CRUD steps.

@@ -45,7 +45,7 @@ func initializeGitHub(transaction *sql.Tx) error {
 }
 
 // GitHub adapts the store to the integration's storage contract.
-func (store *Store) GitHub() *GitHubStore { return &GitHubStore{store: store} }
+func (store *Store) GitHub() githubsync.Store { return &GitHubStore{store: store} }
 
 type GitHubStore struct{ store *Store }
 
@@ -264,7 +264,7 @@ func (s *GitHubStore) KnownOpen(ctx context.Context, repositoryID int64) ([]int,
 func (s *GitHubStore) ClaimRefresh(ctx context.Context, token string, now, leaseUntil int64) (githubsync.Lease, error) {
 	var lease githubsync.Lease
 	err := s.store.db.QueryRowContext(ctx, `UPDATE github_pull_requests SET lease_token=?,lease_until=?,leased_generation=generation,leased_run=retention_run,leased=''
-		WHERE rowid=(SELECT rowid FROM github_pull_requests WHERE generation>refreshed_generation AND lease_until<=? AND available_at<=? ORDER BY requested_at,repository_id,number LIMIT 1)
+		WHERE (repository_id,number)=(SELECT repository_id,number FROM github_pull_requests WHERE generation>refreshed_generation AND lease_until<=? AND available_at<=? ORDER BY requested_at,repository_id,number LIMIT 1)
 		RETURNING repository_id,installation_id,full_name,number,leased_generation,leased_run,attempt`, token, leaseUntil, now, now).
 		Scan(&lease.Ref.RepositoryID, &lease.Ref.InstallationID, &lease.Ref.FullName, &lease.Ref.Number, &lease.Generation, &lease.RetentionRun, &lease.Attempt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -305,7 +305,7 @@ func (s *GitHubStore) CompleteRefresh(ctx context.Context, lease githubsync.Leas
 	}
 	defer transaction.Rollback()
 	// Fence first, so a lost lease admits nothing.
-	result, err := transaction.ExecContext(ctx, `UPDATE github_pull_requests SET refreshed_generation=MAX(refreshed_generation,leased_generation),state=?,
+	result, err := transaction.ExecContext(ctx, `UPDATE github_pull_requests SET refreshed_generation=CASE WHEN leased_generation>refreshed_generation THEN leased_generation ELSE refreshed_generation END,state=?,
 		retention_run=CASE WHEN retention_run=leased_run THEN '' ELSE retention_run END,lease_token='',lease_until=0,leased='',attempt=0,available_at=0,detail=''
 		WHERE repository_id=? AND number=? AND lease_token=? AND lease_until>?`, state, lease.Ref.RepositoryID, lease.Ref.Number, lease.Token, now)
 	if err := fenced(result, err); err != nil {

@@ -58,9 +58,11 @@ var allowed = map[string][]string{
 	// Push rules: enablement, devices and outbox delivery; storage is behind
 	// its Store contract and composition is remote only.
 	"internal/pushservice": {"internal/webpush"},
+	// Remote composition defines its storage port from the services' ports and
+	// selects the reviewstore adapter at its entry point.
 	"internal/remoteserver": {
 		"internal/contextservice", "internal/fetchprotocol", "internal/github", "internal/githubsync", "internal/google", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/pushservice", "internal/review",
-		"internal/reviewstore", "internal/serverapp", "internal/webui", "packages/api",
+		"internal/reviewservice", "internal/reviewstore", "internal/serverapp", "internal/webui", "packages/api",
 	},
 	"internal/review":        {},
 	"internal/reviewdata":    {"internal/review", "internal/ingestion"},

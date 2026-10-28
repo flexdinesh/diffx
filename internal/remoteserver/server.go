@@ -13,16 +13,30 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/contextservice"
+	"github.com/flexdinesh/diffx/internal/githubsync"
 	"github.com/flexdinesh/diffx/internal/google"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/ingestionqueue"
 	"github.com/flexdinesh/diffx/internal/pushservice"
 	"github.com/flexdinesh/diffx/internal/review"
+	"github.com/flexdinesh/diffx/internal/reviewservice"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/serverapp"
 	"github.com/flexdinesh/diffx/internal/webui"
 )
+
+// Store is the storage backend remote composition runs on. The entry point
+// selects the adapter; each service receives only the port it consumes.
+type Store interface {
+	contextservice.Store
+	reviewservice.MutationStore
+	identityservice.Store
+	Queue() ingestionqueue.Queue
+	GitHub() githubsync.Store
+	Push() pushservice.Store
+	PruneExpired(time.Time) error
+}
 
 type Settings struct {
 	Listen string
@@ -45,7 +59,7 @@ type GoogleSettings struct {
 }
 
 // composeIdentity composes account rules with Google sign-in when configured.
-func composeIdentity(store *reviewstore.Store, settings Settings) *identityservice.Service {
+func composeIdentity(store Store, settings Settings) *identityservice.Service {
 	if settings.Google == nil {
 		return identityservice.New(store)
 	}
@@ -64,7 +78,7 @@ type application struct {
 type registry struct {
 	mu           sync.Mutex
 	ctx          context.Context
-	store        *reviewstore.Store
+	store        Store
 	assets       fs.FS
 	applications map[string]application
 	closed       bool
@@ -109,10 +123,10 @@ func (registry *registry) close() error {
 }
 
 // Handler supplies distributed identity; local composition never calls it.
-func Handler(ctx context.Context, store *reviewstore.Store, settings Settings, assets fs.FS) (http.Handler, func() error, error) {
+func Handler(ctx context.Context, store Store, settings Settings, assets fs.FS) (http.Handler, func() error, error) {
 	return MultiHandler(ctx, store, assets, settings)
 }
-func MultiHandler(ctx context.Context, store *reviewstore.Store, assets fs.FS, options ...Settings) (http.Handler, func() error, error) {
+func MultiHandler(ctx context.Context, store Store, assets fs.FS, options ...Settings) (http.Handler, func() error, error) {
 	var settings Settings
 	if len(options) > 0 {
 		settings = options[0]
@@ -144,7 +158,7 @@ func MultiHandler(ctx context.Context, store *reviewstore.Store, assets fs.FS, o
 // compose returns the public handler and, when GitHub is configured, the
 // internal fetcher handler. Push routes and delivery exist in every remote
 // composition; without a suitable public URL push reports itself disabled.
-func compose(ctx context.Context, store *reviewstore.Store, assets fs.FS, settings Settings) (http.Handler, http.Handler, func() error, []serverapp.Task, error) {
+func compose(ctx context.Context, store Store, assets fs.FS, settings Settings) (http.Handler, http.Handler, func() error, []serverapp.Task, error) {
 	identity := composeIdentity(store, settings)
 	github, err := composeGitHub(store, settings.GitHub)
 	if err != nil {

@@ -45,35 +45,42 @@ func putObservationContext(transaction *sql.Tx, ownerID, id, submittedFrom strin
 	return err
 }
 
-var contextSelect = `SELECT c.id,c.kind,json_extract(o.metadata,'$.root'),NULL,o.repository_id,NULL,json_extract(o.metadata,'$.checkoutKey'),c.submitted_from,
+// contextSelect reads a context with its observation summary and stream head.
+func contextSelect(d dialect) string {
+	metadata := func(path string) string { return d.jsonText("o.metadata", path) }
+	activity := func(document string) string {
+		return `COALESCE(NULLIF(` + d.jsonInt(document, "activityAt") + `,0),` + d.jsonInt("o.metadata", "collectedAt") + `,c.created_at)`
+	}
+	return `SELECT c.id,c.kind,` + metadata("root") + `,NULL,o.repository_id,NULL,` + metadata("checkoutKey") + `,c.submitted_from,
 	c.created_at,c.last_submitted_at,d.expires_at,
-	CASE WHEN head.context_id=c.id THEN COALESCE(NULLIF(json_extract(head_submission.metadata,'$.activityAt'),0),json_extract(o.metadata,'$.collectedAt'),c.created_at)
-	ELSE COALESCE(NULLIF(json_extract(o.metadata,'$.activityAt'),0),json_extract(o.metadata,'$.collectedAt'),c.created_at) END,
+	CASE WHEN head.context_id=c.id THEN ` + activity("head_submission.metadata") + `
+	ELSE ` + activity("o.metadata") + ` END,
 	(SELECT COUNT(DISTINCT f.path) FROM observation_scopes s JOIN diff_files f ON f.version_id=s.version_id WHERE s.context_id=c.id),
-	(SELECT json_group_array(json_object('scope',mode,'comparisonKind',kind,'fileCount',file_count)) FROM
-	 (SELECT s.mode,COALESCE(json_extract(v.manifest,'$.comparisonKind'),'') AS kind,
-	 (SELECT COUNT(*) FROM diff_files f WHERE f.version_id=s.version_id) AS file_count
-	 FROM observation_scopes s JOIN diff_versions v ON v.id=s.version_id WHERE s.context_id=c.id
-	 ORDER BY CASE s.mode WHEN 'all' THEN 0 WHEN 'staged' THEN 1 WHEN 'unstaged' THEN 2 WHEN 'uncommitted' THEN 3 ELSE 4 END)),
-	(SELECT json_extract(v.manifest, '$.source') FROM diff_versions v WHERE v.diff_id=c.anchor_diff_id LIMIT 1),o.metadata,
-	COALESCE(head.context_id<>c.id,0),
-	(SELECT json_group_array(json_object('sourceId',s.source_id,'harness',s.harness,'id',s.session_id,'name',s.name,'firstObservedAt',a.first_observed_at,'lastObservedAt',a.last_observed_at))
+	(SELECT ` + d.jsonArray(d.jsonObject(`'scope'`, "mode", `'comparisonKind'`, "kind", `'fileCount'`, "file_count"), "position") + ` FROM
+	 (SELECT s.mode,COALESCE(` + d.jsonText("v.manifest", "comparisonKind") + `,'') AS kind,
+	 (SELECT COUNT(*) FROM diff_files f WHERE f.version_id=s.version_id) AS file_count,
+	 CASE s.mode WHEN 'all' THEN 0 WHEN 'staged' THEN 1 WHEN 'unstaged' THEN 2 WHEN 'uncommitted' THEN 3 ELSE 4 END AS position
+	 FROM observation_scopes s JOIN diff_versions v ON v.id=s.version_id WHERE s.context_id=c.id) scopes),
+	(SELECT ` + d.jsonText("v.manifest", "source") + ` FROM diff_versions v WHERE v.diff_id=c.anchor_diff_id LIMIT 1),o.metadata,
+	COALESCE(head.context_id<>c.id,FALSE),
+	(SELECT ` + d.jsonArray(d.jsonObject(`'sourceId'`, "s.source_id", `'harness'`, "s.harness", `'id'`, "s.session_id", `'name'`, "s.name", `'firstObservedAt'`, "a.first_observed_at", `'lastObservedAt'`, "a.last_observed_at"), "") + `
 	 FROM observation_sessions a JOIN agent_sessions s ON s.owner_id=a.owner_id AND s.source_id=a.source_id AND s.harness=a.harness AND s.session_id=a.session_id WHERE a.context_id=c.id),
 	head.source_id,head.repository_key,head.checkout_key,head.branch,head.comparison_policy,
 	(SELECT hc.id FROM contexts hc JOIN diffs hd ON hd.id=hc.anchor_diff_id WHERE hc.owner_id=c.owner_id AND hc.id=head.context_id
-	 AND (hd.expires_at IS NULL OR hd.expires_at>CAST(strftime('%s','now') AS INTEGER)*1000)),
-	CASE WHEN head.context_id=c.id THEN json_extract(head_submission.metadata,'$.pullRequest') END,
+	 AND (hd.expires_at IS NULL OR hd.expires_at>` + d.nowMillis() + `)),
+	CASE WHEN head.context_id=c.id THEN ` + d.jsonValue("head_submission.metadata", "pullRequest") + ` END,
 	(SELECT COUNT(*) FROM observation_commits k WHERE k.context_id=c.id),
 	(SELECT r.total FROM observation_commit_ranges r WHERE r.context_id=c.id)
 	FROM contexts c
 	LEFT JOIN diffs d ON d.id=c.anchor_diff_id LEFT JOIN observations o ON o.context_id=c.id
 	LEFT JOIN observation_stream_heads head ON head.owner_id=o.owner_id AND head.source_id=o.source_id
-		AND head.repository_key=json_extract(o.metadata,'$.repositoryKey') AND head.checkout_key=json_extract(o.metadata,'$.checkoutKey')
-		AND head.comparison_policy=` + comparisonPolicySQL("o.metadata") + `
-		AND head.branch=COALESCE(NULLIF(json_extract(o.metadata,'$.branchId'),''),json_extract(o.metadata,'$.branch'))
+		AND head.repository_key=` + metadata("repositoryKey") + ` AND head.checkout_key=` + metadata("checkoutKey") + `
+		AND head.comparison_policy=` + comparisonPolicySQL(d, "o.metadata") + `
+		AND head.branch=COALESCE(NULLIF(` + metadata("branchId") + `,''),` + metadata("branch") + `)
 	LEFT JOIN ingestion_records head_record ON head_record.sequence=head.arrival_sequence AND head_record.owner_id=head.owner_id
 	LEFT JOIN observation_submissions head_submission ON head_submission.owner_id=head_record.owner_id AND head_submission.source_id=head_record.source_id
 		AND head_submission.submission_id=head_record.submission_id AND head_submission.context_id=head.context_id`
+}
 
 type scanner interface{ Scan(...any) error }
 
@@ -147,7 +154,7 @@ func scanContext(row scanner) (ContextInfo, error) {
 }
 
 func (store *Store) Context(ctx context.Context, ownerID, id string, now time.Time) (ContextInfo, error) {
-	item, err := scanContext(store.db.QueryRowContext(ctx, contextSelect+` WHERE c.owner_id=? AND c.id=?`, ownerID, id))
+	item, err := scanContext(store.db.QueryRowContext(ctx, contextSelect(store.dialect)+` WHERE c.owner_id=? AND c.id=?`, ownerID, id))
 	if err != nil {
 		return ContextInfo{}, err
 	}
@@ -188,7 +195,7 @@ func (store *Store) DeleteContext(ctx context.Context, ownerID, id string) error
 
 // Contexts uses a keyset cursor; concurrent submissions may move an item across pages.
 func (store *Store) Contexts(ctx context.Context, ownerID string, limit int, beforeTime int64, beforeID string, now time.Time) ([]ContextInfo, error) {
-	query := contextSelect + ` WHERE c.owner_id=? AND (d.expires_at IS NULL OR d.expires_at>?)`
+	query := contextSelect(store.dialect) + ` WHERE c.owner_id=? AND (d.expires_at IS NULL OR d.expires_at>?)`
 	arguments := []any{ownerID, now.UnixMilli()}
 	if beforeID != "" {
 		query += ` AND (c.last_submitted_at<? OR (c.last_submitted_at=? AND c.id<?))`
@@ -214,7 +221,7 @@ func (store *Store) Contexts(ctx context.Context, ownerID string, limit int, bef
 
 func (store *Store) ContextCount(ctx context.Context, ownerID string, selection ingestion.Selection, now time.Time) (int, error) {
 	var count int
-	predicate, values := selectionPredicate(selection)
+	predicate, values := selectionPredicate(store.dialect, selection)
 	err := store.db.QueryRowContext(ctx, `SELECT COUNT(*)
 		FROM contexts c LEFT JOIN diffs d ON d.id=c.anchor_diff_id LEFT JOIN observations o ON o.context_id=c.id
 		WHERE c.owner_id=? AND (d.expires_at IS NULL OR d.expires_at>?)`+predicate,
@@ -227,17 +234,9 @@ type queryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
-func bindingFor(ctx context.Context, db queryer, ownerID, id string, now time.Time) (Binding, error) {
-	item, err := scanContext(db.QueryRowContext(ctx, contextSelect+` WHERE c.owner_id=? AND c.id=?`, ownerID, id))
-	if err != nil {
+func (store *Store) ContextBinding(ctx context.Context, ownerID, id string, now time.Time) (Binding, error) {
+	if _, err := store.Context(ctx, ownerID, id, now); err != nil {
 		return Binding{}, err
 	}
-	if item.ExpiresAt != nil && *item.ExpiresAt <= now.UnixMilli() {
-		return Binding{}, ErrExpired
-	}
-	return observationBinding(ctx, db, ownerID, id)
-}
-
-func (store *Store) ContextBinding(ctx context.Context, ownerID, id string, now time.Time) (Binding, error) {
-	return bindingFor(ctx, store.db, ownerID, id, now)
+	return observationBinding(ctx, store.db, ownerID, id)
 }

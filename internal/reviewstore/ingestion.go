@@ -377,22 +377,23 @@ func (store *Store) ObservationPatch(ctx context.Context, ownerID, contextID str
 
 // ObservationContexts filters immutable observations using captured metadata.
 func (store *Store) ObservationContexts(ctx context.Context, ownerID string, limit int, beforeTime int64, beforeID string, filter ingestion.Filter) ([]ContextInfo, error) {
-	query := contextSelect + ` WHERE c.owner_id=? AND o.context_id IS NOT NULL AND d.expires_at>?`
+	d := store.dialect
+	query := contextSelect(d) + ` WHERE c.owner_id=? AND o.context_id IS NOT NULL AND d.expires_at>?`
 	arguments := []any{ownerID, time.Now().UnixMilli()}
 	// All predicates match one collection, rather than mixing facts from
 	// unrelated submissions of the same immutable snapshot.
 	query += ` AND EXISTS (SELECT 1 FROM observation_submissions p
 		LEFT JOIN agent_sessions session ON session.owner_id=p.owner_id AND session.source_id=p.source_id
-		AND session.harness=COALESCE(json_extract(p.metadata,'$.agentSession.harness'),json_extract(p.metadata,'$.agent'))
-		AND session.session_id=COALESCE(json_extract(p.metadata,'$.agentSession.id'),json_extract(p.metadata,'$.runId'))
+		AND session.harness=COALESCE(` + d.jsonText("p.metadata", "agentSession.harness") + `,` + d.jsonText("p.metadata", "agent") + `)
+		AND session.session_id=COALESCE(` + d.jsonText("p.metadata", "agentSession.id") + `,` + d.jsonText("p.metadata", "runId") + `)
 		WHERE p.owner_id=c.owner_id AND p.context_id=c.id`
 	fields := []struct{ expression, value string }{
-		{"json_extract(p.metadata,'$.repositoryName')", filter.Repository},
-		{"json_extract(p.metadata,'$.branch')", filter.Branch},
-		{"json_extract(p.metadata,'$.worktreeName')", filter.Worktree},
-		{"json_extract(p.metadata,'$.hostname')", filter.Hostname},
+		{d.jsonText("p.metadata", "repositoryName"), filter.Repository},
+		{d.jsonText("p.metadata", "branch"), filter.Branch},
+		{d.jsonText("p.metadata", "worktreeName"), filter.Worktree},
+		{d.jsonText("p.metadata", "hostname"), filter.Hostname},
 		{"p.source_id", filter.SourceID},
-		{"json_extract(p.metadata,'$.runId')", filter.RunID},
+		{d.jsonText("p.metadata", "runId"), filter.RunID},
 		{"session.harness", filter.Harness},
 		{"session.session_id", filter.SessionID},
 		{"session.name", filter.SessionName},
@@ -406,17 +407,17 @@ func (store *Store) ObservationContexts(ctx context.Context, ownerID string, lim
 	if filter.Query != "" {
 		terms := []string{}
 		for _, field := range []string{"repositoryName", "remoteUrl", "branch", "worktreeName", "hostname", "sourceId", "runId", "root", "triggerRoot", "agent"} {
-			terms = append(terms, `instr(lower(COALESCE(json_extract(p.metadata,'$.`+field+`'),'')),lower(?))>0`)
+			terms = append(terms, d.contains(`lower(COALESCE(`+d.jsonText("p.metadata", field)+`,''))`, `lower(?)`))
 			arguments = append(arguments, filter.Query)
 		}
 		for _, field := range []string{"harness", "session_id", "name"} {
-			terms = append(terms, `instr(lower(COALESCE(session.`+field+`,'')),lower(?))>0`)
+			terms = append(terms, d.contains(`lower(COALESCE(session.`+field+`,''))`, `lower(?)`))
 			arguments = append(arguments, filter.Query)
 		}
 		query += ` AND (` + strings.Join(terms, " OR ") + `)`
 	}
 	query += `)`
-	predicate, values := selectionPredicate(filter.Selection)
+	predicate, values := selectionPredicate(d, filter.Selection)
 	query += predicate
 	arguments = append(arguments, values...)
 	if filter.Latest {
@@ -447,7 +448,7 @@ func (store *Store) ObservationContexts(ctx context.Context, ownerID string, lim
 // selectionPredicate matches any selected checkout identity, or a capture by
 // any submission, including fresh submissions that reused its snapshot. A scoped
 // selection without checkouts or a submission matches nothing.
-func selectionPredicate(selection ingestion.Selection) (string, []any) {
+func selectionPredicate(d dialect, selection ingestion.Selection) (string, []any) {
 	query := ""
 	arguments := []any{}
 	if selection.Scoped {
@@ -459,14 +460,14 @@ func selectionPredicate(selection ingestion.Selection) (string, []any) {
 			AND selected.source_id=o.source_id AND selected.submission_id=?)`
 			arguments = append(arguments, selection.SubmissionID)
 		case len(selection.Checkouts) == 0:
-			query += ` AND 0`
+			query += ` AND FALSE`
 		default:
 			rows := make([]string, 0, len(selection.Checkouts))
 			for _, checkout := range selection.Checkouts {
 				rows = append(rows, `(?,?)`)
 				arguments = append(arguments, checkout.RepositoryKey, checkout.CheckoutKey)
 			}
-			query += ` AND (json_extract(o.metadata,'$.repositoryKey'),json_extract(o.metadata,'$.checkoutKey')) IN (VALUES ` + strings.Join(rows, ",") + `)`
+			query += ` AND (` + d.jsonText("o.metadata", "repositoryKey") + `,` + d.jsonText("o.metadata", "checkoutKey") + `) IN (VALUES ` + strings.Join(rows, ",") + `)`
 		}
 	}
 	if selection.ContextID != "" {
