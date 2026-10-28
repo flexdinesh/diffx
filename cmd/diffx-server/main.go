@@ -26,7 +26,7 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 	flags.SetOutput(stderr)
 	flags.StringVar(&settings.Listen, "listen", net.JoinHostPort("127.0.0.1", strconv.Itoa(config.DefaultServerPort)), "HTTP listen address; terminate TLS at the deployment boundary")
 	flags.StringVar(&settings.State, "state", "", "SQLite database path")
-	flags.StringVar(&settings.PublicURL, "public-url", "", "browser-facing https origin used in the logged admin setup link")
+	flags.StringVar(&settings.PublicURL, "public-url", "", "browser-facing https origin used in the logged admin setup link; also enables Web Push")
 	flags.BoolVar(&settings.InsecureCookies, "insecure-cookies", false, "allow browser sessions over HTTP for development")
 	flags.IntVar(&settings.RetentionDays, "retention-days", 7, "snapshot retention in days")
 	path := flags.String("config-file", "", "optional read-only server JSON config path; defaults to DIFFX_SERVER_CONFIG")

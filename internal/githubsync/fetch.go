@@ -62,7 +62,7 @@ func (s *Service) prepare(ctx context.Context, lease Lease, now time.Time) (*fet
 	pull, err := s.github.PullRequest(ctx, ref.InstallationID, ref.FullName, ref.Number)
 	var status *github.Error
 	if errors.As(err, &status) && status.Status == http.StatusNotFound {
-		return nil, s.store.CompleteRefresh(ctx, lease, "closed", nil, now.UnixMilli())
+		return nil, s.store.CompleteRefresh(ctx, lease, "closed", "", nil, now.UnixMilli())
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read pull request %s#%d: %w", ref.FullName, ref.Number, err)
@@ -72,7 +72,7 @@ func (s *Service) prepare(ctx context.Context, lease Lease, now time.Time) (*fet
 		return nil, err
 	}
 	if !hasActive(follows) {
-		return nil, s.store.CompleteRefresh(ctx, lease, pullState(pull), nil, now.UnixMilli())
+		return nil, s.store.CompleteRefresh(ctx, lease, pullState(pull), "", nil, now.UnixMilli())
 	}
 	credential, err := s.github.InstallationToken(ctx, ref.InstallationID, []int64{ref.RepositoryID}, map[string]string{"contents": "read"})
 	if err != nil {
@@ -100,7 +100,10 @@ func (s *Service) prepare(ctx context.Context, lease Lease, now time.Time) (*fet
 
 // Finish applies a fetcher result. A snapshot is published to every account
 // with verified access in one transaction with the refresh; a failure retries
-// with backoff. ErrLeaseLost means another lease superseded this one.
+// with backoff. ErrLeaseLost means another lease superseded this one. When the
+// snapshot announces new work (see announcement), the same transaction records
+// a push notification for every admitted follower that has not muted the
+// repository.
 func (s *Service) Finish(ctx context.Context, result fetchprotocol.Result) error {
 	repositoryID, number, ok := parseJobID(result.ID)
 	if !ok {
@@ -125,15 +128,52 @@ func (s *Service) Finish(ctx context.Context, result fetchprotocol.Result) error
 	if err != nil {
 		return errors.Join(err, s.release(ctx, lease, err.Error()))
 	}
-	owners, err := s.Followers(ctx, repositoryID)
+	follows, err := s.followers(ctx, repositoryID)
 	if err != nil {
 		return err
 	}
-	admissions := make([]Admission, 0, len(owners))
-	for _, owner := range owners {
-		admissions = append(admissions, Admission{OwnerID: owner, Request: request})
+	// The lease fences other refreshes of this pull request, so the recorded
+	// head cannot change before CompleteRefresh commits.
+	previous, opened, err := s.store.PullRequestHead(ctx, repositoryID, number)
+	if err != nil {
+		return err
 	}
-	return s.store.CompleteRefresh(ctx, lease, pullState(pull), admissions, s.millis())
+	notification := announcement(lease.Ref, pull, previous, opened)
+	admissions := make([]Admission, 0, len(follows))
+	for _, follow := range follows {
+		admission := Admission{OwnerID: follow.OwnerID, Request: request}
+		if notification != nil && !follow.Muted {
+			admission.Notification = notification
+		}
+		admissions = append(admissions, admission)
+	}
+	return s.store.CompleteRefresh(ctx, lease, pullState(pull), pull.Head.SHA, admissions, s.millis())
+}
+
+// maxNotificationTitle bounds the pull request title shown in a notification.
+const maxNotificationTitle = 120
+
+// announcement decides whether a snapshot notifies followers. A captured head
+// that differs from the last recorded one is new work, whatever the pull
+// request's author. A first snapshot notifies only when a webhook announced
+// the pull request, so first follows, startup reconciliation and Resync import
+// existing pull requests silently. Metadata edits, closing and merging keep
+// the head and never notify.
+func announcement(ref PullRequestRef, pull github.PullRequest, previous string, opened bool) *Notification {
+	var action string
+	switch {
+	case previous == "" && opened:
+		action = "New PR by @"
+	case previous != "" && previous != pull.Head.SHA:
+		action = "Updated by @"
+	default:
+		return nil
+	}
+	title := strings.TrimSpace(pull.Title)
+	if runes := []rune(title); len(runes) > maxNotificationTitle {
+		title = strings.TrimSpace(string(runes[:maxNotificationTitle-1])) + "…"
+	}
+	return &Notification{Title: ref.FullName + " #" + strconv.Itoa(ref.Number), Body: title + "\n" + action + pull.Author.Login}
 }
 
 // release ends a lease with exponential backoff capped at an hour.

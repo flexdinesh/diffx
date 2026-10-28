@@ -88,11 +88,11 @@ type refreshLog struct {
 	runs []string
 }
 
-func (r *refreshLog) RequestRefresh(ctx context.Context, ref githubsync.PullRequestRef, run string, now int64) error {
+func (r *refreshLog) RequestRefresh(ctx context.Context, ref githubsync.PullRequestRef, run string, opened bool, now int64) error {
 	r.mu.Lock()
 	r.refs, r.runs = append(r.refs, ref), append(r.runs, run)
 	r.mu.Unlock()
-	return r.Store.RequestRefresh(ctx, ref, run, now)
+	return r.Store.RequestRefresh(ctx, ref, run, opened, now)
 }
 
 func (r *refreshLog) take() ([]githubsync.PullRequestRef, []string) {

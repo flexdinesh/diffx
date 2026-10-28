@@ -25,6 +25,7 @@ function conforms(name: string, value: unknown) {
   assert.ok(check(value), JSON.stringify(check.errors));
 }
 import { execFileSync, spawn } from "node:child_process";
+import { createECDH, randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -428,7 +429,8 @@ test("Go distribution implements the API contract", async (t) => {
       stdio: ["ignore", "ignore", "pipe"],
       env: {
         ...process.env,
-        DIFFX_SERVER_PUBLIC_URL: "http://diffx.test",
+        // Loopback HTTP enables Web Push for development.
+        DIFFX_SERVER_PUBLIC_URL: `http://localhost:${remotePort}`,
         DIFFX_SERVER_INSECURE_COOKIES: "true",
       },
     },
@@ -462,7 +464,7 @@ test("Go distribution implements the API contract", async (t) => {
   let setupToken = "";
   for (let attempt = 0; !setupToken && attempt < 40; attempt++) {
     setupToken =
-      /http:\/\/diffx\.test\/setup#t=(\S+)/.exec(serverLog)?.[1] ?? "";
+      /http:\/\/localhost:\d+\/setup#t=(\S+)/.exec(serverLog)?.[1] ?? "";
     if (!setupToken) await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.ok(setupToken, `setup link not logged: ${serverLog}`);
@@ -510,6 +512,28 @@ test("Go distribution implements the API contract", async (t) => {
   });
   assert.equal(invites.response.status, 200);
   assert.deepEqual(invites.data?.invites, []);
+  const browserKey = createECDH("prime256v1");
+  const pushDevice = await remote.PUT("/api/v2/push/subscriptions", {
+    headers: accountHeaders,
+    body: {
+      endpoint: "https://push.example/send/contract",
+      keys: {
+        p256dh: browserKey.generateKeys().toString("base64url"),
+        auth: randomBytes(16).toString("base64url"),
+      },
+      label: "Contract browser",
+    },
+  });
+  assert.equal(pushDevice.response.status, 200);
+  conforms("PushDevice", pushDevice.data);
+  assert.equal(pushDevice.data?.lastSuccessAt, null);
+  const pushSettings = await remote.GET("/api/v2/push", {
+    headers: { Cookie: cookie },
+  });
+  assert.equal(pushSettings.response.status, 200);
+  conforms("PushSettings", pushSettings.data);
+  assert.equal(pushSettings.data?.enabled, true);
+  assert.equal(pushSettings.data?.devices.length, 1);
   const inviteWithoutGoogle = await remote.POST("/api/v2/admin/invites", {
     headers: accountHeaders,
     body: { email: "member@example.com" },

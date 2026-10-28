@@ -242,6 +242,9 @@ type Repository struct {
 	Followed bool   `json:"followed"`
 	// Lost marks a followed repository the account can no longer read.
 	Lost bool `json:"lost"`
+	// Notify reports whether new pull request diffs send push notifications:
+	// followed and not muted.
+	Notify bool `json:"notify"`
 }
 
 // Repositories lists what both the GitHub user and the app can read, plus
@@ -255,19 +258,20 @@ func (s *Service) Repositories(ctx context.Context, ownerID string) ([]Repositor
 	if err != nil {
 		return nil, err
 	}
-	followed := make(map[int64]bool, len(follows))
+	followed := make(map[int64]Follow, len(follows))
 	for _, follow := range follows {
-		followed[follow.RepositoryID] = true
+		followed[follow.RepositoryID] = follow
 	}
 	result := make([]Repository, 0, len(accessible)+len(follows))
 	seen := make(map[int64]bool, len(accessible))
 	for _, repository := range accessible {
 		seen[repository.ID] = true
-		result = append(result, Repository{ID: repository.ID, FullName: repository.FullName, Private: repository.Private, Followed: followed[repository.ID]})
+		follow, ok := followed[repository.ID]
+		result = append(result, Repository{ID: repository.ID, FullName: repository.FullName, Private: repository.Private, Followed: ok, Notify: ok && !follow.Muted})
 	}
 	for _, follow := range follows {
 		if !seen[follow.RepositoryID] {
-			result = append(result, Repository{ID: follow.RepositoryID, FullName: follow.FullName, Followed: true, Lost: true})
+			result = append(result, Repository{ID: follow.RepositoryID, FullName: follow.FullName, Followed: true, Lost: true, Notify: !follow.Muted})
 		}
 	}
 	slices.SortFunc(result, func(a, b Repository) int { return strings.Compare(a.FullName, b.FullName) })
@@ -359,6 +363,12 @@ func (s *Service) Unfollow(ctx context.Context, ownerID string, repositoryID int
 	return s.store.DeleteFollow(ctx, ownerID, repositoryID)
 }
 
+// SetNotify changes whether a followed repository's new pull request diffs
+// send push notifications to the account. ErrNotFound when not followed.
+func (s *Service) SetNotify(ctx context.Context, ownerID string, repositoryID int64, notify bool) error {
+	return s.store.SetMuted(ctx, ownerID, repositoryID, !notify)
+}
+
 // Resync rechecks the account's access and refreshes every followed
 // repository's pull requests. Its run identity makes each resulting submission
 // fresh, extending retention of pull requests idle since their last change.
@@ -437,7 +447,7 @@ func (s *Service) reconcileRepository(ctx context.Context, follow Follow, run st
 	now := s.millis()
 	for _, number := range numbers {
 		ref := PullRequestRef{RepositoryID: follow.RepositoryID, InstallationID: follow.InstallationID, FullName: follow.FullName, Number: number}
-		if err := s.store.RequestRefresh(ctx, ref, run, now); err != nil {
+		if err := s.store.RequestRefresh(ctx, ref, run, false, now); err != nil {
 			return err
 		}
 	}
@@ -446,6 +456,11 @@ func (s *Service) reconcileRepository(ctx context.Context, follow Follow, run st
 
 // pullRequestActions change a pull request's diff, metadata or state.
 var pullRequestActions = []string{"opened", "reopened", "synchronize", "edited", "closed", "ready_for_review", "converted_to_draft"}
+
+// announcingActions present a pull request for review. Only they make its
+// first snapshot notify followers; first follows and reconciliation import
+// existing pull requests silently.
+var announcingActions = []string{"opened", "reopened", "ready_for_review"}
 
 // Webhook verifies and applies one delivery. Duplicate delivery IDs are
 // acknowledged without effect; a delivery is recorded only after it applies,
@@ -482,7 +497,7 @@ func (s *Service) apply(ctx context.Context, event any) error {
 			return err
 		}
 		ref := PullRequestRef{RepositoryID: event.Repository.ID, InstallationID: event.InstallationID, FullName: event.Repository.FullName, Number: event.Number}
-		return s.store.RequestRefresh(ctx, ref, "", s.millis())
+		return s.store.RequestRefresh(ctx, ref, "", slices.Contains(announcingActions, event.Action), s.millis())
 	case github.InstallationEvent:
 		if event.Action == "deleted" || event.Action == "suspend" {
 			return s.store.LoseInstallation(ctx, event.InstallationID, nil)
@@ -507,12 +522,24 @@ func (s *Service) apply(ctx context.Context, event any) error {
 // verificationAge, rechecking stale follows first. Accounts that lost access
 // are excluded; their follows stay lost until verified again.
 func (s *Service) Followers(ctx context.Context, repositoryID int64) ([]string, error) {
+	follows, err := s.followers(ctx, repositoryID)
+	if err != nil {
+		return nil, err
+	}
+	owners := make([]string, 0, len(follows))
+	for _, follow := range follows {
+		owners = append(owners, follow.OwnerID)
+	}
+	return owners, nil
+}
+
+func (s *Service) followers(ctx context.Context, repositoryID int64) ([]Follow, error) {
 	follows, err := s.store.RepositoryFollows(ctx, repositoryID)
 	if err != nil {
 		return nil, err
 	}
 	stale := s.now().Add(-verificationAge).UnixMilli()
-	owners := make([]string, 0, len(follows))
+	admitted := make([]Follow, 0, len(follows))
 	for _, follow := range follows {
 		if follow.Status != "active" {
 			continue
@@ -529,7 +556,7 @@ func (s *Service) Followers(ctx context.Context, repositoryID int64) ([]string, 
 				continue
 			}
 		}
-		owners = append(owners, follow.OwnerID)
+		admitted = append(admitted, follow)
 	}
-	return owners, nil
+	return admitted, nil
 }

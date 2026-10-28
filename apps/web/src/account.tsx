@@ -6,8 +6,10 @@ import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { navigate, useIdentity } from "./identity-context.tsx";
-import { AccountGitHub } from "./account-github.tsx";
+import { AccountGitHub, type GitHubFollowing } from "./account-github.tsx";
+import { AccountNotifications } from "./account-notifications.tsx";
 import { AccountTokens } from "./account-tokens.tsx";
+import { forgetPushDevice } from "./push.ts";
 
 /** Rail placement on the panel, or the compact header on the shell canvas. */
 export function AccountButton({ variant }: { variant: "rail" | "shell" }) {
@@ -436,12 +438,16 @@ export function AccountSettings() {
   const { state, signedOut } = useIdentity();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [github, setGitHub] = useState<GitHubFollowing | null>(null);
+  const [pushEnabled, setPushEnabled] = useState(false);
   if (state.status !== "ready" || !state.bootstrap.user) return null;
   const user = state.bootstrap.user;
   async function logout() {
     setBusy(true);
     setError("");
     try {
+      // This browser stops receiving the account's notifications first.
+      await forgetPushDevice();
       const { response, error } = await api.POST("/api/v2/auth/logout");
       if (!response.ok)
         throw new Error(errorDetail(error, "Unable to sign out. Try again."));
@@ -470,7 +476,12 @@ export function AccountSettings() {
         </Button>
       )}
       <AccountTokens />
-      <AccountGitHub />
+      <AccountGitHub notify={pushEnabled} onFollowingChange={setGitHub} />
+      <AccountNotifications
+        admin={user.admin}
+        github={github}
+        onEnabledChange={setPushEnabled}
+      />
       {user.admin && <PasswordSettings />}
       <section
         className="mt-8 border-t border-separator pt-6"

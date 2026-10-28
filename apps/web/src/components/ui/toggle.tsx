@@ -24,6 +24,13 @@ const toggleVariants = cva(
         false: "",
       },
     },
+    compoundVariants: [
+      {
+        touch: true,
+        size: ["icon", "icon-sm"],
+        className: "max-md:min-w-touch pointer-coarse:min-w-touch",
+      },
+    ],
     defaultVariants: {
       variant: "default",
       size: "default",

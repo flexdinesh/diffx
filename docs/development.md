@@ -245,7 +245,9 @@ While no admin exists, each start logs a one-time setup link,
 creates the single admin with a username and password. No default credentials
 are generated and there is no public signup. `DIFFX_SERVER_PUBLIC_URL` is the
 browser-facing https origin used in that link (http only with insecure cookies);
-unset, the link uses the listen address. `memory` and `:memory:` disable
+unset, the link uses the listen address. An https public URL, or loopback http
+for development, also enables Web Push notifications; the server generates its
+VAPID keys once and keeps them in the database. `memory` and `:memory:` disable
 persistence.
 
 The admin signs in at `/admin/login`; every other account signs in with Google
@@ -442,8 +444,16 @@ GitHub pull request streams read `observation.pullRequest`, which the server
 projects from the stream head: `project-nav.ts` owns their title, metadata and
 the rule that closed and merged pull requests leave current work;
 `PullRequestBanner.tsx` renders the banner; `account-github.tsx` owns Connect,
-follows and Resync in Settings and renders nothing when
-`GET /api/v2/github/connection` returns 404.
+follows, per-repository notification bells and Resync in Settings and renders
+nothing when `GET /api/v2/github/connection` returns 404.
+The PWA is remote only: `main.tsx` starts `pwa.ts` (manifest and Apple tags,
+`/sw.js` registration, install prompt) and the boot-time push subscription
+refresh only when the bootstrap mode is remote. `push.ts` owns browser support,
+subscribe/unsubscribe and the device's server registration, including removal
+before sign-out; `account-notifications.tsx` renders Settings › Notifications.
+`sw.ts` is a separate WebWorker program (`tsconfig.sw.json`) built as the
+import-free, fixed-name `dist/sw.js`; `push-notification.ts` holds its payload
+guard and click rule. It has no fetch handler or cache.
 The compact header exposes no snapshot delete action; theme choice lives in
 the status bar's Settings popover. Snapshot deletion through the API removes its stored diff scopes,
 comments, and reviewed-file marks.

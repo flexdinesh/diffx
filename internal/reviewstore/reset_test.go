@@ -27,7 +27,7 @@ func TestOlderSchemaRefusedWithoutReset(t *testing.T) {
 			store.Close()
 			t.Fatal("accepted older schema")
 		} else {
-			for _, text := range []string{path, "schema 10 is older than supported schema 14", "supporting schema 10", "automatic reset is disabled", "back up", "SQLite sidecar files", "--state /path/to/new-state.db", "no saved reviews or server accounts"} {
+			for _, text := range []string{path, "schema 10 is older than supported schema 15", "supporting schema 10", "automatic reset is disabled", "back up", "SQLite sidecar files", "--state /path/to/new-state.db", "no saved reviews or server accounts"} {
 				if !strings.Contains(err.Error(), text) {
 					t.Fatalf("missing recovery guidance %q: %v", text, err)
 				}
@@ -52,13 +52,15 @@ func TestOlderSchemaRefusedWithoutReset(t *testing.T) {
 func TestAdditiveSchemaUpgradesInPlace(t *testing.T) {
 	// Schema 11 had no GitHub integration tables; neither it nor schema 12 had
 	// administration or Google sign-in tables. Schemas before 14 had no
-	// captured commit tables.
-	commits := "DROP TABLE observation_commit_ranges; DROP TABLE observation_commits; "
+	// captured commit tables, and before 15 no push notification tables.
+	push := "DROP TABLE push_deliveries; DROP TABLE push_notifications; DROP TABLE push_subscriptions; DROP TABLE push_keys; DROP TABLE github_follow_mutes; DROP TABLE github_pr_heads; "
+	commits := "DROP TABLE observation_commit_ranges; DROP TABLE observation_commits; " + push
 	administration := "DROP TABLE google_auth_states; DROP TABLE account_invites; DROP TABLE google_identities; DROP TABLE disabled_accounts; DROP TABLE admin_setup; DROP TABLE admin_account; " + commits
 	for version, statements := range map[int]string{
 		11: "DROP TABLE github_follows; DROP TABLE github_connections; DROP TABLE github_oauth_states; DROP TABLE github_deliveries; DROP TABLE github_pull_requests; " + administration,
 		12: administration,
 		13: commits,
+		14: push,
 	} {
 		t.Run(fmt.Sprintf("schema %d", version), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "state.db")
@@ -87,6 +89,12 @@ func TestAdditiveSchemaUpgradesInPlace(t *testing.T) {
 			}
 			if _, _, err := store.ObservationCommits(t.Context(), user.ID, "missing"); !errors.Is(err, ErrNotFound) {
 				t.Fatalf("upgrade did not create commit tables: %v", err)
+			}
+			if devices, err := store.Push().Subscriptions(t.Context(), user.ID); err != nil || len(devices) != 0 {
+				t.Fatalf("upgrade did not create push tables: %v %v", devices, err)
+			}
+			if head, _, err := store.GitHub().PullRequestHead(t.Context(), 1, 1); err != nil || head != "" {
+				t.Fatalf("upgrade did not create pull request head table: %q %v", head, err)
 			}
 			var upgraded int
 			if err := store.db.QueryRow("PRAGMA user_version").Scan(&upgraded); err != nil || upgraded != schemaVersion {

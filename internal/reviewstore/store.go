@@ -17,7 +17,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 14
+const schemaVersion = 15
 
 // additiveSchema is the oldest schema that opens by upgrading in place. Each
 // later schema only creates tables and indexes, so the idempotent initialization
@@ -238,6 +238,9 @@ func (store *Store) initialize(path string) error {
 	if err := initializeGitHub(transaction); err != nil {
 		return err
 	}
+	if err := initializePush(transaction); err != nil {
+		return err
+	}
 	if _, err := transaction.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
 		return err
 	}
@@ -302,6 +305,9 @@ func (store *Store) PruneExpired(now time.Time) error {
 		return err
 	}
 	if err := pruneGitHub(transaction, now.UnixMilli()); err != nil {
+		return err
+	}
+	if err := prunePush(transaction, now.UnixMilli()); err != nil {
 		return err
 	}
 	return transaction.Commit()

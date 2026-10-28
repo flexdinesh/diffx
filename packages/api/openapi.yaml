@@ -735,6 +735,135 @@ paths:
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
+    patch:
+      security:
+        - browserSession: []
+      operationId: updateGitHubFollow
+      description: Change whether a followed repository's pull requests send push notifications to this account. Distributed browser sessions only.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [notify]
+              properties:
+                notify:
+                  type: boolean
+      responses:
+        "204":
+          description: Updated.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/push:
+    get:
+      security:
+        - browserSession: []
+      operationId: getPushSettings
+      description: Web Push availability, the server's VAPID public key and this account's subscribed devices. Remote server only; distributed browser sessions only.
+      responses:
+        "200":
+          description: Push settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushSettings"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/push/subscriptions:
+    put:
+      security:
+        - browserSession: []
+      operationId: putPushSubscription
+      description: Register or refresh this browser's push subscription for the account, identified by its endpoint. An endpoint registered by another account moves to this one. Idempotent. Distributed browser sessions only.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushSubscriptionInput"
+      responses:
+        "200":
+          description: Registered device.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushDevice"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/push/subscriptions/{subscriptionId}:
+    parameters:
+      - in: path
+        name: subscriptionId
+        required: true
+        schema:
+          type: string
+    delete:
+      security:
+        - browserSession: []
+      operationId: deletePushSubscription
+      description: Stop push notifications to a device of this account. Distributed browser sessions only.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Removed.
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/push/subscriptions/{subscriptionId}/test:
+    parameters:
+      - in: path
+        name: subscriptionId
+        required: true
+        schema:
+          type: string
+    post:
+      security:
+        - browserSession: []
+      operationId: testPushSubscription
+      description: Send a test notification to a device of this account and wait for the push service's answer. A device the push service reports gone is removed and answers 404. Distributed browser sessions only.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Accepted by the push service.
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/Problem"
+        "502":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v2/github/resync:
     post:
       security:
@@ -1785,7 +1914,7 @@ components:
     GitHubRepository:
       type: object
       additionalProperties: false
-      required: [id, fullName, private, followed, lost]
+      required: [id, fullName, private, followed, lost, notify]
       properties:
         id:
           type: integer
@@ -1799,6 +1928,60 @@ components:
         lost:
           type: boolean
           description: Followed but no longer readable by this account; receives nothing until access returns.
+        notify:
+          type: boolean
+          description: Whether new pull request diffs from this followed repository send push notifications. True unless muted; false when not followed.
+    PushSettings:
+      type: object
+      additionalProperties: false
+      required: [enabled, devices]
+      properties:
+        enabled:
+          type: boolean
+          description: False when the server has no HTTPS public URL (or loopback HTTP for development).
+        publicKey:
+          type: string
+          description: VAPID application server key, base64url uncompressed P-256 point. Present when enabled.
+        devices:
+          type: array
+          items:
+            $ref: "#/components/schemas/PushDevice"
+    PushDevice:
+      type: object
+      additionalProperties: false
+      required: [id, label, createdAt, lastSuccessAt]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+          description: Browser-supplied device description, for example "Chrome on Android".
+        createdAt:
+          type: integer
+          description: Unix milliseconds.
+        lastSuccessAt:
+          type: [integer, "null"]
+          description: Unix milliseconds of the last notification the push service accepted, null before the first.
+    PushSubscriptionInput:
+      type: object
+      additionalProperties: false
+      required: [endpoint, keys, label]
+      properties:
+        endpoint:
+          type: string
+          description: HTTPS push service endpoint from PushSubscription.toJSON().
+        keys:
+          type: object
+          additionalProperties: false
+          required: [p256dh, auth]
+          properties:
+            p256dh:
+              type: string
+            auth:
+              type: string
+        label:
+          type: string
+          maxLength: 120
     SessionAssociation:
       type: object
       additionalProperties: false

@@ -53,15 +53,20 @@ var allowed = map[string][]string{
 	"internal/mcpapi":         {"internal/review", "internal/contextservice", "internal/reviewservice", "internal/ingestion"},
 	"internal/processlock":    {},
 	"internal/processmetrics": {},
+	// Web Push wire adapter: VAPID, payload encryption and response classes.
+	"internal/webpush": {},
+	// Push rules: enablement, devices and outbox delivery; storage is behind
+	// its Store contract and composition is remote only.
+	"internal/pushservice": {"internal/webpush"},
 	"internal/remoteserver": {
-		"internal/contextservice", "internal/fetchprotocol", "internal/github", "internal/githubsync", "internal/google", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/review",
+		"internal/contextservice", "internal/fetchprotocol", "internal/github", "internal/githubsync", "internal/google", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/pushservice", "internal/review",
 		"internal/reviewstore", "internal/serverapp", "internal/webui", "packages/api",
 	},
 	"internal/review":        {},
 	"internal/reviewdata":    {"internal/review", "internal/ingestion"},
 	"internal/reviewservice": {"internal/review", "internal/reviewdata", "internal/reviewsession", "internal/contextservice", "internal/ingestion"},
 	"internal/reviewsession": {"internal/review"},
-	"internal/reviewstore":   {"internal/githubsync", "internal/google", "internal/identityservice", "internal/review", "internal/reviewdata", "internal/ingestion", "internal/ingestionqueue", "internal/processlock"},
+	"internal/reviewstore":   {"internal/githubsync", "internal/google", "internal/identityservice", "internal/pushservice", "internal/review", "internal/reviewdata", "internal/ingestion", "internal/ingestionqueue", "internal/processlock", "internal/webpush"},
 	"internal/serverapp": {
 		"internal/contextservice", "internal/httpapi", "internal/ingestion", "internal/ingestionqueue",
 		"internal/mcpapi", "internal/review", "internal/reviewdata", "internal/reviewservice", "internal/version",

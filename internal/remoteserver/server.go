@@ -17,6 +17,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/ingestionqueue"
+	"github.com/flexdinesh/diffx/internal/pushservice"
 	"github.com/flexdinesh/diffx/internal/review"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/serverapp"
@@ -26,7 +27,8 @@ import (
 type Settings struct {
 	Listen string
 	State  string
-	// PublicURL is the browser-facing origin used in the logged setup link.
+	// PublicURL is the browser-facing origin used in the logged setup link. An
+	// https origin, or loopback http for development, enables Web Push.
 	PublicURL       string
 	InsecureCookies bool
 	RetentionDays   int
@@ -140,15 +142,20 @@ func MultiHandler(ctx context.Context, store *reviewstore.Store, assets fs.FS, o
 }
 
 // compose returns the public handler and, when GitHub is configured, the
-// internal fetcher handler.
+// internal fetcher handler. Push routes and delivery exist in every remote
+// composition; without a suitable public URL push reports itself disabled.
 func compose(ctx context.Context, store *reviewstore.Store, assets fs.FS, settings Settings) (http.Handler, http.Handler, func() error, []serverapp.Task, error) {
 	identity := composeIdentity(store, settings)
 	github, err := composeGitHub(store, settings.GitHub)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
+	push, err := pushservice.New(ctx, store.Push(), pushservice.Options{PublicURL: settings.PublicURL})
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
 	applications := &registry{ctx: ctx, store: store, assets: assets, applications: make(map[string]application)}
-	remote := &transport{identity: identity, applications: applications, settings: settings, assets: assets, limiter: newLimiter(), authSlots: make(chan struct{}, 4), github: github}
+	remote := &transport{identity: identity, applications: applications, settings: settings, assets: assets, limiter: newLimiter(), authSlots: make(chan struct{}, 4), github: github, push: push}
 	worker := func(ctx context.Context) error {
 		return ingestionqueue.Run(ctx, store.Queue(), func(ctx context.Context, owner string, input ingestion.Request) (string, error) {
 			accounts, err := identity.Accounts(ctx)
@@ -168,7 +175,7 @@ func compose(ctx context.Context, store *reviewstore.Store, assets fs.FS, settin
 			return "", review.Error(403, "Account unavailable")
 		})
 	}
-	tasks := []serverapp.Task{worker}
+	tasks := []serverapp.Task{worker, push.Run}
 	var internal http.Handler
 	if github != nil {
 		tasks = append(tasks, reconcileAtStartup(github))

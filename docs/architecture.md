@@ -89,8 +89,13 @@ owner. See [development.md](development.md) for isolated checkout commands.
   REST reads, webhook signatures and payloads. No storage or diffx policy.
 - `githubsync`: GitHub integration rules: which accounts may follow which
   repositories, sealed user tokens, webhook deduplication, coalesced pull
-  request refresh intent, reconciliation, fetch leases and server-authored
-  pull request observations. Remote composition only.
+  request refresh intent, reconciliation, fetch leases, server-authored
+  pull request observations and which snapshots notify followers. Remote
+  composition only.
+- `webpush`: Web Push wire adapter: VAPID keys and JWTs, RFC 8291 payload
+  encryption and push service response classes. No storage or diffx policy.
+- `pushservice`: push enablement, VAPID key load-or-create, account device
+  subscriptions and the outbox delivery worker. Remote composition only.
 - `fetchprotocol`: lease/result contract and client between `diffx-server`'s
   internal listener and `diffx-fetcher`.
 - `fetcher`: `diffx-fetcher`'s partial-clone mirrors and offline collection of
@@ -132,7 +137,9 @@ admin routes requiring the admin's browser session.
 The frontend identity owner loads the explicit server mode before mounting review
 state. Distributed login and settings work without any observations. Account
 changes dispose requests, event streams and workspace state. Local composition
-opens reviews directly without exposing identity controls.
+opens reviews directly without exposing identity controls. Only remote mode
+links the PWA manifest and registers the service worker, because local ports
+change between runs and installs would orphan per origin.
 
 ## Principles and limits
 
@@ -220,15 +227,18 @@ uses `X-Diffx-State` to pin submission and polling to the destination identity;
 older protocols are rejected. Release artifacts use the explicit `diffx` project
 name, independent of the checkout directory.
 
-Schema 14 preserves current state across starts. It adds captured branch commit
+Schema 15 preserves current state across starts. It adds push notification
+tables (`push_keys`, `push_subscriptions`, the `push_notifications` outbox and
+`push_deliveries`) and GitHub notification triggers (`github_pr_heads`,
+`github_follow_mutes`); schema 14 added captured branch commit
 tables (`observation_commits`, `observation_commit_ranges`); schema 13 added
 administration and Google sign-in tables and schema 12 GitHub integration tables. Schema 11 moved review state
 from each snapshot scope to its stream and scope, because comments and reviewed
 marks must survive new collections and snapshot deletion. Schema 11 and later
 upgrade in place: later schemas only add tables and indexes, so opening runs the
 idempotent creation statements and records the new version in one transaction,
-because durable server volumes must gain GitHub integration, administration and
-commit state without an operator reset. A schema change that alters existing tables needs a new
+because durable server volumes must gain GitHub integration, administration,
+commit and push state without an operator reset. A schema change that alters existing tables needs a new
 compatibility floor instead. Older-than-11, future and unrecognized schemas are
 refused; opening a database never resets it. `reviewstore.Reset` is the only reset: under the
 ownership lock it moves current or older diffx state and its SQLite sidecars to

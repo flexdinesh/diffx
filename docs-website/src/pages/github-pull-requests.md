@@ -121,6 +121,34 @@ access expires or is revoked, Settings asks you to connect again; followed
 repositories receive nothing until then. **Disconnect** removes the
 authorization and every follow; existing reviews stay until they expire.
 
+## Push notifications
+
+A diffx server with an HTTPS public URL is an installable app that can notify
+your devices about followed pull requests. The operator sets it with
+`--public-url` or `DIFFX_SERVER_PUBLIC_URL`, such as
+`https://diffx.example.com`; without it, Settings says push is off.
+
+Turn notifications on once per device and browser:
+
+1. Open **Account settings**. Under **Notifications**, choose **Turn on
+   notifications** and allow them when the browser asks.
+2. Choose **Send test notification** to check delivery.
+
+On iPhone and iPad, notifications work only in the Home Screen app: in Safari,
+tap **Share**, then **Add to Home Screen**, open diffx from the Home Screen and
+turn notifications on there. Chromium browsers also offer **Install app**.
+
+A notification arrives when a followed repository's pull request opens or gets
+new commits. Following a repository and **Resync pull requests** import
+existing pull requests silently. Title edits and state changes, including
+merges, never notify. Choosing a notification opens its review, or
+focuses a window already showing it.
+
+The bell beside each followed repository mutes or unmutes its notifications.
+**Other devices** lists every device that receives them; remove one you no
+longer use. Signing out stops notifications to that browser, and blocked
+notifications are turned back on in the browser's site settings.
+
 ## Limits
 
 - A push, edit or state change creates a new snapshot in the same review

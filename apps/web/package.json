@@ -11,7 +11,7 @@
     "test:dom": "node --import tsx --import ./test/dom/setup.ts --test test/dom/*.test.ts",
     "test:browser": "playwright test",
     "test:browser:install": "playwright install chromium",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.sw.json"
   },
   "dependencies": {
     "@base-ui/react": "catalog:",

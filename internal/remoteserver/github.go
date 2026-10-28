@@ -181,6 +181,18 @@ func (remote *transport) githubAccount(w http.ResponseWriter, r *http.Request, p
 			githubResult(w, nil, remote.github.Follow(ctx, owner, id))
 		case http.MethodDelete:
 			githubResult(w, nil, remote.github.Unfollow(ctx, owner, id))
+		case http.MethodPatch:
+			var input struct {
+				Notify *bool `json:"notify"`
+			}
+			if !decodeJSON(w, r, &input) {
+				return
+			}
+			if input.Notify == nil {
+				problem(w, 400, "notify is required")
+				return
+			}
+			githubResult(w, nil, remote.github.SetNotify(ctx, owner, id, *input.Notify))
 		default:
 			problem(w, 405, "Method not allowed")
 		}
@@ -204,6 +216,8 @@ func githubResult(w http.ResponseWriter, value any, err error) {
 		problem(w, 409, githubsync.ErrReconnect.Error())
 	case errors.Is(err, githubsync.ErrForbidden):
 		problem(w, 403, err.Error())
+	case errors.Is(err, githubsync.ErrNotFound):
+		problem(w, 404, "Repository not followed")
 	case errors.As(err, &api) && api.Status == 429:
 		w.Header().Set("Retry-After", "60")
 		problem(w, 429, "GitHub rate limit reached; try again later")

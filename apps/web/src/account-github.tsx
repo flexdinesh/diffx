@@ -4,13 +4,24 @@ import {
   type ApiGitHubConnection,
   type ApiGitHubRepository,
 } from "@diffx/api";
-import { ExternalLinkIcon, LockIcon } from "lucide-react";
+import {
+  BellIcon,
+  BellOffIcon,
+  ExternalLinkIcon,
+  LockIcon,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ErrorState } from "@/components/error-state";
 import { LinkButton } from "@/components/link-button";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Toggle } from "@/components/ui/toggle";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const prose = "mb-4 leading-copy text-secondary";
 
@@ -32,6 +43,12 @@ function takeCallbackMessage() {
   return callbackMessages[outcome] ?? "";
 }
 
+/**
+ * Whether GitHub can produce pull requests for this account: not set up on
+ * the server, no followed repository, or at least one followed.
+ */
+export type GitHubFollowing = "unavailable" | "none" | "following";
+
 type Connection =
   | { status: "loading" }
   | { status: "unconfigured" }
@@ -42,7 +59,14 @@ type Connection =
  * Connect GitHub and follow repositories whose pull requests appear as
  * reviews. Absent when the server has no GitHub App configured.
  */
-export function AccountGitHub() {
+export function AccountGitHub({
+  notify = false,
+  onFollowingChange,
+}: {
+  /** Shows each followed repository's notification bell. */
+  notify?: boolean;
+  onFollowingChange?: (following: GitHubFollowing) => void;
+}) {
   const [connection, setConnection] = useState<Connection>({
     status: "loading",
   });
@@ -79,6 +103,17 @@ export function AccountGitHub() {
       });
     return () => controller.abort();
   }, [attempt]);
+  const unconfigured = connection.status === "unconfigured";
+  const inactive =
+    connection.status === "ready" &&
+    !(
+      connection.connection.connected &&
+      connection.connection.state === "active"
+    );
+  useEffect(() => {
+    if (unconfigured) onFollowingChange?.("unavailable");
+    else if (inactive) onFollowingChange?.("none");
+  }, [unconfigured, inactive, onFollowingChange]);
   if (connection.status === "unconfigured" || connection.status === "loading")
     return null;
   async function connect() {
@@ -205,18 +240,30 @@ export function AccountGitHub() {
         busy={busy}
         onConfirm={() => void disconnect()}
       />
-      {active && <FollowedRepositories />}
+      {active && (
+        <FollowedRepositories
+          notify={notify}
+          onFollowingChange={onFollowingChange}
+        />
+      )}
     </section>
   );
 }
 
-function FollowedRepositories() {
+function FollowedRepositories({
+  notify,
+  onFollowingChange,
+}: {
+  notify: boolean;
+  onFollowingChange: ((following: GitHubFollowing) => void) | undefined;
+}) {
   const [repositories, setRepositories] = useState<ApiGitHubRepository[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState("");
   const [pending, setPending] = useState<number | null>(null);
   const [resyncing, setResyncing] = useState(false);
+  const [notifying, setNotifying] = useState<ReadonlySet<number>>(new Set());
   const [status, setStatus] = useState("");
   useEffect(() => {
     const controller = new AbortController();
@@ -262,7 +309,7 @@ function FollowedRepositories() {
             ? [item]
             : !follow && item.lost
               ? []
-              : [{ ...item, followed: follow, lost: false }],
+              : [{ ...item, followed: follow, lost: false, notify: follow }],
         ),
       );
       setStatus(
@@ -274,6 +321,55 @@ function FollowedRepositories() {
       setError(errorDetail(failure, "Unable to update. Try again."));
     } finally {
       setPending(null);
+    }
+  }
+  /** Optimistic: the bell flips at once and rolls back if the server refuses. */
+  async function setNotify(repository: ApiGitHubRepository, notify: boolean) {
+    if (notifying.has(repository.id)) return;
+    const update = (value: boolean) =>
+      setRepositories((items) =>
+        items.map((item) =>
+          item.id === repository.id ? { ...item, notify: value } : item,
+        ),
+      );
+    setNotifying((ids) => new Set(ids).add(repository.id));
+    setError("");
+    setStatus("");
+    update(notify);
+    try {
+      const { response, error } = await api.PATCH(
+        "/api/v2/github/follows/{repositoryId}",
+        {
+          params: { path: { repositoryId: repository.id } },
+          body: { notify },
+        },
+      );
+      if (!response.ok)
+        throw new Error(
+          errorDetail(
+            error,
+            `Unable to update notifications for ${repository.fullName}. Try again.`,
+          ),
+        );
+      setStatus(
+        notify
+          ? `Notifications on for ${repository.fullName}.`
+          : `Notifications off for ${repository.fullName}.`,
+      );
+    } catch (failure: unknown) {
+      update(!notify);
+      setError(
+        errorDetail(
+          failure,
+          `Unable to update notifications for ${repository.fullName}. Try again.`,
+        ),
+      );
+    } finally {
+      setNotifying((ids) => {
+        const next = new Set(ids);
+        next.delete(repository.id);
+        return next;
+      });
     }
   }
   async function resync() {
@@ -292,6 +388,9 @@ function FollowedRepositories() {
     }
   }
   const following = repositories.some((repository) => repository.followed);
+  useEffect(() => {
+    if (loaded) onFollowingChange?.(following ? "following" : "none");
+  }, [loaded, following, onFollowingChange]);
   return (
     <section aria-labelledby="github-repositories-title">
       <h3
@@ -330,7 +429,7 @@ function FollowedRepositories() {
             return (
               <li
                 key={repository.id}
-                className="flex items-center gap-2 border-b border-separator py-2"
+                className="flex items-center gap-2 border-b border-separator py-1"
               >
                 <Checkbox
                   id={id}
@@ -340,7 +439,10 @@ function FollowedRepositories() {
                     void setFollowed(repository, checked)
                   }
                 />
-                <label htmlFor={id} className="min-w-0 flex-1 wrap-anywhere">
+                <label
+                  htmlFor={id}
+                  className="flex min-h-control-small min-w-0 flex-1 items-center wrap-anywhere max-md:min-h-touch pointer-coarse:min-h-touch"
+                >
                   {repository.fullName}
                 </label>
                 {repository.private && (
@@ -353,16 +455,41 @@ function FollowedRepositories() {
                 {repository.lost && (
                   <span className="text-sm text-warning">Access lost</span>
                 )}
+                {notify && repository.followed && (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Toggle
+                          size="icon-sm"
+                          touch
+                          aria-label={`Notify for ${repository.fullName}`}
+                          pressed={repository.notify}
+                          aria-busy={notifying.has(repository.id)}
+                          onPressedChange={(pressed) =>
+                            void setNotify(repository, pressed)
+                          }
+                        />
+                      }
+                    >
+                      {repository.notify ? (
+                        <BellIcon aria-hidden="true" />
+                      ) : (
+                        <BellOffIcon aria-hidden="true" />
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Notify for {repository.fullName}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
               </li>
             );
           })}
         </ul>
       )}
-      {status && (
-        <p className={prose} role="status">
-          {status}
-        </p>
-      )}
+      <p className={status ? prose : undefined} role="status">
+        {status}
+      </p>
       {following && (
         <Button
           variant="outline"

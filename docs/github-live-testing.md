@@ -56,6 +56,14 @@ Each needs a real GitHub App, an installation and public HTTPS for webhooks
    it leaves the Reviews column. Resync extends retention of an idle one.
 9. **Rate limits.** Behavior when GitHub returns 403/429 rate limiting during
    listing, lease or Resync.
+10. **Push.** Web Push to real push services: FCM (Chrome, Android), Mozilla
+    autopush (Firefox) and Apple (Safari, and an installed iOS 16.4+ home
+    screen app). Confirm VAPID acceptance with the https public URL as
+    subject, the padded 4 KiB aes128gcm body, Topic collapsing, 410 on an
+    unsubscribed device, and that an opened pull request and a force push
+    each notify once while first follow, Resync and edits stay silent.
+    Verified so far only against a local fake push service
+    (`internal/webpush`, `internal/pushservice`, `internal/remoteserver`).
 
 ## Known risks and likely follow-ups
 

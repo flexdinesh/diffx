@@ -41,6 +41,10 @@ func fakeGitHubAPI(t *testing.T) *httptest.Server {
 	reply("/user/installations/5/repositories", `{"repositories":[{"id":10,"full_name":"octo/app","private":true}]}`)
 	reply("/app/installations/5/access_tokens", `{"token":"installation","expires_at":"2099-01-01T00:00:00Z"}`)
 	reply("/repos/octo/app/pulls", `[]`)
+	reply("/repos/octo/app/pulls/1", `{"number":1,"state":"open","title":"Add search","body":"","html_url":"https://github.com/octo/app/pull/1","user":{"id":7,"login":"mona"},
+		"base":{"ref":"main","sha":"3333333333333333333333333333333333333333","repo":{"id":10,"full_name":"octo/app"}},
+		"head":{"ref":"search","sha":"1111111111111111111111111111111111111111","repo":{"id":77,"full_name":"mona/app"}},
+		"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T01:00:00Z"}`)
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 	return server
