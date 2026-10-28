@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"io"
 	"os"
 	"os/exec"
@@ -12,7 +13,6 @@ import (
 	"github.com/flexdinesh/diffx/internal/contextservice"
 	"github.com/flexdinesh/diffx/internal/hooks"
 	"github.com/flexdinesh/diffx/internal/ingestion"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/submission"
 	"github.com/flexdinesh/diffx/internal/testsupport"
 )
@@ -88,7 +88,7 @@ func TestHookInitialCleanSessionsAndMissingAcknowledgement(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("DIFFX_CONFIG_PATH", configPath)
 	t.Setenv("DIFFX_REMOTE_TOKEN", "test-token")
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

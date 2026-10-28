@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/flexdinesh/diffx/internal/reviewservice"
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -78,7 +79,7 @@ func TestMultiContextObservationIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +135,7 @@ func TestMultiContextObservationIsolation(t *testing.T) {
 }
 
 func TestMultiGlobalRoutesWithoutContext(t *testing.T) {
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +157,7 @@ func TestMultiGlobalRoutesWithoutContext(t *testing.T) {
 }
 
 func TestMultiObservationsAndRetainedFilesWithoutCheckout(t *testing.T) {
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

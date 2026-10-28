@@ -4,16 +4,16 @@ import (
 	"crypto/ecdh"
 	"encoding/base64"
 	"errors"
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"strings"
 	"testing"
 
 	"github.com/flexdinesh/diffx/internal/pushservice"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/testsupport"
 )
 
 func TestEnablementFollowsThePublicURLAndKeysPersist(t *testing.T) {
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestEnablementFollowsThePublicURLAndKeysPersist(t *testing.T) {
 }
 
 func TestSubscribeValidatesBrowserSubscriptions(t *testing.T) {
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

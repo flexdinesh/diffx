@@ -1,6 +1,7 @@
 package contextservice
 
 import (
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -8,11 +9,10 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/collector"
 	"github.com/flexdinesh/diffx/internal/ingestion"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 )
 
 func TestScopeLimitsCatalogAndLookupsToSelectedCheckoutOrCapture(t *testing.T) {
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

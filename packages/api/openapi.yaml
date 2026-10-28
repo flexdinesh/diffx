@@ -912,6 +912,37 @@ paths:
                     type: boolean
         default:
           $ref: "#/components/responses/Problem"
+  /livez:
+    get:
+      operationId: getLiveness
+      description: Remote server process liveness for orchestrators. Unauthenticated and reveals no state; local servers do not serve it.
+      responses:
+        "200":
+          description: The process is serving.
+          content:
+            text/plain:
+              schema:
+                type: string
+                const: "ok\n"
+  /readyz:
+    get:
+      operationId: getReadiness
+      description: Remote server readiness for orchestrators. Unauthenticated and reveals no state; ready while the database answers and this process owns it.
+      responses:
+        "200":
+          description: The database answers and this process owns it.
+          content:
+            text/plain:
+              schema:
+                type: string
+                const: "ok\n"
+        "503":
+          description: The database is unavailable or ownership was lost.
+          content:
+            text/plain:
+              schema:
+                type: string
+                const: "unavailable\n"
   /api/v2/ingestion-jobs:
     post:
       operationId: acceptIngestion

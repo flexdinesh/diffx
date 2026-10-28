@@ -19,7 +19,7 @@ const testPassword = "a correct password for test"
 
 func testIdentity(t *testing.T) (*Store, *identityservice.Service) {
 	t.Helper()
-	store, err := Open("")
+	store, err := openTestState(t, "", DefaultRetention)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func setupAdmin(t *testing.T, service *identityservice.Service, username string)
 func TestAdminSetupPersistsAndRunsOnce(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "state.db")
-	store, err := Open(path)
+	store, err := openTestState(t, path, DefaultRetention)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestAdminSetupPersistsAndRunsOnce(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = Open(path)
+	store, err = openTestState(t, path, DefaultRetention)
 	if err != nil {
 		t.Fatal(err)
 	}

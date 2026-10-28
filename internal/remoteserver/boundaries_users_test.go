@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -18,7 +19,6 @@ import (
 	"github.com/flexdinesh/diffx/internal/collector"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/mcpapi"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/testsupport"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -123,7 +123,7 @@ func (transport credentialTransport) RoundTrip(request *http.Request) (*http.Res
 }
 
 func TestGlobalMCPOwnershipAcrossUsers(t *testing.T) {
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

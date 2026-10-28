@@ -177,7 +177,7 @@ func TestComparisonPoliciesHaveSeparateReviewsAndDurableHeads(t *testing.T) {
 
 func TestRetentionConfigurationPreservesExistingExpiryAndReplay(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store, err := Open(path)
+	store, err := openTestState(t, path, DefaultRetention)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestRetentionConfigurationPreservesExistingExpiryAndReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	duration := 2 * 24 * time.Hour
-	store, err = OpenWithRetention(path, duration)
+	store, err = openTestState(t, path, duration)
 	if err != nil {
 		t.Fatal(err)
 	}

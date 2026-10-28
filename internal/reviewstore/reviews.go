@@ -280,7 +280,7 @@ func (store *Store) ClearMarks(ctx context.Context, contextID string, scope revi
 func (store *Store) StoredVersion(ctx context.Context, ownerID, diffID, versionID string, now time.Time) (review.RepositoryDiff, error) {
 	var raw, metadata, scopes string
 	err := store.db.QueryRowContext(ctx, `SELECT v.manifest,o.metadata,
-	 (SELECT json_group_array(mode) FROM observation_scopes WHERE context_id=o.context_id)
+	 (SELECT `+store.dialect.jsonArray("mode", "")+` FROM observation_scopes WHERE context_id=o.context_id)
 	 FROM diff_versions v JOIN diffs d ON d.id=v.diff_id
 	 JOIN observation_scopes s ON s.diff_id=d.id JOIN observations o ON o.context_id=s.context_id
 	 WHERE d.owner_id=? AND d.id=? AND v.id=? AND (d.expires_at IS NULL OR d.expires_at>?)`, ownerID, diffID, versionID, now.UnixMilli()).Scan(&raw, &metadata, &scopes)

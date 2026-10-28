@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"io"
 	"net/http/httptest"
 	"path/filepath"
@@ -9,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/flexdinesh/diffx/internal/remoteserver"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/webui"
 )
 
@@ -21,7 +21,7 @@ func TestRemoteStatusRequiresRemoteModeAndVerifiesCredentials(t *testing.T) {
 	if err := run(t.Context(), []string{"remote", "status"}, nil, io.Discard, io.Discard); err == nil || !strings.Contains(err.Error(), "remote.url") {
 		t.Fatalf("unconfigured remote: %v", err)
 	}
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

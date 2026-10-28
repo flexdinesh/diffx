@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -26,7 +27,7 @@ import (
 
 func collectionService(t *testing.T) (*contextservice.Service, *reviewstore.Store) {
 	t.Helper()
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

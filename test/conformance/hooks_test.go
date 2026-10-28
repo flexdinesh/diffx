@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,7 +20,6 @@ import (
 	"github.com/flexdinesh/diffx/internal/hooks"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/review"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/testsupport"
 )
 
@@ -73,7 +73,7 @@ func waitHookCatalog(t *testing.T, harness serviceHarness, count int) (serviceSt
 
 func TestAgentHooksPublishLatestCheckoutAndCompleteFileContents(t *testing.T) {
 	harness := newServiceHarness(t)
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +344,7 @@ func collectorActivities(t *testing.T, harness serviceHarness) []hooks.Activity 
 
 func TestHookIgnoresParentWorkspaceAndReviewRecoversExplicitBranch(t *testing.T) {
 	harness := isolatedCollectorHarness(t)
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

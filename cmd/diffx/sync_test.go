@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -36,7 +37,7 @@ func TestSyncPrintDebugCommitsSelectedCheckoutAndRecoversRemovedCheckout(t *test
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("DIFFX_CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
 	t.Setenv("DIFFX_RUNTIME_DIR", t.TempDir())
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +130,7 @@ func newSyncFixture(t *testing.T) *syncFixture {
 	t.Setenv("DIFFX_CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
 	t.Setenv("DIFFX_RUNTIME_DIR", t.TempDir())
 	t.Setenv("DIFFX_SOURCE_ID", "machine")
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

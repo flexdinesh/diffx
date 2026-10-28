@@ -1,6 +1,7 @@
 package reviewstore
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -29,12 +30,44 @@ type User = reviewdata.User
 type Binding = reviewdata.Binding
 
 // Store runs application operations on one SQL backend. Its dialect supplies
-// backend differences; release gives up database ownership after closing.
+// backend differences; owned checks ownership and close releases it.
 type Store struct {
 	db        *sql.DB
 	dialect   dialect
-	release   func() error
+	owned     func(context.Context) error
+	close     func() error
 	retention time.Duration
+}
+
+// ownershipInterval spaces checks that this process still owns the database.
+const ownershipInterval = 5 * time.Second
+
+// Ready reports whether the database answers and this process still owns it.
+func (store *Store) Ready(ctx context.Context) error {
+	if err := store.db.PingContext(ctx); err != nil {
+		return err
+	}
+	return store.owned(ctx)
+}
+
+// HoldOwnership returns nil when ctx ends, or an error once this process no
+// longer owns the database; the owner must then stop serving and workers.
+func (store *Store) HoldOwnership(ctx context.Context) error {
+	ticker := time.NewTicker(ownershipInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if err := store.owned(ctx); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				return fmt.Errorf("state database ownership lost: %w", err)
+			}
+		}
+	}
 }
 
 func newID() (string, error) {
@@ -143,7 +176,7 @@ func initializeReviews(transaction *sql.Tx) error {
 }
 
 func (store *Store) Close() error {
-	return errors.Join(store.db.Close(), store.release())
+	return store.close()
 }
 
 func (store *Store) User(osUID, name string) (User, error) {

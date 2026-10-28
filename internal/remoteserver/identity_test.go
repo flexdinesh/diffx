@@ -3,6 +3,7 @@ package remoteserver
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,7 +21,7 @@ import (
 
 func identityHandler(t *testing.T, settings Settings) (*reviewstore.Store, http.Handler) {
 	t.Helper()
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

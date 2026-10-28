@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -35,7 +36,7 @@ func provisionToken(t *testing.T, store *reviewstore.Store, name string, purpose
 }
 
 func TestRemoteAuthenticationCoversUIAPIAndMCP(t *testing.T) {
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +85,7 @@ func TestRemoteAuthenticationCoversUIAPIAndMCP(t *testing.T) {
 }
 
 func TestMultiUserRESTMCPAndEventIsolation(t *testing.T) {
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

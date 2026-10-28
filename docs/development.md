@@ -64,6 +64,7 @@ build.
 | Install Playwright Chromium                                | `pnpm test:browser:install`      |
 | Run web unit and browser tests                             | `pnpm test:web`                  |
 | Run Go tests                                               | `mise run test:go`               |
+| Run Go tests against Postgres (Docker; manual)             | `mise run test:postgres`         |
 | Run boundary and shared-rule contracts                     | `mise run test:contracts`        |
 | Check production package dependencies                      | `mise run check:boundaries`      |
 | Check frontend design-token use                            | `mise run check:design`          |
@@ -230,6 +231,7 @@ building the image.
 | `DIFFX_SERVER_HOST`             | `127.0.0.1`     | `0.0.0.0`         | `--listen HOST:PORT`    |
 | `DIFFX_SERVER_PORT`             | `7980`          | `7980`            | `--listen HOST:PORT`    |
 | `DIFFX_SERVER_STATE`            | `data/state.db` | `/data/state.db`  | `--state PATH`          |
+| `DIFFX_SERVER_DATABASE_URL`     | Unset           | Unset             | None                    |
 | `DIFFX_SERVER_RETENTION_DAYS`   | `7`             | `7`               | `--retention-days DAYS` |
 | `DIFFX_SERVER_PUBLIC_URL`       | Unset           | Unset             | `--public-url URL`      |
 | `DIFFX_SERVER_INSECURE_COOKIES` | `false`         | Compose: `true`   | `--insecure-cookies`    |
@@ -308,8 +310,36 @@ Only one server may own a SQLite database; competing starts fail rather than
 share ownership. SIGTERM stops HTTP and workers before releasing storage;
 unfinished admitted jobs recover from the durable queue after leases expire.
 
-This setup targets one server with SQLite. PostgreSQL, multiple replicas,
-browser login and integrations remain separate future changes.
+### PostgreSQL
+
+`DIFFX_SERVER_DATABASE_URL` (a `postgres://` URL, environment only because it
+carries credentials) selects PostgreSQL instead of SQLite; `DIFFX_SERVER_STATE`
+is then unused, and an explicit `--state` is rejected. The server needs no data
+volume. The database must be dedicated to one diffx server: startup creates the
+current schema in an empty database, refuses unversioned or newer schemas and
+never resets. `user reset-password` reads the same variable.
+
+PostgreSQL keeps SQLite's single-owner contract. The owner holds a
+session-level advisory lock on a dedicated connection and runs transactions
+serially on one other connection; a second server or offline command against
+the same database fails. If the lock session drops, for example when the
+database restarts, the server stops HTTP and workers and exits nonzero so its
+supervisor restarts it. Connect directly, or through a session-mode pooler, so
+the lock stays on one session. Multiple replicas remain unsupported.
+
+`GET /livez` answers while the process serves and `GET /readyz` while the
+database answers and this process owns it (503 otherwise). Both are
+unauthenticated and reveal no state, for orchestrator probes.
+
+`mise run test:postgres` runs the Go suite with the `postgres` build tag:
+stores that tests open in memory, and `internal/reviewstore` test state, use
+fresh databases in a throwaway `postgres:18-alpine` container through
+testcontainers. It needs Docker and is not part of `mise run check` or
+pre-push; run it when changing storage SQL.
+
+Login and setup admission is rate limited per listener peer address, and proxy
+headers are untrusted. Behind a reverse proxy every client shares the proxy's
+bucket. TODO: trusted-proxy client IP configuration.
 
 ## Build pipeline
 

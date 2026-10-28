@@ -120,6 +120,11 @@ run = "pnpm test:go"
 description = "Run Go race tests (requires a C compiler)"
 run = "go test -race -timeout 5m ./..."
 
+[tasks."test:postgres"]
+description = "Run the Go suite against Postgres in a throwaway container (requires Docker); run manually"
+depends = ["web:stage"]
+run = "go test -tags postgres -p 4 -timeout 15m ./..."
+
 [tasks."test:conformance"]
 description = "Build the CLI and smoke-test its API contract"
 depends = ["build"]

@@ -3,6 +3,7 @@ package pushservice_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -66,7 +67,7 @@ type harness struct {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

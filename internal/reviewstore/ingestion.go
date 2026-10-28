@@ -313,7 +313,7 @@ func (store *Store) Observation(ownerID, contextID string) (ingestion.Metadata, 
 func (store *Store) ObservationSnapshot(ctx context.Context, ownerID, contextID string, mode review.DiffMode) (review.RepositoryDiff, error) {
 	var raw, metadata, scopes string
 	err := store.db.QueryRowContext(ctx, `SELECT v.manifest,o.metadata,
-	 (SELECT json_group_array(mode) FROM observation_scopes WHERE context_id=o.context_id)
+	 (SELECT `+store.dialect.jsonArray("mode", "")+` FROM observation_scopes WHERE context_id=o.context_id)
 	 FROM observations o JOIN observation_scopes s ON s.context_id=o.context_id JOIN diff_versions v ON v.id=s.version_id JOIN diffs d ON d.id=s.diff_id WHERE o.owner_id=? AND o.context_id=? AND s.mode=? AND d.expires_at>?`, ownerID, contextID, mode, time.Now().UnixMilli()).Scan(&raw, &metadata, &scopes)
 	if errors.Is(err, sql.ErrNoRows) {
 		return review.RepositoryDiff{}, ErrNotFound

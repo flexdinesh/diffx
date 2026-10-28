@@ -44,6 +44,8 @@ func TestPackageBoundaries(t *testing.T) {
 		{name: "composition cannot query sqlite directly", pkg: "internal/remoteserver", imports: []string{"modernc.org/sqlite"}, want: "internal/remoteserver must not access SQL storage directly"},
 		{name: "sqlite subpackages preserve storage boundary", pkg: "internal/review", imports: []string{"modernc.org/sqlite/lib"}, want: "internal/review must not access SQL storage directly"},
 		{name: "storage owns sql and sqlite", pkg: "internal/reviewstore", imports: []string{"database/sql", "modernc.org/sqlite"}},
+		{name: "composition cannot query postgres directly", pkg: "internal/remoteserver", imports: []string{"github.com/jackc/pgx/v5/stdlib"}, want: "internal/remoteserver must not access SQL storage directly"},
+		{name: "storage owns postgres", pkg: "internal/reviewstore", imports: []string{"github.com/jackc/pgx/v5", "github.com/jackc/pgx/v5/stdlib"}},
 		{name: "production cannot use test helpers", pkg: "internal/contextservice", imports: []string{modulePrefix + "internal/testsupport"}, want: "production dependency on test helpers: internal/contextservice -> internal/testsupport"},
 		{name: "command cannot use nested test helpers", pkg: "cmd/diffx", imports: []string{modulePrefix + "internal/testsupport/fixtures"}, want: "production dependency on test helpers: cmd/diffx -> internal/testsupport/fixtures"},
 		{name: "test helper can compose real boundary", pkg: "internal/testsupport", imports: []string{modulePrefix + "internal/reviewstore", modulePrefix + "internal/serverapp", "testing", "net/http/httptest"}},

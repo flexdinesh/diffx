@@ -70,7 +70,8 @@ conversation.
 
 `diffx-server` runs directly or as the same binary inside a container. It resolves
 deployment config without reading or writing personal CLI settings. Container
-defaults come from env vars, with SQLite and credential hashes under `/data`.
+defaults come from env vars, with SQLite and credential hashes under `/data`,
+or in a dedicated PostgreSQL database selected by `DIFFX_SERVER_DATABASE_URL`.
 Compose mounts a named volume and publishes HTTP on host loopback; stopping or
 recreating the container preserves data. Only one process may own that database.
 
@@ -506,7 +507,8 @@ renaming a session updates its searchable label without changing snapshot
 metadata. The triggering session observed collection; it does not own every
 worktree's edits.
 
-SQLite is the durable query source, including the diff data itself. Reads need
+SQLite, or PostgreSQL for a remote server, is the durable query source,
+including the diff data itself. Reads need
 neither Git nor a repository mount. Available full contents are captured within
 a collection budget; unsupported or unavailable previews remain explicit.
 Snapshot retention is configurable in whole days, default seven, after the last
@@ -611,4 +613,4 @@ Implement new adapters against the existing consuming-package contracts and
 behavioral conformance tests. Preserve atomic commit boundaries, owner isolation,
 identity bytes and retry semantics. External queues need durable payload/status
 storage plus transactional scheduling intent; multiple processes require a
-storage backend designed for that concurrency. SQLite retains one owning process.
+storage backend designed for that concurrency. SQLite and PostgreSQL each retain one owning process.

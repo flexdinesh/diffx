@@ -40,6 +40,15 @@ func TestRemoteConfigMappingAndPrecedence(t *testing.T) {
 	if err != nil || settings.Listen != "0.0.0.0:6123" || settings.State != "flags.db" {
 		t.Fatalf("flags mapping: %#v %v", settings, err)
 	}
+	t.Setenv("DIFFX_SERVER_DATABASE_URL", "postgres://diffx:secret@db:5432/diffx")
+	settings, _, err = parseSettings([]string{"--config-file", path}, io.Discard)
+	if err != nil || settings.DatabaseURL != "postgres://diffx:secret@db:5432/diffx" {
+		t.Fatalf("database URL mapping: %#v %v", settings, err)
+	}
+	if _, _, err := parseSettings([]string{"--config-file", path, "--state", "flags.db"}, io.Discard); err == nil {
+		t.Fatal("explicit --state accepted with a database URL")
+	}
+	t.Setenv("DIFFX_SERVER_DATABASE_URL", "")
 	t.Setenv("DIFFX_SERVER_HOST", "invalid")
 	t.Setenv("DIFFX_SERVER_PORT", "65536")
 	settings, _, err = parseSettings([]string{"--listen", "127.0.0.1:0"}, io.Discard)

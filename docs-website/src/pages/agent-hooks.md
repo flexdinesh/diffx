@@ -91,6 +91,11 @@ The image runs without Git or a repository mount, as an unprivileged user.
 SIGTERM drains HTTP and stops the worker; durable unfinished jobs recover after
 their leases expire. Back up the database while stopped.
 
+To store data in PostgreSQL instead, set `DIFFX_SERVER_DATABASE_URL` to a
+`postgres://` URL for a database dedicated to one diffx server; the volume is
+then unneeded. One server process owns the database at a time, so run a single
+replica. `GET /readyz` reports readiness for health checks.
+
 Build/install the remote server with Go:
 
 ```sh

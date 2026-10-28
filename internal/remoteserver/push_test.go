@@ -3,6 +3,7 @@ package remoteserver
 import (
 	"context"
 	"encoding/json"
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +18,6 @@ import (
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/review"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/testsupport"
 )
 
@@ -267,7 +267,7 @@ func TestFollowNotifySettingIsReflectedInListing(t *testing.T) {
 }
 
 func TestServiceWorkerAndManifestServedWithBrowserTypes(t *testing.T) {
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +309,7 @@ func fetchedSnapshot(job fetchprotocol.Job) ingestion.Request {
 }
 
 func TestOpenedPullRequestReachesSubscribedDevice(t *testing.T) {
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

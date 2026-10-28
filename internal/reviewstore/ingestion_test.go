@@ -224,7 +224,7 @@ func TestObservationFreshnessSurvivesPruningLatestSnapshot(t *testing.T) {
 	}{{"newer collection", 100, 150}, {"equal-time arrival", 200, 199}} {
 		t.Run(test.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "state.db")
-			store, err := Open(path)
+			store, err := openTestState(t, path, DefaultRetention)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -261,7 +261,7 @@ func TestObservationFreshnessSurvivesPruningLatestSnapshot(t *testing.T) {
 					if err := store.Close(); err != nil {
 						t.Fatal(err)
 					}
-					reopened, err := Open(path)
+					reopened, err := openTestState(t, path, DefaultRetention)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -309,7 +309,7 @@ func TestObservationRollbackOnIncompleteScope(t *testing.T) {
 func TestObservationReopensWithoutCheckoutWithinRetention(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.db")
-	store, err := Open(path)
+	store, err := openTestState(t, path, DefaultRetention)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +335,7 @@ func TestObservationReopensWithoutCheckoutWithinRetention(t *testing.T) {
 	if err := os.RemoveAll(request.Metadata.Root); err != nil {
 		t.Fatal(err)
 	}
-	store, err = Open(path)
+	store, err = openTestState(t, path, DefaultRetention)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -669,5 +669,26 @@ func TestObservationExpiryHidesReadsAndPrunesEveryScope(t *testing.T) {
 		if count != expected {
 			t.Fatalf("orphaned %s: %d want %d", table, count, expected)
 		}
+	}
+}
+
+// Git patches and contents may carry NUL bytes; every backend must store and
+// return them unchanged.
+func TestObservationPreservesNULBytes(t *testing.T) {
+	store := openTestStore(t)
+	user := testUser(t, store, "nul")
+	request := observationRequest("source", "nul")
+	scope := &request.Scopes[0]
+	scope.Patches["file"] = review.FilePatch{Patch: "+a\x00b\n", Contents: &review.FileContents{Before: "x\x00", After: "y\x00"}}
+	binding, err := store.Ingest(user.ID, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patch, err := store.ObservationPatch(t.Context(), user.ID, binding.ContextID, review.DiffAll, "file", "all-fingerprint")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if patch.Patch != "+a\x00b\n" || patch.Contents == nil || patch.Contents.Before != "x\x00" || patch.Contents.After != "y\x00" {
+		t.Fatalf("patch: %#v", patch)
 	}
 }

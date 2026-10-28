@@ -23,9 +23,12 @@ const DefaultInternalPort = 7979
 
 // ServerValues is deployment configuration, independent of personal CLI settings.
 type ServerValues struct {
-	Host            string `json:"host"`
-	Port            int    `json:"port"`
-	State           string `json:"state"`
+	Host  string `json:"host"`
+	Port  int    `json:"port"`
+	State string `json:"state"`
+	// DatabaseURL selects Postgres instead of State. It carries credentials, so
+	// it comes only from DIFFX_SERVER_DATABASE_URL, never the config file.
+	DatabaseURL     string `json:"-"`
 	PublicURL       string `json:"publicUrl"`
 	InsecureCookies bool   `json:"insecureCookies"`
 	RetentionDays   int    `json:"retentionDays"`
@@ -161,6 +164,7 @@ func LoadServerFile(path string) (ServerValues, error) {
 	}{
 		{"DIFFX_SERVER_HOST", &values.Host},
 		{"DIFFX_SERVER_STATE", &values.State},
+		{"DIFFX_SERVER_DATABASE_URL", &values.DatabaseURL},
 		{"DIFFX_SERVER_PUBLIC_URL", &values.PublicURL},
 		{"DIFFX_SERVER_GOOGLE_CLIENT_ID", &values.Google.ClientID},
 		{"DIFFX_SERVER_GOOGLE_CLIENT_SECRET", &values.Google.ClientSecret},

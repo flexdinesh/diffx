@@ -2,6 +2,7 @@ package fetcher
 
 import (
 	"context"
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"net/url"
 	"testing"
 	"time"
@@ -11,7 +12,6 @@ import (
 	"github.com/flexdinesh/diffx/internal/githubsync"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/review"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 )
 
 // stubGitHub serves one repository with pull request 7 of an origin.
@@ -68,7 +68,7 @@ func (server *leaseServer) Fail(ctx context.Context, job fetchprotocol.Job, deta
 func TestFetchedPullRequestBecomesFollowerReview(t *testing.T) {
 	requireTestGit(t)
 	origin := newOrigin(t)
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

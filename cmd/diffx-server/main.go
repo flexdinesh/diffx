@@ -25,7 +25,7 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 	flags := flag.NewFlagSet("diffx-server", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.StringVar(&settings.Listen, "listen", net.JoinHostPort("127.0.0.1", strconv.Itoa(config.DefaultServerPort)), "HTTP listen address; terminate TLS at the deployment boundary")
-	flags.StringVar(&settings.State, "state", "", "SQLite database path")
+	flags.StringVar(&settings.State, "state", "", "SQLite database path; unused when DIFFX_SERVER_DATABASE_URL selects Postgres")
 	flags.StringVar(&settings.PublicURL, "public-url", "", "browser-facing https origin used in the logged admin setup link; also enables Web Push")
 	flags.BoolVar(&settings.InsecureCookies, "insecure-cookies", false, "allow browser sessions over HTTP for development")
 	flags.IntVar(&settings.RetentionDays, "retention-days", 7, "snapshot retention in days")
@@ -52,6 +52,10 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 			return settings, false, err
 		}
 	}
+	settings.DatabaseURL = values.DatabaseURL
+	if settings.DatabaseURL != "" && visited["state"] {
+		return settings, false, fmt.Errorf("--state conflicts with DIFFX_SERVER_DATABASE_URL")
+	}
 	if !visited["state"] || settings.State == "" {
 		settings.State = values.State
 	}
@@ -67,7 +71,7 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 	if settings.RetentionDays <= 0 {
 		return settings, false, fmt.Errorf("retention days must be positive")
 	}
-	if settings.State == "" {
+	if settings.State == "" && settings.DatabaseURL == "" {
 		return settings, false, fmt.Errorf("state must be a database path or memory")
 	}
 	values.PublicURL, values.InsecureCookies = settings.PublicURL, settings.InsecureCookies
@@ -125,13 +129,14 @@ func main() {
 	}
 }
 
-// Offline admin recovery shares the server's exclusive database lock. Only the
+// Offline admin recovery shares the server's exclusive database ownership, so
+// the server must be stopped. Only the
 // admin has a password; the setup link creates it. Passwords are read from an
 // explicitly selected environment variable or stdin; they are never command
 // arguments or printed output.
 func manageUser(arguments []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(arguments) == 0 || arguments[0] != "reset-password" {
-		return fmt.Errorf("usage: diffx-server user reset-password --username ADMIN --password-env VAR|--password-stdin [--state PATH]")
+		return fmt.Errorf("usage: diffx-server user reset-password --username ADMIN --password-env VAR|--password-stdin [--state PATH]\n  DIFFX_SERVER_DATABASE_URL selects Postgres instead of --state")
 	}
 	operation := arguments[0]
 	flags := flag.NewFlagSet("diffx-server user "+operation, flag.ContinueOnError)
@@ -151,10 +156,13 @@ func manageUser(arguments []string, stdin io.Reader, stdout, stderr io.Writer) e
 	if err != nil {
 		return err
 	}
+	if values.DatabaseURL != "" && *state != "" {
+		return fmt.Errorf("--state conflicts with DIFFX_SERVER_DATABASE_URL")
+	}
 	if *state == "" {
 		*state = values.State
 	}
-	if *state == "memory" || *state == ":memory:" {
+	if values.DatabaseURL == "" && (*state == "memory" || *state == ":memory:") {
 		return fmt.Errorf("user administration requires a persistent state database")
 	}
 	var password string
@@ -170,7 +178,12 @@ func manageUser(arguments []string, stdin io.Reader, stdout, stderr io.Writer) e
 	} else {
 		password = os.Getenv(*passwordEnv)
 	}
-	store, err := reviewstore.Open(*state)
+	var store *reviewstore.Store
+	if values.DatabaseURL != "" {
+		store, err = reviewstore.OpenPostgres(context.Background(), values.DatabaseURL, reviewstore.DefaultRetention)
+	} else {
+		store, err = reviewstore.Open(*state)
+	}
 	if err != nil {
 		return err
 	}

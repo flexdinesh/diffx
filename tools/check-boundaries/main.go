@@ -79,8 +79,11 @@ var allowed = map[string][]string{
 		"internal/contextservice", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/review",
 		"internal/reviewstore", "internal/serverapp", "internal/webui",
 	},
-	"internal/version": {},
-	"internal/webui":   {},
+	// Test-only store selection: SQLite, or Postgres with the postgres build tag.
+	"internal/testsupport/postgrestest": {},
+	"internal/testsupport/storetest":    {"internal/reviewstore", "internal/testsupport/postgrestest"},
+	"internal/version":                  {},
+	"internal/webui":                    {},
 }
 
 type listedPackage struct {
@@ -101,7 +104,7 @@ func checkPackage(pkg listedPackage) []string {
 		}, name) {
 			violations = append(violations, fmt.Sprintf("%s must not execute processes", name))
 		}
-		if (dependency == "database/sql" || dependency == "modernc.org/sqlite" || strings.HasPrefix(dependency, "modernc.org/sqlite/")) && name != "internal/reviewstore" {
+		if sqlDriver(dependency) && name != "internal/reviewstore" {
 			violations = append(violations, fmt.Sprintf("%s must not access SQL storage directly: %s", name, dependency))
 		}
 		if !strings.HasPrefix(dependency, modulePrefix) {
@@ -115,6 +118,16 @@ func checkPackage(pkg listedPackage) []string {
 		}
 	}
 	return violations
+}
+
+// sqlDriver reports SQL access: database/sql and the SQLite and Postgres drivers.
+func sqlDriver(dependency string) bool {
+	for _, driver := range []string{"database/sql", "modernc.org/sqlite", "github.com/jackc/pgx"} {
+		if dependency == driver || strings.HasPrefix(dependency, driver+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func checkPackages(input io.Reader, diagnostics io.Writer) (bool, error) {

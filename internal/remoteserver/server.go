@@ -36,11 +36,15 @@ type Store interface {
 	GitHub() githubsync.Store
 	Push() pushservice.Store
 	PruneExpired(time.Time) error
+	// Ready reports whether the database answers and this process owns it.
+	Ready(context.Context) error
 }
 
 type Settings struct {
 	Listen string
-	State  string
+	// DatabaseURL selects Postgres; otherwise State is the SQLite database path.
+	DatabaseURL string
+	State       string
 	// PublicURL is the browser-facing origin used in the logged setup link. An
 	// https origin, or loopback http for development, enables Web Push.
 	PublicURL       string
@@ -169,7 +173,7 @@ func compose(ctx context.Context, store Store, assets fs.FS, settings Settings) 
 		return nil, nil, nil, nil, err
 	}
 	applications := &registry{ctx: ctx, store: store, assets: assets, applications: make(map[string]application)}
-	remote := &transport{identity: identity, applications: applications, settings: settings, assets: assets, limiter: newLimiter(), authSlots: make(chan struct{}, 4), github: github, push: push}
+	remote := &transport{identity: identity, applications: applications, settings: settings, assets: assets, limiter: newLimiter(), authSlots: make(chan struct{}, 4), github: github, push: push, ready: store.Ready}
 	worker := func(ctx context.Context) error {
 		return ingestionqueue.Run(ctx, store.Queue(), func(ctx context.Context, owner string, input ingestion.Request) (string, error) {
 			accounts, err := identity.Accounts(ctx)
@@ -198,17 +202,11 @@ func compose(ctx context.Context, store Store, assets fs.FS, settings Settings) 
 	return remote, internal, applications.close, tasks, nil
 }
 func Run(ctx context.Context, settings Settings, ready func(string)) error {
-	if settings.State == "" {
-		return errors.New("remote state database path required")
-	}
-	if settings.State == "memory" {
-		settings.State = ":memory:"
-	}
 	retention, err := Retention(settings.RetentionDays)
 	if err != nil {
 		return err
 	}
-	store, err := reviewstore.OpenWithRetention(settings.State, retention)
+	store, err := openStore(ctx, settings, retention)
 	if err != nil {
 		return err
 	}
@@ -244,7 +242,8 @@ func Run(ctx context.Context, settings Settings, ready func(string)) error {
 	if err != nil {
 		return err
 	}
-	return serverapp.Run(ctx, endpoints, append(tasks, serverapp.Prune(store.PruneExpired)), func() {
+	// Losing database ownership stops serving and workers with an error.
+	return serverapp.Run(ctx, endpoints, append(tasks, serverapp.Prune(store.PruneExpired), store.HoldOwnership), func() {
 		if ready != nil {
 			ready(listener.Addr().String())
 		}
@@ -257,6 +256,24 @@ func Run(ctx context.Context, settings Settings, ready func(string)) error {
 		}
 	})
 }
+
+// openStore selects the storage adapter: Postgres when a database URL is
+// configured, otherwise SQLite at the state path. It logs the backend only.
+func openStore(ctx context.Context, settings Settings, retention time.Duration) (*reviewstore.Store, error) {
+	if settings.DatabaseURL != "" {
+		log.Printf("diffx-server storage: postgres")
+		return reviewstore.OpenPostgres(ctx, settings.DatabaseURL, retention)
+	}
+	switch settings.State {
+	case "":
+		return nil, errors.New("remote state database path or database URL required")
+	case "memory":
+		settings.State = ":memory:"
+	}
+	log.Printf("diffx-server storage: sqlite")
+	return reviewstore.OpenWithRetention(settings.State, retention)
+}
+
 func Retention(days int) (time.Duration, error) {
 	if days == 0 {
 		days = 7

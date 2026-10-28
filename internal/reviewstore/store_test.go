@@ -7,7 +7,7 @@ import (
 
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
-	store, err := Open(filepath.Join(t.TempDir(), "state.db"))
+	store, err := openTestState(t, filepath.Join(t.TempDir(), "state.db"), DefaultRetention)
 	if err != nil {
 		t.Fatal(err)
 	}

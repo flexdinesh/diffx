@@ -3,6 +3,7 @@ package contextservice
 import (
 	"context"
 	"errors"
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,7 +20,7 @@ const testPatch = "diff --git a/file b/file\n--- a/file\n+++ b/file\n@@ -1 +1 @@
 
 func testService(t *testing.T) *Service {
 	t.Helper()
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

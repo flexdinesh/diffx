@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -21,7 +22,6 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/fetchprotocol"
 	"github.com/flexdinesh/diffx/internal/identityservice"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 )
 
 // fakeGitHubAPI serves the API and OAuth endpoints the integration calls.
@@ -192,7 +192,7 @@ func TestGitHubCallbackRefusesForeignAndMissingSessions(t *testing.T) {
 }
 
 func TestFetchProtocolOnlyOnInternalListenerWithSecret(t *testing.T) {
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

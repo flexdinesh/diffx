@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +13,6 @@ import (
 	"github.com/flexdinesh/diffx/internal/review"
 	"github.com/flexdinesh/diffx/internal/reviewservice"
 	"github.com/flexdinesh/diffx/internal/reviewsession"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 )
 
 func TestFileCommentsWithoutLineContext(t *testing.T) {
@@ -31,7 +31,7 @@ rename to new.ts
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

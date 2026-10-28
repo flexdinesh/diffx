@@ -220,8 +220,8 @@ func (s *GitHubStore) RequestRefresh(ctx context.Context, ref githubsync.PullReq
 	}
 	defer transaction.Rollback()
 	if _, err := transaction.ExecContext(ctx, `INSERT INTO github_pull_requests(repository_id,number,installation_id,full_name,generation,retention_run,requested_at) VALUES(?,?,?,?,1,?,?)
-		ON CONFLICT(repository_id,number) DO UPDATE SET installation_id=excluded.installation_id,full_name=excluded.full_name,generation=generation+1,
-		retention_run=CASE WHEN excluded.retention_run<>'' THEN excluded.retention_run ELSE retention_run END,requested_at=excluded.requested_at`,
+		ON CONFLICT(repository_id,number) DO UPDATE SET installation_id=excluded.installation_id,full_name=excluded.full_name,generation=github_pull_requests.generation+1,
+		retention_run=CASE WHEN excluded.retention_run<>'' THEN excluded.retention_run ELSE github_pull_requests.retention_run END,requested_at=excluded.requested_at`,
 		ref.RepositoryID, ref.Number, ref.InstallationID, ref.FullName, retentionRun, now); err != nil {
 		return err
 	}

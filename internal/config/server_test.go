@@ -207,3 +207,19 @@ func TestEmptyGitHubEnvironmentDisablesIntegration(t *testing.T) {
 		t.Fatalf("empty passthrough must disable GitHub: %+v %v", values.GitHub, err)
 	}
 }
+
+func TestDatabaseURLComesOnlyFromEnvironment(t *testing.T) {
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	path := filepath.Join(t.TempDir(), "server.json")
+	if err := os.WriteFile(path, []byte(`{"databaseUrl":"postgres://diffx:in-file@db/diffx"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadServerFile(path); err == nil || !strings.Contains(err.Error(), "databaseUrl") {
+		t.Fatalf("config file database URL: %v", err)
+	}
+	t.Setenv("DIFFX_SERVER_DATABASE_URL", "postgres://diffx:secret@db/diffx")
+	values, err := LoadServerFile("")
+	if err != nil || values.DatabaseURL != "postgres://diffx:secret@db/diffx" {
+		t.Fatalf("environment database URL: %+v %v", values, err)
+	}
+}

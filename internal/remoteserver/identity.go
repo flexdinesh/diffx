@@ -33,6 +33,7 @@ type transport struct {
 	authSlots    chan struct{}
 	github       *githubsync.Service
 	push         *pushservice.Service
+	ready        func(context.Context) error
 }
 type principal struct {
 	account identityservice.Account
@@ -92,6 +93,10 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if r.URL.Path == "/livez" || r.URL.Path == "/readyz" {
+		remote.probe(w, r)
+		return
+	}
 	if remote.githubPublic(w, r) {
 		return
 	}

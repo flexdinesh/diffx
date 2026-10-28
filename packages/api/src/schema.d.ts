@@ -501,6 +501,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/livez": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Remote server process liveness for orchestrators. Unauthenticated and reveals no state; local servers do not serve it. */
+    get: operations["getLiveness"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/readyz": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Remote server readiness for orchestrators. Unauthenticated and reveals no state; ready while the database answers and this process owns it. */
+    get: operations["getReadiness"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v2/ingestion-jobs": {
     parameters: {
       query?: never;
@@ -2566,6 +2600,55 @@ export interface operations {
         };
       };
       default: components["responses"]["Problem"];
+    };
+  };
+  getLiveness: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The process is serving. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/plain": "ok\n";
+        };
+      };
+    };
+  };
+  getReadiness: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The database answers and this process owns it. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/plain": "ok\n";
+        };
+      };
+      /** @description The database is unavailable or ownership was lost. */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/plain": "unavailable\n";
+        };
+      };
     };
   };
   acceptIngestion: {

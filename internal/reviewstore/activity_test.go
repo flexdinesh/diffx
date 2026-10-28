@@ -16,7 +16,7 @@ func TestActivityProjectionPreservesHeadOrderAndObservationProvenance(t *testing
 	for _, queued := range []bool{false, true} {
 		t.Run(map[bool]string{false: "direct", true: "queued"}[queued], func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "state.db")
-			store, err := Open(path)
+			store, err := openTestState(t, path, DefaultRetention)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -105,7 +105,7 @@ func TestActivityProjectionPreservesHeadOrderAndObservationProvenance(t *testing
 			if err := store.Close(); err != nil {
 				t.Fatal(err)
 			}
-			store, err = Open(path)
+			store, err = openTestState(t, path, DefaultRetention)
 			if err != nil {
 				t.Fatal(err)
 			}

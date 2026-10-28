@@ -12,7 +12,7 @@ canonical record of package boundaries and architectural decisions.
 | Collection | Selected checkout(s) at start, live page loads and sync; stdin once | Separate finite sync or hook producer    |
 | Admission  | Direct application call; startup runs after serving                 | Authenticated durable queue and worker   |
 | Lifetime   | Foreground; authenticated singleton replacement                     | Foreground; graceful worker shutdown     |
-| Storage    | One owner of persistent SQLite                                      | One owner of persistent SQLite           |
+| Storage    | One owner of persistent SQLite                                      | One owner of SQLite or PostgreSQL        |
 | Queries    | Selected checkout(s) or capture via REST/MCP                        | Same application services via REST/MCP   |
 | Access     | Public listener; private lifecycle credential                       | Account credentials wrap the application |
 | Identity   | Automatic stable local owner; no account UI                         | Account sessions and scoped API tokens   |
@@ -103,8 +103,8 @@ owner. See [development.md](development.md) for isolated checkout commands.
 - `reviewstore`: SQL storage adapter: transactions, identity persistence,
   stored reads, retention and queue. Operations and their SQL are shared; a
   per-backend dialect owns schema statements, version records, ownership and
-  the few expressions that differ (JSON reads, aggregation, clock). SQLite is
-  the only backend.
+  the few expressions that differ (JSON reads, aggregation, clock). SQLite
+  serves both compositions; PostgreSQL serves remote composition.
 - `ingestionqueue`: admission/lease contract and worker failure policy; jobs fail
   permanently only for `review.Permanent` rejections (4xx except 408/429).
 - `submission`: destination identity, delivery and the acknowledgement TTL,
@@ -221,7 +221,19 @@ pre-push and recorded in the PR evidence.
 New adapters must preserve ownership, atomic publication, retention, replay,
 lease fencing and commit-before-ack recovery. External brokers require atomic
 scheduling intent (an outbox). Multiple server processes need a storage backend
-designed for that concurrency; SQLite retains one owning process.
+designed for that concurrency; SQLite and PostgreSQL each retain one owning
+process.
+
+PostgreSQL keeps the SQLite contracts rather than adding concurrency. The owner
+holds a session-level advisory lock on a dedicated connection and queries share
+one other connection, so transactions stay serial and read-then-write
+operations, leases and fencing keep their SQLite semantics. Losing the lock
+session loses ownership: `HoldOwnership` fails, and remote composition stops
+serving and workers and exits nonzero rather than risk a second owner.
+Placeholders are rebound at the driver; schema statements live in
+`schema_postgres.sql`, checked against SQLite by a parity test, starting at the
+current schema with no older compatibility floor. `mise run test:postgres` runs
+the Go suite against PostgreSQL; it needs Docker and stays outside `check`.
 
 Only public v2 routes and ingestion protocol 4 remain. Retired: `review`,
 `service`, `serve`, `capture`, background daemon startup, public v1,
@@ -278,7 +290,9 @@ environment, then explicit flags. Server startup does not discover, create or lo
 personal CLI config. The binary defaults to loopback port 7980 and a separate
 `./data/state.db`; the container supplies overridable env defaults for its
 listener and `/data` volume. One process owns the volume's SQLite database,
-credentials and durable queue.
+credentials and durable queue. `DIFFX_SERVER_DATABASE_URL`, environment only
+because it carries credentials, selects PostgreSQL instead; the state path is
+then unused.
 
 Personal CLI configuration keeps modes in separate namespaces so one machine runs
 both compositions at once: `local.*` and `DIFFX_LOCAL_*` configure only

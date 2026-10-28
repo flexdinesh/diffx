@@ -22,7 +22,7 @@ func queuedRequest(id string) ingestion.Request {
 
 func TestQueueRestartReplayAndLeaseFencing(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
-	store, err := Open(path)
+	store, err := openTestState(t, path, DefaultRetention)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestQueueRestartReplayAndLeaseFencing(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = Open(path)
+	store, err = openTestState(t, path, DefaultRetention)
 	if err != nil {
 		t.Fatal(err)
 	}

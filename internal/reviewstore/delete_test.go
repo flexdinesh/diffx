@@ -51,9 +51,7 @@ func TestDeleteContextRollsBackWhenAnchorDeletionFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.Exec(`CREATE TRIGGER reject_anchor BEFORE DELETE ON diffs WHEN OLD.mode='all' BEGIN SELECT RAISE(ABORT,'anchor deletion failed'); END`); err != nil {
-		t.Fatal(err)
-	}
+	rejectAnchorDeletion(t, store)
 	if err := store.DeleteContext(t.Context(), owner.ID, binding.ContextID); err == nil {
 		t.Fatal("anchor failure did not abort deletion")
 	}

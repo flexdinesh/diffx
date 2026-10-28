@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"github.com/flexdinesh/diffx/internal/testsupport/storetest"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,7 +14,6 @@ import (
 	"github.com/flexdinesh/diffx/internal/contextservice"
 	"github.com/flexdinesh/diffx/internal/review"
 	"github.com/flexdinesh/diffx/internal/reviewservice"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 )
 
 func TestStoredPreviewReferences(t *testing.T) {
@@ -39,7 +39,7 @@ func TestStoredPreviewReferences(t *testing.T) {
 	preview.Message = nil
 	input.Scopes[0].Patches[file.ID] = preview
 	input.Scopes = append(input.Scopes, staged)
-	store, err := reviewstore.Open("")
+	store, err := storetest.Open(t)
 	if err != nil {
 		t.Fatal(err)
 	}

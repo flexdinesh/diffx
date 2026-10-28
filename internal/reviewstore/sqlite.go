@@ -1,6 +1,7 @@
 package reviewstore
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -51,7 +52,9 @@ func OpenSQLite(path string, retention time.Duration) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	store := &Store{db: db, dialect: sqliteDialect{}, release: release, retention: retention}
+	// The ownership lock file is held until Close.
+	store := &Store{db: db, dialect: sqliteDialect{}, owned: func(context.Context) error { return nil }, retention: retention}
+	store.close = func() error { return errors.Join(db.Close(), release()) }
 	// Schema creation runs without foreign key enforcement; the pragma has no
 	// effect inside a transaction.
 	if _, err = db.Exec("PRAGMA foreign_keys=OFF; PRAGMA busy_timeout = 5000"); err == nil {
