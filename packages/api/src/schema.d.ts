@@ -391,6 +391,79 @@ export interface paths {
     delete: operations["unfollowGitHubRepository"];
     options?: never;
     head?: never;
+    /** @description Change whether a followed repository's pull requests send push notifications to this account. Distributed browser sessions only. */
+    patch: operations["updateGitHubFollow"];
+    trace?: never;
+  };
+  "/api/v2/push": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Web Push availability, the server's VAPID public key and this account's subscribed devices. Remote server only; distributed browser sessions only. */
+    get: operations["getPushSettings"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/push/subscriptions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** @description Register or refresh this browser's push subscription for the account, identified by its endpoint. An endpoint registered by another account moves to this one. Idempotent. Distributed browser sessions only. */
+    put: operations["putPushSubscription"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/push/subscriptions/{subscriptionId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        subscriptionId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** @description Stop push notifications to a device of this account. Distributed browser sessions only. */
+    delete: operations["deletePushSubscription"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/push/subscriptions/{subscriptionId}/test": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        subscriptionId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Send a test notification to a device of this account and wait for the push service's answer. A device the push service reports gone is removed and answers 404. Distributed browser sessions only. */
+    post: operations["testPushSubscription"];
+    delete?: never;
+    options?: never;
+    head?: never;
     patch?: never;
     trace?: never;
   };
@@ -1029,6 +1102,33 @@ export interface components {
       followed: boolean;
       /** @description Followed but no longer readable by this account; receives nothing until access returns. */
       lost: boolean;
+      /** @description Whether new pull request diffs from this followed repository send push notifications. True unless muted; false when not followed. */
+      notify: boolean;
+    };
+    PushSettings: {
+      /** @description False when the server has no HTTPS public URL (or loopback HTTP for development). */
+      enabled: boolean;
+      /** @description VAPID application server key, base64url uncompressed P-256 point. Present when enabled. */
+      publicKey?: string;
+      devices: components["schemas"]["PushDevice"][];
+    };
+    PushDevice: {
+      id: string;
+      /** @description Browser-supplied device description, for example "Chrome on Android". */
+      label: string;
+      /** @description Unix milliseconds. */
+      createdAt: number;
+      /** @description Unix milliseconds of the last notification the push service accepted, null before the first. */
+      lastSuccessAt: number | null;
+    };
+    PushSubscriptionInput: {
+      /** @description HTTPS push service endpoint from PushSubscription.toJSON(). */
+      endpoint: string;
+      keys: {
+        p256dh: string;
+        auth: string;
+      };
+      label: string;
     };
     SessionAssociation: {
       sourceId: string;
@@ -2269,6 +2369,148 @@ export interface operations {
       };
       403: components["responses"]["Problem"];
       404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  updateGitHubFollow: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path: {
+        repositoryId: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          notify: boolean;
+        };
+      };
+    };
+    responses: {
+      /** @description Updated. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      400: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  getPushSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Push settings. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PushSettings"];
+        };
+      };
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  putPushSubscription: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PushSubscriptionInput"];
+      };
+    };
+    responses: {
+      /** @description Registered device. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PushDevice"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  deletePushSubscription: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path: {
+        subscriptionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Removed. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  testPushSubscription: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path: {
+        subscriptionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Accepted by the push service. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      429: components["responses"]["Problem"];
+      502: components["responses"]["Problem"];
       default: components["responses"]["Problem"];
     };
   };

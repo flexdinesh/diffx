@@ -28,6 +28,8 @@ export type ApiCollectionFailure = components["schemas"]["CollectionFailure"];
 export type ApiPullRequest = components["schemas"]["PullRequest"];
 export type ApiGitHubConnection = components["schemas"]["GitHubConnection"];
 export type ApiGitHubRepository = components["schemas"]["GitHubRepository"];
+export type ApiPushSettings = components["schemas"]["PushSettings"];
+export type ApiPushDevice = components["schemas"]["PushDevice"];
 export type ApiAdminUser = components["schemas"]["AdminUser"];
 export type ApiInvite = components["schemas"]["Invite"];
 
