@@ -57,6 +57,7 @@ function remote(
     const path = new URL(request.url).pathname;
     if (path === "/api/v2/bootstrap") return json(bootstrap(signedIn, admin));
     if (path === "/api/v2/github/connection") return json({}, 404);
+    if (path === "/api/v2/push") return json({}, 404);
     return handler(request);
   });
 }

@@ -34,6 +34,9 @@ type Follow struct {
 	Status         string // active or lost
 	VerifiedAt     int64
 	CreatedAt      int64
+	// Muted follows still receive snapshots but no push notifications. Reads
+	// report it; PutFollow leaves it unchanged.
+	Muted bool
 }
 
 // PullRequestRef addresses one pull request through the installation that can read it.
@@ -65,9 +68,17 @@ type Store interface {
 	// SeenDelivery and RecordDelivery deduplicate webhook deliveries by GUID.
 	SeenDelivery(ctx context.Context, id string) (bool, error)
 	RecordDelivery(ctx context.Context, id, event string, now int64) error
+	// SetMuted changes whether a follow sends push notifications. ErrNotFound
+	// when the account does not follow the repository.
+	SetMuted(ctx context.Context, ownerID string, repositoryID int64, muted bool) error
 	// RequestRefresh coalesces refresh intent per pull request by advancing its
 	// generation. A nonempty retention run makes the next submission fresh.
-	RequestRefresh(ctx context.Context, ref PullRequestRef, retentionRun string, now int64) error
+	// Opened records, in the same transaction, that a webhook announced the
+	// pull request, so its first snapshot notifies followers.
+	RequestRefresh(ctx context.Context, ref PullRequestRef, retentionRun string, opened bool, now int64) error
+	// PullRequestHead returns the last captured head SHA ("" before the first
+	// snapshot) and whether a webhook announced the pull request.
+	PullRequestHead(ctx context.Context, repositoryID int64, number int) (head string, opened bool, err error)
 	// KnownOpen lists pull request numbers last observed open.
 	KnownOpen(ctx context.Context, repositoryID int64) ([]int, error)
 
@@ -80,10 +91,11 @@ type Store interface {
 	Leased(ctx context.Context, repositoryID int64, number int, token string, now int64) (Lease, []byte, error)
 	// ReleaseRefresh ends a failed lease; the pull request stays pending until retryAt.
 	ReleaseRefresh(ctx context.Context, lease Lease, retryAt int64, detail string) error
-	// CompleteRefresh atomically admits every submission, marks the leased
-	// generation refreshed and records the observed state. A generation
-	// requested during the lease stays pending.
-	CompleteRefresh(ctx context.Context, lease Lease, state string, admissions []Admission, now int64) error
+	// CompleteRefresh atomically admits every submission with its notification
+	// intent, marks the leased generation refreshed and records the observed
+	// state and, when nonempty, the captured head. A generation requested
+	// during the lease stays pending.
+	CompleteRefresh(ctx context.Context, lease Lease, state, head string, admissions []Admission, now int64) error
 }
 
 var ErrLeaseLost = errors.New("fetch lease lost")
@@ -97,8 +109,17 @@ type Lease struct {
 	Attempt      int
 }
 
-// Admission is one account's submission of a fetched snapshot.
+// Admission is one account's submission of a fetched snapshot. A non-nil
+// Notification is push intent linked to the admitted ingestion job.
 type Admission struct {
-	OwnerID string
-	Request ingestion.Request
+	OwnerID      string
+	Request      ingestion.Request
+	Notification *Notification
+}
+
+// Notification is the text of a pull request push notification. Delivery adds
+// the link once the follower's snapshot is published.
+type Notification struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
 }

@@ -17,6 +17,7 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/githubsync"
 	"github.com/flexdinesh/diffx/internal/identityservice"
+	"github.com/flexdinesh/diffx/internal/pushservice"
 	"github.com/flexdinesh/diffx/internal/serverapp"
 	"github.com/flexdinesh/diffx/packages/api"
 )
@@ -31,6 +32,7 @@ type transport struct {
 	limiter      *authLimiter
 	authSlots    chan struct{}
 	github       *githubsync.Service
+	push         *pushservice.Service
 }
 type principal struct {
 	account identityservice.Account
@@ -148,6 +150,14 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		remote.githubAccount(w, r, p)
 		return
 	}
+	if r.URL.Path == "/api/v2/push" || strings.HasPrefix(r.URL.Path, "/api/v2/push/") {
+		if p.session == nil {
+			problem(w, 403, "Browser session required")
+			return
+		}
+		remote.pushRoutes(w, r, p)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/api/v2/admin/") {
 		if p.session == nil || !p.account.Admin {
 			problem(w, 403, "Admin browser session required")
@@ -262,12 +272,28 @@ func (remote *transport) static(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if contentType := mime.TypeByExtension(path.Ext(name)); contentType != "" {
+	if contentType := assetType(path.Ext(name)); contentType != "" {
 		w.Header().Set("Content-Type", contentType)
+	}
+	// The service worker must update promptly; browsers revalidate it.
+	if name == "sw.js" {
+		w.Header().Set("Cache-Control", "no-cache")
 	}
 	if r.Method == http.MethodGet {
 		_, _ = w.Write(raw)
 	}
+}
+
+// assetType names types the platform MIME table may lack. Browsers require a
+// JavaScript type for service workers and accept a manifest only as JSON.
+func assetType(extension string) string {
+	switch extension {
+	case ".js", ".mjs":
+		return "text/javascript; charset=utf-8"
+	case ".webmanifest":
+		return "application/manifest+json"
+	}
+	return mime.TypeByExtension(extension)
 }
 
 // auth serves the credential forms: admin password login, one-time admin setup,

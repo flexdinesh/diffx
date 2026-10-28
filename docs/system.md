@@ -214,6 +214,61 @@ a push, edit or state change is a fresh observation in the same stream. Every
 follower with verified access is admitted in one transaction with completing
 the lease; a refresh requested during the lease stays pending.
 
+#### Push notifications
+
+The remote server sends Web Push notifications of new pull request diffs to an
+account's subscribed browsers. Push is enabled when `DIFFX_SERVER_PUBLIC_URL` is
+https, or http on a loopback host for development; its origin is the VAPID
+subject. Otherwise Settings reports push disabled and registering or testing a
+device answers 409. The VAPID key pair is generated on the first enabled start
+and stored in SQLite (`push_keys`); it never rotates automatically, because
+every browser subscription is bound to its public key. Local composition has
+no push routes or delivery.
+
+Devices register with a browser session and CSRF token, like GitHub
+management. A subscription is identified by its push service endpoint (https;
+plain http only to loopback hosts, and only when the public URL itself is
+loopback, so a deployed server never posts to its own host), with a 65-byte
+uncompressed P-256 `p256dh`
+key, a 16-byte `auth` secret and a label of at most 120 characters.
+Registering an endpoint again updates it; an endpoint registered by another
+account moves to the registering account as a new device, because a browser
+profile receives one account's notifications. A test notification is sent
+synchronously; a push service reporting the device gone (404/410) removes it.
+
+`githubsync` owns the trigger rule. Each completed refresh records the pull
+request's captured head SHA. A snapshot whose head differs from the recorded
+one notifies, whatever the pull request's author, including the account's own
+pull requests. A first snapshot (no recorded head) notifies only when a
+`pull_request` webhook with action `opened`, `reopened` or `ready_for_review`
+requested the refresh, so first follows, startup reconciliation and Resync
+import existing pull requests silently, while reconciliation after downtime
+still notifies changed heads. Metadata edits, closing and merging keep the head
+and never notify. Only admitted followers are notified, so lost follows get
+nothing; a follower may mute a repository (`PATCH
+/api/v2/github/follows/{id}` with `notify: false`), which keeps its snapshots
+and stops its notifications. A mute ends with its follow. The title is
+`owner/repo #N`; the body is the pull request title (at most 120 characters),
+then `New PR by @author` or `Updated by @author`.
+
+Notification intent is an outbox: one row per notified follower, written in the
+same transaction as that follower's ingestion admission and linked to its job,
+so a failed refresh leaves neither. `pushservice`'s delivery worker waits while
+the job is pending, drops the notification when the job failed, the account is
+disabled or deleted, the stream is gone or push is disabled, and otherwise
+resolves the published context to its stream and sends
+`{"kind":"pull_request","title","body","url":"/streams/<streamId>","tag":"<streamId>","timestamp"}`
+(Unix ms of the notification) with a 24-hour TTL, normal urgency and a topic
+derived from the stream, so undelivered notifications of one stream collapse.
+Each device's outcome is recorded as soon as its push service answers, so a
+retry or restart never sends again to a device that accepted; an interrupted
+send is uncertain and may repeat. Gone devices are removed, other refusals are
+recorded per device, and rate limits, server failures and network errors retry
+with exponential backoff from 30 seconds capped at an hour, or the push
+service's longer `Retry-After`. Delivery gives up 24 hours after the
+notification was recorded. Storage errors are logged and the worker keeps
+running; shutdown cancels and joins it before storage closes.
+
 ### Browse and review
 
 The comparison selector reads scopes of the open observation. It does not

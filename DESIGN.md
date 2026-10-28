@@ -519,6 +519,8 @@ at `/design.html` (see `docs/development.md`).
 - Standard buttons and button-like header statuses use the 32px control height.
   Compact sizing is reserved for subordinate icon and metadata controls. Shared
   variants own hover, active, border, and background styling.
+- Icon toggles take `touch` like icon buttons: 44px wide and high on narrow or
+  coarse-pointer screens.
 - Filled accent is reserved for the primary action, such as saving a comment.
   Refresh, copy/export, and layout preferences are secondary actions.
 - Icon buttons have accessible names and centered icons; size the hit box
@@ -648,6 +650,47 @@ at `/design.html` (see `docs/development.md`).
   dynamic viewport and allow internal scrolling. Long XML must remain selectable.
 - Navigation below 1012px is a modal drawer with backdrop, focus containment,
   explicit close, inert background, Escape support, and focus restoration.
+
+### Account settings
+
+- Settings (`/settings`, remote server only) is one reading-width column of
+  sections in a fixed order: API tokens, GitHub, Notifications, Password
+  (admin), Browser session. Each section is an `h2` above a separator, short
+  `--text-secondary` prose, then its controls; subsections use `h3`. Async
+  feedback uses an always-mounted `role="status"` paragraph; failures use
+  `ErrorState`. Removing or revoking something on another device or service
+  confirms with `ConfirmDialog`.
+- Followed GitHub repositories carry a notification bell when the server sends
+  push: a ghost `ui/toggle` (`icon-sm`, `touch`) named “Notify for
+  owner/repo”, Bell when pressed (accent toggle state) and BellOff when muted.
+  It updates optimistically and rolls back with an error on failure. Row labels
+  match the bell's height so rows keep one rhythm, 52px on touch.
+- Notifications is scoped to this device first, then other devices, with at
+  most one primary action. Prose names what notifies (a followed pull request
+  opening or getting new commits) and points to GitHub when nothing is
+  followed. This device shows one state: server push off (the admin variant
+  names `--public-url`), browser without push, iPhone or iPad Safari (Home
+  Screen steps), blocked (site settings, no button), “Turn on notifications”
+  (the only place the browser permission prompt is requested), or on: the
+  “Send notifications to this device” checkbox and an outline “Send test
+  notification”. An outline “Install app” appears while the browser offers
+  installation; an installed app shows muted “Installed as an app.” Other
+  devices list label, added and last-notified dates and a destructive Remove.
+  No banners or counters advertise notifications elsewhere.
+
+## App icons
+
+`apps/web/public/icons` holds the remote server's app icons: a “dx” monogram
+of round-capped strokes (circle bowl, stem, crossed x) in light `--accent` on
+light `--shell-canvas`. `icon.svg` is the favicon and switches to the dark
+tokens under `prefers-color-scheme: dark`; it is also the source of
+`icon-192.png` and `icon-512.png` (rounded tile, transparent corners).
+`icon-maskable.svg` is full-bleed with the glyphs at 90% inside the central
+safe zone and is the source of `icon-maskable-512.png` and the opaque
+`apple-touch-icon.png` (180). `badge.svg` is the white-on-transparent
+notification badge source of `badge-96.png`. Regenerate the PNGs from their
+SVG source at their exact sizes when the monogram or those tokens change.
+The manifest uses `--bg` as background and `--shell-canvas` as theme color.
 
 ## Interaction states
 

@@ -29,6 +29,8 @@ import {
   SignIn,
 } from "./account.tsx";
 import { AdminPage } from "./admin.tsx";
+import { startPwa } from "./pwa.ts";
+import { syncPushDevice } from "./push.ts";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const root = document.getElementById("root");
@@ -45,6 +47,14 @@ function ApplicationRoutes() {
   const remote = ready && state.bootstrap.mode === "remote";
   const signedIn = ready && state.bootstrap.user !== null;
   const admin = signedIn && state.bootstrap.user?.admin === true;
+  const userId = (ready && state.bootstrap.user?.id) || null;
+  // Only the remote server is an installable app with push notifications.
+  useEffect(() => {
+    if (remote) startPwa();
+  }, [remote]);
+  useEffect(() => {
+    if (remote && userId) void syncPushDevice().catch(() => {});
+  }, [remote, userId]);
   // Local mode has no account pages; signed-in users have no sign-in pages;
   // only the admin has the admin page.
   const misplaced =

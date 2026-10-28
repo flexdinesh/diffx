@@ -3,6 +3,7 @@ module github.com/flexdinesh/diffx
 go 1.27.3
 
 require (
+	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-isatty v0.0.24
 	github.com/modelcontextprotocol/go-sdk v1.8.0
@@ -13,6 +14,7 @@ require (
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect

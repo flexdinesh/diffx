@@ -36,6 +36,7 @@ run = ["pnpm generate:api", { task = "plugins:build" }]
 description = "Generate API types and build the web app"
 sources = [
   "apps/web/src/**/*",
+  "apps/web/public/**/*",
   "apps/web/index.html",
   "apps/web/vite.config.ts",
   "apps/web/tsconfig.json",

@@ -27,6 +27,14 @@ func initializeGitHub(transaction *sql.Tx) error {
 			lease_token TEXT NOT NULL DEFAULT '', lease_until INTEGER NOT NULL DEFAULT 0, leased_generation INTEGER NOT NULL DEFAULT 0, leased_run TEXT NOT NULL DEFAULT '', leased TEXT NOT NULL DEFAULT '',
 			attempt INTEGER NOT NULL DEFAULT 0, available_at INTEGER NOT NULL DEFAULT 0, detail TEXT NOT NULL DEFAULT '', PRIMARY KEY(repository_id, number))`,
 		`CREATE INDEX IF NOT EXISTS github_pull_requests_pending ON github_pull_requests(requested_at) WHERE generation>refreshed_generation`,
+		// Schema 15 adds push notification triggers; both tables are additive.
+		// The last captured head per pull request decides whether a snapshot is
+		// new work; opened records that a webhook announced the pull request.
+		`CREATE TABLE IF NOT EXISTS github_pr_heads (repository_id INTEGER NOT NULL, number INTEGER NOT NULL, head_sha TEXT NOT NULL DEFAULT '', opened INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY(repository_id, number), FOREIGN KEY(repository_id, number) REFERENCES github_pull_requests(repository_id, number) ON DELETE CASCADE)`,
+		// A mute ends with its follow, which ends with its connection.
+		`CREATE TABLE IF NOT EXISTS github_follow_mutes (owner_id TEXT NOT NULL, repository_id INTEGER NOT NULL, PRIMARY KEY(owner_id, repository_id),
+			FOREIGN KEY(owner_id, repository_id) REFERENCES github_follows(owner_id, repository_id) ON DELETE CASCADE)`,
 	}
 	for _, statement := range statements {
 		if _, err := transaction.Exec(statement); err != nil {
@@ -129,7 +137,8 @@ func (s *GitHubStore) DeleteFollow(ctx context.Context, ownerID string, reposito
 }
 
 func (s *GitHubStore) follows(ctx context.Context, where string, argument any) ([]githubsync.Follow, error) {
-	rows, err := s.store.db.QueryContext(ctx, `SELECT owner_id,repository_id,installation_id,full_name,status,verified_at,created_at FROM github_follows WHERE `+where+` ORDER BY full_name,owner_id`, argument)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT f.owner_id,f.repository_id,f.installation_id,f.full_name,f.status,f.verified_at,f.created_at,m.owner_id IS NOT NULL
+		FROM github_follows f LEFT JOIN github_follow_mutes m ON m.owner_id=f.owner_id AND m.repository_id=f.repository_id WHERE `+where+` ORDER BY f.full_name,f.owner_id`, argument)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +146,7 @@ func (s *GitHubStore) follows(ctx context.Context, where string, argument any) (
 	result := make([]githubsync.Follow, 0)
 	for rows.Next() {
 		var f githubsync.Follow
-		if err := rows.Scan(&f.OwnerID, &f.RepositoryID, &f.InstallationID, &f.FullName, &f.Status, &f.VerifiedAt, &f.CreatedAt); err != nil {
+		if err := rows.Scan(&f.OwnerID, &f.RepositoryID, &f.InstallationID, &f.FullName, &f.Status, &f.VerifiedAt, &f.CreatedAt, &f.Muted); err != nil {
 			return nil, err
 		}
 		result = append(result, f)
@@ -146,11 +155,35 @@ func (s *GitHubStore) follows(ctx context.Context, where string, argument any) (
 }
 
 func (s *GitHubStore) Follows(ctx context.Context, ownerID string) ([]githubsync.Follow, error) {
-	return s.follows(ctx, "owner_id=?", ownerID)
+	return s.follows(ctx, "f.owner_id=?", ownerID)
 }
 
 func (s *GitHubStore) RepositoryFollows(ctx context.Context, repositoryID int64) ([]githubsync.Follow, error) {
-	return s.follows(ctx, "repository_id=?", repositoryID)
+	return s.follows(ctx, "f.repository_id=?", repositoryID)
+}
+
+func (s *GitHubStore) SetMuted(ctx context.Context, ownerID string, repositoryID int64, muted bool) error {
+	transaction, err := s.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer transaction.Rollback()
+	var found int
+	err = transaction.QueryRowContext(ctx, `SELECT 1 FROM github_follows WHERE owner_id=? AND repository_id=?`, ownerID, repositoryID).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return githubsync.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	statement := `DELETE FROM github_follow_mutes WHERE owner_id=? AND repository_id=?`
+	if muted {
+		statement = `INSERT INTO github_follow_mutes(owner_id,repository_id) VALUES(?,?) ON CONFLICT DO NOTHING`
+	}
+	if _, err := transaction.ExecContext(ctx, statement, ownerID, repositoryID); err != nil {
+		return err
+	}
+	return transaction.Commit()
 }
 
 func (s *GitHubStore) LoseInstallation(ctx context.Context, installationID int64, repositoryIDs []int64) error {
@@ -180,12 +213,35 @@ func (s *GitHubStore) RecordDelivery(ctx context.Context, id, event string, now 
 	return err
 }
 
-func (s *GitHubStore) RequestRefresh(ctx context.Context, ref githubsync.PullRequestRef, retentionRun string, now int64) error {
-	_, err := s.store.db.ExecContext(ctx, `INSERT INTO github_pull_requests(repository_id,number,installation_id,full_name,generation,retention_run,requested_at) VALUES(?,?,?,?,1,?,?)
+func (s *GitHubStore) RequestRefresh(ctx context.Context, ref githubsync.PullRequestRef, retentionRun string, opened bool, now int64) error {
+	transaction, err := s.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer transaction.Rollback()
+	if _, err := transaction.ExecContext(ctx, `INSERT INTO github_pull_requests(repository_id,number,installation_id,full_name,generation,retention_run,requested_at) VALUES(?,?,?,?,1,?,?)
 		ON CONFLICT(repository_id,number) DO UPDATE SET installation_id=excluded.installation_id,full_name=excluded.full_name,generation=generation+1,
 		retention_run=CASE WHEN excluded.retention_run<>'' THEN excluded.retention_run ELSE retention_run END,requested_at=excluded.requested_at`,
-		ref.RepositoryID, ref.Number, ref.InstallationID, ref.FullName, retentionRun, now)
-	return err
+		ref.RepositoryID, ref.Number, ref.InstallationID, ref.FullName, retentionRun, now); err != nil {
+		return err
+	}
+	if opened {
+		if _, err := transaction.ExecContext(ctx, `INSERT INTO github_pr_heads(repository_id,number,opened) VALUES(?,?,1) ON CONFLICT(repository_id,number) DO UPDATE SET opened=1`,
+			ref.RepositoryID, ref.Number); err != nil {
+			return err
+		}
+	}
+	return transaction.Commit()
+}
+
+func (s *GitHubStore) PullRequestHead(ctx context.Context, repositoryID int64, number int) (string, bool, error) {
+	var head string
+	var opened bool
+	err := s.store.db.QueryRowContext(ctx, `SELECT head_sha,opened FROM github_pr_heads WHERE repository_id=? AND number=?`, repositoryID, number).Scan(&head, &opened)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	return head, opened, err
 }
 
 func (s *GitHubStore) KnownOpen(ctx context.Context, repositoryID int64) ([]int, error) {
@@ -242,7 +298,7 @@ func (s *GitHubStore) ReleaseRefresh(ctx context.Context, lease githubsync.Lease
 	return fenced(result, err)
 }
 
-func (s *GitHubStore) CompleteRefresh(ctx context.Context, lease githubsync.Lease, state string, admissions []githubsync.Admission, now int64) error {
+func (s *GitHubStore) CompleteRefresh(ctx context.Context, lease githubsync.Lease, state, head string, admissions []githubsync.Admission, now int64) error {
 	transaction, err := s.store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -255,9 +311,21 @@ func (s *GitHubStore) CompleteRefresh(ctx context.Context, lease githubsync.Leas
 	if err := fenced(result, err); err != nil {
 		return err
 	}
-	for _, admission := range admissions {
-		if _, err := acceptJob(transaction, admission.OwnerID, admission.Request); err != nil {
+	if head != "" {
+		if _, err := transaction.ExecContext(ctx, `INSERT INTO github_pr_heads(repository_id,number,head_sha) VALUES(?,?,?) ON CONFLICT(repository_id,number) DO UPDATE SET head_sha=excluded.head_sha`,
+			lease.Ref.RepositoryID, lease.Ref.Number, head); err != nil {
 			return err
+		}
+	}
+	for _, admission := range admissions {
+		job, err := acceptJob(transaction, admission.OwnerID, admission.Request)
+		if err != nil {
+			return err
+		}
+		if admission.Notification != nil {
+			if err := insertNotification(transaction, admission.OwnerID, job.ID, pullRequestNotification, *admission.Notification, now); err != nil {
+				return err
+			}
 		}
 	}
 	return transaction.Commit()
