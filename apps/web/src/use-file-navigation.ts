@@ -173,7 +173,11 @@ export function useFileNavigation({
         ?.scrollIntoView({ block: "nearest" });
     });
   }, []);
-  // Hiding the file in view continues the review at its neighbor.
+  // Explicit navigation keeps its file selected until that file leaves view,
+  // even when another file is above it in the viewport.
+  const pinned = useRef<{ path: string; seen: boolean } | null>(null);
+  // Hiding the file in view continues the review at its neighbor. Pin it so
+  // scrolls before the shortened list lands cannot select another file.
   useEffect(() => {
     if (
       !hideReviewed ||
@@ -182,6 +186,7 @@ export function useFileNavigation({
       !matchingFiles.some((file) => file.path === selected)
     )
       return;
+    pinned.current = { path: activePath, seen: false };
     selectVisibleFile(activePath);
     requestAnimationFrame(() => {
       viewer.current?.scrollTo({
@@ -192,9 +197,6 @@ export function useFileNavigation({
       });
     });
   }, [hideReviewed, activePath, selected, matchingFiles, selectVisibleFile]);
-  // Explicit navigation keeps its file selected until that file leaves view,
-  // even when another file is above it in the viewport.
-  const pinned = useRef<{ path: string; seen: boolean } | null>(null);
   const followScroll = useCallback(
     (visible: readonly string[]) => {
       const pin = pinned.current;
