@@ -136,3 +136,18 @@ Known exceptions, accepted after the October 2026 dependency audit:
 
 Recheck with `pnpm licenses list -r` and the `LICENSE` files of `go list -deps`
 modules when adding dependencies.
+
+## Homelab container images
+
+`.woodpecker/deploy.yml` publishes `diffx-server` and `diffx-fetcher` images to
+`registry.local.deebox.xyz/home` for the Kubernetes app in
+`deehomelab/k8s-cluster` (`apps/diffx`). It stages the embedded web assets,
+builds both Dockerfile targets and rolls deployments to the pushed digests:
+
+- Pushes to `main` tag `:<commit>` and `:main` and roll `diffx-staging`.
+- Release tags `vX.Y.Z` tag `:vX.Y.Z` and `:release` and roll `diffx-prod`.
+
+Woodpecker must trust the repository for the Docker socket and hold a
+`KUBECONFIG` secret with deployment access to both namespaces. Rollout fails
+until the k8s-cluster manifests are provisioned. Verification stays in GitHub
+Actions and the local pre-push hook.
