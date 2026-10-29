@@ -1,4 +1,4 @@
-# A fixed project name keeps the data volume independent of the checkout directory.
+# A fixed project name keeps the database volume independent of the checkout directory.
 name: diffx
 
 services:
@@ -8,7 +8,9 @@ services:
     environment:
       DIFFX_SERVER_HOST: 0.0.0.0
       DIFFX_SERVER_PORT: "7980"
-      DIFFX_SERVER_STATE: /data/state.db
+      # The server is stateless; replicas share this database. Point it at your
+      # own Postgres 18+ to drop the bundled service.
+      DIFFX_SERVER_DATABASE_URL: "${DIFFX_SERVER_DATABASE_URL:-postgres://diffx:${DIFFX_POSTGRES_PASSWORD:-diffx}@postgres:5432/diffx?sslmode=disable}"
       DIFFX_SERVER_RETENTION_DAYS: "${DIFFX_SERVER_RETENTION_DAYS:-7}"
       # Until the admin exists, each start logs a one-time setup link on this
       # origin; no default credentials are generated.
@@ -38,11 +40,29 @@ services:
     networks:
       - default
       - fetch
-    volumes:
-      - diffx-data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
     read_only: true
     restart: unless-stopped
     stop_grace_period: 30s
+
+  # Self-host example database; it is never published. Production operators
+  # usually run their own Postgres and set DIFFX_SERVER_DATABASE_URL instead.
+  postgres:
+    image: postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+    environment:
+      POSTGRES_USER: diffx
+      POSTGRES_PASSWORD: "${DIFFX_POSTGRES_PASSWORD:-diffx}"
+      POSTGRES_DB: diffx
+    volumes:
+      - diffx-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U diffx -d diffx"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
 
   # Mirrors leased pull requests from GitHub; it has no published ports.
   fetcher:
@@ -73,5 +93,5 @@ networks:
   fetch:
 
 volumes:
-  diffx-data:
+  diffx-postgres:
   diffx-mirrors:

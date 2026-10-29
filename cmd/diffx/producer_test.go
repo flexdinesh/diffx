@@ -99,7 +99,7 @@ func TestHookInitialCleanSessionsAndMissingAcknowledgement(t *testing.T) {
 	}
 	service := contextservice.NewWithContext(t.Context(), store, user)
 	defer service.Close()
-	server := testsupport.Server(t, service, store)
+	server := testsupport.Server(t, service, store, store.Queue())
 	defer server.Close()
 	t.Setenv("DIFFX_REMOTE_URL", server.URL)
 	directory := t.TempDir()

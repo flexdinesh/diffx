@@ -2,43 +2,60 @@ package main
 
 import (
 	"bytes"
-	"database/sql"
+	"errors"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/flexdinesh/diffx/internal/identityservice"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
+	"github.com/flexdinesh/diffx/internal/pgstore"
 	"github.com/flexdinesh/diffx/internal/testsupport"
+	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
+	"github.com/jackc/pgx/v5"
 )
+
+// databaseURL is a well-formed connection string for tests that only parse settings.
+const databaseURL = "postgres://diffx:hunter2@db.example.com:5432/diffx"
+
+func withDatabaseURL(t *testing.T) {
+	t.Helper()
+	t.Setenv("DIFFX_SERVER_DATABASE_URL", databaseURL)
+}
 
 func TestRemoteConfigMappingAndPrecedence(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
-	if err := os.WriteFile(path, []byte(`{"host":"::1","port":4123,"state":"file.db"}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"host":"::1","port":4123}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("DIFFX_SERVER_CONFIG", "")
 	t.Setenv("DIFFX_RUNTIME_DIR", t.TempDir())
+	withDatabaseURL(t)
 	settings, _, err := parseSettings(nil, io.Discard)
-	if err != nil || settings.Listen != "127.0.0.1:7980" || settings.State != "data/state.db" {
-		t.Fatalf("remote default changed: %#v %v", settings, err)
+	if err != nil || settings.Listen != "127.0.0.1:7980" || settings.DatabaseURL != databaseURL {
+		t.Fatalf("remote default changed: %v", err)
 	}
 	settings, _, err = parseSettings([]string{"--config-file", path}, io.Discard)
-	if err != nil || settings.Listen != "[::1]:4123" || filepath.Base(settings.State) != "file.db" {
-		t.Fatalf("config mapping: %#v %v", settings, err)
+	if err != nil || settings.Listen != "[::1]:4123" || settings.DatabaseURL != databaseURL {
+		t.Fatalf("config mapping: %v", err)
 	}
 	t.Setenv("DIFFX_SERVER_HOST", "127.0.0.2")
 	t.Setenv("DIFFX_SERVER_PORT", "5123")
-	t.Setenv("DIFFX_SERVER_STATE", "environment.db")
 	settings, _, err = parseSettings([]string{"--config-file", path}, io.Discard)
-	if err != nil || settings.Listen != "127.0.0.2:5123" || filepath.Base(settings.State) != "environment.db" {
-		t.Fatalf("environment mapping: %#v %v", settings, err)
+	if err != nil || settings.Listen != "127.0.0.2:5123" || settings.DatabaseURL != databaseURL {
+		t.Fatalf("environment mapping: %v", err)
 	}
-	settings, _, err = parseSettings([]string{"--config-file", path, "--listen", "0.0.0.0:6123", "--state", "flags.db"}, io.Discard)
-	if err != nil || settings.Listen != "0.0.0.0:6123" || settings.State != "flags.db" {
-		t.Fatalf("flags mapping: %#v %v", settings, err)
+	settings, _, err = parseSettings([]string{"--config-file", path, "--listen", "0.0.0.0:6123"}, io.Discard)
+	if err != nil || settings.Listen != "0.0.0.0:6123" || settings.DatabaseURL != databaseURL {
+		t.Fatalf("flags mapping: %v", err)
+	}
+	// The connection string holds credentials, so no flag can carry it.
+	for _, flag := range []string{"--state", "--database-url"} {
+		if _, _, err := parseSettings([]string{flag, "postgres://diffx:hunter2@db/diffx"}, io.Discard); err == nil {
+			t.Fatalf("database flag accepted: %s", flag)
+		}
 	}
 	t.Setenv("DIFFX_SERVER_HOST", "invalid")
 	t.Setenv("DIFFX_SERVER_PORT", "65536")
@@ -49,36 +66,28 @@ func TestRemoteConfigMappingAndPrecedence(t *testing.T) {
 }
 
 func TestResetPasswordRecoversOnlyTheAdmin(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "state.db")
-	store, err := reviewstore.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	session := testsupport.RemoteAdmin(t, store, "alice", "initial-password-123")
-	testsupport.RemoteAccount(t, store, "member")
-	var stdout, stderr bytes.Buffer
-	args := []string{"reset-password", "--username", "alice", "--state", path, "--password-stdin"}
-	if err := manageUser(args, strings.NewReader("changed-password-123\n"), &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "already in use") {
-		t.Fatalf("operator bypassed lock: %v", err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := manageUser([]string{"reset-password", "--username", "member", "--state", path, "--password-stdin"}, strings.NewReader("member-password-123\n"), &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "no admin account named member") {
-		t.Fatalf("member gained a password: %v", err)
-	}
-	t.Setenv("TEST_ACCOUNT_PASSWORD", "changed-password-123")
-	if err := manageUser([]string{"reset-password", "--username", "alice", "--state", path, "--password-env", "TEST_ACCOUNT_PASSWORD"}, strings.NewReader(""), &stdout, &stderr); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(stdout.String(), "password-123") {
-		t.Fatal("password printed")
-	}
-	store, err = reviewstore.Open(path)
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	databaseURL := pgtest.URL(t)
+	t.Setenv("DIFFX_SERVER_DATABASE_URL", databaseURL)
+	// A serving replica keeps its own connection open; recovery shares the database.
+	store, err := pgstore.Open(t.Context(), databaseURL, pgstore.DefaultRetention)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
+	session := testsupport.RemoteAdmin(t, store, "alice", "initial-password-123")
+	testsupport.RemoteAccount(t, store, "member")
+	var stdout, stderr bytes.Buffer
+	if err := manageUser([]string{"reset-password", "--username", "member", "--password-stdin"}, strings.NewReader("member-password-123\n"), &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "no admin account named member") {
+		t.Fatalf("member gained a password: %v", err)
+	}
+	t.Setenv("TEST_ACCOUNT_PASSWORD", "changed-password-123")
+	if err := manageUser([]string{"reset-password", "--username", "alice", "--password-env", "TEST_ACCOUNT_PASSWORD"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stdout.String(), "password-123") || strings.Contains(stdout.String(), databaseURL) {
+		t.Fatal("secret printed")
+	}
 	identity := identityservice.New(store)
 	if _, err := identity.Login(t.Context(), "alice", "initial-password-123"); err == nil {
 		t.Fatal("old password accepted")
@@ -90,8 +99,10 @@ func TestResetPasswordRecoversOnlyTheAdmin(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
 func TestUserCommandValidation(t *testing.T) {
-	for _, args := range [][]string{nil, {"delete"}, {"create", "--username", "alice", "--password-stdin"}, {"reset-password"}, {"reset-password", "--username", "alice"}, {"reset-password", "--username", "alice", "--password-env", "P", "--password-stdin"}, {"reset-password", "--username", "alice", "--state", ":memory:", "--password-stdin"}} {
+	for _, args := range [][]string{nil, {"delete"}, {"create", "--username", "alice", "--password-stdin"}, {"reset-password"}, {"reset-password", "--username", "alice"}, {"reset-password", "--username", "alice", "--password-env", "P", "--password-stdin"}, {"reset-password", "--username", "alice", "--state", "state.db", "--password-stdin"}} {
+		withDatabaseURL(t)
 		if err := manageUser(args, strings.NewReader("password-123456"), io.Discard, io.Discard); err == nil {
 			t.Fatalf("accepted invalid args: %v", args)
 		}
@@ -100,6 +111,7 @@ func TestUserCommandValidation(t *testing.T) {
 
 func TestRemoteConfigDefaultsAndVersion(t *testing.T) {
 	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	withDatabaseURL(t)
 	settings, _, err := parseSettings(nil, io.Discard)
 	if err != nil || settings.Listen != "127.0.0.1:7980" {
 		t.Fatalf("default server port: %#v %v", settings, err)
@@ -110,6 +122,7 @@ func TestRemoteConfigDefaultsAndVersion(t *testing.T) {
 }
 
 func TestRemoteIdentityConfigPrecedence(t *testing.T) {
+	withDatabaseURL(t)
 	path := filepath.Join(t.TempDir(), "server.json")
 	if err := os.WriteFile(path, []byte(`{"publicUrl":"https://file.example.com","insecureCookies":true}`), 0o400); err != nil {
 		t.Fatal(err)
@@ -146,6 +159,7 @@ func TestRemoteIdentityConfigPrecedence(t *testing.T) {
 
 func TestRemoteGoogleSignInSettings(t *testing.T) {
 	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	withDatabaseURL(t)
 	settings, _, err := parseSettings(nil, io.Discard)
 	if err != nil || settings.Google != nil {
 		t.Fatalf("Google sign-in without configuration: %+v %v", settings.Google, err)
@@ -166,7 +180,7 @@ func TestRemoteRejectsInvalidDeploymentSettings(t *testing.T) {
 		{"DIFFX_SERVER_HOST", "localhost"},
 		{"DIFFX_SERVER_PORT", "not-a-port"},
 		{"DIFFX_SERVER_PORT", "65536"},
-		{"DIFFX_SERVER_STATE", ""},
+		{"DIFFX_SERVER_DATABASE_URL", ""},
 		{"DIFFX_SERVER_RETENTION_DAYS", "0"},
 		{"DIFFX_SERVER_RETENTION_DAYS", "-1"},
 		{"DIFFX_SERVER_INSECURE_COOKIES", "bad"},
@@ -175,6 +189,7 @@ func TestRemoteRejectsInvalidDeploymentSettings(t *testing.T) {
 	} {
 		t.Run(tc.key+"="+tc.value, func(t *testing.T) {
 			t.Setenv("DIFFX_SERVER_CONFIG", "")
+			withDatabaseURL(t)
 			t.Setenv(tc.key, tc.value)
 			if _, _, err := parseSettings(nil, io.Discard); err == nil {
 				t.Fatal("accepted invalid deployment settings")
@@ -183,7 +198,36 @@ func TestRemoteRejectsInvalidDeploymentSettings(t *testing.T) {
 	}
 }
 
+func TestServerRequiresDatabaseURLWithoutEchoingIt(t *testing.T) {
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	t.Setenv("DIFFX_SERVER_DATABASE_URL", "")
+	if _, _, err := parseSettings(nil, io.Discard); err == nil || !strings.Contains(err.Error(), "DIFFX_SERVER_DATABASE_URL") {
+		t.Fatalf("server started without a database: %v", err)
+	}
+	if err := manageUser([]string{"reset-password", "--username", "alice", "--password-stdin"}, strings.NewReader("correct horse battery staple"), io.Discard, io.Discard); err == nil || !strings.Contains(err.Error(), "DIFFX_SERVER_DATABASE_URL") {
+		t.Fatalf("recovery ran without a database: %v", err)
+	}
+	// A rejected connection string or credential is reported without its password.
+	rejected, err := url.Parse(pgtest.URL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejected.User = url.UserPassword(rejected.User.Username(), "wrong-hunter2")
+	for _, value := range []string{"postgres://diffx:wrong-hunter2@[bad", rejected.String()} {
+		t.Setenv("DIFFX_SERVER_DATABASE_URL", value)
+		settings, _, err := parseSettings(nil, io.Discard)
+		if err != nil || settings.DatabaseURL != value {
+			t.Fatalf("database URL from environment: %v", err)
+		}
+		err = manageUser([]string{"reset-password", "--username", "alice", "--password-stdin"}, strings.NewReader("correct horse battery staple"), io.Discard, io.Discard)
+		if err == nil || strings.Contains(err.Error(), "wrong-hunter2") {
+			t.Fatalf("connection failure must not echo the password: %v", err)
+		}
+	}
+}
+
 func TestRemoteRetentionConfigPrecedence(t *testing.T) {
+	withDatabaseURL(t)
 	path := filepath.Join(t.TempDir(), "config.json")
 	if err := os.WriteFile(path, []byte(`{"retentionDays":14}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -209,6 +253,7 @@ func TestRemoteRetentionConfigPrecedence(t *testing.T) {
 }
 
 func TestBootstrapSecretsCannotBeFlags(t *testing.T) {
+	withDatabaseURL(t)
 	for _, name := range []string{"--password", "--token"} {
 		if _, _, err := parseSettings([]string{name, "secret"}, io.Discard); err == nil {
 			t.Fatalf("secret flag accepted: %s", name)
@@ -218,23 +263,45 @@ func TestBootstrapSecretsCannotBeFlags(t *testing.T) {
 
 func TestServerNeverResetsState(t *testing.T) {
 	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	withDatabaseURL(t)
 	if _, _, err := parseSettings([]string{"--reset-state"}, io.Discard); err == nil {
 		t.Fatal("server accepted --reset-state")
 	}
-	path := filepath.Join(t.TempDir(), "state.db")
-	db, err := sql.Open("sqlite", path)
+	databaseURL := pgtest.URL(t)
+	t.Setenv("DIFFX_SERVER_DATABASE_URL", databaseURL)
+	store, err := pgstore.Open(t.Context(), databaseURL, pgstore.DefaultRetention)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec("CREATE TABLE legacy(value TEXT); PRAGMA user_version=10"); err != nil {
+	testsupport.RemoteAdmin(t, store, "alice", "initial-password-123")
+	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	db.Close()
-	err = manageUser([]string{"reset-password", "--username", "alice", "--state", path, "--password-stdin"}, strings.NewReader("correct horse battery staple"), io.Discard, io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "schema 10 is older") || strings.Contains(err.Error(), "--reset-state") {
-		t.Fatalf("older state must be refused without a local reset hint: %v", err)
+	// A newer release raised the compatibility floor above this binary.
+	setFloor := func(floor int) {
+		t.Helper()
+		conn, err := pgx.Connect(t.Context(), databaseURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close(t.Context())
+		if _, err := conn.Exec(t.Context(), `UPDATE diffx.schema_compatibility SET floor=$1`, floor); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if matches, _ := filepath.Glob(path + ".schema*"); len(matches) != 0 {
-		t.Fatalf("server administration backed up state: %v", matches)
+	setFloor(1000000)
+	err = manageUser([]string{"reset-password", "--username", "alice", "--password-stdin"}, strings.NewReader("changed-password-123"), io.Discard, io.Discard)
+	var refused *pgstore.SchemaError
+	if !errors.As(err, &refused) || refused.Floor != 1000000 || strings.Contains(err.Error(), "--reset-state") {
+		t.Fatalf("newer schema must be refused without a local reset hint: %v", err)
+	}
+	setFloor(1)
+	store, err = pgstore.Open(t.Context(), databaseURL, pgstore.DefaultRetention)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := identityservice.New(store).Login(t.Context(), "alice", "initial-password-123"); err != nil {
+		t.Fatalf("refused administration changed existing data: %v", err)
 	}
 }

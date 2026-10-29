@@ -8,7 +8,6 @@ COPY packages/api ./packages/api
 ARG TARGETOS=linux
 ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -o /diffx-server ./cmd/diffx-server
-RUN mkdir /data && chown 10001:10001 /data
 
 FROM build AS fetcher-build
 ARG TARGETOS=linux
@@ -26,14 +25,14 @@ VOLUME ["/mirrors"]
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/diffx-fetcher"]
 
+# The server is stateless: all state lives in DIFFX_SERVER_DATABASE_URL's
+# Postgres. CA roots let it verify TLS to Postgres, GitHub and Google.
 FROM scratch
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /diffx-server /diffx-server
-COPY --from=build --chown=10001:10001 /data /data
 USER 10001:10001
 ENV DIFFX_SERVER_HOST=0.0.0.0
 ENV DIFFX_SERVER_PORT=7980
-ENV DIFFX_SERVER_STATE=/data/state.db
-VOLUME ["/data"]
 EXPOSE 7980
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/diffx-server"]

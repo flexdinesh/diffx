@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/flexdinesh/diffx/internal/remoteserver"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
+	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 	"github.com/flexdinesh/diffx/internal/webui"
 )
 
@@ -21,11 +21,7 @@ func TestRemoteStatusRequiresRemoteModeAndVerifiesCredentials(t *testing.T) {
 	if err := run(t.Context(), []string{"remote", "status"}, nil, io.Discard, io.Discard); err == nil || !strings.Contains(err.Error(), "remote.url") {
 		t.Fatalf("unconfigured remote: %v", err)
 	}
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := pgtest.Store(t)
 	_, token := provisionCollector(t, store)
 	handler, closeServices, err := remoteserver.Handler(t.Context(), store, remoteserver.Settings{}, webui.Assets())
 	if err != nil {

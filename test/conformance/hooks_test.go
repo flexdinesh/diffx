@@ -84,7 +84,7 @@ func TestAgentHooksPublishLatestCheckoutAndCompleteFileContents(t *testing.T) {
 	}
 	service := contextservice.NewWithContext(t.Context(), store, owner)
 	defer service.Close()
-	server := testsupport.Server(t, service, store)
+	server := testsupport.Server(t, service, store, store.Queue())
 	defer server.Close()
 	harness.environment = append(harness.environment, "DIFFX_REMOTE_URL="+server.URL, "DIFFX_REMOTE_TOKEN=test-token")
 
@@ -355,7 +355,7 @@ func TestHookIgnoresParentWorkspaceAndReviewRecoversExplicitBranch(t *testing.T)
 	}
 	service := contextservice.NewWithContext(t.Context(), store, user)
 	defer service.Close()
-	server := testsupport.Server(t, service, store)
+	server := testsupport.Server(t, service, store, store.Queue())
 	defer server.Close()
 	harness.environment = append(harness.environment, "DIFFX_REMOTE_URL="+server.URL, "DIFFX_REMOTE_TOKEN=test-token")
 	root := createWorktree(t, "renamed-repository")

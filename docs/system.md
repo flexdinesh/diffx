@@ -12,19 +12,19 @@ for transport details.
 
 ## Terminology and ownership
 
-| Term                | Meaning and responsibility                                                                                                              |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Producer            | Code with access to a checkout or supplied patch. Collects data, attaches provenance and submits it.                                    |
-| Collector           | The shared Git-aware collection pipeline used by manual CLI commands and agent hooks.                                                   |
-| Plugin / agent hook | An event-triggered producer. Can invoke the CLI or implement the ingestion contract directly.                                           |
-| Server              | Foreground process owning application processing, SQLite, REST, MCP and web assets. Remote composition also owns admission and workers. |
-| Observation         | An immutable snapshot: original metadata, diff scopes, patches and available file contents.                                             |
-| Submission          | One collection's provenance and retry identity; may associate with an existing matching observation.                                    |
-| Agent session       | Harness, session ID and optional mutable name associated with submissions; does not establish authorship.                               |
-| Context             | The server-assigned address for reviewing an observation, including its review state.                                                   |
-| Source              | A producer installation or explicitly identified container. Distinct from a repository, branch or hostname.                             |
-| Checkout            | A source-specific Git working directory or linked worktree. Owned by the producer.                                                      |
-| Account / owner     | The server-established identity that owns stored observations and review state.                                                         |
+| Term                | Meaning and responsibility                                                                                                                                                              |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Producer            | Code with access to a checkout or supplied patch. Collects data, attaches provenance and submits it.                                                                                    |
+| Collector           | The shared Git-aware collection pipeline used by manual CLI commands and agent hooks.                                                                                                   |
+| Plugin / agent hook | An event-triggered producer. Can invoke the CLI or implement the ingestion contract directly.                                                                                           |
+| Server              | Foreground process owning application processing, storage, REST, MCP and web assets: local SQLite, or the server's shared Postgres. Remote composition also owns admission and workers. |
+| Observation         | An immutable snapshot: original metadata, diff scopes, patches and available file contents.                                                                                             |
+| Submission          | One collection's provenance and retry identity; may associate with an existing matching observation.                                                                                    |
+| Agent session       | Harness, session ID and optional mutable name associated with submissions; does not establish authorship.                                                                               |
+| Context             | The server-assigned address for reviewing an observation, including its review state.                                                                                                   |
+| Source              | A producer installation or explicitly identified container. Distinct from a repository, branch or hostname.                                                                             |
+| Checkout            | A source-specific Git working directory or linked worktree. Owned by the producer.                                                                                                      |
+| Account / owner     | The server-established identity that owns stored observations and review state.                                                                                                         |
 
 The CLI owns argument parsing, collection, transport and local lifecycle
 bootstrap. The server owns the catalog and its interpretation. The CLI does not
@@ -70,9 +70,12 @@ conversation.
 
 `diffx-server` runs directly or as the same binary inside a container. It resolves
 deployment config without reading or writing personal CLI settings. Container
-defaults come from env vars, with SQLite and credential hashes under `/data`.
-Compose mounts a named volume and publishes HTTP on host loopback; stopping or
-recreating the container preserves data. Only one process may own that database.
+defaults come from env vars; all state, including credential hashes, lives in the
+Postgres database named by `DIFFX_SERVER_DATABASE_URL`.
+The checked-in Compose file runs a bundled Postgres on a named volume and
+publishes HTTP on host loopback; stopping or recreating containers preserves
+data. Server processes keep no local state, so several replicas may share one
+database.
 
 Both modes use identical collection, validation, identity, ingestion, catalog
 and review operations. Their lifecycle and submission delivery differ.
@@ -221,7 +224,7 @@ account's subscribed browsers. Push is enabled when `DIFFX_SERVER_PUBLIC_URL` is
 https, or http on a loopback host for development; its origin is the VAPID
 subject. Otherwise Settings reports push disabled and registering or testing a
 device answers 409. The VAPID key pair is generated on the first enabled start
-and stored in SQLite (`push_keys`); it never rotates automatically, because
+and stored in the server database (`push_keys`); it never rotates automatically, because
 every browser subscription is bound to its public key. Local composition has
 no push routes or delivery.
 
@@ -396,9 +399,9 @@ reading commits through `list_commits` and a `commit` argument. Preview reads va
 fingerprint through indexed stored identities, then read only that file's
 preview. They do not decode the full manifest in Go. Context resolution and
 catalog presentation project the captured source kind from stored metadata;
-SQLite still parses manifest JSON for source kind and file counts. No server
+Stores still read source kind and file counts from stored manifests. No server
 preview cache or schema change is required.
-Comments and reviewed marks are mutable SQLite
+Comments and reviewed marks are mutable stored
 state of the stream and scope, spanning its snapshots, so a review continues
 across new collections; the captured diff stays immutable. Piped observations
 form a stream of their own. Comment responses carry a server-computed placement
@@ -488,7 +491,7 @@ login failures do not disclose whether a username exists. Plain HTTP development
 must explicitly opt into insecure cookies; production uses HTTPS.
 
 Users create multiple named API tokens in Settings. Secrets appear only on
-creation; SQLite stores their hashes and expiry/revocation metadata. Expiry
+creation; the server stores their hashes and expiry/revocation metadata. Expiry
 defaults to 90 days and is selectable from 1–365 days. Two fixed presets apply:
 `collector` permits ingestion, job polling, health and reconciliation catalog/
 context metadata reads; `api` permits the owner's review REST/MCP, events and
@@ -506,7 +509,8 @@ renaming a session updates its searchable label without changing snapshot
 metadata. The triggering session observed collection; it does not own every
 worktree's edits.
 
-SQLite is the durable query source, including the diff data itself. Reads need
+The store (local SQLite or server Postgres) is the durable query source,
+including the diff data itself. Reads need
 neither Git nor a repository mount. Available full contents are captured within
 a collection budget; unsupported or unavailable previews remain explicit.
 Snapshot retention is configurable in whole days, default seven, after the last
@@ -610,5 +614,5 @@ TLS at the deployment boundary and mounts a persistent database volume.
 Implement new adapters against the existing consuming-package contracts and
 behavioral conformance tests. Preserve atomic commit boundaries, owner isolation,
 identity bytes and retry semantics. External queues need durable payload/status
-storage plus transactional scheduling intent; multiple processes require a
-storage backend designed for that concurrency. SQLite retains one owning process.
+storage plus transactional scheduling intent. Local SQLite retains one owning
+process; server processes share Postgres and stay stateless.

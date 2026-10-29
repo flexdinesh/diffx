@@ -23,9 +23,11 @@ const DefaultInternalPort = 7979
 
 // ServerValues is deployment configuration, independent of personal CLI settings.
 type ServerValues struct {
-	Host            string `json:"host"`
-	Port            int    `json:"port"`
-	State           string `json:"state"`
+	Host string `json:"host"`
+	Port int    `json:"port"`
+	// DatabaseURL is the Postgres connection string. It holds credentials, so it
+	// comes only from DIFFX_SERVER_DATABASE_URL, never a file or flag, and is never echoed.
+	DatabaseURL     string `json:"-"`
 	PublicURL       string `json:"publicUrl"`
 	InsecureCookies bool   `json:"insecureCookies"`
 	RetentionDays   int    `json:"retentionDays"`
@@ -133,7 +135,7 @@ func (values ServerValues) ValidateIdentity() error {
 // It never discovers personal config, creates files, or acquires a config lock.
 // Variables use the DIFFX_SERVER_ prefix so they never configure the local CLI.
 func LoadServerFile(path string) (ServerValues, error) {
-	values := ServerValues{Host: "127.0.0.1", Port: DefaultServerPort, InternalPort: DefaultInternalPort, State: "data/state.db", RetentionDays: 7}
+	values := ServerValues{Host: "127.0.0.1", Port: DefaultServerPort, InternalPort: DefaultInternalPort, RetentionDays: 7}
 	if path == "" {
 		path = os.Getenv("DIFFX_SERVER_CONFIG")
 	}
@@ -160,7 +162,7 @@ func LoadServerFile(path string) (ServerValues, error) {
 		target *string
 	}{
 		{"DIFFX_SERVER_HOST", &values.Host},
-		{"DIFFX_SERVER_STATE", &values.State},
+		{"DIFFX_SERVER_DATABASE_URL", &values.DatabaseURL},
 		{"DIFFX_SERVER_PUBLIC_URL", &values.PublicURL},
 		{"DIFFX_SERVER_GOOGLE_CLIENT_ID", &values.Google.ClientID},
 		{"DIFFX_SERVER_GOOGLE_CLIENT_SECRET", &values.Google.ClientSecret},
@@ -215,6 +217,14 @@ func LoadServerFile(path string) (ServerValues, error) {
 		}
 	}
 	return values, nil
+}
+
+// ValidateDatabase requires the Postgres connection string without echoing it.
+func (values ServerValues) ValidateDatabase() error {
+	if values.DatabaseURL == "" {
+		return errors.New("DIFFX_SERVER_DATABASE_URL is required: a Postgres connection string such as postgres://diffx@db.example.com:5432/diffx?sslmode=verify-full")
+	}
+	return nil
 }
 
 // ListenAddress validates the configured listener when no flag overrides it.

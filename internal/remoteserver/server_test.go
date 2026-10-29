@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -17,13 +16,14 @@ import (
 	"github.com/flexdinesh/diffx/internal/collector"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
+	"github.com/flexdinesh/diffx/internal/pgstore"
 	"github.com/flexdinesh/diffx/internal/testsupport"
+	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 )
 
 const testPassword = "test-password-at-least-twelve-bytes"
 
-func provisionToken(t *testing.T, store *reviewstore.Store, name string, purpose identityservice.Purpose) string {
+func provisionToken(t *testing.T, store *pgstore.Store, name string, purpose identityservice.Purpose) string {
 	t.Helper()
 	identity := identityservice.New(store)
 	account := testsupport.RemoteAccount(t, store, name)
@@ -35,11 +35,7 @@ func provisionToken(t *testing.T, store *reviewstore.Store, name string, purpose
 }
 
 func TestRemoteAuthenticationCoversUIAPIAndMCP(t *testing.T) {
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := pgtest.Store(t)
 	token := provisionToken(t, store, "account", identityservice.PurposeAPI)
 	handler, closeService, err := Handler(t.Context(), store, Settings{}, fstest.MapFS{"index.html": {Data: []byte("review dashboard")}})
 	if err != nil {
@@ -84,11 +80,7 @@ func TestRemoteAuthenticationCoversUIAPIAndMCP(t *testing.T) {
 }
 
 func TestMultiUserRESTMCPAndEventIsolation(t *testing.T) {
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := pgtest.Store(t)
 	testToken := provisionToken(t, store, "admin", identityservice.PurposeAPI)
 	otherToken := provisionToken(t, store, "other", identityservice.PurposeAPI)
 	handler, closeServices, err := MultiHandler(t.Context(), store, fstest.MapFS{"index.html": {Data: []byte("reviews")}})
@@ -267,8 +259,8 @@ func TestRemoteRunShutdownClosesActiveEventStream(t *testing.T) {
 	defer cancel()
 	ready := make(chan string, 1)
 	done := make(chan error, 1)
-	state := filepath.Join(t.TempDir(), "reviews.sqlite")
-	store, err := reviewstore.Open(state)
+	databaseURL := pgtest.URL(t)
+	store, err := pgstore.Open(t.Context(), databaseURL, pgstore.DefaultRetention)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +269,7 @@ func TestRemoteRunShutdownClosesActiveEventStream(t *testing.T) {
 		t.Fatal(err)
 	}
 	go func() {
-		done <- Run(ctx, Settings{Listen: "127.0.0.1:0", State: state, InsecureCookies: true}, func(address string) { ready <- address })
+		done <- Run(ctx, Settings{Listen: "127.0.0.1:0", DatabaseURL: databaseURL, InsecureCookies: true}, func(address string) { ready <- address })
 	}()
 	var address string
 	select {

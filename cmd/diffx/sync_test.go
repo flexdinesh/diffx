@@ -21,11 +21,12 @@ import (
 	"github.com/flexdinesh/diffx/internal/hooks"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
+	"github.com/flexdinesh/diffx/internal/pgstore"
 	"github.com/flexdinesh/diffx/internal/remoteserver"
 	"github.com/flexdinesh/diffx/internal/review"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/submission"
 	"github.com/flexdinesh/diffx/internal/testsupport"
+	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 	"github.com/flexdinesh/diffx/internal/webui"
 )
 
@@ -36,11 +37,7 @@ func TestSyncPrintDebugCommitsSelectedCheckoutAndRecoversRemovedCheckout(t *test
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("DIFFX_CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
 	t.Setenv("DIFFX_RUNTIME_DIR", t.TempDir())
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := pgtest.Store(t)
 	owner, token := provisionCollector(t, store)
 	t.Setenv("DIFFX_REMOTE_TOKEN", token)
 	handler, closeServices, err := remoteserver.Handler(t.Context(), store, remoteserver.Settings{}, webui.Assets())
@@ -115,7 +112,7 @@ func TestSyncRequiresRemoteAndConfigMasksToken(t *testing.T) {
 
 // Exercise the real queue, worker and stored catalog while counting uploads.
 type syncFixture struct {
-	store       *reviewstore.Store
+	store       *pgstore.Store
 	ownerID     string
 	server      *httptest.Server
 	uploads     atomic.Int64
@@ -129,11 +126,7 @@ func newSyncFixture(t *testing.T) *syncFixture {
 	t.Setenv("DIFFX_CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
 	t.Setenv("DIFFX_RUNTIME_DIR", t.TempDir())
 	t.Setenv("DIFFX_SOURCE_ID", "machine")
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
+	store := pgtest.Store(t)
 	owner, token := provisionCollector(t, store)
 	t.Setenv("DIFFX_REMOTE_TOKEN", token)
 	handler, closeServices, err := remoteserver.Handler(t.Context(), store, remoteserver.Settings{}, webui.Assets())
@@ -315,7 +308,7 @@ func TestSyncReusesPendingPayloadAndRefreshesStaleReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.store.Ingest(fixture.ownerID, other); err != nil {
+	if _, err := fixture.store.IngestContext(t.Context(), fixture.ownerID, other); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("after\n"), 0600); err != nil {
@@ -475,7 +468,7 @@ func TestSyncRotatedTokenRecoversOnlyItsOwnersAttemptedPayload(t *testing.T) {
 	if err != nil || len(foreignContexts) != 0 {
 		t.Fatalf("foreign owner received saved collection: %+v %v", foreignContexts, err)
 	}
-	receipt, err := fixture.store.Ingest(fixture.ownerID, pending[0].Request)
+	receipt, err := fixture.store.IngestContext(t.Context(), fixture.ownerID, pending[0].Request)
 	if err != nil || receipt.ContextID != contexts[0].ID {
 		t.Fatalf("rotated retry changed submission identity: %+v %v", receipt, err)
 	}
@@ -637,7 +630,7 @@ func TestHookRotatedEnvironmentTokenRecoversOwnersRemovedCheckout(t *testing.T) 
 	if err != nil || len(contexts) != 1 {
 		t.Fatalf("rotated hook delivery: %+v %v", contexts, err)
 	}
-	replay, err := fixture.store.Ingest(fixture.ownerID, captured)
+	replay, err := fixture.store.IngestContext(t.Context(), fixture.ownerID, captured)
 	if err != nil || replay.ContextID != contexts[0].ID {
 		t.Fatalf("hook recovery replaced immutable submission: %+v %v", replay, err)
 	}

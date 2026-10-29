@@ -64,9 +64,10 @@ mise run docker:down
 ```
 
 Compose publishes HTTP on `127.0.0.1:7980`, outside the local 7981–7990 range,
-and preserves the named SQLite volume when stopped or recreated. Set
+and runs a bundled PostgreSQL 18 whose named volume survives stopping or
+recreating the containers. Set
 `DIFFX_SERVER_PORT=7979` to publish another host port. The project is named
-`diffx`, so its volume is shared by every checkout. On first start, find the
+`diffx`, so its database volume is shared by every checkout. On first start, find the
 setup link in `docker compose logs server` and open it within 24 hours to create
 the admin account; each restart before setup logs a new link. No default
 account/password is generated and there is no public signup. Compose explicitly enables insecure
@@ -75,27 +76,32 @@ and deploy behind HTTPS for remote access.
 See [server development](https://github.com/flexdinesh/diffx/blob/main/docs/development.md#server-development) for configuration
 and persistence details. Deploy behind HTTPS when exposing the server remotely.
 
-Or build and run the image directly:
+Or build and run the image directly against your own PostgreSQL 18+:
 
 ```sh
 mise run docker:build
 docker run --name diffx-server --read-only -p 127.0.0.1:7980:7980 \
-  --env-file /path/to/private-server.env \
-  --mount source=diffx-data,target=/data diffx-server:local
+  --env-file /path/to/private-server.env diffx-server:local
 ```
 
-Plain HTTP development requires `DIFFX_SERVER_INSECURE_COOKIES=true` in the env
-file; behind HTTPS, set `DIFFX_SERVER_PUBLIC_URL` so the logged setup link uses it. The volume contains observations,
-jobs, accounts and credential hashes.
-The image runs without Git or a repository mount, as an unprivileged user.
-SIGTERM drains HTTP and stops the worker; durable unfinished jobs recover after
-their leases expire. Back up the database while stopped.
+The env file sets `DIFFX_SERVER_DATABASE_URL`, for example
+`postgres://diffx:…@db.example.com:5432/diffx?sslmode=verify-full`; the server
+reads it only from the environment and never logs it. Its role needs `CREATE` on
+the database, where the server owns the `diffx` schema and migrates it at
+startup. Plain HTTP development requires `DIFFX_SERVER_INSECURE_COOKIES=true`;
+behind HTTPS, set `DIFFX_SERVER_PUBLIC_URL` so the logged setup link uses it. The
+database contains observations, jobs, accounts and credential hashes; the
+container keeps no state. The image runs without Git or a repository mount, as
+an unprivileged user. SIGTERM drains HTTP and stops the worker; durable
+unfinished jobs recover after their leases expire. Back up the database with
+your Postgres tooling.
 
 Build/install the remote server with Go:
 
 ```sh
 go install github.com/flexdinesh/diffx/cmd/diffx-server@edge
-DIFFX_SERVER_INSECURE_COOKIES=true DIFFX_SERVER_STATE=./test-data/state.db diffx-server
+DIFFX_SERVER_DATABASE_URL=postgres://diffx:diffx@127.0.0.1:5432/diffx?sslmode=disable \
+  DIFFX_SERVER_INSECURE_COOKIES=true diffx-server
 ```
 
 Open the setup link the server logs to create the admin account. The admin signs
@@ -108,22 +114,23 @@ a named API token. `collector` tokens support sync and plugins; `api` tokens als
 support the user's review REST/MCP APIs. Both expire after 90 days by default
 (selectable 1–365 days), can be revoked, and show their secret only once. Browser
 sessions use secure cookies; API/MCP and collectors use bearer tokens. Multiple
-users share one SQLite database with private data per account. Local `diffx`
+users share one Postgres database with private data per account. Local `diffx`
 automatically supplies its owner and has no login or account settings.
 
 The admin can disable or delete accounts from the admin page; disabling revokes
 the account's sessions and tokens, and deleting removes everything it owns. If
-the admin loses its password, stop the server and run:
+the admin loses its password, run this with the server's
+`DIFFX_SERVER_DATABASE_URL`; servers may keep running:
 
 ```sh
-diffx-server user reset-password --username alice --state /data/state.db --password-stdin < /path/to/private-password
+diffx-server user reset-password --username alice --password-stdin < /path/to/private-password
 ```
 
-Then restart the server. Password reset revokes browser sessions; API token
+Password reset revokes browser sessions; API token
 ownership is independent of passwords. Deploy behind TLS with secure cookies.
 Use `--retention-days 14` or config/environment to change server retention.
-The server defaults to `127.0.0.1:7980` and `./data/state.db`, independent of
-personal CLI settings. Its image defaults to `0.0.0.0:7980` and `/data/state.db`;
+The server defaults to `127.0.0.1:7980`, independent of personal CLI settings,
+and requires `DIFFX_SERVER_DATABASE_URL`. Its image defaults to `0.0.0.0:7980`;
 `DIFFX_SERVER_*` env vars override image defaults, and explicit flags override
 env vars. The CLI never reads `DIFFX_SERVER_*`.
 
@@ -136,6 +143,6 @@ diffx sync --server https://reviews.example.com
 ```
 
 Remote submission does not start a local server. The remote server needs no Git
-installation or repository mount: all queries read committed SQLite data.
+installation or repository mount: all queries read committed Postgres data.
 Other producers can submit the same `POST /api/v2/ingestions` contract directly;
 the bundled plugins invoke the Go collector.

@@ -12,7 +12,7 @@ canonical record of package boundaries and architectural decisions.
 | Collection | Selected checkout(s) at start, live page loads and sync; stdin once | Separate finite sync or hook producer    |
 | Admission  | Direct application call; startup runs after serving                 | Authenticated durable queue and worker   |
 | Lifetime   | Foreground; authenticated singleton replacement                     | Foreground; graceful worker shutdown     |
-| Storage    | One owner of persistent SQLite                                      | One owner of persistent SQLite           |
+| Storage    | One owner of persistent SQLite                                      | Shared Postgres; stateless processes     |
 | Queries    | Selected checkout(s) or capture via REST/MCP                        | Same application services via REST/MCP   |
 | Access     | Public listener; private lifecycle credential                       | Account credentials wrap the application |
 | Identity   | Automatic stable local owner; no account UI                         | Account sessions and scoped API tokens   |
@@ -100,8 +100,10 @@ owner. See [development.md](development.md) for isolated checkout commands.
   internal listener and `diffx-fetcher`.
 - `fetcher`: `diffx-fetcher`'s partial-clone mirrors and offline collection of
   leased pull request heads. It holds no account, GitHub App key or store.
-- `reviewstore`: SQLite transactions, identity persistence, stored reads,
-  retention and queue adapter.
+- `reviewstore`: local SQLite transactions, stored reads and retention.
+- `pgstore`: the server's Postgres persistence: goose migrations, sqlc queries,
+  every remote storage contract (content, reviews, identity, GitHub, push,
+  queue) and the locks that keep replicas correct. Remote composition only.
 - `ingestionqueue`: admission/lease contract and worker failure policy; jobs fail
   permanently only for `review.Permanent` rejections (4xx except 408/429).
 - `submission`: destination identity, delivery and the acknowledgement TTL,
@@ -217,8 +219,25 @@ pre-push and recorded in the PR evidence.
 
 New adapters must preserve ownership, atomic publication, retention, replay,
 lease fencing and commit-before-ack recovery. External brokers require atomic
-scheduling intent (an outbox). Multiple server processes need a storage backend
-designed for that concurrency; SQLite retains one owning process.
+scheduling intent (an outbox). The server and local mode do not share a storage
+adapter: `reviewstore` (SQLite, local) and `pgstore` (Postgres, server) each
+implement the consuming packages' contracts, so server features may use Postgres
+directly (row locks, `SKIP LOCKED`, `LISTEN/NOTIFY`, extensions) without a
+lowest-common-denominator interface. Shared content and review semantics are
+held equal by `storetest`, which both stores run; identity rules live in
+`ingestion` and `review`. SQLite retains one owning process.
+
+Server schema changes are goose migrations embedded in `diffx-server`
+(`internal/pgstore/migrations`). Every replica migrates at startup under an
+advisory lock; a binary never downgrades a newer schema. Migrations are
+expand/contract: each release must keep the previous release working against
+its schema, because replicas upgrade one at a time. A destructive change is
+split across two releases. A migration that cannot keep the previous release
+working raises `schema_compatibility.floor` to its own version, so older
+binaries refuse the database instead of corrupting it. The server requires
+PostgreSQL 18, never resets its database, and keeps its tables in the `diffx`
+schema. Server state from earlier SQLite volumes is not imported; an upgraded
+server starts with an empty database.
 
 Only public v2 routes and ingestion protocol 4 remain. Retired: `review`,
 `service`, `serve`, `capture`, background daemon startup, public v1,
@@ -230,7 +249,7 @@ uses `X-Diffx-State` to pin submission and polling to the destination identity;
 older protocols are rejected. Release artifacts use the explicit `diffx` project
 name, independent of the checkout directory.
 
-Schema 15 preserves current state across starts. It adds push notification
+Local SQLite schema 15 preserves current state across starts. It adds push notification
 tables (`push_keys`, `push_subscriptions`, the `push_notifications` outbox and
 `push_deliveries`) and GitHub notification triggers (`github_pr_heads`,
 `github_follow_mutes`); schema 14 added captured branch commit
@@ -249,13 +268,11 @@ a timestamped backup beside the database, keeping only the newest backup, and
 refuses newer or unrecognized files. Only local composition decides to call it,
 because local state is one developer's re-collectable workspace: `diffx` asks on
 a terminal for older state, and `--reset-state` (also on `diffx dev`) consents
-up front for any wipe-safe state. Durable server volumes require an operator
-decision, so `diffx-server` never resets: stop the owner, back up its state
-directory, then select a fresh database path. State errors identify the
+up front for any wipe-safe state. `diffx-server` never opens SQLite state and
+never resets its Postgres database. State errors identify the
 database and backup directory, name the compatible schema, and show the
 `--state` override for explicitly selecting fresh state; local refusals of older
-state also suggest `--reset-state`. Fresh state has no saved reviews or server
-accounts.
+state also suggest `--reset-state`. Fresh state has no saved reviews.
 Install the server first when adding optional protocol 4 metadata: older servers
 reject unknown request fields and new diff scopes. Captured comparison kinds,
 the `uncommitted` and `committed` scopes, activity, pull request metadata and
@@ -272,10 +289,11 @@ Stop old binaries before upgrading.
 Remote configuration is owned by `config` and composed by `cmd/diffx-server`:
 defaults, an explicitly selected read-only server JSON file, `DIFFX_SERVER_*`
 environment, then explicit flags. Server startup does not discover, create or lock
-personal CLI config. The binary defaults to loopback port 7980 and a separate
-`./data/state.db`; the container supplies overridable env defaults for its
-listener and `/data` volume. One process owns the volume's SQLite database,
-credentials and durable queue.
+personal CLI config. The binary defaults to loopback port 7980; the container
+supplies overridable env defaults for its listener. `DIFFX_SERVER_DATABASE_URL`
+selects the Postgres database holding all server state, credentials and the
+durable queue. It holds credentials, so it is read only from the environment,
+never a file or flag, and diagnostics never echo it.
 
 Personal CLI configuration keeps modes in separate namespaces so one machine runs
 both compositions at once: `local.*` and `DIFFX_LOCAL_*` configure only

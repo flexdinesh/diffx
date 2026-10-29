@@ -37,8 +37,10 @@ catalog:
 
 allowBuilds:
   "@google/genai": false
+  cpu-features: false
   es5-ext: false
   esbuild: true
   msgpackr-extract: false
   protobufjs: false
+  ssh2: false
   vue-demi: false

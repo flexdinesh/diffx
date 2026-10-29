@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -18,13 +17,13 @@ import (
 	"github.com/flexdinesh/diffx/internal/collector"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/mcpapi"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/testsupport"
+	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestRunSetupAdminPersistsAcrossRestart(t *testing.T) {
-	state := filepath.Join(t.TempDir(), "state.db")
+	databaseURL := pgtest.URL(t)
 	var logs syncBuffer
 	log.SetOutput(&logs)
 	t.Cleanup(func() { log.SetOutput(os.Stderr) })
@@ -34,7 +33,7 @@ func TestRunSetupAdminPersistsAcrossRestart(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		ready, done := make(chan string, 1), make(chan error, 1)
 		go func() {
-			done <- Run(ctx, Settings{State: state, Listen: "127.0.0.1:0", PublicURL: "https://diffx.example.com", InsecureCookies: true}, func(address string) { ready <- address })
+			done <- Run(ctx, Settings{DatabaseURL: databaseURL, Listen: "127.0.0.1:0", PublicURL: "https://diffx.example.com", InsecureCookies: true}, func(address string) { ready <- address })
 		}()
 		var address string
 		select {
@@ -123,11 +122,7 @@ func (transport credentialTransport) RoundTrip(request *http.Request) (*http.Res
 }
 
 func TestGlobalMCPOwnershipAcrossUsers(t *testing.T) {
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := pgtest.Store(t)
 	tokens := []string{provisionToken(t, store, "admin", identityservice.PurposeAPI), provisionToken(t, store, "other", identityservice.PurposeAPI)}
 	handler, closeServices, err := MultiHandler(t.Context(), store, fstest.MapFS{})
 	if err != nil {

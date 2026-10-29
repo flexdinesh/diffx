@@ -17,16 +17,18 @@ import (
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/ingestionqueue"
+	"github.com/flexdinesh/diffx/internal/pgstore"
 	"github.com/flexdinesh/diffx/internal/pushservice"
 	"github.com/flexdinesh/diffx/internal/review"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
+	"github.com/flexdinesh/diffx/internal/reviewdata"
 	"github.com/flexdinesh/diffx/internal/serverapp"
 	"github.com/flexdinesh/diffx/internal/webui"
 )
 
 type Settings struct {
 	Listen string
-	State  string
+	// DatabaseURL selects the shared Postgres database; it holds credentials and is never logged.
+	DatabaseURL string
 	// PublicURL is the browser-facing origin used in the logged setup link. An
 	// https origin, or loopback http for development, enables Web Push.
 	PublicURL       string
@@ -45,7 +47,7 @@ type GoogleSettings struct {
 }
 
 // composeIdentity composes account rules with Google sign-in when configured.
-func composeIdentity(store *reviewstore.Store, settings Settings) *identityservice.Service {
+func composeIdentity(store *pgstore.Store, settings Settings) *identityservice.Service {
 	if settings.Google == nil {
 		return identityservice.New(store)
 	}
@@ -64,7 +66,7 @@ type application struct {
 type registry struct {
 	mu           sync.Mutex
 	ctx          context.Context
-	store        *reviewstore.Store
+	store        *pgstore.Store
 	assets       fs.FS
 	applications map[string]application
 	closed       bool
@@ -79,7 +81,7 @@ func (registry *registry) get(account identityservice.Account) (application, err
 	if app, ok := registry.applications[account.ID]; ok {
 		return app, nil
 	}
-	service := contextservice.NewWithContext(registry.ctx, registry.store, reviewstore.User{ID: account.ID, Name: account.Username})
+	service := contextservice.NewWithContext(registry.ctx, registry.store, reviewdata.User{ID: account.ID, Name: account.Username})
 	app := application{service, serverapp.Handler(registry.ctx, service, registry.store, registry.assets, "", serverapp.Options{Queue: registry.store.Queue()})}
 	registry.applications[account.ID] = app
 	return app, nil
@@ -109,10 +111,10 @@ func (registry *registry) close() error {
 }
 
 // Handler supplies distributed identity; local composition never calls it.
-func Handler(ctx context.Context, store *reviewstore.Store, settings Settings, assets fs.FS) (http.Handler, func() error, error) {
+func Handler(ctx context.Context, store *pgstore.Store, settings Settings, assets fs.FS) (http.Handler, func() error, error) {
 	return MultiHandler(ctx, store, assets, settings)
 }
-func MultiHandler(ctx context.Context, store *reviewstore.Store, assets fs.FS, options ...Settings) (http.Handler, func() error, error) {
+func MultiHandler(ctx context.Context, store *pgstore.Store, assets fs.FS, options ...Settings) (http.Handler, func() error, error) {
 	var settings Settings
 	if len(options) > 0 {
 		settings = options[0]
@@ -144,7 +146,7 @@ func MultiHandler(ctx context.Context, store *reviewstore.Store, assets fs.FS, o
 // compose returns the public handler and, when GitHub is configured, the
 // internal fetcher handler. Push routes and delivery exist in every remote
 // composition; without a suitable public URL push reports itself disabled.
-func compose(ctx context.Context, store *reviewstore.Store, assets fs.FS, settings Settings) (http.Handler, http.Handler, func() error, []serverapp.Task, error) {
+func compose(ctx context.Context, store *pgstore.Store, assets fs.FS, settings Settings) (http.Handler, http.Handler, func() error, []serverapp.Task, error) {
 	identity := composeIdentity(store, settings)
 	github, err := composeGitHub(store, settings.GitHub)
 	if err != nil {
@@ -183,18 +185,19 @@ func compose(ctx context.Context, store *reviewstore.Store, assets fs.FS, settin
 	}
 	return remote, internal, applications.close, tasks, nil
 }
+
+// databasePatience lets a replica start before its database accepts connections.
+const databasePatience = time.Minute
+
 func Run(ctx context.Context, settings Settings, ready func(string)) error {
-	if settings.State == "" {
-		return errors.New("remote state database path required")
-	}
-	if settings.State == "memory" {
-		settings.State = ":memory:"
+	if settings.DatabaseURL == "" {
+		return errors.New("remote database URL required")
 	}
 	retention, err := Retention(settings.RetentionDays)
 	if err != nil {
 		return err
 	}
-	store, err := reviewstore.OpenWithRetention(settings.State, retention)
+	store, err := pgstore.OpenWaiting(ctx, settings.DatabaseURL, retention, databasePatience)
 	if err != nil {
 		return err
 	}

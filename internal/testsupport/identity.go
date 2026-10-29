@@ -1,6 +1,7 @@
 package testsupport
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -9,7 +10,6 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/identityservice"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 )
 
 func secret(t testing.TB) string {
@@ -22,7 +22,7 @@ func secret(t testing.TB) string {
 }
 
 // RemoteAdmin completes one-time setup, as the logged setup link does.
-func RemoteAdmin(t testing.TB, store *reviewstore.Store, username, password string) identityservice.Session {
+func RemoteAdmin(t testing.TB, store identityservice.Store, username, password string) identityservice.Session {
 	t.Helper()
 	identity := identityservice.New(store)
 	setup, err := identity.PrepareSetup(t.Context())
@@ -36,8 +36,13 @@ func RemoteAdmin(t testing.TB, store *reviewstore.Store, username, password stri
 	return session
 }
 
+// AccountStore creates accounts directly; both stores implement it.
+type AccountStore interface {
+	CreateAccount(ctx context.Context, account identityservice.Account, passwordHash string, created time.Time) error
+}
+
 // RemoteAccount creates a passwordless member account, as an accepted invite does.
-func RemoteAccount(t testing.TB, store *reviewstore.Store, username string) identityservice.Account {
+func RemoteAccount(t testing.TB, store AccountStore, username string) identityservice.Account {
 	t.Helper()
 	account := identityservice.Account{ID: secret(t), Username: username}
 	if err := store.CreateAccount(t.Context(), account, "", time.Now()); err != nil {
@@ -47,7 +52,7 @@ func RemoteAccount(t testing.TB, store *reviewstore.Store, username string) iden
 }
 
 // RemoteSession signs a member in without Google, as a completed sign-in does.
-func RemoteSession(t testing.TB, store *reviewstore.Store, account identityservice.Account) identityservice.Session {
+func RemoteSession(t testing.TB, store identityservice.Store, account identityservice.Account) identityservice.Session {
 	t.Helper()
 	session := identityservice.Session{Account: account, Secret: secret(t), CSRFToken: secret(t), ExpiresAt: time.Now().Add(identityservice.SessionLifetime)}
 	hash := sha256.Sum256([]byte(session.Secret))

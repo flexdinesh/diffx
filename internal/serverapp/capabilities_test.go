@@ -153,7 +153,7 @@ func TestLocalAndQueuedRemoteShareSnapshotContract(t *testing.T) {
 	}
 	local := httptest.NewServer(serverapp.Handler(t.Context(), service, store, fstest.MapFS{}, submitted.Context.ID, serverapp.Options{}))
 	defer local.Close()
-	remote := start(t, ":memory:", true)
+	remote := start(t, "", true)
 	plugin := input
 	plugin.Metadata.Trigger, plugin.Metadata.Agent, plugin.Metadata.RunID = "agent-hook", "codex", "session-1"
 	plugin.Metadata.AgentSession = &ingestion.AgentSession{Harness: "codex", ID: "session-1", Name: "Feature work"}

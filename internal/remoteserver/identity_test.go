@@ -14,22 +14,19 @@ import (
 	"github.com/flexdinesh/diffx/internal/collector"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
+	"github.com/flexdinesh/diffx/internal/pgstore"
 	"github.com/flexdinesh/diffx/internal/testsupport"
+	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 )
 
-func identityHandler(t *testing.T, settings Settings) (*reviewstore.Store, http.Handler) {
+func identityHandler(t *testing.T, settings Settings) (*pgstore.Store, http.Handler) {
 	t.Helper()
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := pgtest.Store(t)
 	handler, closeServices, err := Handler(t.Context(), store, settings, fstest.MapFS{"index.html": {Data: []byte("app shell")}, "assets/app.js": {Data: []byte("app()")}})
 	if err != nil {
-		store.Close()
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { closeServices(); store.Close() })
+	t.Cleanup(func() { closeServices() })
 	return store, handler
 }
 func identityRequest(handler http.Handler, method, path, body string, cookie *http.Cookie, csrf, bearer string) *httptest.ResponseRecorder {
@@ -66,7 +63,7 @@ func loginIdentity(t *testing.T, handler http.Handler, name string) (*http.Cooki
 }
 
 // memberSession signs in a passwordless member, as Google sign-in does.
-func memberSession(t *testing.T, store *reviewstore.Store, name string) (*http.Cookie, string) {
+func memberSession(t *testing.T, store *pgstore.Store, name string) (*http.Cookie, string) {
 	t.Helper()
 	session := testsupport.RemoteSession(t, store, testsupport.RemoteAccount(t, store, name))
 	return &http.Cookie{Name: sessionCookie, Value: session.Secret}, session.CSRFToken

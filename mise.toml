@@ -121,6 +121,36 @@ description = "Start a standalone Go fixture server"
 depends = ["web:build"]
 run = "go run ./cmd/diffx dev --fixture test/fixtures/sample.diff --state memory --web-dir apps/web/dist"
 
+[tasks."db:up"]
+description = "Start the development Postgres (compose.dev.yml) and wait until healthy"
+run = "docker compose -f compose.dev.yml up -d --wait"
+
+[tasks."db:down"]
+description = "Stop the development Postgres, preserving its data"
+run = "docker compose -f compose.dev.yml down"
+
+[tasks."db:reset"]
+description = "Delete the development Postgres data and start it fresh"
+run = [
+  "docker compose -f compose.dev.yml down --volumes",
+  "docker compose -f compose.dev.yml up -d --wait",
+]
+
+[tasks."dev:remote"]
+description = "Run diffx-server on the development Postgres behind Vite HMR"
+depends = ["db:up", "web:stage"]
+shell = "bash -e -o pipefail -c"
+# The setup link and cookies use Vite's origin; Vite proxies the API to the server.
+run = '''
+export DIFFX_SERVER_DATABASE_URL="${DIFFX_SERVER_DATABASE_URL:-postgres://diffx:diffx@127.0.0.1:${DIFFX_DEV_POSTGRES_PORT:-54329}/diffx?sslmode=disable}"
+export DIFFX_SERVER_INSECURE_COOKIES=true
+export DIFFX_SERVER_PUBLIC_URL="${DIFFX_SERVER_PUBLIC_URL:-http://localhost:5173}"
+go run ./cmd/diffx-server --listen 127.0.0.1:7980 &
+server=$!
+trap 'kill "$server" 2>/dev/null; wait "$server" 2>/dev/null' EXIT
+DIFFX_API_URL=http://127.0.0.1:7980 pnpm dev:web
+'''
+
 [tasks."test:go"]
 description = "Run Go tests"
 run = "pnpm test:go"
@@ -261,7 +291,7 @@ depends = ["web:stage"]
 run = "docker build --tag diffx-server:local ."
 
 [tasks."docker:up"]
-description = "Build and start the server with a persistent SQLite volume"
+description = "Build and start the server with its bundled persistent Postgres"
 depends = ["web:stage"]
 run = "docker compose up --build -d"
 

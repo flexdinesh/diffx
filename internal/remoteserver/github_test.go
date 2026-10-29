@@ -21,7 +21,7 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/fetchprotocol"
 	"github.com/flexdinesh/diffx/internal/identityservice"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
+	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 )
 
 // fakeGitHubAPI serves the API and OAuth endpoints the integration calls.
@@ -192,11 +192,7 @@ func TestGitHubCallbackRefusesForeignAndMissingSessions(t *testing.T) {
 }
 
 func TestFetchProtocolOnlyOnInternalListenerWithSecret(t *testing.T) {
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { store.Close() })
+	store := pgtest.Store(t)
 	settings := githubSettings(t, fakeGitHubAPI(t).URL)
 	settings.FetcherSecret = strings.Repeat("s", 32)
 	public, internal, closeServices, _, err := compose(t.Context(), store, fstest.MapFS{"index.html": {Data: []byte("app shell")}}, Settings{GitHub: settings})
