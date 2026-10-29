@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestOlderSchemaRefusedWithoutReset(t *testing.T) {
@@ -27,7 +28,7 @@ func TestOlderSchemaRefusedWithoutReset(t *testing.T) {
 			store.Close()
 			t.Fatal("accepted older schema")
 		} else {
-			for _, text := range []string{path, "schema 10 is older than supported schema 15", "supporting schema 10", "automatic reset is disabled", "back up", "SQLite sidecar files", "--state /path/to/new-state.db", "no saved reviews or server accounts"} {
+			for _, text := range []string{path, "schema 10 is older than supported schema 16", "supporting schema 10", "automatic reset is disabled", "back up", "SQLite sidecar files", "--state /path/to/new-state.db", "no saved reviews"} {
 				if !strings.Contains(err.Error(), text) {
 					t.Fatalf("missing recovery guidance %q: %v", text, err)
 				}
@@ -49,30 +50,79 @@ func TestOlderSchemaRefusedWithoutReset(t *testing.T) {
 	}
 }
 
+// schema15Server recreates, with their keys, references and indexes, the
+// server-only tables schema 15 and earlier created in every local database.
+const schema15Server = `
+CREATE TABLE ingestion_jobs (id TEXT PRIMARY KEY, sequence INTEGER NOT NULL UNIQUE REFERENCES ingestion_records(sequence), payload TEXT NOT NULL, state TEXT NOT NULL);
+CREATE INDEX ingestion_jobs_ready ON ingestion_jobs(state);
+CREATE TABLE remote_accounts (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL);
+CREATE TABLE browser_sessions (secret_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES remote_accounts(user_id) ON DELETE CASCADE);
+CREATE INDEX browser_sessions_owner ON browser_sessions(user_id);
+CREATE TABLE identity_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES remote_accounts(user_id) ON DELETE CASCADE, secret_hash TEXT NOT NULL UNIQUE);
+CREATE INDEX identity_tokens_owner ON identity_tokens(user_id);
+CREATE TABLE admin_account (singleton INTEGER PRIMARY KEY CHECK(singleton=1), user_id TEXT NOT NULL UNIQUE REFERENCES remote_accounts(user_id) ON DELETE CASCADE);
+CREATE TABLE admin_setup (singleton INTEGER PRIMARY KEY CHECK(singleton=1), token_hash TEXT NOT NULL);
+CREATE TABLE disabled_accounts (user_id TEXT PRIMARY KEY REFERENCES remote_accounts(user_id) ON DELETE CASCADE);
+CREATE TABLE google_identities (sub TEXT PRIMARY KEY, user_id TEXT NOT NULL UNIQUE REFERENCES remote_accounts(user_id) ON DELETE CASCADE, email TEXT NOT NULL);
+CREATE INDEX google_identities_email ON google_identities(email);
+CREATE TABLE account_invites (id TEXT PRIMARY KEY, email TEXT NOT NULL, used_by TEXT REFERENCES remote_accounts(user_id) ON DELETE SET NULL);
+CREATE INDEX account_invites_email ON account_invites(email);
+CREATE TABLE google_auth_states (state_hash TEXT PRIMARY KEY, invite_id TEXT REFERENCES account_invites(id) ON DELETE CASCADE);
+CREATE TABLE github_oauth_states (state_hash TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE);
+CREATE TABLE github_connections (owner_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, user_id INTEGER NOT NULL);
+CREATE INDEX github_connections_user ON github_connections(user_id);
+CREATE TABLE github_follows (owner_id TEXT NOT NULL REFERENCES github_connections(owner_id) ON DELETE CASCADE, repository_id INTEGER NOT NULL, PRIMARY KEY(owner_id, repository_id));
+CREATE INDEX github_follows_repository ON github_follows(repository_id);
+CREATE TABLE github_deliveries (id TEXT PRIMARY KEY, received_at INTEGER NOT NULL);
+CREATE TABLE github_pull_requests (repository_id INTEGER NOT NULL, number INTEGER NOT NULL, PRIMARY KEY(repository_id, number));
+CREATE TABLE github_pr_heads (repository_id INTEGER NOT NULL, number INTEGER NOT NULL, PRIMARY KEY(repository_id, number), FOREIGN KEY(repository_id, number) REFERENCES github_pull_requests(repository_id, number) ON DELETE CASCADE);
+CREATE TABLE github_follow_mutes (owner_id TEXT NOT NULL, repository_id INTEGER NOT NULL, PRIMARY KEY(owner_id, repository_id), FOREIGN KEY(owner_id, repository_id) REFERENCES github_follows(owner_id, repository_id) ON DELETE CASCADE);
+CREATE TABLE push_keys (singleton INTEGER PRIMARY KEY CHECK(singleton=1), public_key TEXT NOT NULL);
+CREATE TABLE push_subscriptions (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE);
+CREATE INDEX push_subscriptions_owner ON push_subscriptions(owner_id);
+CREATE TABLE push_notifications (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, job_id TEXT NOT NULL REFERENCES ingestion_jobs(id) ON DELETE CASCADE);
+CREATE INDEX push_notifications_job ON push_notifications(job_id);
+CREATE TABLE push_deliveries (notification_id TEXT NOT NULL REFERENCES push_notifications(id) ON DELETE CASCADE, subscription_id TEXT NOT NULL REFERENCES push_subscriptions(id) ON DELETE CASCADE, PRIMARY KEY(notification_id, subscription_id));
+CREATE INDEX push_deliveries_subscription ON push_deliveries(subscription_id);
+`
+
+// serverObjects counts schema objects that only server state used.
+func serverObjects(t *testing.T, db interface {
+	QueryRow(string, ...any) *sql.Row
+}) int {
+	t.Helper()
+	var count int
+	query := `SELECT COUNT(*) FROM sqlite_master WHERE tbl_name IN ('` + strings.Join(serverTables, "','") + `')`
+	if err := db.QueryRow(query).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	return count
+}
+
 func TestAdditiveSchemaUpgradesInPlace(t *testing.T) {
-	// Schema 11 had no GitHub integration tables; neither it nor schema 12 had
-	// administration or Google sign-in tables. Schemas before 14 had no
-	// captured commit tables, and before 15 no push notification tables.
-	push := "DROP TABLE push_deliveries; DROP TABLE push_notifications; DROP TABLE push_subscriptions; DROP TABLE push_keys; DROP TABLE github_follow_mutes; DROP TABLE github_pr_heads; "
-	commits := "DROP TABLE observation_commit_ranges; DROP TABLE observation_commits; " + push
-	administration := "DROP TABLE google_auth_states; DROP TABLE account_invites; DROP TABLE google_identities; DROP TABLE disabled_accounts; DROP TABLE admin_setup; DROP TABLE admin_account; " + commits
-	for version, statements := range map[int]string{
-		11: "DROP TABLE github_follows; DROP TABLE github_connections; DROP TABLE github_oauth_states; DROP TABLE github_deliveries; DROP TABLE github_pull_requests; " + administration,
-		12: administration,
-		13: commits,
-		14: push,
-	} {
+	// Schemas before 14 had no captured commit tables. Every schema from 11
+	// through 15 created server-only tables, which schema 16 drops.
+	commits := "DROP TABLE observation_commit_ranges; DROP TABLE observation_commits; "
+	for version, statements := range map[int]string{11: commits, 12: commits, 13: commits, 14: "", 15: ""} {
 		t.Run(fmt.Sprintf("schema %d", version), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "state.db")
 			store, err := Open(path)
 			if err != nil {
 				t.Fatal(err)
 			}
+			if count := serverObjects(t, store.db); count != 0 {
+				t.Fatalf("fresh state created %d server objects", count)
+			}
 			user, err := store.User("owner", "owner")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := store.db.Exec(fmt.Sprintf("%sPRAGMA user_version=%d", statements, version)); err != nil {
+			request := observationRequest("source", "kept")
+			binding, err := store.Ingest(user.ID, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.db.Exec(fmt.Sprintf("%s%sPRAGMA user_version=%d", statements, schema15Server, version)); err != nil {
 				t.Fatal(err)
 			}
 			store.Close()
@@ -81,20 +131,11 @@ func TestAdditiveSchemaUpgradesInPlace(t *testing.T) {
 				t.Fatalf("schema %d must upgrade in place: %v", version, err)
 			}
 			defer store.Close()
-			if _, err := store.GitHub().Follows(t.Context(), user.ID); err != nil {
-				t.Fatalf("upgrade did not create integration tables: %v", err)
-			}
-			if exists, err := store.AdminExists(t.Context()); err != nil || exists {
-				t.Fatalf("upgrade did not create administration tables: %v %v", exists, err)
+			if count := serverObjects(t, store.db); count != 0 {
+				t.Fatalf("upgrade kept %d server objects", count)
 			}
 			if _, _, err := store.ObservationCommits(t.Context(), user.ID, "missing"); !errors.Is(err, ErrNotFound) {
 				t.Fatalf("upgrade did not create commit tables: %v", err)
-			}
-			if devices, err := store.Push().Subscriptions(t.Context(), user.ID); err != nil || len(devices) != 0 {
-				t.Fatalf("upgrade did not create push tables: %v %v", devices, err)
-			}
-			if head, _, err := store.GitHub().PullRequestHead(t.Context(), 1, 1); err != nil || head != "" {
-				t.Fatalf("upgrade did not create pull request head table: %q %v", head, err)
 			}
 			var upgraded int
 			if err := store.db.QueryRow("PRAGMA user_version").Scan(&upgraded); err != nil || upgraded != schemaVersion {
@@ -103,6 +144,13 @@ func TestAdditiveSchemaUpgradesInPlace(t *testing.T) {
 			again, err := store.User("owner", "owner")
 			if err != nil || again.ID != user.ID {
 				t.Fatalf("upgrade lost state: %+v %v", again, err)
+			}
+			if _, err := store.Context(t.Context(), user.ID, binding.ContextID, time.Now()); err != nil {
+				t.Fatalf("upgrade lost observation: %v", err)
+			}
+			replay, err := store.Ingest(user.ID, request)
+			if err != nil || replay.ContextID != binding.ContextID {
+				t.Fatalf("upgrade lost retry identity: %+v %v", replay, err)
 			}
 		})
 	}
@@ -114,8 +162,9 @@ func TestFailedUpgradeRollsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A conflicting object makes the schema 13 statements fail midway.
-	if _, err := store.db.Exec("DROP TABLE github_follows; DROP TABLE github_oauth_states; CREATE VIEW github_follows AS SELECT 1 AS owner_id; PRAGMA user_version=11"); err != nil {
+	// A conflicting object makes the schema 16 drops fail after the schema 14
+	// statements ran.
+	if _, err := store.db.Exec("DROP TABLE observation_commit_ranges; DROP TABLE observation_commits; CREATE VIEW github_follows AS SELECT 1 AS owner_id; PRAGMA user_version=13"); err != nil {
 		t.Fatal(err)
 	}
 	store.Close()
@@ -129,10 +178,10 @@ func TestFailedUpgradeRollsBack(t *testing.T) {
 	}
 	defer db.Close()
 	var version, tables int
-	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 11 {
+	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 13 {
 		t.Fatalf("failed upgrade advanced version: %d %v", version, err)
 	}
-	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name='github_oauth_states'").Scan(&tables); err != nil || tables != 0 {
+	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name='observation_commits'").Scan(&tables); err != nil || tables != 0 {
 		t.Fatalf("failed upgrade kept partial tables: %d %v", tables, err)
 	}
 }

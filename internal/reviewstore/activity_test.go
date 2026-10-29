@@ -12,8 +12,8 @@ import (
 	"github.com/flexdinesh/diffx/internal/ingestion"
 )
 
-// The shared contract covers direct publication; this covers queued delivery.
-func TestQueuedActivityProjectionPreservesHeadOrderAndObservationProvenance(t *testing.T) {
+// The shared contract covers publication; this covers the projection after reopening.
+func TestActivityProjectionPreservesHeadOrderAndObservationProvenanceAcrossRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	store, err := Open(path)
 	if err != nil {
@@ -24,18 +24,8 @@ func TestQueuedActivityProjectionPreservesHeadOrderAndObservationProvenance(t *t
 	other := testUser(t, store, "other")
 	publish := func(request ingestion.Request) Binding {
 		t.Helper()
-		if _, err := store.Queue().Accept(t.Context(), owner.ID, request); err != nil {
-			t.Fatal(err)
-		}
-		delivery, err := store.Queue().Claim(t.Context(), time.Minute)
+		binding, err := store.Ingest(owner.ID, request)
 		if err != nil {
-			t.Fatal(err)
-		}
-		binding, err := store.Ingest(owner.ID, delivery.Request)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := store.Queue().Complete(t.Context(), delivery, binding.ContextID); err != nil {
 			t.Fatal(err)
 		}
 		return binding
@@ -47,7 +37,7 @@ func TestQueuedActivityProjectionPreservesHeadOrderAndObservationProvenance(t *t
 			t.Fatalf("activity projection: %+v, %v; want activity %d, captured %d, stale %v", item, err, activity, captured, stale)
 		}
 	}
-	request := queuedRequest("original")
+	request := localRequest("original")
 	request.ContentHash = strings.Repeat("a", 64)
 	request.Metadata.CollectedAt, request.Metadata.ActivityAt = 100, 90
 	original := publish(request)
@@ -106,7 +96,7 @@ func TestQueuedActivityProjectionPreservesHeadOrderAndObservationProvenance(t *t
 }
 
 func TestOptionalActivityPreservesLegacyPayloadAndRetryHash(t *testing.T) {
-	request := queuedRequest("legacy")
+	request := localRequest("legacy")
 	raw, hash, err := ingestion.Payload(request)
 	// Protocol-4 bytes captured before adding the optional activity field.
 	const legacyHash = "d5c453b0eef29e58e4b8401b793752afc15849a1008a6fd660fa79cd04750299"

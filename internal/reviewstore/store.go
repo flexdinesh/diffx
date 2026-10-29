@@ -17,12 +17,22 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 15
+const schemaVersion = 16
 
 // additiveSchema is the oldest schema that opens by upgrading in place. Each
-// later schema only creates tables and indexes, so the idempotent initialization
-// statements migrate it in the same transaction that records the new version.
+// later schema only creates tables and indexes, or drops tables that are always
+// empty in local state, so the idempotent initialization statements migrate it
+// in the same transaction that records the new version.
 const additiveSchema = 11
+
+// serverTables held server-only state before diffx-server moved to Postgres.
+// Local state never writes them, so schema 16 drops them, children first.
+var serverTables = []string{
+	"push_deliveries", "push_notifications", "push_subscriptions", "push_keys",
+	"github_follow_mutes", "github_pr_heads", "github_pull_requests", "github_deliveries", "github_follows", "github_connections", "github_oauth_states",
+	"google_auth_states", "account_invites", "google_identities", "disabled_accounts", "admin_setup", "admin_account", "identity_tokens", "browser_sessions", "remote_accounts",
+	"ingestion_jobs",
+}
 
 const DefaultRetention = 7 * 24 * time.Hour
 
@@ -163,7 +173,7 @@ func (failure *StateError) Older() bool {
 func (failure *StateError) Supported() int { return schemaVersion }
 
 func (failure *StateError) Error() string {
-	return fmt.Sprintf("state database %q: %s\n  Existing data preserved; automatic reset is disabled.\n  To start fresh: stop processes using this database, back up %q (including SQLite sidecar files), then retry your command with --state /path/to/new-state.db (choose an unused path).\n  Fresh state has no saved reviews or server accounts.", failure.Path, failure.reason, filepath.Dir(failure.Path))
+	return fmt.Sprintf("state database %q: %s\n  Existing data preserved; automatic reset is disabled.\n  To start fresh: stop processes using this database, back up %q (including SQLite sidecar files), then retry your command with --state /path/to/new-state.db (choose an unused path).\n  Fresh state has no saved reviews.", failure.Path, failure.reason, filepath.Dir(failure.Path))
 }
 
 func newerStateError(path string, version int) error {
@@ -229,17 +239,10 @@ func (store *Store) initialize(path string) error {
 	if err := initializeIngestion(transaction); err != nil {
 		return err
 	}
-	if err := initializeQueue(transaction); err != nil {
-		return err
-	}
-	if err := initializeAuthentication(transaction); err != nil {
-		return err
-	}
-	if err := initializeGitHub(transaction); err != nil {
-		return err
-	}
-	if err := initializePush(transaction); err != nil {
-		return err
+	for _, table := range serverTables {
+		if _, err := transaction.Exec("DROP TABLE IF EXISTS " + table); err != nil {
+			return err
+		}
 	}
 	if _, err := transaction.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
 		return err
@@ -302,12 +305,6 @@ func (store *Store) PruneExpired(now time.Time) error {
 		return err
 	}
 	if err := endStreams(transaction); err != nil {
-		return err
-	}
-	if err := pruneGitHub(transaction, now.UnixMilli()); err != nil {
-		return err
-	}
-	if err := prunePush(transaction, now.UnixMilli()); err != nil {
 		return err
 	}
 	return transaction.Commit()

@@ -12,9 +12,10 @@ import (
 	"github.com/flexdinesh/diffx/internal/contextservice"
 	"github.com/flexdinesh/diffx/internal/hooks"
 	"github.com/flexdinesh/diffx/internal/ingestion"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
+	"github.com/flexdinesh/diffx/internal/reviewdata"
 	"github.com/flexdinesh/diffx/internal/submission"
 	"github.com/flexdinesh/diffx/internal/testsupport"
+	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 )
 
 func producerGit(t *testing.T, root string, args ...string) {
@@ -88,16 +89,9 @@ func TestHookInitialCleanSessionsAndMissingAcknowledgement(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("DIFFX_CONFIG_PATH", configPath)
 	t.Setenv("DIFFX_REMOTE_TOKEN", "test-token")
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	user, err := store.User("test", "test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	service := contextservice.NewWithContext(t.Context(), store, user)
+	store := pgtest.Store(t)
+	account := testsupport.RemoteAccount(t, store, "test")
+	service := contextservice.NewWithContext(t.Context(), store, reviewdata.User{ID: account.ID, Name: account.Username})
 	defer service.Close()
 	server := testsupport.Server(t, service, store, store.Queue())
 	defer server.Close()

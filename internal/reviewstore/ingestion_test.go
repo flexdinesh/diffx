@@ -22,6 +22,17 @@ func observationRequest(source, submission string) ingestion.Request {
 	}
 }
 
+// localRequest is an observation whose snapshots carry local checkout provenance.
+func localRequest(id string) ingestion.Request {
+	request := observationRequest("source", id)
+	for i := range request.Scopes {
+		request.Scopes[i].Snapshot.Source = "local"
+		request.Scopes[i].Snapshot.Root = request.Metadata.Root
+		request.Scopes[i].Snapshot.Branch = request.Metadata.Branch
+	}
+	return request
+}
+
 // The shared contract checks the semantic outcome; rows prove nothing partial persists.
 func TestObservationRollbackLeavesNoRows(t *testing.T) {
 	store := openTestStore(t)

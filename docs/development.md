@@ -198,12 +198,12 @@ runtime directories (`DIFFX_RUNTIME_DIR`) and in-memory state for lifecycle test
 must not register inputs in the personal service. `DIFFX_EXIT_ON_STDIN_CLOSE`
 is a foreground development-process lifecycle hook.
 
-Stop running processes before upgrading. Schema 11 and 12 databases upgrade in place to
-schema 13 and survive restart; incompatible schemas are refused without resetting data. Local
+Stop running processes before upgrading. Local schema 11 through 15 databases upgrade in place to
+schema 16 and survive restart; incompatible schemas are refused without resetting data. Local
 `diffx` offers to back up older state and start fresh on a terminal;
 `--reset-state` does so without asking, keeping only the newest backup beside
-the database. Server state never resets: back up the state directory while
-stopped and explicitly choose a new database path. In-memory state does not survive restart. Local `local.retentionDays` defaults to seven; fresh
+the database. Server Postgres state never resets; `diffx-server` migrates it at
+startup. In-memory state does not survive restart. Local `local.retentionDays` defaults to seven; fresh
 submissions apply the current setting, while exact retries preserve expiry.
 
 For isolated production-user tests, start `diffx-server` with a temporary

@@ -58,8 +58,4 @@ func TestLocalIdentityIsAutomaticWithoutAccountManagement(t *testing.T) {
 			}
 		}
 	}
-	accounts, err := store.IdentityAccounts(t.Context())
-	if err != nil || len(accounts) != 0 {
-		t.Fatalf("local composition created remote accounts: %+v %v", accounts, err)
-	}
 }

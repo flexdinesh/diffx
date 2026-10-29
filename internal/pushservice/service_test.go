@@ -8,16 +8,12 @@ import (
 	"testing"
 
 	"github.com/flexdinesh/diffx/internal/pushservice"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/testsupport"
+	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 )
 
 func TestEnablementFollowsThePublicURLAndKeysPersist(t *testing.T) {
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := pgtest.Store(t)
 	owner := testsupport.RemoteAccount(t, store, "alice")
 	for publicURL, enabled := range map[string]bool{
 		"": false, "http://diffx.example": false, "ftp://diffx.example": false, "https://": false,
@@ -61,11 +57,7 @@ func TestEnablementFollowsThePublicURLAndKeysPersist(t *testing.T) {
 }
 
 func TestSubscribeValidatesBrowserSubscriptions(t *testing.T) {
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := pgtest.Store(t)
 	owner := testsupport.RemoteAccount(t, store, "alice")
 	service, err := pushservice.New(t.Context(), store.Push(), pushservice.Options{PublicURL: "https://diffx.example"})
 	if err != nil {

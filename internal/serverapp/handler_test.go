@@ -29,103 +29,69 @@ import (
 	"github.com/flexdinesh/diffx/internal/pgstore"
 	"github.com/flexdinesh/diffx/internal/remoteserver"
 	"github.com/flexdinesh/diffx/internal/review"
+	"github.com/flexdinesh/diffx/internal/reviewdata"
 	"github.com/flexdinesh/diffx/internal/reviewservice"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/serverapp"
 	"github.com/flexdinesh/diffx/internal/testsupport"
 	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// reviewStore is the storage both compositions expose to boundary assertions.
-type reviewStore interface {
-	ObservationSnapshot(ctx context.Context, ownerID, contextID string, mode review.DiffMode) (review.RepositoryDiff, error)
-	PutComment(ctx context.Context, contextID string, comment review.ReviewComment) error
-	Comments(ctx context.Context, contextID string) ([]review.ReviewComment, error)
-}
-
 type deployment struct {
 	server *httptest.Server
-	// store is the local composition's database; nil for remote deployments.
-	store   *reviewstore.Store
-	reviews reviewStore
-	// principal creates another principal in the same deployment.
-	principal func(t *testing.T, name string) string
-	owner     string
-	token     string
-	close     func()
+	store  *pgstore.Store
+	owner  string
+	token  string
+	close  func()
 }
 
-// start composes a local deployment on a SQLite path ("" for memory) or a
-// remote deployment on a Postgres URL ("" for a fresh database).
+// start composes an unauthenticated queued deployment or an authenticated
+// remote deployment on a Postgres URL ("" for a fresh database). Only server
+// state has a durable ingestion queue, so both run on Postgres.
 func start(t *testing.T, state string, remote bool) deployment {
 	t.Helper()
 	assets := fstest.MapFS{"index.html": {Data: []byte("stored review UI")}}
+	if state == "" {
+		state = pgtest.URL(t)
+	}
+	store, err := pgstore.Open(t.Context(), state, pgstore.DefaultRetention)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := identityservice.New(store)
+	accounts, err := identity.Accounts(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var account identityservice.Account
+	if len(accounts) == 0 {
+		account = testsupport.RemoteAccount(t, store, "team")
+	} else {
+		for _, existing := range accounts {
+			if existing.Username == "team" {
+				account = existing
+				break
+			}
+		}
+		if account.ID == "" {
+			t.Fatal("persisted deployment lost team account")
+		}
+	}
 	var handler http.Handler
-	var closeService, closeStore func() error
-	var user reviewstore.User
-	var local *reviewstore.Store
-	var reviews reviewStore
-	var principal func(t *testing.T, name string) string
+	var closeService func() error
 	credential := ""
 	if remote {
-		if state == "" {
-			state = pgtest.URL(t)
-		}
-		store, err := pgstore.Open(t.Context(), state, pgstore.DefaultRetention)
-		if err != nil {
-			t.Fatal(err)
-		}
-		reviews, closeStore = store, store.Close
-		principal = func(t *testing.T, name string) string { return testsupport.RemoteAccount(t, store, name).ID }
-		identity := identityservice.New(store)
-		accounts, err := identity.Accounts(t.Context())
-		if err != nil {
-			t.Fatal(err)
-		}
-		var account identityservice.Account
-		if len(accounts) == 0 {
-			account = testsupport.RemoteAccount(t, store, "team")
-		} else {
-			for _, existing := range accounts {
-				if existing.Username == "team" {
-					account = existing
-					break
-				}
-			}
-			if account.ID == "" {
-				t.Fatal("persisted deployment lost team account")
-			}
-		}
 		created, err := identity.CreateToken(t.Context(), account.ID, "boundary tests", identityservice.PurposeAPI, time.Time{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		user = reviewstore.User{ID: account.ID, Name: account.Username}
 		credential = created.Secret
 		handler, closeService, err = remoteserver.Handler(t.Context(), store, remoteserver.Settings{}, assets)
 		if err != nil {
 			t.Fatal(err)
 		}
 	} else {
-		store, err := reviewstore.Open(state)
-		if err != nil {
-			t.Fatal(err)
-		}
-		local, reviews, closeStore = store, store, store.Close
-		principal = func(t *testing.T, name string) string {
-			t.Helper()
-			other, err := store.User("account:"+name, name)
-			if err != nil {
-				t.Fatal(err)
-			}
-			return other.ID
-		}
-		user, err = store.User("local-test", "team")
-		if err != nil {
-			t.Fatal(err)
-		}
-		service := contextservice.NewWithContext(t.Context(), store, user)
+		service := contextservice.NewWithContext(t.Context(), store, reviewdata.User{ID: account.ID, Name: account.Username})
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
 		go func() {
@@ -139,9 +105,16 @@ func start(t *testing.T, state string, remote bool) deployment {
 	}
 	server := httptest.NewServer(handler)
 	var once sync.Once
-	close := func() { once.Do(func() { server.Close(); _ = closeService(); _ = closeStore() }) }
+	close := func() { once.Do(func() { server.Close(); _ = closeService(); _ = store.Close() }) }
 	t.Cleanup(close)
-	return deployment{server, local, reviews, principal, user.ID, credential, close}
+	return deployment{server, store, account.ID, credential, close}
+}
+
+// principal creates another account in the deployment.
+func principal(t *testing.T, d deployment, name string) reviewdata.User {
+	t.Helper()
+	account := testsupport.RemoteAccount(t, d.store, name)
+	return reviewdata.User{ID: account.ID, Name: account.Username}
 }
 
 func request(t *testing.T, d deployment, method, path string, body io.Reader) *http.Response {
@@ -215,10 +188,7 @@ func TestPublicIngestionSurvivesProducerRemovalAndServerRestart(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	for _, remote := range []bool{false, true} {
 		t.Run(fmt.Sprintf("remote=%v", remote), func(t *testing.T) {
-			state := filepath.Join(t.TempDir(), "reviews.sqlite")
-			if remote {
-				state = pgtest.URL(t)
-			}
+			state := pgtest.URL(t)
 			d := start(t, state, remote)
 			client := testsupport.NewClient(d.server.URL, d.token)
 			first, err := client.Submit(t.Context(), input)
@@ -246,16 +216,16 @@ func TestPublicIngestionSurvivesProducerRemovalAndServerRestart(t *testing.T) {
 			if first.ContextID == second.ContextID {
 				t.Fatal("independent same-branch sources collapsed")
 			}
-			if _, err := d.reviews.ObservationSnapshot(t.Context(), d.owner, first.ContextID, review.DiffAll); err != nil {
+			if _, err := d.store.ObservationSnapshot(t.Context(), d.owner, first.ContextID, review.DiffAll); err != nil {
 				t.Fatalf("snapshot not owned by server principal: %v", err)
 			}
-			foreign := d.principal(t, "other")
-			if _, err := d.reviews.ObservationSnapshot(t.Context(), foreign, first.ContextID, review.DiffAll); !errors.Is(err, reviewstore.ErrNotFound) {
+			foreign := principal(t, d, "other").ID
+			if _, err := d.store.ObservationSnapshot(t.Context(), foreign, first.ContextID, review.DiffAll); !errors.Is(err, reviewdata.ErrNotFound) {
 				t.Fatalf("cross-account observation exposed: %v", err)
 			}
 			file := first.Snapshot.Files[0]
 			comment := review.ReviewComment{ID: "retained-comment", DiffID: first.Snapshot.ID, VersionID: first.Snapshot.VersionID, Path: file.Path, Scope: review.DiffAll, Fingerprint: file.Fingerprint, Side: "additions", Start: 1, End: 1, Code: "after", Body: "Check this change", Status: "open", CreatedAt: 1}
-			if err := d.reviews.PutComment(t.Context(), first.ContextID, comment); err != nil {
+			if err := d.store.PutComment(t.Context(), first.ContextID, comment); err != nil {
 				t.Fatal(err)
 			}
 			fresh := input
@@ -503,10 +473,7 @@ func TestGlobalMCPDiscoversStoredReviewsAndRejectsForeignContexts(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreign, err := d.store.User("foreign", "foreign")
-	if err != nil {
-		t.Fatal(err)
-	}
+	foreign := principal(t, d, "foreign")
 	foreignService := contextservice.New(d.store, foreign)
 	defer foreignService.Close()
 	foreignSubmission, err := foreignService.Ingest(t.Context(), input)
@@ -678,10 +645,7 @@ func TestMCPReadsCapturedCommitsWithoutCheckout(t *testing.T) {
 func TestForeignRESTMutationsLeaveReviewStateUntouched(t *testing.T) {
 	input := collectGit(t)
 	d := start(t, "", false)
-	owner, err := d.store.User("foreign-mutation-owner", "foreign")
-	if err != nil {
-		t.Fatal(err)
-	}
+	owner := principal(t, d, "foreign")
 	service := contextservice.New(d.store, owner)
 	defer service.Close()
 	foreign, err := service.Ingest(t.Context(), input)
@@ -870,7 +834,7 @@ func TestStreamReviewSpansSnapshotsInBothCompositions(t *testing.T) {
 				t.Fatalf("agent comments: %#v", agent.Comments)
 			}
 			call("DELETE", laterBase, nil, 204, nil)
-			if comments, err := d.reviews.Comments(t.Context(), later.ContextID); err != nil || len(comments) != 0 {
+			if comments, err := d.store.Comments(t.Context(), later.ContextID); err != nil || len(comments) != 0 {
 				t.Fatalf("stream end kept comments: %#v %v", comments, err)
 			}
 		})

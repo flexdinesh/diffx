@@ -14,10 +14,11 @@ import (
 	"github.com/flexdinesh/diffx/internal/githubsync"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
+	"github.com/flexdinesh/diffx/internal/pgstore"
 	"github.com/flexdinesh/diffx/internal/pushservice"
 	"github.com/flexdinesh/diffx/internal/review"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/testsupport"
+	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 )
 
 // pushEndpoint is a push service: respond decides each answer by call index.
@@ -57,7 +58,7 @@ func (endpoint *pushEndpoint) count() int {
 }
 
 type harness struct {
-	store   *reviewstore.Store
+	store   *pgstore.Store
 	service *pushservice.Service
 	clock   *time.Time
 	owner   identityservice.Account
@@ -66,11 +67,7 @@ type harness struct {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
+	store := pgtest.Store(t)
 	clock := time.Now()
 	h := &harness{store: store, clock: &clock, owner: testsupport.RemoteAccount(t, store, "alice")}
 	h.service = h.restart(t)
