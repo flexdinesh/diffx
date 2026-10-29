@@ -1,0 +1,40 @@
+# Publishes diffx-server and diffx-fetcher images to the homelab registry and
+# rolls deehomelab/k8s-cluster apps/diffx: main updates diffx-staging, a vX.Y.Z
+# release tag updates diffx-prod. Verification stays in GitHub Actions.
+when:
+  - event: push
+    branch: main
+  - event: tag
+    ref: refs/tags/v*
+
+steps:
+  build-web:
+    image: docker.io/library/node:26.5.0-bookworm-slim
+    environment:
+      HUSKY: "0"
+    commands:
+      - npm install --global pnpm@11.25.0
+      - pnpm install --frozen-lockfile
+      - pnpm build
+
+  stage-web:
+    image: docker.io/library/golang:1.27.3-bookworm
+    environment:
+      GOTOOLCHAIN: local
+    commands:
+      - go run ./tools/stage-web apps/web/dist internal/webui/dist
+
+  deploy:
+    image: docker.io/library/docker:29.9.2-cli
+    environment:
+      REGISTRY: registry.local.deebox.xyz/home
+      KUBECONFIG_CONTENT:
+        from_secret: KUBECONFIG
+      KUBECONFIG: /tmp/kubeconfig
+      KUBECTL_VERSION: v1.35.9
+    commands:
+      - sh scripts/ci/deploy.sh
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+concurrency: 1
