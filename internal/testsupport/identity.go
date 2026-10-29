@@ -36,7 +36,7 @@ func RemoteAdmin(t testing.TB, store identityservice.Store, username, password s
 	return session
 }
 
-// AccountStore creates accounts directly; both stores implement it.
+// AccountStore creates accounts directly; server storage implements it.
 type AccountStore interface {
 	CreateAccount(ctx context.Context, account identityservice.Account, passwordHash string, created time.Time) error
 }

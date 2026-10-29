@@ -15,6 +15,8 @@ import (
 
 func initializeIngestion(tx *sql.Tx) error {
 	statements := []string{
+		// Retry identities; sequence is the arrival order that elects stream heads.
+		`CREATE TABLE IF NOT EXISTS ingestion_records (sequence INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, source_id TEXT NOT NULL, submission_id TEXT NOT NULL, payload_hash TEXT NOT NULL, context_id TEXT NOT NULL DEFAULT '', UNIQUE(owner_id,source_id,submission_id))`,
 		`CREATE TABLE IF NOT EXISTS observation_repositories (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, repository_key TEXT NOT NULL, UNIQUE(owner_id,repository_key))`,
 		`CREATE TABLE IF NOT EXISTS observations (context_id TEXT PRIMARY KEY REFERENCES contexts(id) ON DELETE CASCADE, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, source_id TEXT NOT NULL, submission_id TEXT NOT NULL, payload_hash TEXT NOT NULL, repository_id TEXT REFERENCES observation_repositories(id), metadata TEXT NOT NULL, stream_key TEXT NOT NULL, UNIQUE(owner_id,source_id,submission_id))`,
 		`CREATE TABLE IF NOT EXISTS observation_scopes (context_id TEXT NOT NULL REFERENCES observations(context_id) ON DELETE CASCADE, mode TEXT NOT NULL, diff_id TEXT NOT NULL UNIQUE REFERENCES diffs(id) ON DELETE CASCADE, version_id TEXT NOT NULL REFERENCES diff_versions(id) ON DELETE CASCADE, PRIMARY KEY(context_id,mode))`,
@@ -38,6 +40,21 @@ func initializeIngestion(tx *sql.Tx) error {
 		}
 	}
 	return initializeSessions(tx)
+}
+
+// recordSubmission claims a submission's retry identity in the ingest transaction.
+func recordSubmission(tx *sql.Tx, owner string, request ingestion.Request, hash string) (int64, string, error) {
+	_, err := tx.Exec(`INSERT INTO ingestion_records(owner_id,source_id,submission_id,payload_hash) VALUES(?,?,?,?) ON CONFLICT DO NOTHING`, owner, request.Metadata.SourceID, request.SubmissionID, hash)
+	if err != nil {
+		return 0, "", err
+	}
+	var sequence int64
+	var previousHash, id string
+	err = tx.QueryRow(`SELECT sequence,payload_hash,context_id FROM ingestion_records WHERE owner_id=? AND source_id=? AND submission_id=?`, owner, request.Metadata.SourceID, request.SubmissionID).Scan(&sequence, &previousHash, &id)
+	if err == nil && previousHash != hash {
+		err = ErrSubmissionConflict
+	}
+	return sequence, id, err
 }
 
 // Ingest atomically commits an immutable observation and its retry identity.

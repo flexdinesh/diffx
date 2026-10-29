@@ -249,18 +249,21 @@ uses `X-Diffx-State` to pin submission and polling to the destination identity;
 older protocols are rejected. Release artifacts use the explicit `diffx` project
 name, independent of the checkout directory.
 
-Local SQLite schema 15 preserves current state across starts. It adds push notification
-tables (`push_keys`, `push_subscriptions`, the `push_notifications` outbox and
-`push_deliveries`) and GitHub notification triggers (`github_pr_heads`,
-`github_follow_mutes`); schema 14 added captured branch commit
-tables (`observation_commits`, `observation_commit_ranges`); schema 13 added
-administration and Google sign-in tables and schema 12 GitHub integration tables. Schema 11 moved review state
-from each snapshot scope to its stream and scope, because comments and reviewed
-marks must survive new collections and snapshot deletion. Schema 11 and later
-upgrade in place: later schemas only add tables and indexes, so opening runs the
-idempotent creation statements and records the new version in one transaction,
-because durable server volumes must gain GitHub integration, administration,
-commit and push state without an operator reset. A schema change that alters existing tables needs a new
+Local SQLite schema 16 preserves current state across starts. It drops the
+server-only tables earlier schemas created in every local database
+(accounts, sessions, tokens, administration, Google sign-in, invites, GitHub
+integration, push notifications and the `ingestion_jobs` queue), because server
+state lives in Postgres; `ingestion_records` remains the local retry identity.
+Schema 14 added captured branch commit tables (`observation_commits`,
+`observation_commit_ranges`). Schema 11 moved review state from each snapshot
+scope to its stream and scope, because comments and reviewed marks must survive
+new collections and snapshot deletion. Schema 11 and later upgrade in place:
+later schemas only add tables and indexes or drop tables that are provably
+always empty in local state, so opening runs the idempotent statements and
+records the new version in one transaction, because local state must gain
+commit tables and shed server tables without a reset. A later schema may drop a
+table only when local state never writes it; the additive floor stays 11. A
+schema change that alters existing tables or drops local data needs a new
 compatibility floor instead. Older-than-11, future and unrecognized schemas are
 refused; opening a database never resets it. `reviewstore.Reset` is the only reset: under the
 ownership lock it moves current or older diffx state and its SQLite sidecars to

@@ -12,7 +12,9 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/github"
 	"github.com/flexdinesh/diffx/internal/githubsync"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
+	"github.com/flexdinesh/diffx/internal/pgstore"
+	"github.com/flexdinesh/diffx/internal/testsupport"
+	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 )
 
 type fakeGitHub struct {
@@ -107,7 +109,7 @@ var appRepo = github.Repository{ID: 10, FullName: "octo/app", InstallationID: 5}
 var otherRepo = github.Repository{ID: 11, FullName: "octo/secret", InstallationID: 5}
 
 type fixture struct {
-	store   *reviewstore.Store
+	store   *pgstore.Store
 	github  *fakeGitHub
 	log     *refreshLog
 	service *githubsync.Service
@@ -118,20 +120,11 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-	alice, err := store.User("alice", "alice")
-	if err != nil {
-		t.Fatal(err)
-	}
-	bob, err := store.User("bob", "bob")
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := pgtest.Store(t)
+	alice := testsupport.RemoteAccount(t, store, "alice")
+	bob := testsupport.RemoteAccount(t, store, "bob")
 	clock := time.Now()
+	var err error
 	f := &fixture{store: store, clock: &clock, alice: alice.ID, bob: bob.ID,
 		github: &fakeGitHub{
 			repositories: map[string][]github.Repository{"access-alice": {appRepo, otherRepo}, "access-bob": {appRepo}},

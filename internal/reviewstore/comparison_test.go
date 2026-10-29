@@ -12,7 +12,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/review"
 )
 
-func TestLegacyComparisonReadsPreserveQueuedBytesAndReplay(t *testing.T) {
+func TestLegacyComparisonReadsPreservePersistedIdentityAndReplay(t *testing.T) {
 	for _, test := range []struct {
 		name                   string
 		branch, allOnly, patch bool
@@ -26,7 +26,7 @@ func TestLegacyComparisonReadsPreserveQueuedBytesAndReplay(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			store := openTestStore(t)
 			owner := testUser(t, store, "legacy")
-			r := queuedRequest("original")
+			r := localRequest("original")
 			if test.branch {
 				r.Metadata.Comparison = &ingestion.Comparison{Kind: "branch", BaseRef: "refs/heads/main", BaseCommit: strings.Repeat("a", 40), MergeBase: strings.Repeat("b", 40)}
 			}
@@ -40,15 +40,7 @@ func TestLegacyComparisonReadsPreserveQueuedBytesAndReplay(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			job, err := store.Queue().Accept(t.Context(), owner.ID, r)
-			if err != nil {
-				t.Fatal(err)
-			}
-			lease, err := store.Queue().Claim(t.Context(), time.Minute)
-			if err != nil {
-				t.Fatal(err)
-			}
-			binding, err := store.Ingest(owner.ID, lease.Request)
+			binding, err := store.Ingest(owner.ID, r)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -71,21 +63,21 @@ func TestLegacyComparisonReadsPreserveQueuedBytesAndReplay(t *testing.T) {
 			if err != nil || item.ScopeSummaries[0].ComparisonKind != test.want {
 				t.Fatalf("summary: %+v, %v", item, err)
 			}
-			var after, payload, recordedHash string
+			var after, recordedHash string
 			if err := store.db.QueryRow(`SELECT manifest FROM diff_versions WHERE diff_id=?`, binding.ContextID).Scan(&after); err != nil {
 				t.Fatal(err)
 			}
-			if err := store.db.QueryRow(`SELECT j.payload,r.payload_hash FROM ingestion_jobs j JOIN ingestion_records r ON r.sequence=j.sequence WHERE j.id=?`, job.ID).Scan(&payload, &recordedHash); err != nil {
+			if err := store.db.QueryRow(`SELECT payload_hash FROM ingestion_records WHERE owner_id=? AND submission_id=?`, owner.ID, r.SubmissionID).Scan(&recordedHash); err != nil {
 				t.Fatal(err)
 			}
-			if before != after || payload != string(original) || recordedHash != hash {
+			if before != after || recordedHash != hash {
 				t.Fatal("read mutated legacy persisted identity")
 			}
-			reencoded, err := json.Marshal(lease.Request)
+			reencoded, err := json.Marshal(r)
 			if err != nil || !bytes.Equal(original, reencoded) {
-				t.Fatalf("queued request changed: %v", err)
+				t.Fatalf("submitted request changed: %v", err)
 			}
-			replay, err := store.Ingest(owner.ID, lease.Request)
+			replay, err := store.Ingest(owner.ID, r)
 			if err != nil || replay.ContextID != binding.ContextID {
 				t.Fatalf("replay: %+v, %v", replay, err)
 			}

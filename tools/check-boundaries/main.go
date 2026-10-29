@@ -72,7 +72,8 @@ var allowed = map[string][]string{
 	"internal/reviewdata":    {"internal/review", "internal/ingestion"},
 	"internal/reviewservice": {"internal/review", "internal/reviewdata", "internal/reviewsession", "internal/contextservice", "internal/ingestion"},
 	"internal/reviewsession": {"internal/review"},
-	"internal/reviewstore":   {"internal/githubsync", "internal/google", "internal/identityservice", "internal/pushservice", "internal/review", "internal/reviewdata", "internal/ingestion", "internal/ingestionqueue", "internal/processlock", "internal/webpush"},
+	// Local SQLite persistence; server contracts are implemented only by pgstore.
+	"internal/reviewstore": {"internal/review", "internal/reviewdata", "internal/ingestion", "internal/processlock"},
 	"internal/serverapp": {
 		"internal/contextservice", "internal/httpapi", "internal/ingestion", "internal/ingestionqueue",
 		"internal/mcpapi", "internal/review", "internal/reviewdata", "internal/reviewservice", "internal/version",

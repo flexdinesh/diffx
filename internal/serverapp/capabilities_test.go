@@ -23,11 +23,21 @@ import (
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/mcpapi"
 	"github.com/flexdinesh/diffx/internal/review"
+	"github.com/flexdinesh/diffx/internal/reviewdata"
+	"github.com/flexdinesh/diffx/internal/reviewservice"
 	"github.com/flexdinesh/diffx/internal/reviewsession"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/serverapp"
+	"github.com/flexdinesh/diffx/internal/testsupport"
+	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// capabilityStore is what both compositions' storage provides the handler.
+type capabilityStore interface {
+	contextservice.Store
+	reviewservice.MutationStore
+}
 
 func TestAdmissionCapabilitiesMatchHealthAndRoutes(t *testing.T) {
 	for _, test := range []struct {
@@ -43,21 +53,27 @@ func TestAdmissionCapabilitiesMatchHealthAndRoutes(t *testing.T) {
 		{"remote queued", true, "", serverapp.Capabilities{IngestionEnabled: true, QueuedIngestion: true}, "capture"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			store, err := reviewstore.Open(":memory:")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer store.Close()
-			user, err := store.User("local", "Local")
-			if err != nil {
-				t.Fatal(err)
+			var store capabilityStore
+			var user reviewdata.User
+			options := serverapp.Options{}
+			if test.queue {
+				// Only server state has a durable ingestion queue.
+				remote := pgtest.Store(t)
+				account := testsupport.RemoteAccount(t, remote, "local")
+				store, user, options.Queue = remote, reviewdata.User{ID: account.ID, Name: account.Username}, remote.Queue()
+			} else {
+				local, err := reviewstore.Open(":memory:")
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer local.Close()
+				if user, err = local.User("local", "Local"); err != nil {
+					t.Fatal(err)
+				}
+				store = local
 			}
 			service := contextservice.NewWithContext(t.Context(), store, user)
 			defer service.Close()
-			options := serverapp.Options{}
-			if test.queue {
-				options.Queue = store.Queue()
-			}
 			if test.selection != "" {
 				options.Collections = serverapp.NewCollections(service, test.selection, func(context.Context, func(ingestion.Request) error) ([]serverapp.CollectionFailure, error) {
 					return nil, errors.New("unused")

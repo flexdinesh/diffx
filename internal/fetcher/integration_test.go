@@ -11,7 +11,8 @@ import (
 	"github.com/flexdinesh/diffx/internal/githubsync"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/review"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
+	"github.com/flexdinesh/diffx/internal/testsupport"
+	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 )
 
 // stubGitHub serves one repository with pull request 7 of an origin.
@@ -68,15 +69,8 @@ func (server *leaseServer) Fail(ctx context.Context, job fetchprotocol.Job, deta
 func TestFetchedPullRequestBecomesFollowerReview(t *testing.T) {
 	requireTestGit(t)
 	origin := newOrigin(t)
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-	owner, err := store.User("alice", "alice")
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := pgtest.Store(t)
+	owner := testsupport.RemoteAccount(t, store, "alice")
 	created := time.UnixMilli(1_700_000_000_000)
 	repository := gh.Repository{ID: 42, FullName: "octo/repo", CloneURL: "https://github.com/octo/repo.git"}
 	pull := gh.PullRequest{Number: 7, State: "open", Title: "Edit files", Body: "Body", Author: gh.Account{Login: "mona"},
@@ -114,7 +108,7 @@ func TestFetchedPullRequestBecomesFollowerReview(t *testing.T) {
 	if err != nil || delivery.OwnerID != owner.ID {
 		t.Fatalf("follower admission: %+v %v", delivery, err)
 	}
-	published, err := store.Ingest(owner.ID, delivery.Request)
+	published, err := store.IngestContext(t.Context(), owner.ID, delivery.Request)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -19,8 +19,9 @@ import (
 	"github.com/flexdinesh/diffx/internal/hooks"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/review"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
+	"github.com/flexdinesh/diffx/internal/reviewdata"
 	"github.com/flexdinesh/diffx/internal/testsupport"
+	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 )
 
 func hookInput(t *testing.T, path string) []byte {
@@ -73,16 +74,9 @@ func waitHookCatalog(t *testing.T, harness serviceHarness, count int) (serviceSt
 
 func TestAgentHooksPublishLatestCheckoutAndCompleteFileContents(t *testing.T) {
 	harness := newServiceHarness(t)
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	owner, err := store.User("remote-hook-test", "remote")
-	if err != nil {
-		t.Fatal(err)
-	}
-	service := contextservice.NewWithContext(t.Context(), store, owner)
+	store := pgtest.Store(t)
+	account := testsupport.RemoteAccount(t, store, "remote")
+	service := contextservice.NewWithContext(t.Context(), store, reviewdata.User{ID: account.ID, Name: account.Username})
 	defer service.Close()
 	server := testsupport.Server(t, service, store, store.Queue())
 	defer server.Close()
@@ -344,16 +338,9 @@ func collectorActivities(t *testing.T, harness serviceHarness) []hooks.Activity 
 
 func TestHookIgnoresParentWorkspaceAndReviewRecoversExplicitBranch(t *testing.T) {
 	harness := isolatedCollectorHarness(t)
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	user, err := store.User("test", "test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	service := contextservice.NewWithContext(t.Context(), store, user)
+	store := pgtest.Store(t)
+	account := testsupport.RemoteAccount(t, store, "test")
+	service := contextservice.NewWithContext(t.Context(), store, reviewdata.User{ID: account.ID, Name: account.Username})
 	defer service.Close()
 	server := testsupport.Server(t, service, store, store.Queue())
 	defer server.Close()
