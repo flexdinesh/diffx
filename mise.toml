@@ -14,6 +14,7 @@ GOTOOLCHAIN = "local"
 
 [tools]
 go = "1.27.3"
+"aqua:sqlc-dev/sqlc" = "1.31.1"
 
 [tasks.deps]
 description = "Install pnpm dependencies from the lockfile"
@@ -38,7 +39,6 @@ run = [
 
 [tasks."generate:sql"]
 description = "Generate typed Go Postgres queries from internal/pgstore SQL"
-tools = { "aqua:sqlc-dev/sqlc" = "1.31.1" }
 run = "sqlc generate -f internal/pgstore/sqlc.yaml"
 
 [tasks."web:build"]
@@ -161,7 +161,6 @@ run = "pnpm check:js"
 [tasks."check:generated"]
 description = "Reject uncommitted generated API types, Postgres queries and plugins"
 shell = "bash -e -o pipefail -c"
-tools = { "aqua:sqlc-dev/sqlc" = "1.31.1" }
 run = '''
 if ! sqlc diff -f internal/pgstore/sqlc.yaml; then
   echo 'Run `mise run generate:sql` and commit internal/pgstore/pgdb.' >&2
