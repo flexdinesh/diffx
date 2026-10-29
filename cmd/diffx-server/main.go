@@ -15,8 +15,8 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/config"
 	"github.com/flexdinesh/diffx/internal/identityservice"
+	"github.com/flexdinesh/diffx/internal/pgstore"
 	"github.com/flexdinesh/diffx/internal/remoteserver"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/version"
 )
 
@@ -25,7 +25,6 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 	flags := flag.NewFlagSet("diffx-server", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.StringVar(&settings.Listen, "listen", net.JoinHostPort("127.0.0.1", strconv.Itoa(config.DefaultServerPort)), "HTTP listen address; terminate TLS at the deployment boundary")
-	flags.StringVar(&settings.State, "state", "", "SQLite database path")
 	flags.StringVar(&settings.PublicURL, "public-url", "", "browser-facing https origin used in the logged admin setup link; also enables Web Push")
 	flags.BoolVar(&settings.InsecureCookies, "insecure-cookies", false, "allow browser sessions over HTTP for development")
 	flags.IntVar(&settings.RetentionDays, "retention-days", 7, "snapshot retention in days")
@@ -52,9 +51,10 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 			return settings, false, err
 		}
 	}
-	if !visited["state"] || settings.State == "" {
-		settings.State = values.State
+	if err := values.ValidateDatabase(); err != nil {
+		return settings, false, err
 	}
+	settings.DatabaseURL = values.DatabaseURL
 	if !visited["public-url"] {
 		settings.PublicURL = values.PublicURL
 	}
@@ -66,9 +66,6 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 	}
 	if settings.RetentionDays <= 0 {
 		return settings, false, fmt.Errorf("retention days must be positive")
-	}
-	if settings.State == "" {
-		return settings, false, fmt.Errorf("state must be a database path or memory")
 	}
 	values.PublicURL, values.InsecureCookies = settings.PublicURL, settings.InsecureCookies
 	if err := values.ValidateIdentity(); err != nil {
@@ -125,19 +122,18 @@ func main() {
 	}
 }
 
-// Offline admin recovery shares the server's exclusive database lock. Only the
-// admin has a password; the setup link creates it. Passwords are read from an
-// explicitly selected environment variable or stdin; they are never command
-// arguments or printed output.
+// Admin recovery is one transaction against the shared database, so it may run
+// while replicas serve. Only the admin has a password; the setup link creates
+// it. Passwords are read from an explicitly selected environment variable or
+// stdin; they are never command arguments or printed output.
 func manageUser(arguments []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(arguments) == 0 || arguments[0] != "reset-password" {
-		return fmt.Errorf("usage: diffx-server user reset-password --username ADMIN --password-env VAR|--password-stdin [--state PATH]")
+		return fmt.Errorf("usage: diffx-server user reset-password --username ADMIN --password-env VAR|--password-stdin")
 	}
 	operation := arguments[0]
 	flags := flag.NewFlagSet("diffx-server user "+operation, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	username := flags.String("username", "", "admin username")
-	state := flags.String("state", "", "SQLite database path; server must be stopped")
 	configPath := flags.String("config-file", "", "optional server JSON config path")
 	passwordEnv := flags.String("password-env", "", "read password from this environment variable")
 	passwordStdin := flags.Bool("password-stdin", false, "read password from stdin")
@@ -151,11 +147,8 @@ func manageUser(arguments []string, stdin io.Reader, stdout, stderr io.Writer) e
 	if err != nil {
 		return err
 	}
-	if *state == "" {
-		*state = values.State
-	}
-	if *state == "memory" || *state == ":memory:" {
-		return fmt.Errorf("user administration requires a persistent state database")
+	if err := values.ValidateDatabase(); err != nil {
+		return err
 	}
 	var password string
 	if *passwordStdin {
@@ -170,7 +163,7 @@ func manageUser(arguments []string, stdin io.Reader, stdout, stderr io.Writer) e
 	} else {
 		password = os.Getenv(*passwordEnv)
 	}
-	store, err := reviewstore.Open(*state)
+	store, err := pgstore.Open(context.Background(), values.DatabaseURL, pgstore.DefaultRetention)
 	if err != nil {
 		return err
 	}

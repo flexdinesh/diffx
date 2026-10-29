@@ -1,0 +1,23 @@
+# Development Postgres for `mise run dev:remote` and manual server runs.
+# Loopback only; credentials are development defaults, never production.
+name: diffx-dev
+
+services:
+  postgres:
+    image: postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+    environment:
+      POSTGRES_USER: diffx
+      POSTGRES_PASSWORD: diffx
+      POSTGRES_DB: diffx
+    ports:
+      - "127.0.0.1:${DIFFX_DEV_POSTGRES_PORT:-54329}:5432"
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U diffx -d diffx"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  postgres:

@@ -38,7 +38,8 @@ agent-ready XML.
 Observations are immutable. New content creates another observation; matching
 submissions associate new provenance with an existing review without changing
 its captured diff. Comments and reviewed marks belong to the checkout's stream
-(or one piped capture) and are stored in SQLite: later snapshots re-anchor
+(or one piped capture) and are stored with the snapshots (SQLite locally,
+Postgres on a server): later snapshots re-anchor
 comments to moved code, flag outdated ones, and keep marks on files whose patch
 is unchanged. Deleting one snapshot keeps them; they end with the stream's last
 snapshot. Display preferences remain in the browser.

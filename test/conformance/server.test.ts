@@ -30,6 +30,7 @@ import { createServer } from "node:net";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createApiClient } from "../../packages/api/src/client.ts";
+import { serverDatabase } from "./postgres.ts";
 import type { components } from "../../packages/api/src/schema.d.ts";
 
 const fixture = fileURLToPath(
@@ -63,7 +64,7 @@ async function waitForServer(
   headers: Record<string, string> = {},
 ) {
   let lastError: unknown;
-  for (let attempt = 0; attempt < 80; attempt++) {
+  for (let attempt = 0; attempt < 200; attempt++) {
     try {
       const response = await fetch(`${url}/api/v2/bootstrap`, { headers });
       if (response.ok) return;
@@ -422,13 +423,15 @@ test("Go distribution implements the API contract", async (t) => {
   assert.equal(localJob.response.status, 404);
 
   const remotePort = await freePort();
+  const databaseUrl = await serverDatabase(t);
   const remoteServer = spawn(
     remoteBinary,
-    ["--listen", `127.0.0.1:${remotePort}`, "--state", "memory"],
+    ["--listen", `127.0.0.1:${remotePort}`],
     {
       stdio: ["ignore", "ignore", "pipe"],
       env: {
         ...process.env,
+        DIFFX_SERVER_DATABASE_URL: databaseUrl,
         // Loopback HTTP enables Web Push for development.
         DIFFX_SERVER_PUBLIC_URL: `http://localhost:${remotePort}`,
         DIFFX_SERVER_INSECURE_COOKIES: "true",

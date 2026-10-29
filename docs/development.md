@@ -59,8 +59,11 @@ build.
 | Build the dependency-free CLI at `dist/diffx`              | `mise run build`                 |
 | Build and locally install the CLI                          | `mise run install`               |
 | Build agent plugin adapters                                | `mise run plugins:build`         |
-| Start the container server with persistent SQLite          | `mise run docker:up`             |
-| Stop the container server, preserving SQLite               | `mise run docker:down`           |
+| Start the development Postgres (`compose.dev.yml`)         | `mise run db:up`                 |
+| Stop it, preserving data / delete its data and restart     | `mise run db:down` / `db:reset`  |
+| Run `diffx-server` on the dev Postgres behind Vite HMR     | `mise run dev:remote`            |
+| Start the container server with its bundled Postgres       | `mise run docker:up`             |
+| Stop the container server, preserving its database         | `mise run docker:down`           |
 | Install Playwright Chromium                                | `pnpm test:browser:install`      |
 | Run web unit and browser tests                             | `pnpm test:web`                  |
 | Run Go tests                                               | `mise run test:go`               |
@@ -74,6 +77,13 @@ build.
 | Run every repository check                                 | `mise run check`                 |
 | Run all pre-push checks, including Go race tests           | `pnpm check:push`                |
 | Run lightweight CI checks                                  | `mise run check:ci`              |
+
+Server-mode Go tests need Docker: `internal/testsupport/pgtest` starts one
+pinned `postgres:18-alpine` container per test process (removed by
+testcontainers' reaper) and gives every test its own database cloned from a
+template migrated once per schema. Set `DIFFX_TEST_DATABASE_URL` to a
+`postgres://` URL whose role may create databases to use a running server
+instead, such as the development Postgres. Local-mode tests stay on SQLite.
 
 Browser tests reuse the full check's web and CLI builds; standalone browser runs
 build them when needed. Chromium uses one worker with an in-memory fixture server
@@ -207,13 +217,19 @@ against the running personal service.
 
 ## Server development
 
-Build both binaries with `mise run build`, then run server mode directly:
+Server mode stores everything in PostgreSQL 18. `mise run dev:remote` starts the
+development Postgres from `compose.dev.yml` (loopback port 54329, override with
+`DIFFX_DEV_POSTGRES_PORT`), runs `diffx-server` against it and serves the app
+through Vite HMR at `http://localhost:5173`, which also receives the setup
+link. To run a built binary directly:
 
 ```sh
-DIFFX_SERVER_INSECURE_COOKIES=true DIFFX_SERVER_STATE=./test-data/state.db ./dist/diffx-server
+mise run db:up
+DIFFX_SERVER_DATABASE_URL=postgres://diffx:diffx@127.0.0.1:54329/diffx?sslmode=disable \
+  DIFFX_SERVER_INSECURE_COOKIES=true ./dist/diffx-server
 ```
 
-Or use the checked-in Compose setup:
+Or use the checked-in Compose setup, which bundles its own Postgres:
 
 ```sh
 mise run docker:up
@@ -225,15 +241,15 @@ The same server binary handles authentication, durable admission, workers and
 queries in both setups. The Docker tasks stage embedded web assets before
 building the image.
 
-| Setting                         | Binary default  | Container default | Flag                    |
-| ------------------------------- | --------------- | ----------------- | ----------------------- |
-| `DIFFX_SERVER_HOST`             | `127.0.0.1`     | `0.0.0.0`         | `--listen HOST:PORT`    |
-| `DIFFX_SERVER_PORT`             | `7980`          | `7980`            | `--listen HOST:PORT`    |
-| `DIFFX_SERVER_STATE`            | `data/state.db` | `/data/state.db`  | `--state PATH`          |
-| `DIFFX_SERVER_RETENTION_DAYS`   | `7`             | `7`               | `--retention-days DAYS` |
-| `DIFFX_SERVER_PUBLIC_URL`       | Unset           | Unset             | `--public-url URL`      |
-| `DIFFX_SERVER_INSECURE_COOKIES` | `false`         | Compose: `true`   | `--insecure-cookies`    |
-| `DIFFX_SERVER_GOOGLE_CLIENT_ID` | Unset           | Unset             | None                    |
+| Setting                         | Binary default | Container default | Flag                    |
+| ------------------------------- | -------------- | ----------------- | ----------------------- |
+| `DIFFX_SERVER_HOST`             | `127.0.0.1`    | `0.0.0.0`         | `--listen HOST:PORT`    |
+| `DIFFX_SERVER_PORT`             | `7980`         | `7980`            | `--listen HOST:PORT`    |
+| `DIFFX_SERVER_DATABASE_URL`     | Required       | Compose: bundled  | None (env only)         |
+| `DIFFX_SERVER_RETENTION_DAYS`   | `7`            | `7`               | `--retention-days DAYS` |
+| `DIFFX_SERVER_PUBLIC_URL`       | Unset          | Unset             | `--public-url URL`      |
+| `DIFFX_SERVER_INSECURE_COOKIES` | `false`        | Compose: `true`   | `--insecure-cookies`    |
+| `DIFFX_SERVER_GOOGLE_CLIENT_ID` | Unset          | Unset             | None                    |
 
 The server listens on 7980 so a local `diffx [PATH]` (7981–7990) and the server
 run side by side. The `DIFFX_SERVER_` prefix keeps deployment variables from
@@ -247,8 +263,7 @@ are generated and there is no public signup. `DIFFX_SERVER_PUBLIC_URL` is the
 browser-facing https origin used in that link (http only with insecure cookies);
 unset, the link uses the listen address. An https public URL, or loopback http
 for development, also enables Web Push notifications; the server generates its
-VAPID keys once and keeps them in the database. `memory` and `:memory:` disable
-persistence.
+VAPID keys once and keeps them in the database.
 
 The admin signs in at `/admin/login`; every other account signs in with Google
 and comes from an admin invite. Google sign-in needs
@@ -262,31 +277,38 @@ accounts. Browser sessions are seven-day opaque cookies with CSRF protection on
 unsafe requests. Secure cookies are the binary/image default; explicitly enable
 insecure cookies only for HTTP development. Production requires HTTPS.
 
-If the admin loses its password, stop the server and reset it; the command reads
-the password from stdin and refuses non-admin accounts:
+If the admin loses its password, reset it with the same
+`DIFFX_SERVER_DATABASE_URL`; the command reads the password from stdin and
+refuses non-admin accounts. It is one transaction, so servers may keep running:
 
 ```sh
-diffx-server user reset-password --username alice --state ./test-data/state.db --password-stdin < /path/to/private-password
+diffx-server user reset-password --username alice --password-stdin < /path/to/private-password
 ```
 
-Password reset revokes browser sessions. Restart the server afterwards.
+Password reset revokes browser sessions.
 
 Precedence is defaults → explicit JSON file → env vars → explicit flags. Use
 `--config-file FILE` or `DIFFX_SERVER_CONFIG` to select a server config. The file
-supports `host`, `port`, `state`, `publicUrl`, `retentionDays` and
-`insecureCookies`. The file
+supports `host`, `port`, `publicUrl`, `retentionDays` and
+`insecureCookies`; the database URL is never read from it. The file
 must exist and
 can be mounted read-only; startup never creates it or a config lock. Personal
 CLI config, `DIFFX_RUNTIME_DIR`, producer URL settings and external web assets
 do not configure server mode. Restart to apply changes.
 
-Compose keeps the SQLite database, sidecar files, ownership lock and credential
-hashes in the `diffx-data` volume. The root filesystem is read-only; the
-image prepares `/data` for UID/GID 10001. If using a bind mount instead, make
-the directory writable by that identity. Keep database files inside `/data`.
-`mise run docker:down` preserves the volume; `docker compose down --volumes`
-explicitly deletes it. Stop the server and back up the whole directory before
-starting with a fresh database; a volume is not a backup.
+Production supplies its own PostgreSQL 18+ through `DIFFX_SERVER_DATABASE_URL`
+(for example `postgres://diffx@db.example.com:5432/diffx?sslmode=verify-full`);
+pool sizing uses URL parameters such as `pool_max_conns`. The role needs
+`CREATE` on the database: the server creates and owns the `diffx` schema and
+migrates it at startup. The image carries CA roots for verified TLS. Use a
+direct or session-mode pooled connection; transaction-mode poolers (PgBouncer)
+break session advisory locks and `LISTEN`. Back up with your database's tooling.
+The checked-in Compose file bundles an example Postgres in the `diffx-postgres`
+volume, never published; set `DIFFX_POSTGRES_PASSWORD`, or point
+`DIFFX_SERVER_DATABASE_URL` at your own server. The server's root filesystem is
+read-only and it keeps no local state. `mise run docker:down` preserves the
+volume; `docker compose down --volumes` explicitly deletes it. Earlier SQLite
+server volumes are not imported: an upgraded server starts empty.
 
 Set `DIFFX_SERVER_PORT=7979 mise run docker:up` for a different published host
 port; the container always listens on 7980. Compose also accepts
@@ -304,12 +326,10 @@ app's private key in an override file, then run
 Alpine with Git 2.44+) keeps mirrors in the `diffx-mirrors` volume, capped by
 `DIFFX_FETCHER_DISK_LIMIT_GB` (default 20), and reaches the server's internal
 port 7979 only on the `fetch` network.
-Only one server may own a SQLite database; competing starts fail rather than
-share ownership. SIGTERM stops HTTP and workers before releasing storage;
-unfinished admitted jobs recover from the durable queue after leases expire.
-
-This setup targets one server with SQLite. PostgreSQL, multiple replicas,
-browser login and integrations remain separate future changes.
+SIGTERM stops HTTP and workers before releasing storage; unfinished admitted
+jobs recover from the durable queue after leases expire.
+Run one server replica for now; replica-safe event fan-out and push outbox
+claims are required before scaling out.
 
 ## Build pipeline
 
@@ -317,7 +337,7 @@ The production build generates API types, builds the web application, stages the
 Vite output under `internal/webui`, and embeds those assets into the Go binary.
 The resulting `dist/diffx` and `dist/diffx-server` executables have no
 Node runtime dependency. Git is required only for producer-side checkout
-collection. Local/remote server queries read SQLite and never invoke Git.
+collection. Local queries read SQLite and server queries read Postgres; neither invokes Git.
 
 The OpenAPI contract in `packages/api/openapi.yaml` is the frontend/server
 boundary. After changing it, run:

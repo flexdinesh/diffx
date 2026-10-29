@@ -27,7 +27,7 @@ func TestServerConfigIgnoresPersonalSettingsAndDoesNotWrite(t *testing.T) {
 	t.Setenv("DIFFX_LOCAL_PORT", "9000")
 	t.Setenv("DIFFX_LOCAL_WEB_DIR", "/missing/assets")
 	values, err := LoadServerFile("")
-	if err != nil || values.State != "data/state.db" || values.Port != DefaultServerPort {
+	if err != nil || values.DatabaseURL != "" || values.Port != DefaultServerPort {
 		t.Fatalf("personal config affected server: %+v %v", values, err)
 	}
 	for _, directory := range []string{runtime, filepath.Dir(path)} {
@@ -52,12 +52,12 @@ func TestServerConfigReadsOnlyExplicitFiles(t *testing.T) {
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("created missing config: %v", err)
 	}
-	raw := []byte(`{"host":"::1","port":4123,"state":"configured.db","retentionDays":14}`)
+	raw := []byte(`{"host":"::1","port":4123,"retentionDays":14}`)
 	if err := os.WriteFile(path, raw, 0o400); err != nil {
 		t.Fatal(err)
 	}
 	values, err := LoadServerFile("")
-	if err != nil || values.Host != "::1" || values.Port != 4123 || values.State != "configured.db" || values.RetentionDays != 14 {
+	if err != nil || values.Host != "::1" || values.Port != 4123 || values.RetentionDays != 14 {
 		t.Fatalf("explicit config: %+v %v", values, err)
 	}
 	entries, err := os.ReadDir(filepath.Dir(path))
@@ -75,7 +75,7 @@ func TestServerConfigReadsOnlyExplicitFiles(t *testing.T) {
 }
 
 func TestServerConfigRejectsMalformedFiles(t *testing.T) {
-	for _, raw := range []string{`null`, `[]`, `{"port":"7981"}`, `{"unknown":true}`, `{"password":"secret"}`, `{"token":"secret"}`, `{"account":"admin"}`, `{"server":"https://example.com"}`, `{} {}`, `{} trailing`} {
+	for _, raw := range []string{`null`, `[]`, `{"port":"7981"}`, `{"unknown":true}`, `{"password":"secret"}`, `{"token":"secret"}`, `{"account":"admin"}`, `{"server":"https://example.com"}`, `{"state":"data/state.db"}`, `{"databaseUrl":"postgres://user:secret@db/diffx"}`, `{} {}`, `{} trailing`} {
 		t.Run(raw, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "server.json")
 			if err := os.WriteFile(path, []byte(raw), 0o400); err != nil {
@@ -205,5 +205,23 @@ func TestEmptyGitHubEnvironmentDisablesIntegration(t *testing.T) {
 	values, err := LoadServerFile("")
 	if err != nil || values.GitHub.Enabled() || values.GitHub.Validate(false) != nil {
 		t.Fatalf("empty passthrough must disable GitHub: %+v %v", values.GitHub, err)
+	}
+}
+
+func TestServerDatabaseURLComesOnlyFromEnvironment(t *testing.T) {
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	t.Setenv("DIFFX_SERVER_DATABASE_URL", "")
+	values, err := LoadServerFile("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := values.ValidateDatabase(); err == nil || !strings.Contains(err.Error(), "DIFFX_SERVER_DATABASE_URL") {
+		t.Fatalf("missing database URL: %v", err)
+	}
+	secret := "postgres://diffx:hunter2@db.example.com/diffx"
+	t.Setenv("DIFFX_SERVER_DATABASE_URL", secret)
+	values, err = LoadServerFile("")
+	if err != nil || values.DatabaseURL != secret || values.ValidateDatabase() != nil {
+		t.Fatalf("database URL from environment: %v", err)
 	}
 }

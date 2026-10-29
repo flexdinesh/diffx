@@ -17,8 +17,8 @@ import (
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/review"
-	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/testsupport"
+	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 )
 
 // fakePushService answers with the next queued status, then 201.
@@ -267,11 +267,7 @@ func TestFollowNotifySettingIsReflectedInListing(t *testing.T) {
 }
 
 func TestServiceWorkerAndManifestServedWithBrowserTypes(t *testing.T) {
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { store.Close() })
+	store := pgtest.Store(t)
 	handler, closeServices, err := Handler(t.Context(), store, Settings{}, fstest.MapFS{
 		"index.html": {Data: []byte("app")}, "sw.js": {Data: []byte("self")}, "manifest.webmanifest": {Data: []byte("{}")}, "assets/app.js": {Data: []byte("app()")},
 	})
@@ -309,11 +305,7 @@ func fetchedSnapshot(job fetchprotocol.Job) ingestion.Request {
 }
 
 func TestOpenedPullRequestReachesSubscribedDevice(t *testing.T) {
-	store, err := reviewstore.Open("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { store.Close() })
+	store := pgtest.Store(t)
 	github := githubSettings(t, fakeGitHubAPI(t).URL)
 	github.FetcherSecret = strings.Repeat("s", 32)
 	ctx, cancel := context.WithCancel(t.Context())
