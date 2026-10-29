@@ -1,4 +1,4 @@
-package reviewstore
+package storetest
 
 import (
 	"strings"
@@ -16,18 +16,18 @@ func branchIdentityRequest(submission, label, id, content string, collected int6
 	return request
 }
 
-func TestReusedBranchNameKeepsIndependentReviewAndFreshness(t *testing.T) {
-	store := openTestStore(t)
-	user := testUser(t, store, "branch-reuse")
-	first, err := store.Ingest(user.ID, branchIdentityRequest("original", "feature", "original-id", "a", 100))
+func (harness Harness[S]) reusedBranchNameKeepsIndependentReviewAndFreshness(t *testing.T) {
+	store := harness.open(t)
+	user := harness.Owner(t, store, "branch-reuse")
+	first, err := ingest(t, store, user, branchIdentityRequest("original", "feature", "original-id", "a", 100))
 	if err != nil {
 		t.Fatal(err)
 	}
-	renamed, err := store.Ingest(user.ID, branchIdentityRequest("renamed", "renamed", "original-id", "b", 200))
+	renamed, err := ingest(t, store, user, branchIdentityRequest("renamed", "renamed", "original-id", "b", 200))
 	if err != nil {
 		t.Fatal(err)
 	}
-	reused, err := store.Ingest(user.ID, branchIdentityRequest("reused", "feature", "fresh-id", "a", 300))
+	reused, err := ingest(t, store, user, branchIdentityRequest("reused", "feature", "fresh-id", "a", 300))
 	if err != nil || reused.ContextID == first.ContextID {
 		t.Fatalf("reused branch inherited old review: %#v, %v", reused, err)
 	}
@@ -35,7 +35,7 @@ func TestReusedBranchNameKeepsIndependentReviewAndFreshness(t *testing.T) {
 		id    string
 		stale bool
 	}{{first.ContextID, true}, {renamed.ContextID, false}, {reused.ContextID, false}} {
-		context, err := store.Context(t.Context(), user.ID, check.id, time.Now())
+		context, err := store.Context(t.Context(), user, check.id, time.Now())
 		if err != nil || context.Stale != check.stale {
 			t.Fatalf("independent branch freshness %s: %#v, %v", check.id, context, err)
 		}

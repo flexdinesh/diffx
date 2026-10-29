@@ -1,4 +1,4 @@
-package reviewstore
+package storetest
 
 import (
 	"strings"
@@ -8,22 +8,22 @@ import (
 	"github.com/flexdinesh/diffx/internal/ingestion"
 )
 
-func TestPullRequestProjectionFollowsWinningSubmission(t *testing.T) {
-	store := openTestStore(t)
-	owner := testUser(t, store, "pull-requests")
+func (harness Harness[S]) pullRequestProjectionFollowsWinningSubmission(t *testing.T) {
+	store := harness.open(t)
+	owner := harness.Owner(t, store, "pull-requests")
 	title := func(id string) (string, string) {
 		t.Helper()
-		item, err := store.Context(t.Context(), owner.ID, id, time.Now())
+		item, err := store.Context(t.Context(), owner, id, time.Now())
 		if err != nil || item.Metadata == nil || item.Metadata.PullRequest == nil {
 			t.Fatalf("pull request projection: %+v, %v", item, err)
 		}
 		return item.Metadata.PullRequest.Title, item.Metadata.PullRequest.State
 	}
-	request := queuedRequest("opened")
+	request := localRequest("opened")
 	request.ContentHash = strings.Repeat("a", 64)
 	request.Metadata.CollectedAt = 100
 	request.Metadata.PullRequest = &ingestion.PullRequest{Provider: "github", RepositoryID: 7, FullName: "octo/app", Number: 12, Title: "Draft title", State: "open"}
-	original, err := store.Ingest(owner.ID, request)
+	original, err := ingest(t, store, owner, request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestPullRequestProjectionFollowsWinningSubmission(t *testing.T) {
 	pull := *request.Metadata.PullRequest
 	pull.Title, pull.State = "Final title", "merged"
 	edited.Metadata.PullRequest = &pull
-	reused, err := store.Ingest(owner.ID, edited)
+	reused, err := ingest(t, store, owner, edited)
 	if err != nil || reused.ContextID != original.ContextID {
 		t.Fatalf("metadata-only edit must reuse the observation: %+v, %v", reused, err)
 	}
@@ -44,7 +44,7 @@ func TestPullRequestProjectionFollowsWinningSubmission(t *testing.T) {
 	late := request
 	late.SubmissionID = "late"
 	late.Metadata.CollectedAt = 150
-	if _, err := store.Ingest(owner.ID, late); err != nil {
+	if _, err := ingest(t, store, owner, late); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := title(original.ContextID); got != "Final title" {
@@ -56,7 +56,7 @@ func TestPullRequestProjectionFollowsWinningSubmission(t *testing.T) {
 	pushedPull := pull
 	pushedPull.Title = "After push"
 	pushed.Metadata.PullRequest = &pushedPull
-	latest, err := store.Ingest(owner.ID, pushed)
+	latest, err := ingest(t, store, owner, pushed)
 	if err != nil || latest.ContextID == original.ContextID {
 		t.Fatalf("new content must create a snapshot: %+v, %v", latest, err)
 	}

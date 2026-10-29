@@ -73,12 +73,23 @@ var allowed = map[string][]string{
 	},
 	"internal/submission": {"internal/ingestion", "internal/processlock"},
 	// Test helpers are classified, but production packages cannot import them.
+	// The store contract sees only the consumer interfaces it verifies.
+	"internal/storetest": {"internal/contextservice", "internal/ingestion", "internal/review", "internal/reviewdata", "internal/reviewservice"},
 	"internal/testsupport": {
 		"internal/contextservice", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/review",
 		"internal/reviewstore", "internal/serverapp", "internal/webui",
 	},
 	"internal/version": {},
 	"internal/webui":   {},
+}
+
+func testHelper(name string) bool {
+	for _, helper := range []string{"internal/storetest", "internal/testsupport"} {
+		if name == helper || strings.HasPrefix(name, helper+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 type listedPackage struct {
@@ -106,7 +117,7 @@ func checkPackage(pkg listedPackage) []string {
 			continue
 		}
 		dependency = strings.TrimPrefix(dependency, modulePrefix)
-		if dependency == "internal/testsupport" || strings.HasPrefix(dependency, "internal/testsupport/") {
+		if testHelper(dependency) {
 			violations = append(violations, fmt.Sprintf("production dependency on test helpers: %s -> %s", name, dependency))
 		} else if !slices.Contains(permitted, dependency) {
 			violations = append(violations, fmt.Sprintf("forbidden dependency: %s -> %s", name, dependency))

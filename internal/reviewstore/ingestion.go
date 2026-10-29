@@ -2,9 +2,7 @@ package reviewstore
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -54,7 +52,7 @@ func (store *Store) IngestContext(ctx context.Context, ownerID string, request i
 	if len(request.Scopes) == 0 {
 		return Binding{}, errors.New("observation scopes required")
 	}
-	_, hash, err := payloadBytes(request)
+	_, hash, err := ingestion.Payload(request)
 	if err != nil {
 		return Binding{}, err
 	}
@@ -75,10 +73,10 @@ func (store *Store) IngestContext(ctx context.Context, ownerID string, request i
 		return binding, tx.Commit()
 	}
 	now := time.Now().UnixMilli()
-	branch := branchIdentity(request.Metadata)
+	branch := ingestion.BranchIdentity(request.Metadata)
 	identityRequest := request
 	identityRequest.Metadata.BranchID = branch
-	identity, err := observationIdentity(identityRequest)
+	identity, err := ingestion.ContentIdentity(identityRequest)
 	if err != nil {
 		return Binding{}, err
 	}
@@ -166,7 +164,7 @@ func (store *Store) IngestContext(ctx context.Context, ownerID string, request i
 		}
 		binding.DiffIDs[snapshot.Mode] = diffID
 	}
-	stream := streamKey(id, request.Metadata)
+	stream := ingestion.StreamKey(id, request.Metadata)
 	for mode := range binding.DiffIDs {
 		if err := ensureReview(tx, ownerID, stream, mode); err != nil {
 			return Binding{}, err
@@ -201,20 +199,6 @@ func (store *Store) IngestContext(ctx context.Context, ownerID string, request i
 	return binding, tx.Commit()
 }
 
-// streamKey names the review stream of a new observation. Keyed checkouts share
-// their stream head identity; piped observations form a stream of their own.
-func streamKey(contextID string, metadata ingestion.Metadata) string {
-	if metadata.RepositoryKey == "" || metadata.CheckoutKey == "" {
-		return "context:" + contextID
-	}
-	return streamID(metadata.SourceID, metadata.RepositoryKey, metadata.CheckoutKey, branchIdentity(metadata), comparisonPolicy(metadata))
-}
-
-// Missing hashes from older producers dedupe only known empty snapshots.
-func observationIdentity(request ingestion.Request) (string, error) {
-	return ingestion.ContentIdentity(request)
-}
-
 func putObservationSubmission(tx *sql.Tx, ownerID, contextID, hash string, request ingestion.Request, sequence int64) error {
 	metadata, err := json.Marshal(request.Metadata)
 	if err != nil {
@@ -233,11 +217,11 @@ func putObservationSubmission(tx *sql.Tx, ownerID, contextID, hash string, reque
 	if request.Metadata.RepositoryKey == "" || request.Metadata.CheckoutKey == "" {
 		return err
 	}
-	branch := branchIdentity(request.Metadata)
+	branch := ingestion.BranchIdentity(request.Metadata)
 	// Equal collection times use arrival order. Retries bypass this write.
 	_, err = tx.Exec(`INSERT INTO observation_stream_heads(owner_id,source_id,repository_key,checkout_key,branch,comparison_policy,context_id,collected_at,arrival_sequence) VALUES(?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(owner_id,source_id,repository_key,checkout_key,branch,comparison_policy) DO UPDATE SET context_id=excluded.context_id,collected_at=excluded.collected_at,arrival_sequence=excluded.arrival_sequence
-		WHERE excluded.collected_at>observation_stream_heads.collected_at OR (excluded.collected_at=observation_stream_heads.collected_at AND excluded.arrival_sequence>observation_stream_heads.arrival_sequence)`, ownerID, request.Metadata.SourceID, request.Metadata.RepositoryKey, request.Metadata.CheckoutKey, branch, comparisonPolicy(request.Metadata), contextID, request.Metadata.CollectedAt, sequence)
+		WHERE excluded.collected_at>observation_stream_heads.collected_at OR (excluded.collected_at=observation_stream_heads.collected_at AND excluded.arrival_sequence>observation_stream_heads.arrival_sequence)`, ownerID, request.Metadata.SourceID, request.Metadata.RepositoryKey, request.Metadata.CheckoutKey, branch, ingestion.ComparisonPolicy(request.Metadata), contextID, request.Metadata.CollectedAt, sequence)
 	return err
 }
 
@@ -258,18 +242,11 @@ func pinObservationVersion(tx *sql.Tx, snapshot review.RepositoryDiff, patches m
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`INSERT INTO diff_files(version_id,file_id,path,fingerprint,patch,patch_digest) VALUES(?,?,?,?,?,?)`, snapshot.VersionID, file.ID, file.Path, file.Fingerprint, string(encoded), patchDigest(patch)); err != nil {
+		if _, err := tx.Exec(`INSERT INTO diff_files(version_id,file_id,path,fingerprint,patch,patch_digest) VALUES(?,?,?,?,?,?)`, snapshot.VersionID, file.ID, file.Path, file.Fingerprint, string(encoded), review.PatchDigest(patch)); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-// patchDigest identifies a file's stored patch text so review marks carry
-// between snapshots only while the reviewed change is identical.
-func patchDigest(patch review.FilePatch) string {
-	digest := sha256.Sum256([]byte(patch.Patch))
-	return hex.EncodeToString(digest[:])
 }
 
 func observationBinding(ctx context.Context, db queryer, ownerID, contextID string) (Binding, error) {
@@ -474,11 +451,4 @@ func selectionPredicate(selection ingestion.Selection) (string, []any) {
 		arguments = append(arguments, selection.ContextID)
 	}
 	return query, arguments
-}
-
-func branchIdentity(metadata ingestion.Metadata) string {
-	if metadata.BranchID != "" {
-		return metadata.BranchID
-	}
-	return metadata.Branch
 }

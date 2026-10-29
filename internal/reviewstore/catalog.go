@@ -2,12 +2,9 @@ package reviewstore
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/ingestion"
@@ -77,12 +74,6 @@ var contextSelect = `SELECT c.id,c.kind,json_extract(o.metadata,'$.root'),NULL,o
 
 type scanner interface{ Scan(...any) error }
 
-// streamID names one stream head without exposing its keys or depending on row identity.
-func streamID(sourceID, repositoryKey, checkoutKey, branch, comparisonPolicy string) string {
-	digest := sha256.Sum256([]byte(strings.Join([]string{sourceID, repositoryKey, checkoutKey, branch, comparisonPolicy}, "\x00")))
-	return hex.EncodeToString(digest[:12])
-}
-
 func scanContext(row scanner) (ContextInfo, error) {
 	var item ContextInfo
 	var metadata *string
@@ -101,7 +92,7 @@ func scanContext(row scanner) (ContextInfo, error) {
 		item.Commits = &review.CommitRange{Count: commits, Omitted: max(int(commitsTotal.Int64)-commits, 0)}
 	}
 	if err == nil && head[0].Valid {
-		id := streamID(head[0].String, head[1].String, head[2].String, head[3].String, head[4].String)
+		id := ingestion.StreamID(head[0].String, head[1].String, head[2].String, head[3].String, head[4].String)
 		item.StreamID = &id
 	}
 	if err == nil {

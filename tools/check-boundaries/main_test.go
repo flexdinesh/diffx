@@ -47,6 +47,9 @@ func TestPackageBoundaries(t *testing.T) {
 		{name: "production cannot use test helpers", pkg: "internal/contextservice", imports: []string{modulePrefix + "internal/testsupport"}, want: "production dependency on test helpers: internal/contextservice -> internal/testsupport"},
 		{name: "command cannot use nested test helpers", pkg: "cmd/diffx", imports: []string{modulePrefix + "internal/testsupport/fixtures"}, want: "production dependency on test helpers: cmd/diffx -> internal/testsupport/fixtures"},
 		{name: "test helper can compose real boundary", pkg: "internal/testsupport", imports: []string{modulePrefix + "internal/reviewstore", modulePrefix + "internal/serverapp", "testing", "net/http/httptest"}},
+		{name: "storage cannot use store contract", pkg: "internal/reviewstore", imports: []string{modulePrefix + "internal/storetest"}, want: "production dependency on test helpers: internal/reviewstore -> internal/storetest"},
+		{name: "store contract uses consumer interfaces", pkg: "internal/storetest", imports: []string{modulePrefix + "internal/contextservice", modulePrefix + "internal/reviewservice", modulePrefix + "internal/reviewdata", "testing"}},
+		{name: "store contract cannot import concrete storage", pkg: "internal/storetest", imports: []string{modulePrefix + "internal/reviewstore"}, want: "forbidden dependency: internal/storetest -> internal/reviewstore"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
