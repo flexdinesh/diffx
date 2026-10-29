@@ -50,7 +50,13 @@ var allowed = map[string][]string{
 		"internal/config", "internal/contextservice", "internal/controlapi", "internal/ingestion", "internal/processlock",
 		"internal/reviewstore", "internal/serverapp", "internal/version", "internal/webui",
 	},
-	"internal/mcpapi":         {"internal/review", "internal/contextservice", "internal/reviewservice", "internal/ingestion"},
+	"internal/mcpapi": {"internal/review", "internal/contextservice", "internal/reviewservice", "internal/ingestion"},
+	// Server Postgres persistence; pgdb holds its generated queries.
+	"internal/pgstore": {
+		"internal/contextservice", "internal/githubsync", "internal/google", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue",
+		"internal/pgstore/pgdb", "internal/pushservice", "internal/review", "internal/reviewdata", "internal/reviewservice", "internal/webpush",
+	},
+	"internal/pgstore/pgdb":   {},
 	"internal/processlock":    {},
 	"internal/processmetrics": {},
 	// Web Push wire adapter: VAPID, payload encryption and response classes.
@@ -79,8 +85,21 @@ var allowed = map[string][]string{
 		"internal/contextservice", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/review",
 		"internal/reviewstore", "internal/serverapp", "internal/webui",
 	},
-	"internal/version": {},
-	"internal/webui":   {},
+	"internal/testsupport/pgtest": {"internal/pgstore"},
+	"internal/version":            {},
+	"internal/webui":              {},
+}
+
+// postgresOwners hold every Postgres driver and migration dependency.
+var postgresOwners = []string{"internal/pgstore", "internal/pgstore/pgdb", "internal/testsupport/pgtest"}
+
+func postgresDependency(dependency string) bool {
+	for _, prefix := range []string{"github.com/jackc/pgx/", "github.com/jackc/pgconn", "github.com/pressly/goose/"} {
+		if strings.HasPrefix(dependency, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func testHelper(name string) bool {
@@ -112,6 +131,9 @@ func checkPackage(pkg listedPackage) []string {
 		}
 		if (dependency == "database/sql" || dependency == "modernc.org/sqlite" || strings.HasPrefix(dependency, "modernc.org/sqlite/")) && name != "internal/reviewstore" {
 			violations = append(violations, fmt.Sprintf("%s must not access SQL storage directly: %s", name, dependency))
+		}
+		if postgresDependency(dependency) && !slices.Contains(postgresOwners, name) {
+			violations = append(violations, fmt.Sprintf("%s must not access Postgres storage directly: %s", name, dependency))
 		}
 		if !strings.HasPrefix(dependency, modulePrefix) {
 			continue
