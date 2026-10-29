@@ -1,6 +1,7 @@
 -- +goose Up
 -- Observations, their immutable snapshots and per-stream review state.
 -- jsonb holds documents SQL queries into; bytea holds opaque encoded values.
+-- Stored times are whole milliseconds, like the protocol's, so keyset cursors round-trip.
 
 CREATE TABLE diffs (
   id text PRIMARY KEY,
@@ -13,11 +14,15 @@ CREATE TABLE diffs (
 CREATE INDEX diffs_owner_expiry ON diffs(owner_id, kind, expires_at);
 CREATE INDEX diffs_expiry ON diffs(expires_at);
 
+-- The manifest is opaque: the catalog reads only its source and comparison
+-- kind, copied into columns so listing never detoasts large file lists.
 CREATE TABLE diff_versions (
   id text PRIMARY KEY,
   diff_id text NOT NULL REFERENCES diffs(id) ON DELETE CASCADE,
   revision text NOT NULL,
-  manifest jsonb NOT NULL,
+  manifest bytea NOT NULL,
+  source text NOT NULL,
+  comparison_kind text NOT NULL,
   created_at timestamptz NOT NULL,
   UNIQUE(diff_id, revision)
 );
@@ -48,7 +53,8 @@ CREATE TABLE comments (
   version_id text REFERENCES diff_versions(id) ON DELETE SET NULL,
   file_id text NOT NULL,
   data bytea NOT NULL,
-  created_at timestamptz NOT NULL
+  -- The comment's own createdAt milliseconds; it orders comments only.
+  created_at bigint NOT NULL
 );
 CREATE INDEX comments_review_created ON comments(review_id, created_at);
 
@@ -163,19 +169,19 @@ CREATE TABLE observation_commits (
   context_id text NOT NULL REFERENCES observations(context_id) ON DELETE CASCADE,
   ordinal integer NOT NULL,
   oid text NOT NULL,
-  data jsonb NOT NULL,
+  data bytea NOT NULL,
   diff_id text UNIQUE REFERENCES diffs(id) ON DELETE SET NULL,
   version_id text REFERENCES diff_versions(id) ON DELETE SET NULL,
-  file_count integer NOT NULL,
-  additions integer NOT NULL,
-  deletions integer NOT NULL,
+  file_count bigint NOT NULL,
+  additions bigint NOT NULL,
+  deletions bigint NOT NULL,
   PRIMARY KEY(context_id, ordinal),
   UNIQUE(context_id, oid)
 );
 
 CREATE TABLE observation_commit_ranges (
   context_id text PRIMARY KEY REFERENCES observations(context_id) ON DELETE CASCADE,
-  total integer NOT NULL
+  total bigint NOT NULL
 );
 
 CREATE TABLE agent_sessions (

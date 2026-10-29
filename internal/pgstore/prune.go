@@ -18,10 +18,18 @@ const (
 func (store *Store) PruneExpired(now time.Time) error {
 	ctx := context.Background()
 	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
+		if err := queries.LockExpiredContexts(ctx, now); err != nil {
+			return err
+		}
 		if err := queries.PruneExpiredObservationDiffs(ctx, &now); err != nil {
 			return err
 		}
 		if err := queries.PruneExpiredDiffs(ctx, &now); err != nil {
+			return err
+		}
+		// Ingestion holds the stream lock while adding an observation, so a
+		// stream is ended only when no committed or pending observation remains.
+		if err := queries.LockEndingStreams(ctx); err != nil {
 			return err
 		}
 		if err := queries.EndStreams(ctx); err != nil {

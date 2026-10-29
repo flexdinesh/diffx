@@ -52,7 +52,7 @@ type Comment struct {
 	VersionID *string
 	FileID    string
 	Data      []byte
-	CreatedAt time.Time
+	CreatedAt int64
 }
 
 type Context struct {
@@ -84,11 +84,13 @@ type DiffFile struct {
 }
 
 type DiffVersion struct {
-	ID        string
-	DiffID    string
-	Revision  string
-	Manifest  []byte
-	CreatedAt time.Time
+	ID             string
+	DiffID         string
+	Revision       string
+	Manifest       []byte
+	Source         string
+	ComparisonKind string
+	CreatedAt      time.Time
 }
 
 type DisabledAccount struct {
@@ -238,14 +240,14 @@ type ObservationCommit struct {
 	Data      []byte
 	DiffID    *string
 	VersionID *string
-	FileCount int32
-	Additions int32
-	Deletions int32
+	FileCount int64
+	Additions int64
+	Deletions int64
 }
 
 type ObservationCommitRange struct {
 	ContextID string
-	Total     int32
+	Total     int64
 }
 
 type ObservationIdentity struct {

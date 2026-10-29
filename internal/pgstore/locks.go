@@ -17,3 +17,7 @@ const (
 	// endpointLockClass serializes device registration per push endpoint.
 	endpointLockClass = 7_469_002
 )
+
+// Classes used literally in queries/content.sql:
+//   - 7469101 serializes reuse decisions per owner and content identity.
+//   - 7469102 serializes a stream's observation additions with its end.
