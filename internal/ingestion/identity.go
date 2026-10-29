@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strings"
 )
 
 // ContentIdentity preserves the established observation identity algorithm.
@@ -27,11 +28,7 @@ func ContentIdentity(request Request) (string, error) {
 	}
 	sort.Strings(modes)
 	metadata := request.Metadata
-	branch := metadata.Branch
-	if metadata.BranchID != "" {
-		branch = metadata.BranchID
-	}
-	parts := []any{metadata.SourceID, metadata.RepositoryKey, metadata.CheckoutKey, branch, metadata.Head, request.Scopes[0].Snapshot.Source, modes, request.ContentHash}
+	parts := []any{metadata.SourceID, metadata.RepositoryKey, metadata.CheckoutKey, BranchIdentity(metadata), metadata.Head, request.Scopes[0].Snapshot.Source, modes, request.ContentHash}
 	// Keep legacy HEAD identity hashes; branch policies have separate reviews.
 	if policy := ComparisonPolicy(metadata); policy != "" {
 		parts = append(parts, policy)
@@ -64,4 +61,39 @@ func ComparisonPolicy(metadata Metadata) string {
 		return ""
 	}
 	return metadata.Comparison.Kind + ":" + metadata.Comparison.BaseRef
+}
+
+// BranchIdentity is the stable branch of a stream: a producer's branch ID
+// survives renames; otherwise the branch label identifies it.
+func BranchIdentity(metadata Metadata) string {
+	if metadata.BranchID != "" {
+		return metadata.BranchID
+	}
+	return metadata.Branch
+}
+
+// StreamID names one stream head without exposing its keys or depending on row identity.
+func StreamID(sourceID, repositoryKey, checkoutKey, branch, comparisonPolicy string) string {
+	digest := sha256.Sum256([]byte(strings.Join([]string{sourceID, repositoryKey, checkoutKey, branch, comparisonPolicy}, "\x00")))
+	return hex.EncodeToString(digest[:12])
+}
+
+// StreamKey names the review stream of a new observation. Keyed checkouts share
+// their stream head identity; piped observations form a stream of their own.
+func StreamKey(contextID string, metadata Metadata) string {
+	if metadata.RepositoryKey == "" || metadata.CheckoutKey == "" {
+		return "context:" + contextID
+	}
+	return StreamID(metadata.SourceID, metadata.RepositoryKey, metadata.CheckoutKey, BranchIdentity(metadata), ComparisonPolicy(metadata))
+}
+
+// Payload is a request's stored representation and its replay hash. A replay
+// under the same submission identity must hash identically.
+func Payload(request Request) ([]byte, string, error) {
+	raw, err := json.Marshal(request)
+	if err != nil {
+		return nil, "", err
+	}
+	sum := sha256.Sum256(raw)
+	return raw, hex.EncodeToString(sum[:]), nil
 }

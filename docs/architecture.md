@@ -118,7 +118,10 @@ owner. See [development.md](development.md) for isolated checkout commands.
 - `config`, `processlock`, `browser`, `version`: configuration and private state
   paths (`StateDir`, honouring `DIFFX_RUNTIME_DIR`), process ownership,
   browser launch and build metadata; `processmetrics`: server process metrics;
-  `webui`: embedded assets. `testsupport` is test-only.
+  `webui`: embedded assets. `testsupport` is test-only. `storetest` is the
+  test-only behavioral contract every review store runs for shared content and
+  review operations; identity, stream and patch digest rules live in
+  `ingestion` and `review`, so stores never derive them independently.
 
 Interfaces live beside consumers and require the needed operation. Optional
 interface assertions must not change application behavior. Storage contracts

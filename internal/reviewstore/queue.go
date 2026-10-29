@@ -3,9 +3,7 @@ package reviewstore
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"time"
@@ -25,15 +23,6 @@ func initializeQueue(tx *sql.Tx) error {
 		}
 	}
 	return nil
-}
-
-func payloadBytes(request ingestion.Request) ([]byte, string, error) {
-	raw, err := json.Marshal(request)
-	if err != nil {
-		return nil, "", err
-	}
-	sum := sha256.Sum256(raw)
-	return raw, hex.EncodeToString(sum[:]), nil
 }
 
 // recordSubmission is shared by direct commits and durable queue acceptance.
@@ -76,7 +65,7 @@ func acceptJob(tx *sql.Tx, owner string, request ingestion.Request) (ingestionqu
 	if err := ingestion.Validate(request); err != nil {
 		return ingestionqueue.Job{}, err
 	}
-	raw, hash, err := payloadBytes(request)
+	raw, hash, err := ingestion.Payload(request)
 	if err != nil {
 		return ingestionqueue.Job{}, err
 	}
