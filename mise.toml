@@ -30,7 +30,11 @@ run = [
 
 [tasks.generate]
 description = "Generate TypeScript API types, Postgres queries and agent plugin adapters"
-run = ["pnpm generate:api", { task = "generate:sql" }, { task = "plugins:build" }]
+run = [
+  "pnpm generate:api",
+  { task = "generate:sql" },
+  { task = "plugins:build" },
+]
 
 [tasks."generate:sql"]
 description = "Generate typed Go Postgres queries from internal/pgstore SQL"
