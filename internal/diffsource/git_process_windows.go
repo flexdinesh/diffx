@@ -42,17 +42,41 @@ func runGitCommand(ctx context.Context, command *exec.Cmd) (result error) {
 		}
 		return err
 	}
-	defer func() { result = errors.Join(result, closeJob()) }()
+	defer func() {
+		cleanupErr := closeJob()
+		observeCleanup(ctx, "cleanup", cleanupErr)
+		result = errors.Join(result, cleanupErr)
+	}()
 	limits := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
 	limits.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
 	if _, err := windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&limits)), uint32(unsafe.Sizeof(limits))); err != nil {
 		return err
 	}
-	input, err := os.Open(os.DevNull)
+	var input *os.File
+	if command.Stdin == nil {
+		input, err = os.Open(os.DevNull)
+	} else {
+		// Native CreateProcess requires a file handle. Spool finite batch requests
+		// before starting the child, with cancellation and deterministic cleanup.
+		input, err = os.CreateTemp("", "diffx-git-input-*")
+	}
 	if err != nil {
 		return err
 	}
-	defer input.Close()
+	defer func() {
+		_ = input.Close()
+		if command.Stdin != nil {
+			_ = os.Remove(input.Name())
+		}
+	}()
+	if command.Stdin != nil {
+		if _, err := io.Copy(input, &contextReader{ctx: ctx, reader: command.Stdin}); err != nil {
+			return err
+		}
+		if _, err := input.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+	}
 	stdout, stdoutWriter, err := os.Pipe()
 	if err != nil {
 		return err
@@ -76,6 +100,8 @@ func runGitCommand(ctx context.Context, command *exec.Cmd) (result error) {
 		}
 		terminateErr := windows.TerminateJobObject(job, 1)
 		closeErr := closeJob()
+		observeCleanup(ctx, "cancellation", terminateErr)
+		observeCleanup(ctx, "cleanup", closeErr)
 		if terminateErr != nil || closeErr != nil {
 			return errors.Join(terminateErr, closeErr, windows.TerminateProcess(process.Process, 1))
 		}

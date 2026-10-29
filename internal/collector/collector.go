@@ -50,22 +50,33 @@ var ErrUnchanged = errors.New("checkout unchanged")
 // CollectChanged checks complete content identity before constructing previews.
 // A nonempty fingerprint is safe to persist only after successful ingestion.
 // Unknown identities always produce a request, even when a prior value exists.
-func CollectChanged(ctx context.Context, directory string, options Options, previousFingerprint string) (ingestion.Request, string, error) {
+func CollectChanged(ctx context.Context, directory string, options Options, previousFingerprint string) (result ingestion.Request, fingerprint string, failure error) {
+	ctx, completed := observeCollection(ctx, directory)
+	defer func() { failure = completed(failure) }()
+	parent := ctx
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx = diffsource.WithCollectionDeadline(ctx, parent)
 	defer cancel()
+	observeWorkload(ctx, Observation{Stage: "checkout"})
 	options, err := defaults(options)
 	if err != nil {
 		return ingestion.Request{}, "", err
 	}
 	for attempt := 0; attempt < 2; attempt++ {
-		source, err := diffsource.OpenComparison(ctx, directory, options.Base, options.Branch)
+		finishAttempt := observeStage(ctx, Observation{Stage: "collection", Attempt: attempt + 1})
+		observeWorkload(ctx, Observation{Attempt: attempt + 1})
+		source, err := observeValue(ctx, Observation{Stage: "baseline"}, func() (diffsource.Source, error) {
+			return diffsource.OpenComparison(ctx, directory, options.Base, options.Branch)
+		})
 		if err != nil {
+			finishAttempt(err)
 			return ingestion.Request{}, "", err
 		}
 		request, fingerprint, err := collectRepositoryChanged(ctx, source, options, previousFingerprint)
 		if isChanged(err) {
 			err = errChanged
 		}
+		finishAttempt(err)
 		if err == nil || !errors.Is(err, errChanged) {
 			return request, fingerprint, err
 		}
@@ -80,14 +91,14 @@ func collectRepository(ctx context.Context, source diffsource.Source, options Op
 	return request, err
 }
 
-func collectRepositoryChanged(ctx context.Context, source diffsource.Source, options Options, previousFingerprint string) (ingestion.Request, string, error) {
-	facts, err := diffsource.Metadata(ctx, source.Root())
+func collectRepositoryChanged(ctx context.Context, source diffsource.Source, options Options, previousFingerprint string) (result ingestion.Request, fingerprint string, failure error) {
+	facts, err := observeValue(ctx, Observation{Stage: "identity"}, func() (diffsource.RepositoryMetadata, error) { return diffsource.Metadata(ctx, source.Root()) })
 	if err != nil {
 		return ingestion.Request{}, "", err
 	}
 	snapshots := make([]review.RepositoryDiff, 0, len(source.Support().Scopes))
 	for _, mode := range source.Support().Scopes {
-		snapshot, err := source.Snapshot(ctx, mode)
+		snapshot, err := observeValue(ctx, Observation{Stage: "scopes", Scope: mode}, func() (review.RepositoryDiff, error) { return source.Snapshot(ctx, mode) })
 		if err != nil {
 			return ingestion.Request{}, "", err
 		}
@@ -95,15 +106,18 @@ func collectRepositoryChanged(ctx context.Context, source diffsource.Source, opt
 			return ingestion.Request{}, "", errChanged
 		}
 		snapshots = append(snapshots, snapshot)
+		observeWorkload(ctx, Observation{Scope: mode, Files: len(snapshot.Files)})
 	}
-	contentHash, err := diffsource.ContentHash(ctx, source, snapshots)
+	contentHash, err := observeValue(ctx, Observation{Stage: "fingerprint"}, func() (string, error) { return diffsource.ContentHash(ctx, source, snapshots) })
 	if err != nil {
 		if isChanged(err) {
 			return ingestion.Request{}, "", errChanged
 		}
 		return ingestion.Request{}, "", err
 	}
-	metadata, err := repositoryMetadata(ctx, source.Root(), facts, snapshots[0], options)
+	metadata, err := observeValue(ctx, Observation{Stage: "identity"}, func() (ingestion.Metadata, error) {
+		return repositoryMetadata(ctx, source.Root(), facts, snapshots[0], options)
+	})
 	if err != nil {
 		return ingestion.Request{}, "", err
 	}
@@ -119,7 +133,7 @@ func collectRepositoryChanged(ctx context.Context, source diffsource.Source, opt
 		metadata.WorktreeName = "branch: " + metadata.Branch
 		metadata.LinkedWorktree = nil
 	}
-	activity, err := diffsource.ActivityTime(ctx, source, metadata.Head, facts.GitDir)
+	activity, err := observeValue(ctx, Observation{Stage: "activity"}, func() (int64, error) { return diffsource.ActivityTime(ctx, source, metadata.Head, facts.GitDir) })
 	if err != nil && (ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
 		return ingestion.Request{}, "", err
 	}
@@ -141,13 +155,17 @@ func collectRepositoryChanged(ctx context.Context, source diffsource.Source, opt
 	}
 	observation := request(metadata, scopes, options)
 	observation.ContentHash = contentHash
-	if observation.Commits, observation.CommitsTotal, err = collectCommits(ctx, source); err != nil {
+	finishCommits := observeStage(ctx, Observation{Stage: "commits", Scope: review.DiffCommit})
+	observation.Commits, observation.CommitsTotal, err = collectCommits(ctx, source)
+	finishCommits(err)
+	if err != nil {
 		if isChanged(err) {
 			return ingestion.Request{}, "", errChanged
 		}
 		return ingestion.Request{}, "", err
 	}
-	fingerprint := Fingerprint(observation)
+	observeWorkload(ctx, Observation{Commits: len(observation.Commits)})
+	fingerprint = Fingerprint(observation)
 	unchanged := fingerprint != "" && fingerprint == previousFingerprint
 	if !unchanged {
 		observation, err = withPreviews(ctx, source, observation, defaultPreviewLimits)
@@ -158,6 +176,8 @@ func collectRepositoryChanged(ctx context.Context, source diffsource.Source, opt
 			return ingestion.Request{}, "", err
 		}
 	}
+	finishVerification := observeStage(ctx, Observation{Stage: "verification"})
+	defer func() { finishVerification(failure) }()
 	for _, snapshot := range snapshots {
 		latest, err := source.Snapshot(ctx, snapshot.Mode)
 		if err != nil {
@@ -196,6 +216,9 @@ func collectRepositoryChanged(ctx context.Context, source diffsource.Source, opt
 func collectCommits(ctx context.Context, source diffsource.Source) ([]ingestion.Commit, int, error) {
 	listed, ok, err := diffsource.Commits(ctx, source)
 	if err != nil || !ok || len(listed.Commits) == 0 {
+		return nil, 0, err
+	}
+	if err := diffsource.PrepareCommitSnapshots(ctx, source, listed.Commits); err != nil {
 		return nil, 0, err
 	}
 	commits := make([]ingestion.Commit, 0, len(listed.Commits))
@@ -278,9 +301,15 @@ func nonTextPreview(patch review.FilePatch) bool {
 }
 
 // CollectPatch records immutable input with its submission directory as provenance.
-func CollectPatch(ctx context.Context, raw, directory string, options Options) (ingestion.Request, error) {
+func CollectPatch(ctx context.Context, raw, directory string, options Options) (result ingestion.Request, failure error) {
+	ctx, completed := observeCollection(ctx, directory)
+	defer func() { failure = completed(failure) }()
+	parent := ctx
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx = diffsource.WithCollectionDeadline(ctx, parent)
 	defer cancel()
+	finish := observeStage(ctx, Observation{Stage: "parse"})
+	defer func() { finish(failure) }()
 	if err := ctx.Err(); err != nil {
 		return ingestion.Request{}, err
 	}

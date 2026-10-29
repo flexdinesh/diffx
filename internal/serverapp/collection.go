@@ -42,8 +42,10 @@ type Collection struct {
 }
 
 type CollectionFailure struct {
-	Path   string `json:"path"`
-	Detail string `json:"detail"`
+	Path         string `json:"path"`
+	Detail       string `json:"detail"`
+	Code         string `json:"code,omitempty"`
+	DiagnosticID string `json:"diagnosticId,omitempty"`
 }
 
 // Collect publishes completed checkout requests serially before returning the
@@ -230,11 +232,23 @@ func (handler *Collections) run(ctx context.Context) (Published, error) {
 		return published, err
 	}
 	if err != nil {
-		return published, &review.RequestError{Status: http.StatusUnprocessableEntity, Detail: "Unable to collect checkouts: " + err.Error()}
+		failure := &review.RequestError{Status: http.StatusUnprocessableEntity, Detail: "Unable to collect checkouts: " + err.Error(), Code: "collection_failed"}
+		var diagnostic *review.DiagnosticError
+		if errors.As(err, &diagnostic) {
+			failure.Code, failure.DiagnosticID = diagnostic.Code, diagnostic.ID
+		}
+		return published, failure
 	}
 	newest, ok := published.Newest()
 	if !ok {
-		return published, &review.RequestError{Status: http.StatusUnprocessableEntity, Detail: "Unable to collect checkouts: " + FailureSummary(published.Failures)}
+		failure := &review.RequestError{Status: http.StatusUnprocessableEntity, Detail: "Unable to collect checkouts: " + FailureSummary(published.Failures), Code: "collection_failed"}
+		for _, checkout := range published.Failures {
+			if checkout.DiagnosticID != "" {
+				failure.Code, failure.DiagnosticID = checkout.Code, checkout.DiagnosticID
+				break
+			}
+		}
+		return published, failure
 	}
 	handler.current.set(newest.Context.ID)
 	return published, nil

@@ -141,6 +141,26 @@ in file order, skipping a file that does not fit. No diff can consume another's
 share, and a share a diff does not need goes to the others. Full-content
 identity remains independent of preview truncation.
 
+Git reads use collection-scoped batches for immutable commit snapshots, patches
+and blobs. Each file keeps its own preview limit even when several files share
+one process. Oversized previews are discarded while the remaining stream is
+drained; malformed or incomplete batches fail collection. Raw modes and object
+IDs provide submodule checks without per-file tree queries. A 16 MiB blob cache
+is discarded with the collection. The 30-second checkout budget, 20-second Git
+command budget, four-process admission and fresh final consistency checks still
+bound collection. Only completed checkout observations are published.
+
+Failed producer collections retain a private diagnostic report under the
+configuration's state directory (`diagnostics/`). Reports describe stages,
+workload, queue waits, command timings and typed outcomes; primary failures and
+cancellation/cleanup errors are separate. They contain no patches, file contents,
+raw arguments, environment or credentials, and repository identifiers receive
+report-local pseudonyms. At most five schema-1 JSON reports of 1 MiB each are
+retained. `--debug` also saves successful collections. Failure responses carry
+an opaque diagnostic ID; `diffx diagnostics export` copies the report to a new
+private file for explicit sharing. Export never triggers collection. Failure to
+save diagnostics does not change collection's result or retry identity.
+
 Local composition calls `contextservice.Ingest` directly as each checkout finishes
 collection. Discovery feeds up to four concurrent Git reads, while one serial
 publisher commits their completed requests. A slow checkout does not hold already

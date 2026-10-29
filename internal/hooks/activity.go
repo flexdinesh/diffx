@@ -33,6 +33,7 @@ type Activity struct {
 	Head          string    `json:"head,omitempty"`
 	Destination   string    `json:"destination,omitempty"`
 	SubmissionID  string    `json:"submissionId,omitempty"`
+	DiagnosticID  string    `json:"diagnosticId,omitempty"`
 	ContextID     string    `json:"contextId,omitempty"`
 	Attempt       int       `json:"attempt,omitempty"`
 	FileCount     int       `json:"fileCount,omitempty"`
@@ -141,7 +142,7 @@ func boundedActivity(activity Activity) Activity {
 		&activity.Path, &activity.Agent, &activity.RunID, &activity.Branch,
 		&activity.BranchID, &activity.RepositoryKey, &activity.CheckoutKey,
 		&activity.Base, &activity.Head, &activity.Destination, &activity.SubmissionID,
-		&activity.ContextID, &activity.Reason, &activity.Error,
+		&activity.DiagnosticID, &activity.ContextID, &activity.Reason, &activity.Error,
 	}
 	for _, field := range fields {
 		*field = redactActivity(*field)

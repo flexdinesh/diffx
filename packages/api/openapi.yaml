@@ -2392,6 +2392,12 @@ components:
           type: string
         detail:
           type: string
+        code:
+          type: string
+          description: Stable failure category for this collection attempt.
+        diagnosticId:
+          type: string
+          description: Opaque report ID retained on the producer machine for explicit CLI export.
     Probe:
       type: object
       additionalProperties: false
@@ -2991,3 +2997,6 @@ components:
           type: string
         capability:
           type: string
+        diagnosticId:
+          type: string
+          description: Opaque report ID retained on the producer machine for explicit CLI export.

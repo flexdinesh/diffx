@@ -69,6 +69,7 @@ func runSync(ctx context.Context, arguments []string, stdin *os.File, stdout, st
 		}
 	}()
 	progress := &syncProgress{writer: stderr, enabled: values.debug}
+	values.diagnosticWriter = stderr
 	if file, ok := stderr.(*os.File); ok {
 		progress.terminal = isatty.IsTerminal(file.Fd())
 	}

@@ -65,45 +65,66 @@ func runGit(ctx context.Context, root string, maximum int, arguments ...string) 
 
 // runGitInput runs Git like runGit, reading standard input from input.
 func runGitInput(ctx context.Context, root string, maximum int, input io.Reader, arguments ...string) (string, error) {
+	output := &limitedBuffer{maximum: maximum}
+	err := runGitOutput(ctx, root, input, output, arguments...)
+	if output.exceeded {
+		err = errors.Join(errOutputLimit, err)
+	}
+	var failure *gitFailure
+	if errors.As(err, &failure) {
+		failure.stdout = output.String()
+	}
+	return output.String(), err
+}
+
+// runGitOutput streams stdout while retaining the same admission, deadline and
+// process-tree cleanup as scalar reads. Writer errors kill and join the child.
+func runGitOutput(ctx context.Context, root string, input io.Reader, output io.Writer, arguments ...string) (failure error) {
+	finish := beginCommand(ctx, root, arguments)
+	result := CommandResult{}
 	commandContext, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
+	defer func() {
+		result.Err, result.DeadlineKind = failure, deadlineKind(ctx, commandContext)
+		finish(result)
+	}()
+	queued := time.Now()
 	release, err := gitProcesses.acquire(commandContext)
+	result.QueueWait = time.Since(queued)
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer release()
 	args := append([]string{"--literal-pathspecs", "-c", "core.quotePath=false"}, arguments...)
 	command := exec.CommandContext(commandContext, "git", args...)
-	command.Dir = root
-	command.Env = gitEnvironment(os.Environ())
-	command.Stdin = input
-	output := &limitedBuffer{maximum: maximum}
+	command.Dir, command.Env, command.Stdin = root, gitEnvironment(os.Environ()), input
 	errorOutput := &limitedBuffer{maximum: 64 * 1024}
-	command.Stdout = output
-	command.Stderr = errorOutput
+	stdout, stderr := &countedWriter{Writer: output}, &countedWriter{Writer: errorOutput}
+	command.Stdout, command.Stderr = stdout, stderr
+	started := time.Now()
 	err = runGitCommand(commandContext, command)
-	exceeded := output.exceeded || errorOutput.exceeded
-	if exceeded {
+	result.Elapsed = time.Since(started)
+	result.StdoutBytes, result.StderrBytes = stdout.bytes, stderr.bytes
+	if command.ProcessState != nil {
+		status := command.ProcessState.ExitCode()
+		result.ExitStatus = &status
+	}
+	if errorOutput.exceeded {
 		err = errors.Join(errOutputLimit, err)
 	}
 	if commandContext.Err() != nil {
-		return output.String(), errors.Join(commandContext.Err(), err)
+		return errors.Join(commandContext.Err(), err)
 	}
-	if exceeded {
-		return output.String(), err
+	if err == nil {
+		return nil
 	}
-	if err != nil {
-		// Only an ordinary Git exit can mean an absent revision or file.
-		// Pipe, launch, or cleanup failures must not trigger those fallbacks.
-		if !isGitExitFailure(err) {
-			return output.String(), err
-		}
-		if detail := strings.TrimSpace(errorOutput.String()); detail != "" {
-			err = fmt.Errorf("%w: %s", err, detail)
-		}
-		return output.String(), &gitFailure{err: err, stdout: output.String()}
+	if !isGitExitFailure(err) {
+		return err
 	}
-	return output.String(), nil
+	if detail := strings.TrimSpace(errorOutput.String()); detail != "" {
+		err = fmt.Errorf("%w: %s", err, detail)
+	}
+	return &gitFailure{err: err}
 }
 
 func isGitExitFailure(err error) bool {
@@ -268,7 +289,8 @@ type gitSource struct {
 	root       string
 	comparison *gitComparison
 	// commit selects one captured commit's diff against its first parent.
-	commit *commitTarget
+	commit     *commitTarget
+	collection *collectionObjects
 }
 
 func OpenRepository(ctx context.Context, directory string) (Source, error) {
@@ -288,7 +310,7 @@ func OpenRepository(ctx context.Context, directory string) (Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &gitSource{root: filepath.Clean(canonical)}, nil
+	return &gitSource{root: filepath.Clean(canonical), collection: newCollectionObjects()}, nil
 }
 
 func RepositoryIdentity(ctx context.Context, root string) (commonDir, worktreeDir string, err error) {
@@ -417,8 +439,22 @@ type fingerprintContent struct {
 }
 
 func (source *gitSource) Snapshot(ctx context.Context, mode review.DiffMode) (review.RepositoryDiff, error) {
-	if err := source.verifyComparison(ctx); err != nil {
+	ctx = commandScope(ctx, string(mode))
+	if err := ctx.Err(); err != nil {
 		return review.RepositoryDiff{}, err
+	}
+	if source.commit != nil && source.collection != nil {
+		if snapshot, ok := source.collection.commits[source.commit.oid]; ok {
+			if mode != review.DiffCommit {
+				return review.RepositoryDiff{}, Error(400, "Unsupported comparison scope: %s", mode)
+			}
+			return snapshot, ctx.Err()
+		}
+	}
+	if source.commit == nil {
+		if err := source.verifyComparison(ctx); err != nil {
+			return review.RepositoryDiff{}, err
+		}
 	}
 	head, base, err := source.headAndBase(ctx)
 	if err != nil {
@@ -526,7 +562,11 @@ func (source *gitSource) Snapshot(ctx context.Context, mode review.DiffMode) (re
 			}
 		}
 		rawFingerprint, _ := json.Marshal([]any{mode, head, endpoints.before.revision, content, size, modified, changed})
+		objects, known := parseFileObjects(file.Fingerprint)
 		file.Fingerprint = digest(string(rawFingerprint))
+		if known && source.collection != nil {
+			source.collection.files[file.Fingerprint] = objects
+		}
 	}
 	statuses := parseStatus(statusOutput)
 	result := make([]review.ChangedFile, 0, len(files))
@@ -555,36 +595,8 @@ func (source *gitSource) Patch(ctx context.Context, mode review.DiffMode, file r
 	if err != nil {
 		return review.FilePatch{}, err
 	}
-	if file.Recreated && head != nil {
-		return source.recreatedContents(ctx, file.Path, endpoints.before.revision)
-	}
-	if file.Binary {
-		return review.FilePatch{Message: Message("Binary file changed. No text preview available.")}, nil
-	}
-	if file.Status == "U" {
-		return review.FilePatch{Message: Message("Unresolved merge conflict. Resolve this file in your editor; the viewer is read-only.")}, nil
-	}
-	if endpoints.objectsOnly() {
-		submodule, err := source.objectSubmodule(ctx, endpoints, file)
-		if err != nil {
-			return review.FilePatch{}, err
-		}
-		if submodule {
-			return review.FilePatch{Message: Message("Submodule or directory changed. Open its repository to review the contents.")}, nil
-		}
-	}
-	if endpoints.after.kind == worktreeEndpoint {
-		if stat, err := os.Lstat(filepath.Join(source.root, filepath.FromSlash(file.Path))); err == nil {
-			if stat.IsDir() {
-				return review.FilePatch{Message: Message("Submodule or directory changed. Open its repository to review the contents.")}, nil
-			}
-			if !stat.Mode().IsRegular() && stat.Mode()&os.ModeSymlink == 0 {
-				return review.FilePatch{Message: Message("Special file. No text preview available.")}, nil
-			}
-			if stat.Size() > MaxFileBytes {
-				return review.FilePatch{Message: Message("File exceeds the 2 MiB preview limit.")}, nil
-			}
-		}
+	if patch, handled, err := source.specialPatch(ctx, endpoints, file, head); handled || err != nil {
+		return patch, err
 	}
 	var args []string
 	if file.Status == "?" {
@@ -673,4 +685,40 @@ func (source *gitSource) Contents(ctx context.Context, mode review.DiffMode, fil
 		return review.FileContents{}, Error(400, "Full text is unavailable for binary files")
 	}
 	return review.FileContents{Before: before, After: after}, nil
+}
+
+func (source *gitSource) specialPatch(ctx context.Context, endpoints comparisonEndpoints, file review.ChangedFile, head *string) (review.FilePatch, bool, error) {
+	if file.Recreated && head != nil {
+		patch, err := source.recreatedContents(ctx, file.Path, endpoints.before.revision)
+		return patch, true, err
+	}
+	if file.Binary {
+		return review.FilePatch{Message: Message("Binary file changed. No text preview available.")}, true, nil
+	}
+	if file.Status == "U" {
+		return review.FilePatch{Message: Message("Unresolved merge conflict. Resolve this file in your editor; the viewer is read-only.")}, true, nil
+	}
+	if endpoints.objectsOnly() {
+		submodule, err := source.objectSubmodule(ctx, endpoints, file)
+		if err != nil {
+			return review.FilePatch{}, true, err
+		}
+		if submodule {
+			return review.FilePatch{Message: Message("Submodule or directory changed. Open its repository to review the contents.")}, true, nil
+		}
+	}
+	if endpoints.after.kind == worktreeEndpoint {
+		if stat, err := os.Lstat(filepath.Join(source.root, filepath.FromSlash(file.Path))); err == nil {
+			if stat.IsDir() {
+				return review.FilePatch{Message: Message("Submodule or directory changed. Open its repository to review the contents.")}, true, nil
+			}
+			if !stat.Mode().IsRegular() && stat.Mode()&os.ModeSymlink == 0 {
+				return review.FilePatch{Message: Message("Special file. No text preview available.")}, true, nil
+			}
+			if stat.Size() > MaxFileBytes {
+				return review.FilePatch{Message: Message("File exceeds the 2 MiB preview limit.")}, true, nil
+			}
+		}
+	}
+	return review.FilePatch{}, false, nil
 }

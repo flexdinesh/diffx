@@ -530,6 +530,12 @@ func (handler *Handler) problem(response http.ResponseWriter, err error) {
 	}
 	if requestError != nil {
 		status = requestError.Status
+		if requestError.Code != "" {
+			body["code"] = requestError.Code
+		}
+		if requestError.DiagnosticID != "" {
+			body["diagnosticId"] = requestError.DiagnosticID
+		}
 		if status == http.StatusServiceUnavailable && strings.HasPrefix(requestError.Detail, "source_unavailable:") {
 			body["code"] = "source_unavailable"
 		}

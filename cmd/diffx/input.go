@@ -122,6 +122,7 @@ func sourceActivity(metadata ingestion.Metadata, comparison diffsource.Compariso
 }
 
 func collectSubmission(ctx context.Context, values options) (request ingestion.Request, failure error) {
+	ctx = withCollectionDiagnostics(ctx, values, diagnosticsWriter(values))
 	recordCollectorActivity(hooks.Activity{Stage: "collection", Status: "started", InputPath: values.directory, Agent: values.agent, RunID: values.runID, Branch: values.branch, Base: values.base})
 	defer func() {
 		activity := hooks.Activity{Stage: "collection", Status: "collected", InputPath: values.directory}
@@ -159,6 +160,7 @@ func recordCollectorActivity(activity hooks.Activity, secrets ...string) {
 }
 
 func collectInitialInput(ctx context.Context, values options, input initialInput) (ingestion.Request, error) {
+	ctx = withCollectionDiagnostics(ctx, values, diagnosticsWriter(values))
 	settings, err := collectionOptions(values)
 	if err != nil {
 		return ingestion.Request{}, err

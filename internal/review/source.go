@@ -23,8 +23,10 @@ type Support struct {
 }
 
 type RequestError struct {
-	Status int
-	Detail string
+	Status       int
+	Detail       string
+	Code         string
+	DiagnosticID string
 }
 
 func (err *RequestError) Error() string { return err.Detail }

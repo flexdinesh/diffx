@@ -5,6 +5,30 @@ description: Capture checkouts, sync to a remote server, and configure diffx.
 
 # Usage
 
+## Debugging collection failures
+
+Failed collections save a private diagnostic report automatically. The error
+includes its ID and an export command. Export a portable JSON file to attach to
+a debugging conversation:
+
+```sh
+diffx diagnostics export --latest --output failure.json
+diffx diagnostics export REPORT_ID --output failure.json
+```
+
+Reports identify collection stages, workload, command counts, timings and the
+deadline or error that stopped work. Cancellation/cleanup errors are reported
+separately. They exclude source contents, patches, credentials and raw process
+configuration; repository paths, refs and URLs are pseudonymized. The five newest
+reports are kept, each at most 1 MiB, under the private state directory. Export
+requires a new output file. `DIFFX_RUNTIME_DIR` also isolates diagnostics.
+
+Run `diffx . --debug` or `diffx sync --debug` to show collection stages and save
+successful reports for comparison. Hooks save collection failures automatically
+and reference the diagnostic ID in their activity log.
+
+## Local collection
+
 Capture the checkouts under the selected paths in one foreground process:
 
 ```sh
