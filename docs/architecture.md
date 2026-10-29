@@ -95,7 +95,8 @@ owner. See [development.md](development.md) for isolated checkout commands.
 - `webpush`: Web Push wire adapter: VAPID keys and JWTs, RFC 8291 payload
   encryption and push service response classes. No storage or diffx policy.
 - `pushservice`: push enablement, VAPID key load-or-create, account device
-  subscriptions and the outbox delivery worker. Remote composition only.
+  subscriptions and the outbox delivery worker, whose leased claims let
+  replicas share delivery. Remote composition only.
 - `fetchprotocol`: lease/result contract and client between `diffx-server`'s
   internal listener and `diffx-fetcher`.
 - `fetcher`: `diffx-fetcher`'s partial-clone mirrors and offline collection of
@@ -103,7 +104,10 @@ owner. See [development.md](development.md) for isolated checkout commands.
 - `reviewstore`: local SQLite transactions, stored reads and retention.
 - `pgstore`: the server's Postgres persistence: goose migrations, sqlc queries,
   every remote storage contract (content, reviews, identity, GitHub, push,
-  queue) and the locks that keep replicas correct. Remote composition only.
+  queue), the locks that keep replicas correct, including the advisory
+  try-locks that run retention pruning and GitHub startup reconciliation on
+  one replica at a time, and the `LISTEN/NOTIFY` channels that keep replicas
+  informed. Remote composition only.
 - `ingestionqueue`: admission/lease contract and worker failure policy; jobs fail
   permanently only for `review.Permanent` rejections (4xx except 408/429).
 - `submission`: destination identity, delivery and the acknowledgement TTL,
@@ -116,7 +120,8 @@ owner. See [development.md](development.md) for isolated checkout commands.
   reach review operations through `reviewservice.Catalog` and hold no store.
 - `serverapp`: transport/task composition; `localserver`: local lifecycle;
   `controlapi`: its private authenticated control API; `remoteserver`: remote
-  authentication and worker composition.
+  authentication, its rate limiting policy, deployment probes and worker
+  composition.
 - `config`, `processlock`, `browser`, `version`: configuration and private state
   paths (`StateDir`, honouring `DIFFX_RUNTIME_DIR`), process ownership,
   browser launch and build metadata; `processmetrics`: server process metrics;
@@ -135,7 +140,16 @@ account IDs before application access. Review operations receive an owner withou
 mode branches. `remoteserver` activates owner-scoped services on demand, including
 for accounts created after startup; requests, events and workers share that owner
 registry and its shutdown lifetime; disabling or deleting an account stops its
-services. Identity service owns credential and administration rules, including
+services and event streams. Replicas share no memory, so `pgstore` sends a
+`NOTIFY` in the transaction that ingests or deletes a context, disables or
+deletes an account, or queues an ingestion job; a rollback sends none. Each
+replica's dedicated listening session relays every commit, its own included,
+to that owner's subscribers, removes the account's services or wakes the worker.
+Remote services therefore skip in-process publication
+(`contextservice.ExternalEvents`); local composition keeps it. Notifications
+are hints: after a lost session the listener reconnects with backoff and asks
+every active owner's clients to reload, and the worker keeps polling.
+Identity service owns credential and administration rules, including
 the single admin; transports own cookies, CSRF and route permissions, such as
 admin routes requiring the admin's browser session.
 
@@ -297,6 +311,13 @@ supplies overridable env defaults for its listener. `DIFFX_SERVER_DATABASE_URL`
 selects the Postgres database holding all server state, credentials and the
 durable queue. It holds credentials, so it is read only from the environment,
 never a file or flag, and diagnostics never echo it.
+`DIFFX_SERVER_AUTH_RATE_LIMIT` (default off) and `DIFFX_SERVER_CLIENT_IP_HEADER`
+are also environment only, because trusting a client IP header is a property of
+the deployment's ingress, not of a portable config file. `remoteserver` owns the
+limit and the header parsing; `pgstore` owns the atomic per-client fixed-window
+counter in an UNLOGGED table, which replicas share and which loses only counts
+on a crash. Only remote composition serves `/healthz` and `/readyz`; local mode
+has no deployment probes.
 
 Personal CLI configuration keeps modes in separate namespaces so one machine runs
 both compositions at once: `local.*` and `DIFFX_LOCAL_*` configure only

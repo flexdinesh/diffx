@@ -74,7 +74,9 @@ func migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	if err != nil {
 		return err
 	}
-	locker, err := lock.NewPostgresSessionLocker()
+	// Replicas starting together wait for the migrating one; probing every
+	// second instead of goose's default five keeps their startup short.
+	locker, err := lock.NewPostgresSessionLocker(lock.WithLockTimeout(1, 300))
 	if err != nil {
 		return err
 	}

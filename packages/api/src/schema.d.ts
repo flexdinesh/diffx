@@ -501,6 +501,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/healthz": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Distributed only. Unauthenticated liveness probe; answers while the process serves, without contacting the database. */
+    get: operations["getLiveness"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/readyz": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Distributed only. Unauthenticated readiness probe; ready while the database accepts queries. A failure never explains its cause. */
+    get: operations["getReadiness"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v2/ingestion-jobs": {
     parameters: {
       query?: never;
@@ -1316,6 +1350,10 @@ export interface components {
       path: string;
       detail: string;
     };
+    Probe: {
+      /** @constant */
+      status: "ok";
+    };
     ServerMetrics: {
       rssBytes: number;
       cpuUsage: number;
@@ -1572,6 +1610,16 @@ export interface components {
       };
       content: {
         "application/problem+json": components["schemas"]["Problem"];
+      };
+    };
+    /** @description The probe passed. Never cached. */
+    ProbeOk: {
+      headers: {
+        "Cache-Control": "no-store";
+        [name: string]: unknown;
+      };
+      content: {
+        "application/json": components["schemas"]["Probe"];
       };
     };
     /** @description Google authorization to navigate to. */
@@ -2565,6 +2613,33 @@ export interface operations {
           };
         };
       };
+      default: components["responses"]["Problem"];
+    };
+  };
+  getLiveness: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: components["responses"]["ProbeOk"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  getReadiness: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: components["responses"]["ProbeOk"];
+      503: components["responses"]["Problem"];
       default: components["responses"]["Problem"];
     };
   };

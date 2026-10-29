@@ -74,6 +74,12 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 	if values.Google.Enabled() {
 		settings.Google = &remoteserver.GoogleSettings{ClientID: values.Google.ClientID, ClientSecret: values.Google.ClientSecret}
 	}
+	if err := values.ValidateAuthRateLimit(); err != nil {
+		return settings, false, err
+	}
+	if values.AuthRateLimit {
+		settings.ClientIPHeader = values.ClientIPHeader
+	}
 	if _, err := remoteserver.Retention(settings.RetentionDays); err != nil {
 		return settings, false, err
 	}

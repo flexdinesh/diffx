@@ -122,3 +122,10 @@ WHERE repository_id = @repository_id AND number = @number AND lease_token = @tok
 -- name: RecordGitHubPullRequestHead :exec
 INSERT INTO github_pr_heads(repository_id, number, head_sha) VALUES ($1, $2, $3)
 ON CONFLICT (repository_id, number) DO UPDATE SET head_sha = excluded.head_sha;
+
+-- name: TryGitHubReconcileLock :one
+-- Session-level: held across reconciliation's GitHub calls without a transaction.
+SELECT pg_try_advisory_lock(@key::bigint);
+
+-- name: GitHubReconcileUnlock :one
+SELECT pg_advisory_unlock(@key::bigint);

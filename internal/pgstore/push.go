@@ -2,6 +2,7 @@ package pgstore
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"time"
 
@@ -100,17 +101,30 @@ func (s *PushStore) RecordSuccess(ctx context.Context, subscriptionID string, no
 	return s.store.queries.RecordSubscriptionSuccess(ctx, pgdb.RecordSubscriptionSuccessParams{ID: subscriptionID, LastSuccessAt: time.UnixMilli(now)})
 }
 
-func (s *PushStore) DueNotifications(ctx context.Context, now int64, limit int) ([]pushservice.Notification, error) {
-	rows, err := s.store.queries.DueNotifications(ctx, pgdb.DueNotificationsParams{Now: time.UnixMilli(now), MaxCount: int32(limit)})
+// ClaimNotifications shares one token across the claimed rows; each row's
+// transitions are fenced separately.
+func (s *PushStore) ClaimNotifications(ctx context.Context, now, leaseUntil int64, limit int) ([]pushservice.Claim, error) {
+	token := rand.Text()
+	rows, err := s.store.queries.ClaimNotifications(ctx, pgdb.ClaimNotificationsParams{Now: time.UnixMilli(now), MaxCount: int32(limit), LeaseToken: token, LeaseUntil: time.UnixMilli(leaseUntil)})
 	if err != nil {
 		return nil, err
 	}
-	result := make([]pushservice.Notification, 0, len(rows))
+	result := make([]pushservice.Claim, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, pushservice.Notification{ID: row.ID, OwnerID: row.OwnerID, Kind: row.Kind, Content: row.Payload, Attempt: int(row.Attempt),
-			CreatedAt: row.CreatedAt.UnixMilli(), Available: row.Available, JobState: row.JobState, ContextID: row.JobContextID})
+		result = append(result, pushservice.Claim{Token: token, Notification: pushservice.Notification{ID: row.ID, OwnerID: row.OwnerID, Kind: row.Kind, Content: row.Payload, Attempt: int(row.Attempt),
+			CreatedAt: row.CreatedAt.UnixMilli(), Available: row.Available, JobState: row.JobState, ContextID: row.JobContextID}})
 	}
 	return result, nil
+}
+
+// pushFenced reports ErrLeaseLost unless the update matched the claim's row.
+// Fencing compares tokens only: a lapsed lease still holds until a reclaim
+// replaces its token.
+func pushFenced(count int64, err error) error {
+	if err == nil && count != 1 {
+		return pushservice.ErrLeaseLost
+	}
+	return err
 }
 
 func (s *PushStore) Undelivered(ctx context.Context, notificationID string) ([]pushservice.Subscription, error) {
@@ -121,13 +135,20 @@ func (s *PushStore) Undelivered(ctx context.Context, notificationID string) ([]p
 	return subscriptionsFromRows(rows), nil
 }
 
-func (s *PushStore) RecordDelivery(ctx context.Context, notificationID, subscriptionID string, accepted bool, now int64) error {
+// RecordDelivery holds the claim's row until commit, so a reclaim waits and
+// then sees the outcome; the first outcome per device stands.
+func (s *PushStore) RecordDelivery(ctx context.Context, claim pushservice.Claim, subscriptionID string, accepted bool, now int64) error {
 	state := "refused"
 	if accepted {
 		state = "accepted"
 	}
 	return s.store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
-		if err := queries.InsertDelivery(ctx, pgdb.InsertDeliveryParams{NotificationID: notificationID, SubscriptionID: subscriptionID, State: state}); err != nil {
+		if _, err := queries.HoldNotificationLease(ctx, pgdb.HoldNotificationLeaseParams{ID: claim.ID, LeaseToken: claim.Token}); errors.Is(err, pgx.ErrNoRows) {
+			return pushservice.ErrLeaseLost
+		} else if err != nil {
+			return err
+		}
+		if err := queries.InsertDelivery(ctx, pgdb.InsertDeliveryParams{NotificationID: claim.ID, SubscriptionID: subscriptionID, State: state}); err != nil {
 			return err
 		}
 		if !accepted {
@@ -137,12 +158,12 @@ func (s *PushStore) RecordDelivery(ctx context.Context, notificationID, subscrip
 	})
 }
 
-func (s *PushStore) RetryNotification(ctx context.Context, id string, attempt int, availableAt int64) error {
-	return s.store.queries.RetryNotification(ctx, pgdb.RetryNotificationParams{ID: id, Attempt: int32(attempt), AvailableAt: time.UnixMilli(availableAt)})
+func (s *PushStore) RetryNotification(ctx context.Context, claim pushservice.Claim, attempt int, availableAt int64) error {
+	return pushFenced(s.store.queries.RetryNotification(ctx, pgdb.RetryNotificationParams{ID: claim.ID, LeaseToken: claim.Token, Attempt: int32(attempt), AvailableAt: time.UnixMilli(availableAt)}))
 }
 
-func (s *PushStore) FinishNotification(ctx context.Context, id, state string) error {
-	return s.store.queries.FinishNotification(ctx, pgdb.FinishNotificationParams{ID: id, State: state})
+func (s *PushStore) FinishNotification(ctx context.Context, claim pushservice.Claim, state string) error {
+	return pushFenced(s.store.queries.FinishNotification(ctx, pgdb.FinishNotificationParams{ID: claim.ID, LeaseToken: claim.Token, State: state}))
 }
 
 func (s *PushStore) StreamID(ctx context.Context, ownerID, contextID string, now int64) (string, error) {

@@ -131,3 +131,58 @@ func TestWorkerSurvivesQueueStorageFailure(t *testing.T) {
 		t.Fatalf("shutdown error = %v", err)
 	}
 }
+
+// wakingQueue is empty until ready, then offers one job.
+type wakingQueue struct {
+	recordingQueue
+	claimed   chan struct{}
+	ready     chan struct{}
+	completed chan struct{}
+	taken     bool
+}
+
+func (q *wakingQueue) Claim(context.Context, time.Duration) (Delivery, error) {
+	select {
+	case <-q.ready:
+		if !q.taken {
+			q.taken = true
+			return Delivery{OwnerID: "owner", Job: Job{ID: "job", Attempt: 1}}, nil
+		}
+		return Delivery{}, ErrEmpty
+	default:
+		q.claimed <- struct{}{}
+		return Delivery{}, ErrEmpty
+	}
+}
+
+func (q *wakingQueue) Complete(context.Context, Delivery, string) error {
+	close(q.completed)
+	return nil
+}
+
+func TestWakeClaimsWithoutWaitingForPoll(t *testing.T) {
+	q := &wakingQueue{claimed: make(chan struct{}, 1), ready: make(chan struct{}), completed: make(chan struct{})}
+	wake := make(chan struct{}, 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	result := make(chan error, 1)
+	go func() {
+		result <- Run(ctx, q, func(context.Context, string, ingestion.Request) (string, error) { return "context", nil },
+			Wake(wake), func(worker *worker) { worker.poll = time.Hour })
+	}()
+	select {
+	case <-q.claimed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker never claimed")
+	}
+	close(q.ready)
+	wake <- struct{}{}
+	select {
+	case <-q.completed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("wake did not trigger a claim")
+	}
+	cancel()
+	if err := <-result; err != nil {
+		t.Fatalf("shutdown error = %v", err)
+	}
+}

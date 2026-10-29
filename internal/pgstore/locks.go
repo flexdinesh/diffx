@@ -8,6 +8,10 @@ const (
 	schemaLock = 7_469_000_001
 	// adminSetupLock serializes setup issuance with admin creation.
 	adminSetupLock = 7_469_000_010
+	// pruneLock admits one replica's retention pass; others skip theirs.
+	pruneLock = 7_469_000_020
+	// githubReconcileLock admits one replica's startup reconciliation; others skip theirs.
+	githubReconcileLock = 7_469_000_030
 )
 
 // Two-key classes; the second key hashes the locked value.

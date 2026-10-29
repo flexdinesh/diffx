@@ -3,6 +3,7 @@ package contextservice
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -164,5 +165,60 @@ func TestObservationOwnershipAndCancelledIngestion(t *testing.T) {
 	page, err := service.List(t.Context(), 100, "")
 	if err != nil || len(page.Contexts) != 1 {
 		t.Fatalf("cancelled ingestion persisted: %#v, %v", page, err)
+	}
+}
+
+// Compositions relaying store-announced changes hear only Notify, and closing
+// the service ends every subscription.
+func TestExternalEventsRelayOnlyNotifiedChanges(t *testing.T) {
+	store, err := reviewstore.Open("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	user, err := store.User("test-user", "test-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, external := range []bool{false, true} {
+		var options []Option
+		if external {
+			options = append(options, ExternalEvents())
+		}
+		service := NewWithContext(t.Context(), store, user, options...)
+		events, unsubscribe := service.Subscribe()
+		input, err := collector.CollectPatch(t.Context(), testPatch, "", collector.Options{SourceID: "source", SubmissionID: fmt.Sprintf("request-%v", external)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		published, err := service.Ingest(t.Context(), input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case id := <-events:
+			if external || id != published.Context.ID {
+				t.Fatalf("external=%v in-process event %q", external, id)
+			}
+		default:
+			if !external {
+				t.Fatal("local ingestion published no event")
+			}
+		}
+		service.Notify("elsewhere")
+		if id := <-events; id != "elsewhere" {
+			t.Fatalf("notified event = %q", id)
+		}
+		if err := service.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if _, open := <-events; open {
+			t.Fatal("subscription outlived the service")
+		}
+		unsubscribe()
+		late, _ := service.Subscribe()
+		if _, open := <-late; open {
+			t.Fatal("closed service accepted a subscription")
+		}
 	}
 }

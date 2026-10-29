@@ -445,6 +445,14 @@ test("Go distribution implements the API contract", async (t) => {
   const remoteUrl = `http://127.0.0.1:${remotePort}`;
   await waitForServer(remoteUrl);
   const remote = createApiClient({ baseUrl: remoteUrl });
+  for (const probe of [
+    await remote.GET("/healthz"),
+    await remote.GET("/readyz"),
+  ]) {
+    assert.equal(probe.response.status, 200);
+    assert.equal(probe.response.headers.get("cache-control"), "no-store");
+    conforms("Probe", probe.data);
+  }
   const remoteBootstrap = await remote.GET("/api/v2/bootstrap");
   conforms("Bootstrap", remoteBootstrap.data);
   assert.deepEqual(remoteBootstrap.data, {

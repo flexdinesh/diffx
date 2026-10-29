@@ -63,15 +63,26 @@ func composeGitHub(store *pgstore.Store, settings *GitHubSettings) (*githubsync.
 	return githubsync.New(store.GitHub(), client, githubsync.Options{PublicURL: settings.PublicURL, TokenKey: tokenKey})
 }
 
+// reconcileLock admits one replica's reconcile at a time, reporting whether it ran.
+type reconcileLock interface {
+	ReconcileAlone(ctx context.Context, reconcile func(context.Context) error) (bool, error)
+}
+
 // reconcileAtStartup recovers missed deliveries once, then holds its task slot
 // for the server lifetime. Failures are logged and Resync remains available.
-func reconcileAtStartup(service *githubsync.Service) serverapp.Task {
+func reconcileAtStartup(reconcile func(context.Context) error, lock reconcileLock) serverapp.Task {
 	return func(ctx context.Context) error {
-		if err := service.Reconcile(ctx); err != nil && ctx.Err() == nil {
-			log.Printf("GitHub reconcile: %v", err)
-		}
+		reconcileOnce(ctx, reconcile, lock)
 		<-ctx.Done()
 		return nil
+	}
+}
+
+// reconcileOnce skips while another replica reconciles: refresh intent is
+// coalesced, so that replica's pass recovers the same deliveries.
+func reconcileOnce(ctx context.Context, reconcile func(context.Context) error, lock reconcileLock) {
+	if _, err := lock.ReconcileAlone(ctx, reconcile); err != nil && ctx.Err() == nil {
+		log.Printf("GitHub reconcile: %v", err)
 	}
 }
 

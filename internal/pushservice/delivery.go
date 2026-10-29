@@ -25,7 +25,14 @@ const (
 	maxBackoff = time.Hour
 	// idlePoll spaces checks for due notifications.
 	idlePoll = time.Second
-	batch    = 32
+	// batch bounds the notifications one pass claims, one at a time.
+	batch = 32
+	// lease bounds how long one worker holds a notification: devices are sent
+	// to in turn, each within webpush's 30-second timeout, so it covers ten
+	// unresponsive devices. A crashed worker's notification waits out its
+	// lease; a worker outliving it loses the claim at its next transition, and
+	// the reclaimer sends only to devices without a recorded outcome.
+	lease = 5 * time.Minute
 )
 
 // message is the payload contract with the web app's service worker.
@@ -70,19 +77,23 @@ func (s *Service) Run(ctx context.Context) error {
 	return nil
 }
 
-// DeliverDue attempts every notification currently due once.
+// DeliverDue attempts up to batch due notifications once, claiming each just
+// before delivering it so a lease covers one notification's sends. A
+// notification whose lease was lost belongs to another worker and is skipped.
 func (s *Service) DeliverDue(ctx context.Context) error {
-	due, err := s.store.DueNotifications(ctx, s.millis(), batch)
-	if err != nil {
-		return err
-	}
 	var failures []error
-	for _, notification := range due {
+	for range batch {
+		now := s.now()
+		claims, err := s.store.ClaimNotifications(ctx, now.UnixMilli(), now.Add(lease).UnixMilli(), 1)
+		if err != nil || len(claims) == 0 {
+			return errors.Join(append(failures, err)...)
+		}
+		err = s.deliver(ctx, claims[0])
 		if ctx.Err() != nil {
 			return nil
 		}
-		if err := s.deliver(ctx, notification); err != nil {
-			failures = append(failures, fmt.Errorf("notification %s: %w", notification.ID, err))
+		if err != nil && !errors.Is(err, ErrLeaseLost) {
+			failures = append(failures, fmt.Errorf("notification %s: %w", claims[0].ID, err))
 		}
 	}
 	return errors.Join(failures...)
@@ -91,15 +102,15 @@ func (s *Service) DeliverDue(ctx context.Context) error {
 // deliver sends a notification once its follower's snapshot is published. A
 // device records its outcome as soon as the push service answers, so a crash
 // or retry never sends to a device that already accepted.
-func (s *Service) deliver(ctx context.Context, notification Notification) error {
+func (s *Service) deliver(ctx context.Context, notification Claim) error {
 	now := s.now()
-	drop := func() error { return s.store.FinishNotification(ctx, notification.ID, "dropped") }
+	drop := func() error { return s.store.FinishNotification(ctx, notification, "dropped") }
 	switch {
 	case s.client == nil, !notification.Available, now.UnixMilli()-notification.CreatedAt >= lifetime.Milliseconds():
 		return drop()
 	case notification.JobState == "succeeded" && notification.ContextID != "":
 	case notification.JobState == "queued" || notification.JobState == "running" || notification.JobState == "retrying":
-		return s.store.RetryNotification(ctx, notification.ID, notification.Attempt, now.Add(jobWait).UnixMilli())
+		return s.store.RetryNotification(ctx, notification, notification.Attempt, now.Add(jobWait).UnixMilli())
 	default:
 		// The admission failed or is gone: there is nothing to open.
 		return drop()
@@ -132,12 +143,12 @@ func (s *Service) deliver(ctx context.Context, notification Notification) error 
 		result := s.client.Send(ctx, device.target(), payload, options)
 		if ctx.Err() != nil {
 			// Shutdown leaves the notification pending; an interrupted send
-			// is uncertain and repeats after restart.
+			// is uncertain and repeats once the lease expires.
 			return nil
 		}
 		switch result.Outcome {
 		case webpush.Accepted:
-			err = s.store.RecordDelivery(ctx, notification.ID, device.ID, true, s.millis())
+			err = s.store.RecordDelivery(ctx, notification, device.ID, true, s.millis())
 		case webpush.Gone:
 			err = s.store.DeleteSubscription(ctx, notification.OwnerID, device.ID)
 			if errors.Is(err, ErrNotFound) {
@@ -145,7 +156,7 @@ func (s *Service) deliver(ctx context.Context, notification Notification) error 
 			}
 		case webpush.Permanent:
 			log.Printf("push delivery to device %s refused: %v", device.ID, result.Err)
-			err = s.store.RecordDelivery(ctx, notification.ID, device.ID, false, s.millis())
+			err = s.store.RecordDelivery(ctx, notification, device.ID, false, s.millis())
 		case webpush.Retry:
 			retry, delay = true, max(delay, result.RetryAfter)
 		}
@@ -155,9 +166,9 @@ func (s *Service) deliver(ctx context.Context, notification Notification) error 
 	}
 	if retry {
 		delay = max(delay, backoff(notification.Attempt))
-		return s.store.RetryNotification(ctx, notification.ID, notification.Attempt+1, s.now().Add(delay).UnixMilli())
+		return s.store.RetryNotification(ctx, notification, notification.Attempt+1, s.now().Add(delay).UnixMilli())
 	}
-	return s.store.FinishNotification(ctx, notification.ID, "sent")
+	return s.store.FinishNotification(ctx, notification, "sent")
 }
 
 // backoff doubles from 30 seconds, capped at an hour.

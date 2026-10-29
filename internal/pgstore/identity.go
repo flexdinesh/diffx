@@ -129,7 +129,10 @@ func (store *Store) SetAccountDisabled(ctx context.Context, accountID string, di
 		if err := queries.DeleteAccountSessions(ctx, accountID); err != nil {
 			return err
 		}
-		return queries.DeleteAccountTokens(ctx, accountID)
+		if err := queries.DeleteAccountTokens(ctx, accountID); err != nil {
+			return err
+		}
+		return notifyAccount(ctx, queries, accountID)
 	})
 }
 
@@ -144,7 +147,10 @@ func (store *Store) DeleteAccount(ctx context.Context, accountID string) error {
 		if err := queries.DeleteAccountJobs(ctx, accountID); err != nil {
 			return err
 		}
-		return queries.DeleteAccountUser(ctx, accountID)
+		if err := queries.DeleteAccountUser(ctx, accountID); err != nil {
+			return err
+		}
+		return notifyAccount(ctx, queries, accountID)
 	})
 }
 

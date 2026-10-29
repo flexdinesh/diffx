@@ -297,6 +297,17 @@ func (q *Queries) GitHubPullRequestHead(ctx context.Context, arg GitHubPullReque
 	return i, err
 }
 
+const gitHubReconcileUnlock = `-- name: GitHubReconcileUnlock :one
+SELECT pg_advisory_unlock($1::bigint)
+`
+
+func (q *Queries) GitHubReconcileUnlock(ctx context.Context, key int64) (bool, error) {
+	row := q.db.QueryRow(ctx, gitHubReconcileUnlock, key)
+	var pg_advisory_unlock bool
+	err := row.Scan(&pg_advisory_unlock)
+	return pg_advisory_unlock, err
+}
+
 const gitHubRepositoryFollows = `-- name: GitHubRepositoryFollows :many
 SELECT f.owner_id, f.repository_id, f.installation_id, f.full_name, f.status, f.verified_at, f.created_at, (m.owner_id IS NOT NULL)::boolean AS muted
 FROM github_follows f LEFT JOIN github_follow_mutes m ON m.owner_id = f.owner_id AND m.repository_id = f.repository_id
@@ -653,6 +664,18 @@ func (q *Queries) TakeGitHubOAuthState(ctx context.Context, arg TakeGitHubOAuthS
 	var owner_id string
 	err := row.Scan(&owner_id)
 	return owner_id, err
+}
+
+const tryGitHubReconcileLock = `-- name: TryGitHubReconcileLock :one
+SELECT pg_try_advisory_lock($1::bigint)
+`
+
+// Session-level: held across reconciliation's GitHub calls without a transaction.
+func (q *Queries) TryGitHubReconcileLock(ctx context.Context, key int64) (bool, error) {
+	row := q.db.QueryRow(ctx, tryGitHubReconcileLock, key)
+	var pg_try_advisory_lock bool
+	err := row.Scan(&pg_try_advisory_lock)
+	return pg_try_advisory_lock, err
 }
 
 const unmuteGitHubFollow = `-- name: UnmuteGitHubFollow :exec

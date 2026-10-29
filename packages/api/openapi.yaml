@@ -912,6 +912,26 @@ paths:
                     type: boolean
         default:
           $ref: "#/components/responses/Problem"
+  /healthz:
+    get:
+      operationId: getLiveness
+      description: Distributed only. Unauthenticated liveness probe; answers while the process serves, without contacting the database.
+      responses:
+        "200":
+          $ref: "#/components/responses/ProbeOk"
+        default:
+          $ref: "#/components/responses/Problem"
+  /readyz:
+    get:
+      operationId: getReadiness
+      description: Distributed only. Unauthenticated readiness probe; ready while the database accepts queries. A failure never explains its cause.
+      responses:
+        "200":
+          $ref: "#/components/responses/ProbeOk"
+        "503":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v2/ingestion-jobs:
     post:
       operationId: acceptIngestion
@@ -1647,6 +1667,18 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/Problem"
+    ProbeOk:
+      description: The probe passed. Never cached.
+      headers:
+        Cache-Control:
+          required: true
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Probe"
     GoogleAuthorization:
       description: Google authorization to navigate to.
       content:
@@ -2360,6 +2392,14 @@ components:
           type: string
         detail:
           type: string
+    Probe:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: ok
     ServerMetrics:
       type: object
       additionalProperties: false

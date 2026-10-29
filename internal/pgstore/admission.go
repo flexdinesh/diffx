@@ -40,7 +40,8 @@ func recordSubmission(ctx context.Context, queries *pgdb.Queries, owner string, 
 }
 
 // acceptJob admits within the caller's transaction, so other state can commit
-// atomically with durable admission.
+// atomically with durable admission. Queued jobs are announced on jobChannel;
+// retries become claimable later and are found by polling.
 func acceptJob(ctx context.Context, queries *pgdb.Queries, owner string, request ingestion.Request) (ingestionqueue.Job, error) {
 	if err := ingestion.Validate(request); err != nil {
 		return ingestionqueue.Job{}, err
@@ -77,6 +78,11 @@ func acceptJob(ctx context.Context, queries *pgdb.Queries, owner string, request
 	id := rand.Text()
 	if err := queries.InsertJob(ctx, pgdb.InsertJobParams{ID: id, Sequence: sequence, Payload: payload, State: state, AvailableAt: time.Now(), ContextID: contextID}); err != nil {
 		return ingestionqueue.Job{}, err
+	}
+	if state == "queued" {
+		if err := notifyJob(ctx, queries); err != nil {
+			return ingestionqueue.Job{}, err
+		}
 	}
 	return ingestionqueue.Job{ID: id, SubmissionID: request.SubmissionID, State: state, ContextID: contextID}, nil
 }

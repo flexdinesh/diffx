@@ -194,7 +194,10 @@ func stream(ctx context.Context, service *contextservice.Service, w http.Respons
 			return
 		case <-r.Context().Done():
 			return
-		case id := <-events:
+		case id, open := <-events:
+			if !open {
+				return
+			}
 			raw, _ := json.Marshal(struct {
 				ContextID string `json:"contextId"`
 			}{id})

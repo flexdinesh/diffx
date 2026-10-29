@@ -39,6 +39,12 @@ type AgentSession struct {
 	NamedAt   int64
 }
 
+type AuthAttempt struct {
+	Client      string
+	WindowStart time.Time
+	Attempts    int32
+}
+
 type BrowserSession struct {
 	SecretHash string
 	UserID     string
@@ -323,6 +329,8 @@ type PushNotification struct {
 	Attempt     int32
 	AvailableAt time.Time
 	CreatedAt   time.Time
+	LeaseToken  string
+	LeaseUntil  time.Time
 }
 
 type PushSubscription struct {

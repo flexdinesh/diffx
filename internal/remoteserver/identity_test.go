@@ -257,11 +257,68 @@ func TestAuthFormsGuardAndRateLimit(t *testing.T) {
 			t.Fatalf("auth guard %s: %d", test.header, w.Code)
 		}
 	}
+	// Without a trusted client IP header the server cannot tell clients apart,
+	// so it never limits attempts.
 	for i := 0; i < 25; i++ {
-		w = identityRequest(handler, "POST", "/api/v2/auth/login", `{"username":"alice","password":"wrong"}`, nil, "", "")
+		if w = identityRequest(handler, "POST", "/api/v2/auth/login", `{"username":"alice","password":"wrong"}`, nil, "", ""); w.Code != 401 {
+			t.Fatalf("unlimited attempt %d: %d %s", i+1, w.Code, w.Body.String())
+		}
 	}
-	if w.Code != 429 {
-		t.Fatal("authentication attempts not bounded")
+}
+
+// Replicas share one database, so attempts count against every replica.
+func TestAuthRateLimitIsSharedAndNeedsClientIP(t *testing.T) {
+	url := pgtest.URL(t)
+	handlers := make([]http.Handler, 2)
+	var store *pgstore.Store
+	for i := range handlers {
+		replica, err := pgstore.Open(t.Context(), url, pgstore.DefaultRetention)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = replica.Close() })
+		handler, closeServices, err := Handler(t.Context(), replica, Settings{ClientIPHeader: "X-Real-IP"}, fstest.MapFS{"index.html": {Data: []byte("app shell")}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { closeServices() })
+		handlers[i], store = handler, replica
+	}
+	testsupport.RemoteAdmin(t, store, "alice", testPassword)
+	login := func(handler http.Handler, clientIP ...string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "/api/v2/auth/login", strings.NewReader(`{"username":"alice","password":"wrong"}`))
+		r.Header.Set("Content-Type", "application/json")
+		for _, value := range clientIP {
+			r.Header.Add("X-Real-IP", value)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w
+	}
+	for _, clientIP := range [][]string{nil, {""}, {"not-an-ip"}, {"192.0.2.1, 192.0.2.2"}, {"192.0.2.1", "192.0.2.2"}, {"192.0.2.1:443"}, {"[2001:db8::1]"}, {"fe80::1%eth0"}} {
+		if w := login(handlers[0], clientIP...); w.Code != 400 || !strings.Contains(w.Body.String(), `"status":400`) {
+			t.Fatalf("client IP %q: %d %s", clientIP, w.Code, w.Body.String())
+		}
+	}
+	for i := range authAttemptLimit {
+		if w := login(handlers[i%2], "192.0.2.1"); w.Code != 401 {
+			t.Fatalf("attempt %d: %d %s", i+1, w.Code, w.Body.String())
+		}
+	}
+	// The IPv4-mapped form is the same client.
+	w := login(handlers[1], "::ffff:192.0.2.1")
+	if w.Code != 429 || w.Header().Get("Retry-After") != "60" || !strings.Contains(w.Body.String(), "Too many authentication attempts") {
+		t.Fatalf("attempts beyond limit: %d %s", w.Code, w.Body.String())
+	}
+	if w := login(handlers[0], "192.0.2.2"); w.Code != 401 {
+		t.Fatalf("other client limited: %d %s", w.Code, w.Body.String())
+	}
+	// Reading setup status verifies no secret and is not limited.
+	r := httptest.NewRequest("GET", "/api/v2/setup", nil)
+	w = httptest.NewRecorder()
+	handlers[0].ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("setup status: %d %s", w.Code, w.Body.String())
 	}
 }
 func TestRevocationAndExpiryCloseActiveStreams(t *testing.T) {

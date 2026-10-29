@@ -42,14 +42,32 @@ type Ingest func(context.Context, string, ingestion.Request) (string, error)
 // storageBackoff spaces out claims after a queue storage failure.
 const storageBackoff = time.Second
 
+// Option adjusts a worker.
+type Option func(*worker)
+
+type worker struct {
+	wake <-chan struct{}
+	poll time.Duration
+}
+
+// Wake lets an idle worker claim as soon as signal delivers, such as when
+// another process admits a job. Polling remains the fallback.
+func Wake(signal <-chan struct{}) Option {
+	return func(worker *worker) { worker.wake = signal }
+}
+
 // Run uses bounded processing and renews leases without coupling ingestion to
 // the queue implementation. A crash after commit is recovered by ingestion replay.
 // Queue storage failures are logged and retried after a backoff instead of
 // stopping the server; an unacknowledged lease expires and is claimed again.
-func Run(ctx context.Context, queue Queue, ingest Ingest) error {
+func Run(ctx context.Context, queue Queue, ingest Ingest, options ...Option) error {
+	settings := worker{poll: 200 * time.Millisecond}
+	for _, option := range options {
+		option(&settings)
+	}
 	for ctx.Err() == nil {
 		delivery, err := queue.Claim(ctx, 30*time.Second)
-		wait := 200 * time.Millisecond
+		wait := settings.poll
 		if err == nil {
 			err = process(ctx, queue, delivery, ingest)
 			if err == nil || errors.Is(err, ErrLeaseLost) {
@@ -66,6 +84,7 @@ func Run(ctx context.Context, queue Queue, ingest Ingest) error {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-settings.wake:
 		case <-time.After(wait):
 		}
 	}
