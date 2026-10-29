@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 )
 
 func TestFullPipelineAdmission(t *testing.T) {
@@ -45,7 +47,7 @@ func TestFullPipelineAdmission(t *testing.T) {
 						}
 						return nil
 					}
-				})
+				}, noDatabase)
 			}()
 			select {
 			case <-atCompletion:
@@ -62,7 +64,7 @@ func TestFullPipelineAdmission(t *testing.T) {
 					}
 					commands = append(commands, strings.Join(args, " "))
 					return nil
-				})
+				}, noDatabase)
 			}()
 			select {
 			case <-firstBuild:
@@ -105,6 +107,130 @@ func TestFullPipelineAdmission(t *testing.T) {
 				t.Error("waiter skipped API conformance")
 			}
 		})
+	}
+}
+
+func noDatabase(context.Context, string) (string, func() error, error) {
+	return "postgres://unused", func() error { return nil }, nil
+}
+
+// lastEnv returns the value a child process sees: the last duplicate wins.
+func lastEnv(env []string, key string) string {
+	value := ""
+	for _, entry := range env {
+		if name, current, ok := strings.Cut(entry, "="); ok && name == key {
+			value = current
+		}
+	}
+	return value
+}
+
+func TestSharedDatabaseLifecycle(t *testing.T) {
+	for _, outcome := range []string{"completion", "failure", "cancellation"} {
+		t.Run(outcome, func(t *testing.T) {
+			t.Setenv(testDatabaseEnv, "")
+			root := repository(t)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			failure := errors.New("check failed")
+			var starts, stops int
+			var seen []string
+			err := runChecks(ctx, root, "check", func(ctx context.Context, _ string, env, _ []string) error {
+				seen = append(seen, lastEnv(env, testDatabaseEnv))
+				switch outcome {
+				case "failure":
+					return failure
+				case "cancellation":
+					cancel()
+					return ctx.Err()
+				}
+				return nil
+			}, func(_ context.Context, common string) (string, func() error, error) {
+				starts++
+				if want, err := commonDirectory(context.Background(), root); err != nil || common != want {
+					t.Errorf("owner %q, want %q (%v)", common, want, err)
+				}
+				return "postgres://shared", func() error {
+					stops++
+					// The server is removed before another run can be admitted.
+					lockCtx, stop := context.WithTimeout(context.Background(), 50*time.Millisecond)
+					defer stop()
+					if err := withLock(lockCtx, root, func() error { return nil }); !errors.Is(err, context.DeadlineExceeded) {
+						t.Errorf("lock released before database stopped: %v", err)
+					}
+					return nil
+				}, nil
+			})
+			switch outcome {
+			case "completion":
+				if err != nil {
+					t.Fatal(err)
+				}
+			case "failure":
+				if !errors.Is(err, failure) {
+					t.Fatalf("failure lost: %v", err)
+				}
+			case "cancellation":
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("cancellation lost: %v", err)
+				}
+			}
+			if starts != 1 || stops != 1 {
+				t.Fatalf("starts %d, stops %d; want one each", starts, stops)
+			}
+			if len(seen) == 0 {
+				t.Fatal("no step ran")
+			}
+			for _, url := range seen {
+				if url != "postgres://shared" {
+					t.Fatalf("step saw %s=%q", testDatabaseEnv, url)
+				}
+			}
+		})
+	}
+}
+
+func TestPresetDatabaseIsUsed(t *testing.T) {
+	t.Setenv(testDatabaseEnv, "postgres://preset")
+	steps := 0
+	err := runChecks(context.Background(), repository(t), "check", func(_ context.Context, _ string, env, _ []string) error {
+		steps++
+		if url := lastEnv(env, testDatabaseEnv); url != "postgres://preset" {
+			t.Errorf("step saw %q", url)
+		}
+		return nil
+	}, func(context.Context, string) (string, func() error, error) {
+		t.Error("started a database despite a preset URL")
+		return "", nil, errors.New("unexpected start")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if steps == 0 {
+		t.Fatal("no step ran")
+	}
+}
+
+func TestDatabaseStartFailureStopsBeforeSteps(t *testing.T) {
+	t.Setenv(testDatabaseEnv, "")
+	unavailable := errors.New("docker unavailable")
+	err := runChecks(context.Background(), repository(t), "check", func(context.Context, string, []string, []string) error {
+		t.Error("step ran without a database")
+		return nil
+	}, func(context.Context, string) (string, func() error, error) {
+		return "", nil, unavailable
+	})
+	if !errors.Is(err, unavailable) {
+		t.Fatalf("start failure lost: %v", err)
+	}
+}
+
+func TestPostgresImageMatchesTestSupport(t *testing.T) {
+	if postgresImage != pgtest.Image {
+		t.Fatalf("image %s, want pgtest.Image %s", postgresImage, pgtest.Image)
+	}
+	if testDatabaseEnv != pgtest.EnvURL {
+		t.Fatalf("env %s, want pgtest.EnvURL %s", testDatabaseEnv, pgtest.EnvURL)
 	}
 }
 

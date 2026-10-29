@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { access } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { repositoryRoot } from "../fixture-server.ts";
 
@@ -10,7 +10,13 @@ export default async function globalSetup() {
   const existingBinary = process.env.DIFFX_FIXTURE_BINARY;
   const existingWebDir = process.env.DIFFX_FIXTURE_WEB_DIR;
   if (existingBinary && existingWebDir) {
+    // The build task writes diffx-server beside the CLI.
+    process.env.DIFFX_FIXTURE_SERVER_BINARY ??= join(
+      dirname(existingBinary),
+      "diffx-server",
+    );
     await access(existingBinary);
+    await access(process.env.DIFFX_FIXTURE_SERVER_BINARY);
     await access(join(existingWebDir, "index.html"));
     return;
   }
@@ -23,6 +29,11 @@ export default async function globalSetup() {
     },
   });
   process.env.DIFFX_FIXTURE_BINARY = join(repositoryRoot, "dist", "diffx");
+  process.env.DIFFX_FIXTURE_SERVER_BINARY = join(
+    repositoryRoot,
+    "dist",
+    "diffx-server",
+  );
   process.env.DIFFX_FIXTURE_WEB_DIR = join(
     repositoryRoot,
     "apps",
