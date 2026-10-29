@@ -144,7 +144,8 @@ modules when adding dependencies.
 `deehomelab/k8s-cluster` (`apps/diffx`). It stages the embedded web assets,
 builds both Dockerfile targets and rolls deployments to the pushed digests:
 
-- Pushes to `main` tag `:<commit>` and `:main` and roll `diffx-staging`.
+- Pushes to `main` tag `:<commit>` and `:main` and roll `diffx-staging`. A manual
+  Woodpecker run on `main` does the same without a push.
 - Release tags `vX.Y.Z` tag `:vX.Y.Z` and `:release` and roll `diffx-prod`.
 
 Only Deployments that exist in the namespace roll; prod has no fetcher until its

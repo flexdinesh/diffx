@@ -6,6 +6,9 @@ when:
     branch: main
   - event: tag
     ref: refs/tags/v*
+  # Rebuild staging from the Woodpecker UI without a push.
+  - event: manual
+    branch: main
 
 steps:
   build-web:
