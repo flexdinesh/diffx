@@ -84,10 +84,23 @@ testcontainers' reaper) and gives every test its own database cloned from a
 template migrated once per schema. Set `DIFFX_TEST_DATABASE_URL` to a
 `postgres://` URL whose role may create databases to use a running server
 instead, such as the development Postgres. Local-mode tests stay on SQLite.
+`mise run check` and `mise run check:push` start one shared pinned Postgres
+(`docker run`, loopback ephemeral port, tmpfs data, fsync off) after acquiring
+the check lock and export its superuser URL as `DIFFX_TEST_DATABASE_URL` to every
+step: Go, conformance and browser suites. The runner removes it on success,
+failure and cancellation, and removes containers a killed run left for the same
+Git common directory at the next start. Without Docker the run fails before the
+first step. A preset `DIFFX_TEST_DATABASE_URL` is used instead, and no container
+starts. `mise run check:ci` does not use the runner; its conformance tests start
+their own containers.
 
-Browser tests reuse the full check's web and CLI builds; standalone browser runs
-build them when needed. Chromium uses one worker with an in-memory fixture server
-behind a Vite preview on a free port.
+Browser tests reuse the full check's web, CLI and `diffx-server` builds;
+standalone browser runs build them when needed. Chromium uses one worker with an
+in-memory fixture server behind a Vite preview on a free port. The remote spec
+(`remote-server.spec.ts`) instead starts the worker's own `diffx-server` on a
+fresh Postgres database, like the Go tests (Docker, or `DIFFX_TEST_DATABASE_URL`),
+serves its embedded web build at the server's origin, and syncs with the CLI
+without API mocks.
 
 `mise run setup` enables the Husky `pre-push` hook. Every push runs
 `mise run check:push`: all repository suites, boundary contracts and Go race tests, then rejects

@@ -84,13 +84,28 @@ func run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return runChecks(ctx, root, args[0], runCommand)
+	return runChecks(ctx, root, args[0], runCommand, startDockerPostgres)
 }
 
-func runChecks(ctx context.Context, root, mode string, command func(context.Context, string, []string, []string) error) error {
-	return withLock(ctx, root, func() error {
+func runChecks(ctx context.Context, root, mode string, command func(context.Context, string, []string, []string) error, database startDatabase) error {
+	return withLock(ctx, root, func() (result error) {
 		// Bounds apply to Go subprocesses too, including fixture builds in tests.
 		env := append(os.Environ(), "GOMAXPROCS=2", "GOFLAGS="+os.Getenv("GOFLAGS")+" -p=2", "pnpm_config_workspace_concurrency=1", "DIFFX_CHECK_RUNNER=1")
+		// Go, conformance and browser suites share one server instead of each
+		// test process starting a container. A preset server is used as is.
+		if os.Getenv(testDatabaseEnv) == "" {
+			common, err := commonDirectory(ctx, root)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(os.Stderr, "check-runner: starting shared test Postgres")
+			url, stop, err := database(ctx, common)
+			if err != nil {
+				return err
+			}
+			defer func() { result = errors.Join(result, stop()) }()
+			env = append(env, testDatabaseEnv+"="+url)
+		}
 		goTest := "test:go"
 		if mode == "check:push" {
 			goTest = "test:race"
@@ -109,7 +124,7 @@ func runChecks(ctx context.Context, root, mode string, command func(context.Cont
 			{"mise", "run", goTest},
 			{"mise", "run", "check:generated"},
 		}
-		env = append(env, "DIFFX_FIXTURE_BINARY="+filepath.Join(root, "dist", "diffx"), "DIFFX_FIXTURE_WEB_DIR="+filepath.Join(root, "apps", "web", "dist"))
+		env = append(env, "DIFFX_FIXTURE_BINARY="+filepath.Join(root, "dist", "diffx"), "DIFFX_FIXTURE_SERVER_BINARY="+filepath.Join(root, "dist", "diffx-server"), "DIFFX_FIXTURE_WEB_DIR="+filepath.Join(root, "apps", "web", "dist"))
 		for _, phase := range phases {
 			fmt.Fprintln(os.Stderr, "check-runner:", strings.Join(phase, " "))
 			if err := command(ctx, root, env, phase); err != nil {

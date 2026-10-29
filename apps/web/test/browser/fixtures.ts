@@ -5,7 +5,11 @@ import { startFixtureProcess } from "../fixture-server.ts";
 
 export { expect } from "@playwright/test";
 
-type FixtureBuild = { binary: string | undefined; webDir: string | undefined };
+type FixtureBuild = {
+  binary: string | undefined;
+  serverBinary: string | undefined;
+  webDir: string | undefined;
+};
 
 /**
  * Each worker owns one in-memory fixture server behind a Vite preview of the
@@ -19,6 +23,7 @@ export const test = base.extend<
   fixtureBuild: [
     {
       binary: process.env.DIFFX_FIXTURE_BINARY,
+      serverBinary: process.env.DIFFX_FIXTURE_SERVER_BINARY,
       webDir: process.env.DIFFX_FIXTURE_WEB_DIR,
     },
     { scope: "worker", option: true },
