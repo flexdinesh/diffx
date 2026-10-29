@@ -47,10 +47,6 @@ func subscriptionsFromRows(rows []pgdb.PushSubscription) []pushservice.Subscript
 	return result
 }
 
-// endpointLockClass keys endpoint locks apart from other advisory locks; the
-// two-key space never overlaps the single-key schema locks.
-const endpointLockClass = 7_469_002
-
 func (s *PushStore) PutSubscription(ctx context.Context, subscription pushservice.Subscription) (pushservice.Subscription, error) {
 	result := subscription
 	err := s.store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {

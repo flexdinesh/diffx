@@ -25,9 +25,6 @@ import (
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
 
-// schemaLock serializes schema creation, which precedes goose's own lock.
-const schemaLock = 7_469_000_001
-
 // SchemaError reports a database written by a release this binary cannot run against.
 type SchemaError struct {
 	Version, Floor, Supported int64
