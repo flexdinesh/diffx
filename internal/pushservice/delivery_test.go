@@ -161,10 +161,12 @@ func (h *harness) deliver(t *testing.T) {
 	}
 }
 
-// pending lists notifications due at the given offset from the clock.
-func (h *harness) pending(t *testing.T, after time.Duration) []pushservice.Notification {
+// pending claims notifications due at the given offset from the clock with a
+// lease that lapses at that instant, so they stay claimable from then on.
+func (h *harness) pending(t *testing.T, after time.Duration) []pushservice.Claim {
 	t.Helper()
-	due, err := h.store.Push().DueNotifications(t.Context(), h.clock.Add(after).UnixMilli(), 100)
+	at := h.clock.Add(after).UnixMilli()
+	due, err := h.store.Push().ClaimNotifications(t.Context(), at, at, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,10 +335,16 @@ func TestRestartNeverResendsToAcceptedDevice(t *testing.T) {
 	if err := h.service.DeliverDue(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if len(h.pending(t, 0)) != 1 {
+	// Another replica leaves the claim alone until its lease lapses.
+	h.service = h.restart(t)
+	h.deliver(t)
+	if interrupted.count() != 1 {
+		t.Fatal("resent while the interrupted claim held its lease")
+	}
+	if len(h.pending(t, time.Hour)) != 1 {
 		t.Fatal("interrupted delivery not left pending")
 	}
-	h.service = h.restart(t)
+	h.advance(time.Hour)
 	h.deliver(t)
 	if accepted.count() != 1 || interrupted.count() != 2 || len(h.pending(t, 48*time.Hour)) != 0 {
 		t.Fatalf("accepted %d interrupted %d", accepted.count(), interrupted.count())
@@ -370,7 +378,67 @@ func TestRunJoinsOnShutdown(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("worker did not stop")
 	}
-	if len(h.pending(t, 0)) != 1 {
+	if len(h.pending(t, time.Hour)) != 1 {
 		t.Fatal("shutdown abandoned an uncertain delivery")
+	}
+}
+
+func TestReplicasDeliverEachNotificationOnce(t *testing.T) {
+	h := newHarness(t)
+	other := h.restart(t)
+	// While the first notification is being sent, another replica delivers
+	// whatever it can claim.
+	endpoint := newEndpoint(t, func(call int, w http.ResponseWriter, r *http.Request) {
+		if call == 0 {
+			if err := other.DeliverDue(r.Context()); err != nil {
+				t.Error(err)
+			}
+		}
+		w.WriteHeader(201)
+	})
+	h.subscribe(t, endpoint)
+	h.notify(t)
+	h.publish(t)
+	h.notify(t)
+	h.publish(t)
+	h.deliver(t)
+	if endpoint.count() != 2 || len(h.pending(t, 48*time.Hour)) != 0 {
+		t.Fatalf("sent %d times for 2 notifications", endpoint.count())
+	}
+}
+
+func TestLostLeaseIsAbandonedQuietly(t *testing.T) {
+	h := newHarness(t)
+	stolen := make(chan []pushservice.Claim, 1)
+	// While the first device is sent to, another replica reclaims the
+	// notification after the lease lapsed.
+	first := newEndpoint(t, func(_ int, w http.ResponseWriter, r *http.Request) {
+		future := time.Now().Add(48 * time.Hour).UnixMilli()
+		claims, err := h.store.Push().ClaimNotifications(r.Context(), future, future+time.Minute.Milliseconds(), 10)
+		if err != nil {
+			t.Error(err)
+		}
+		stolen <- claims
+		w.WriteHeader(201)
+	})
+	second := newEndpoint(t, status(201))
+	h.subscribe(t, first)
+	h.subscribe(t, second)
+	h.notify(t)
+	h.publish(t)
+	if err := h.service.DeliverDue(t.Context()); err != nil {
+		t.Fatalf("lost lease reported: %v", err)
+	}
+	claims := <-stolen
+	if len(claims) != 1 || first.count() != 1 || second.count() != 0 {
+		t.Fatalf("reclaimed %+v; first %d second %d", claims, first.count(), second.count())
+	}
+	// The outcome the old holder could not record stays for the new holder.
+	devices, err := h.store.Push().Undelivered(t.Context(), claims[0].ID)
+	if err != nil || len(devices) != 2 {
+		t.Fatalf("undelivered %+v %v", devices, err)
+	}
+	if err := h.store.Push().FinishNotification(t.Context(), claims[0], "sent"); err != nil {
+		t.Fatalf("new holder: %v", err)
 	}
 }

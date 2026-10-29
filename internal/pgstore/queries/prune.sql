@@ -1,3 +1,6 @@
+-- name: TryPruneLock :one
+SELECT pg_try_advisory_xact_lock(@key::bigint);
+
 -- name: PruneExpiredObservationDiffs :exec
 -- Every scope and commit diff of an expired observation ends with its anchor.
 DELETE FROM diffs WHERE id IN (

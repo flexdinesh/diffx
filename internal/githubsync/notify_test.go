@@ -15,10 +15,12 @@ type notified struct {
 	owner, title, body, job string
 }
 
-// notifications lists recorded push intent, oldest first.
+// notifications lists recorded push intent, oldest first. Its claim lapses
+// at once, so every later listing sees the same notifications.
 func (f *fixture) notifications(t *testing.T) []notified {
 	t.Helper()
-	due, err := f.store.Push().DueNotifications(t.Context(), time.Now().Add(72*time.Hour).UnixMilli(), 100)
+	at := time.Now().Add(72 * time.Hour).UnixMilli()
+	due, err := f.store.Push().ClaimNotifications(t.Context(), at, at, 100)
 	if err != nil {
 		t.Fatal(err)
 	}

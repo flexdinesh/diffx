@@ -31,8 +31,8 @@ func noRows(err error) error {
 	return err
 }
 
-// IngestContext atomically commits an immutable observation and its retry identity.
-// Checkout paths are labels; this method never accesses a producer filesystem.
+// IngestContext atomically commits an immutable observation and its retry
+// identity, and announces the binding on contextChannel. Checkout paths are labels; this method never accesses a producer filesystem.
 func (store *Store) IngestContext(ctx context.Context, ownerID string, request ingestion.Request) (reviewdata.Binding, error) {
 	if request.SubmissionID == "" || request.Metadata.SourceID == "" {
 		return reviewdata.Binding{}, errors.New("submission and source identity required")
@@ -50,7 +50,10 @@ func (store *Store) IngestContext(ctx context.Context, ownerID string, request i
 	var binding reviewdata.Binding
 	err = store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
 		binding, err = store.ingest(ctx, queries, ownerID, request, hash)
-		return err
+		if err != nil {
+			return err
+		}
+		return notifyContext(ctx, queries, ownerID, binding.ContextID)
 	})
 	if err != nil {
 		return reviewdata.Binding{}, err

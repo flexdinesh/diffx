@@ -175,6 +175,25 @@ func TestRemoteGoogleSignInSettings(t *testing.T) {
 	}
 }
 
+func TestRemoteAuthRateLimitSettings(t *testing.T) {
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	withDatabaseURL(t)
+	t.Setenv("DIFFX_SERVER_CLIENT_IP_HEADER", "X-Real-IP")
+	settings, _, err := parseSettings(nil, io.Discard)
+	if err != nil || settings.ClientIPHeader != "" {
+		t.Fatalf("disabled rate limit kept header: %+v %v", settings, err)
+	}
+	t.Setenv("DIFFX_SERVER_AUTH_RATE_LIMIT", "true")
+	settings, _, err = parseSettings(nil, io.Discard)
+	if err != nil || settings.ClientIPHeader != "X-Real-IP" {
+		t.Fatalf("enabled rate limit: %+v %v", settings, err)
+	}
+	t.Setenv("DIFFX_SERVER_CLIENT_IP_HEADER", "")
+	if _, _, err := parseSettings(nil, io.Discard); err == nil || !strings.Contains(err.Error(), "DIFFX_SERVER_CLIENT_IP_HEADER") {
+		t.Fatalf("rate limit without client IP header: %v", err)
+	}
+}
+
 func TestRemoteRejectsInvalidDeploymentSettings(t *testing.T) {
 	for _, tc := range []struct{ key, value string }{
 		{"DIFFX_SERVER_HOST", "localhost"},

@@ -64,6 +64,16 @@ type Notification struct {
 	ContextID string
 }
 
+// Claim is a pending notification leased to one delivery worker. Token fences
+// the worker's transitions; a lease that expires is claimable again.
+type Claim struct {
+	Notification
+	Token string
+}
+
+// ErrLeaseLost reports a claim another worker has since replaced.
+var ErrLeaseLost = errors.New("push notification lease lost")
+
 // Store persists push state atomically per operation.
 type Store interface {
 	// PushKeys stores generated unless keys exist, and returns the stored keys.
@@ -77,17 +87,24 @@ type Store interface {
 	DeleteSubscription(ctx context.Context, ownerID, id string) error
 	RecordSuccess(ctx context.Context, subscriptionID string, now int64) error
 
-	// DueNotifications lists pending notifications available at now, oldest first.
-	DueNotifications(ctx context.Context, now int64, limit int) ([]Notification, error)
+	// ClaimNotifications leases up to limit pending notifications available and
+	// unleased at now until leaseUntil, oldest first. Concurrent claims never
+	// return the same notification.
+	ClaimNotifications(ctx context.Context, now, leaseUntil int64, limit int) ([]Claim, error)
 	// Undelivered lists the owner's subscriptions without a recorded outcome
 	// for the notification.
 	Undelivered(ctx context.Context, notificationID string) ([]Subscription, error)
-	// RecordDelivery records one device's final outcome; accepted also records
-	// the device's last success.
-	RecordDelivery(ctx context.Context, notificationID, subscriptionID string, accepted bool, now int64) error
-	RetryNotification(ctx context.Context, id string, attempt int, availableAt int64) error
-	// FinishNotification ends a pending notification as sent or dropped.
-	FinishNotification(ctx context.Context, id, state string) error
+
+	// Claim transitions return ErrLeaseLost unless the claim's token still
+	// holds the pending notification.
+
+	// RecordDelivery records one device's first final outcome; accepted also
+	// records the device's last success.
+	RecordDelivery(ctx context.Context, claim Claim, subscriptionID string, accepted bool, now int64) error
+	// RetryNotification releases the claim until availableAt.
+	RetryNotification(ctx context.Context, claim Claim, attempt int, availableAt int64) error
+	// FinishNotification ends the claimed notification as sent or dropped.
+	FinishNotification(ctx context.Context, claim Claim, state string) error
 	// StreamID resolves the owner's context to its review stream; ErrNotFound
 	// when it was deleted or expired.
 	StreamID(ctx context.Context, ownerID, contextID string, now int64) (string, error)

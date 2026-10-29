@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/ingestion"
+	"github.com/flexdinesh/diffx/internal/pgstore"
 	"github.com/flexdinesh/diffx/internal/pushservice"
 	"github.com/flexdinesh/diffx/internal/webpush"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -100,7 +101,7 @@ func TestPushSubscriptionsRebindAndCascadeWithAccounts(t *testing.T) {
 	if devices, err := push.Subscriptions(ctx, bob); err != nil || len(devices) != 0 {
 		t.Fatalf("devices survived account deletion: %+v %v", devices, err)
 	}
-	if due, err := push.DueNotifications(ctx, 10, 100); err != nil || len(due) != 0 {
+	if due, err := push.ClaimNotifications(ctx, 10, 10, 100); err != nil || len(due) != 0 {
 		t.Fatalf("notifications survived account deletion: %+v %v", due, err)
 	}
 	if err := push.DeleteSubscription(ctx, alice, "missing"); !errors.Is(err, pushservice.ErrNotFound) {
@@ -146,7 +147,7 @@ func TestPushSubscriptionConcurrentRegistrationKeepsOneDevice(t *testing.T) {
 	}
 }
 
-func TestDueNotificationsLinkOwnedJobsAndEnabledAccounts(t *testing.T) {
+func TestClaimNotificationsLinkOwnedJobsAndEnabledAccounts(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	_, store, db := queueDatabase(t)
@@ -163,7 +164,11 @@ func TestDueNotificationsLinkOwnedJobsAndEnabledAccounts(t *testing.T) {
 	pushNotification(t, db, "n-local", local, job.ID, 30)
 	pushNotification(t, db, "n-later", alice, job.ID, 1_000)
 
-	due, err := push.DueNotifications(ctx, 30, 100)
+	// Each claim's lease lapses at 30, so later claims at 30 see every row again.
+	if limited, err := push.ClaimNotifications(ctx, 30, 30, 1); err != nil || len(limited) != 1 || limited[0].ID != "n-alice" || limited[0].Token == "" {
+		t.Fatalf("limit: %+v %v", limited, err)
+	}
+	due, err := push.ClaimNotifications(ctx, 30, 30, 100)
 	if err != nil || len(due) != 3 {
 		t.Fatalf("due %+v %v", due, err)
 	}
@@ -177,9 +182,6 @@ func TestDueNotificationsLinkOwnedJobsAndEnabledAccounts(t *testing.T) {
 	if accountless := due[2]; accountless.ID != "n-local" || accountless.Available {
 		t.Fatalf("account without remote identity available: %+v", accountless)
 	}
-	if limited, err := push.DueNotifications(ctx, 30, 1); err != nil || len(limited) != 1 || limited[0].ID != "n-alice" {
-		t.Fatalf("limit: %+v %v", limited, err)
-	}
 
 	execSQL(t, db, `INSERT INTO diffx.disabled_accounts(user_id, disabled_at) VALUES ($1, now())`, alice)
 	delivery, err := store.Queue().Claim(ctx, time.Minute)
@@ -189,8 +191,8 @@ func TestDueNotificationsLinkOwnedJobsAndEnabledAccounts(t *testing.T) {
 	if err := store.Queue().Complete(ctx, delivery, "context-a"); err != nil {
 		t.Fatal(err)
 	}
-	due, err = push.DueNotifications(ctx, 10, 100)
-	if err != nil || len(due) != 1 || due[0].Available || due[0].JobState != "succeeded" || due[0].ContextID != "context-a" {
+	due, err = push.ClaimNotifications(ctx, 30, 30, 100)
+	if err != nil || len(due) != 3 || due[0].ID != "n-alice" || due[0].Available || due[0].JobState != "succeeded" || due[0].ContextID != "context-a" {
 		t.Fatalf("disabled account or published job: %+v %v", due, err)
 	}
 }
@@ -222,13 +224,18 @@ func TestPushDeliveriesRecordEachDeviceOnce(t *testing.T) {
 	if err != nil || len(pending) != 2 || pending[0].ID != phone.ID || pending[1].ID != laptop.ID {
 		t.Fatalf("undelivered %+v %v", pending, err)
 	}
-	if err := push.RecordDelivery(ctx, "n", phone.ID, true, 42); err != nil {
+	claims, err := push.ClaimNotifications(ctx, 1, 100, 10)
+	if err != nil || len(claims) != 1 {
+		t.Fatalf("claim %+v %v", claims, err)
+	}
+	claim := claims[0]
+	if err := push.RecordDelivery(ctx, claim, phone.ID, true, 42); err != nil {
 		t.Fatal(err)
 	}
-	if err := push.RecordDelivery(ctx, "n", phone.ID, false, 43); err != nil {
+	if err := push.RecordDelivery(ctx, claim, phone.ID, false, 43); err != nil {
 		t.Fatal(err)
 	}
-	if err := push.RecordDelivery(ctx, "n", laptop.ID, false, 44); err != nil {
+	if err := push.RecordDelivery(ctx, claim, laptop.ID, false, 44); err != nil {
 		t.Fatal(err)
 	}
 	var states []string
@@ -254,35 +261,153 @@ func TestPushDeliveriesRecordEachDeviceOnce(t *testing.T) {
 		t.Fatalf("last success: %+v %v", devices, err)
 	}
 	// A device removed while sending has no outcome to keep.
-	if err := push.RecordDelivery(ctx, "n", "removed-device", true, 50); err != nil {
+	if err := push.RecordDelivery(ctx, claim, "removed-device", true, 50); err != nil {
 		t.Fatalf("removed device: %v", err)
 	}
 
-	if err := push.RetryNotification(ctx, "n", 3, 500); err != nil {
+	// Retrying releases the lease, so the notification is due again at 500.
+	if err := push.RetryNotification(ctx, claim, 3, 500); err != nil {
 		t.Fatal(err)
 	}
-	if due, err := push.DueNotifications(ctx, 499, 10); err != nil || len(due) != 0 {
+	if due, err := push.ClaimNotifications(ctx, 499, 1_000, 10); err != nil || len(due) != 0 {
 		t.Fatalf("retry backoff ignored: %+v %v", due, err)
 	}
-	if due, err := push.DueNotifications(ctx, 500, 10); err != nil || len(due) != 1 || due[0].Attempt != 3 || due[0].CreatedAt != 1 {
+	due, err := push.ClaimNotifications(ctx, 500, 1_000, 10)
+	if err != nil || len(due) != 1 || due[0].Attempt != 3 || due[0].CreatedAt != 1 {
 		t.Fatalf("retried: %+v %v", due, err)
 	}
-	if err := push.FinishNotification(ctx, "n", "sent"); err != nil {
+	if err := push.FinishNotification(ctx, claim, "sent"); !errors.Is(err, pushservice.ErrLeaseLost) {
+		t.Fatalf("released claim finished: %v", err)
+	}
+	if err := push.FinishNotification(ctx, due[0], "sent"); err != nil {
 		t.Fatal(err)
 	}
-	if err := push.FinishNotification(ctx, "n", "dropped"); err != nil {
-		t.Fatal(err)
+	if err := push.FinishNotification(ctx, due[0], "dropped"); !errors.Is(err, pushservice.ErrLeaseLost) {
+		t.Fatalf("finished twice: %v", err)
 	}
-	if err := push.RetryNotification(ctx, "n", 4, 1); err != nil {
-		t.Fatal(err)
+	if err := push.RetryNotification(ctx, due[0], 4, 1); !errors.Is(err, pushservice.ErrLeaseLost) {
+		t.Fatalf("finished notification retried: %v", err)
 	}
 	var state string
 	var attempt int
 	if err := db.QueryRow(ctx, `SELECT state, attempt FROM diffx.push_notifications WHERE id = 'n'`).Scan(&state, &attempt); err != nil || state != "sent" || attempt != 3 {
 		t.Fatalf("finished notification changed: %s %d %v", state, attempt, err)
 	}
-	if due, err := push.DueNotifications(ctx, 1_000, 10); err != nil || len(due) != 0 {
+	if due, err := push.ClaimNotifications(ctx, 2_000, 3_000, 10); err != nil || len(due) != 0 {
 		t.Fatalf("finished notification due: %+v %v", due, err)
+	}
+}
+
+func TestPushClaimsFromReplicasNeverOverlap(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	url, first, db := queueDatabase(t)
+	second, err := pgstore.Open(ctx, url, pgstore.DefaultRetention)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = second.Close() })
+	alice := pushAccount(t, db, "alice")
+	job, err := first.Queue().Accept(ctx, alice, queueRequest("a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const notifications = 40
+	for i := range notifications {
+		pushNotification(t, db, fmt.Sprintf("n-%02d", i), alice, job.ID, int64(i))
+	}
+	// Held claims are skipped: the second replica receives exactly the rest.
+	held, err := first.Push().ClaimNotifications(ctx, 100, 1_000, 5)
+	if err != nil || len(held) != 5 || held[0].ID != "n-00" {
+		t.Fatalf("first claim %+v %v", held, err)
+	}
+	rest, err := second.Push().ClaimNotifications(ctx, 100, 1_000, 100)
+	if err != nil || len(rest) != notifications-5 || rest[0].ID != "n-05" {
+		t.Fatalf("second claim %d %v", len(rest), err)
+	}
+
+	// Concurrent claims after the leases lapse split the rows without overlap.
+	var mu sync.Mutex
+	claimed := make(map[string]int)
+	var group sync.WaitGroup
+	for _, store := range []*pgstore.Store{first, second, first, second} {
+		group.Go(func() {
+			for {
+				claims, err := store.Push().ClaimNotifications(ctx, 1_000, 2_000, 3)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if len(claims) == 0 {
+					return
+				}
+				mu.Lock()
+				for _, claim := range claims {
+					claimed[claim.ID]++
+				}
+				mu.Unlock()
+			}
+		})
+	}
+	group.Wait()
+	if len(claimed) != notifications {
+		t.Fatalf("claimed %d of %d", len(claimed), notifications)
+	}
+	for id, count := range claimed {
+		if count != 1 {
+			t.Fatalf("%s claimed %d times", id, count)
+		}
+	}
+}
+
+func TestPushStaleLeaseIsFencedAndExpiredLeaseReclaimed(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	_, store, db := queueDatabase(t)
+	push := store.Push()
+	alice := pushAccount(t, db, "alice")
+	phone, err := push.PutSubscription(ctx, pushservice.Subscription{OwnerID: alice, Endpoint: "https://push.test/phone", P256dh: "k", Auth: "a", Label: "Phone", CreatedAt: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := store.Queue().Accept(ctx, alice, queueRequest("a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pushNotification(t, db, "n", alice, job.ID, 1)
+	stale, err := push.ClaimNotifications(ctx, 1, 100, 10)
+	if err != nil || len(stale) != 1 {
+		t.Fatalf("claim %+v %v", stale, err)
+	}
+	if early, err := push.ClaimNotifications(ctx, 99, 200, 10); err != nil || len(early) != 0 {
+		t.Fatalf("claimed a held lease: %+v %v", early, err)
+	}
+	current, err := push.ClaimNotifications(ctx, 100, 200, 10)
+	if err != nil || len(current) != 1 || current[0].ID != "n" || current[0].Token == stale[0].Token {
+		t.Fatalf("expired lease not reclaimed: %+v %v", current, err)
+	}
+	if err := push.RecordDelivery(ctx, stale[0], phone.ID, true, 5); !errors.Is(err, pushservice.ErrLeaseLost) {
+		t.Fatalf("stale record: %v", err)
+	}
+	if err := push.RetryNotification(ctx, stale[0], 1, 1); !errors.Is(err, pushservice.ErrLeaseLost) {
+		t.Fatalf("stale retry: %v", err)
+	}
+	if err := push.FinishNotification(ctx, stale[0], "dropped"); !errors.Is(err, pushservice.ErrLeaseLost) {
+		t.Fatalf("stale finish: %v", err)
+	}
+	if undelivered, err := push.Undelivered(ctx, "n"); err != nil || len(undelivered) != 1 {
+		t.Fatalf("stale holder recorded an outcome: %+v %v", undelivered, err)
+	}
+	if err := push.RecordDelivery(ctx, current[0], phone.ID, true, 6); err != nil {
+		t.Fatal(err)
+	}
+	if err := push.FinishNotification(ctx, current[0], "sent"); err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	var attempt int
+	if err := db.QueryRow(ctx, `SELECT state, attempt FROM diffx.push_notifications WHERE id = 'n'`).Scan(&state, &attempt); err != nil || state != "sent" || attempt != 0 {
+		t.Fatalf("notification %s %d %v", state, attempt, err)
 	}
 }
 

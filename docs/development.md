@@ -250,6 +250,8 @@ building the image.
 | `DIFFX_SERVER_PUBLIC_URL`       | Unset          | Unset             | `--public-url URL`      |
 | `DIFFX_SERVER_INSECURE_COOKIES` | `false`        | Compose: `true`   | `--insecure-cookies`    |
 | `DIFFX_SERVER_GOOGLE_CLIENT_ID` | Unset          | Unset             | None                    |
+| `DIFFX_SERVER_AUTH_RATE_LIMIT`  | `false`        | `false`           | None (env only)         |
+| `DIFFX_SERVER_CLIENT_IP_HEADER` | Unset          | Unset             | None (env only)         |
 
 The server listens on 7980 so a local `diffx [PATH]` (7981–7990) and the server
 run side by side. The `DIFFX_SERVER_` prefix keeps deployment variables from
@@ -286,6 +288,20 @@ diffx-server user reset-password --username alice --password-stdin < /path/to/pr
 ```
 
 Password reset revokes browser sessions.
+
+Authentication rate limiting is off by default. `DIFFX_SERVER_AUTH_RATE_LIMIT=true`
+allows each client IP 20 sign-in, setup and invite attempts per minute, counted
+in Postgres so every replica shares the limit. The listener's peer is the
+ingress, so it also requires `DIFFX_SERVER_CLIENT_IP_HEADER`, the header your
+trusted ingress overwrites with the single client IP (for example `X-Real-IP`);
+startup fails without it. Those routes answer 400 to a missing or invalid value,
+such as a list or an address with a port. Never enable it where clients can
+reach the server without that ingress, since they could then choose their own
+IP. Each process also admits at most four concurrent authentications.
+
+`/healthz` answers 200 while the process serves and never contacts the database;
+`/readyz` answers 200 only while the database accepts queries, otherwise 503.
+Both are unauthenticated, uncached and reveal no failure detail.
 
 Precedence is defaults → explicit JSON file → env vars → explicit flags. Use
 `--config-file FILE` or `DIFFX_SERVER_CONFIG` to select a server config. The file
@@ -328,8 +344,8 @@ Alpine with Git 2.44+) keeps mirrors in the `diffx-mirrors` volume, capped by
 port 7979 only on the `fetch` network.
 SIGTERM stops HTTP and workers before releasing storage; unfinished admitted
 jobs recover from the durable queue after leases expire.
-Run one server replica for now; replica-safe event fan-out and push outbox
-claims are required before scaling out.
+Replicas are stateless and share one Postgres database; scale them freely.
+`LISTEN` needs a direct or session-mode connection URL.
 
 ## Build pipeline
 

@@ -56,6 +56,7 @@ type Publication struct {
 
 type Service struct {
 	events     events
+	external   bool
 	store      Store
 	user       reviewdata.User
 	scopeMu    sync.RWMutex
@@ -106,17 +107,49 @@ func (scope Scope) selection(contextID string) ingestion.Selection {
 	return ingestion.Selection{Scoped: !scope.IsZero(), SourceID: scope.SourceID, Checkouts: scope.Checkouts, SubmissionID: scope.SubmissionID, ContextID: contextID}
 }
 
+// Option adjusts a composition's service.
+type Option func(*Service)
+
+// ExternalEvents stops Ingest and Delete from notifying subscribers in-process.
+// The composition instead relays changes its store announces, from every
+// process, through Notify.
+func ExternalEvents() Option {
+	return func(service *Service) { service.external = true }
+}
+
 func New(store Store, user reviewdata.User) *Service {
 	return NewWithContext(context.Background(), store, user)
 }
-func NewWithContext(ctx context.Context, store Store, user reviewdata.User) *Service {
-	return NewScoped(ctx, store, user, Scope{})
+func NewWithContext(ctx context.Context, store Store, user reviewdata.User, options ...Option) *Service {
+	return NewScoped(ctx, store, user, Scope{}, options...)
 }
-func NewScoped(ctx context.Context, store Store, user reviewdata.User, scope Scope) *Service {
+func NewScoped(ctx context.Context, store Store, user reviewdata.User, scope Scope, options ...Option) *Service {
 	background, cancel := context.WithCancel(ctx)
-	return &Service{store: store, user: user, scope: scope, background: background, cancel: cancel}
+	service := &Service{store: store, user: user, scope: scope, background: background, cancel: cancel}
+	for _, option := range options {
+		option(service)
+	}
+	return service
 }
-func (service *Service) Close() error { service.cancel(); return nil }
+
+// Close cancels background work and ends every subscription.
+func (service *Service) Close() error {
+	service.cancel()
+	service.events.close()
+	return nil
+}
+
+// Notify tells the owner's subscribers that contextID changed elsewhere. An
+// empty contextID means changes may have been missed; subscribers reload.
+func (service *Service) Notify(contextID string) { service.events.publish(contextID) }
+
+// changed notifies in-process subscribers unless the composition relays
+// store-announced changes instead.
+func (service *Service) changed(contextID string) {
+	if !service.external {
+		service.events.publish(contextID)
+	}
+}
 
 // Select widens a scoped composition to the request's checkout before it is
 // ingested, so checkouts discovered after startup become visible. Unscoped
@@ -146,7 +179,7 @@ func (service *Service) Delete(ctx context.Context, id string) error {
 	if err := service.store.DeleteContext(ctx, service.user.ID, id); err != nil {
 		return requestError(err)
 	}
-	service.events.publish(id)
+	service.changed(id)
 	return nil
 }
 

@@ -134,6 +134,14 @@ and requires `DIFFX_SERVER_DATABASE_URL`. Its image defaults to `0.0.0.0:7980`;
 `DIFFX_SERVER_*` env vars override image defaults, and explicit flags override
 env vars. The CLI never reads `DIFFX_SERVER_*`.
 
+Probe `/healthz` for liveness and `/readyz` for readiness; readiness answers 503
+while the database is unreachable. Both are unauthenticated and uncached.
+Sign-in rate limiting is off by default. Set `DIFFX_SERVER_AUTH_RATE_LIMIT=true`
+to allow each client IP 20 sign-in attempts per minute across every replica. It
+requires `DIFFX_SERVER_CLIENT_IP_HEADER`, such as `X-Real-IP`: a header your
+trusted ingress overwrites with the single client IP. Without that ingress,
+clients could choose their own IP, so leave limiting off.
+
 Collectors select that destination with config `remote.url`, `DIFFX_REMOTE_URL`
 or `--server`, and authenticate with config `remote.token`, `DIFFX_REMOTE_TOKEN`
 or `--token`:

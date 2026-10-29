@@ -264,6 +264,30 @@ func (s *GitHubStore) CompleteRefresh(ctx context.Context, lease githubsync.Leas
 	})
 }
 
+// ReconcileAlone runs reconcile unless another replica's reconcile holds the
+// lock, reporting whether it ran. The session lock lives on a dedicated
+// connection, so no transaction spans reconciliation's GitHub calls; a lost
+// connection releases it early, which permits only a coalesced, harmless
+// second reconcile.
+func (s *GitHubStore) ReconcileAlone(ctx context.Context, reconcile func(context.Context) error) (bool, error) {
+	conn, err := s.store.pool.Acquire(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer conn.Release()
+	queries := pgdb.New(conn)
+	if held, err := queries.TryGitHubReconcileLock(ctx, githubReconcileLock); err != nil || !held {
+		return false, err
+	}
+	defer func() {
+		// A connection that cannot unlock is closed, which releases the lock.
+		if _, err := queries.GitHubReconcileUnlock(context.WithoutCancel(ctx), githubReconcileLock); err != nil {
+			_ = conn.Conn().Close(context.WithoutCancel(ctx))
+		}
+	}()
+	return true, reconcile(ctx)
+}
+
 // fenced reports ErrLeaseLost unless the update matched the lease's row.
 func fenced(rows int64, err error) error {
 	if err != nil {

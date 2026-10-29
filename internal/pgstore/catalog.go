@@ -291,7 +291,8 @@ func (store *Store) ContextBinding(ctx context.Context, ownerID, id string, now 
 
 // DeleteContext removes the context and every scope's snapshot. Review state
 // survives while its stream has another observation. Stream heads intentionally
-// survive so older observations remain stale.
+// survive so older observations remain stale. The deletion is announced on
+// contextChannel.
 func (store *Store) DeleteContext(ctx context.Context, ownerID, id string) error {
 	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
 		row, err := queries.ContextForDelete(ctx, pgdb.ContextForDeleteParams{OwnerID: ownerID, ID: id})
@@ -299,6 +300,9 @@ func (store *Store) DeleteContext(ctx context.Context, ownerID, id string) error
 			return ErrNotFound
 		}
 		if err != nil {
+			return err
+		}
+		if err := notifyContext(ctx, queries, ownerID, id); err != nil {
 			return err
 		}
 		if row.StreamKey != nil {

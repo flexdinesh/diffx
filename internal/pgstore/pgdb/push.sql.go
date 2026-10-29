@@ -10,6 +10,85 @@ import (
 	"time"
 )
 
+const claimNotifications = `-- name: ClaimNotifications :many
+WITH due AS (
+  SELECT d.id FROM push_notifications d
+  WHERE d.state = 'pending' AND d.available_at <= $1 AND d.lease_until <= $1
+  ORDER BY d.available_at, d.created_at, d.id
+  LIMIT $2
+  FOR UPDATE SKIP LOCKED
+), claimed AS (
+  UPDATE push_notifications n SET lease_token = $3, lease_until = $4
+  FROM due WHERE n.id = due.id
+  RETURNING n.id, n.owner_id, n.job_id, n.kind, n.payload, n.attempt, n.available_at, n.created_at
+)
+SELECT c.id, c.owner_id, c.kind, c.payload, c.attempt, c.created_at,
+  EXISTS(SELECT 1 FROM remote_accounts a WHERE a.user_id = c.owner_id
+    AND NOT EXISTS(SELECT 1 FROM disabled_accounts d WHERE d.user_id = a.user_id))::boolean AS available,
+  COALESCE(j.state, '')::text AS job_state, COALESCE(j.context_id, '')::text AS job_context_id
+FROM claimed c
+LEFT JOIN ingestion_jobs j ON j.id = c.job_id
+  AND EXISTS(SELECT 1 FROM ingestion_records r WHERE r.sequence = j.sequence AND r.owner_id = c.owner_id)
+ORDER BY c.available_at, c.created_at, c.id
+`
+
+type ClaimNotificationsParams struct {
+	Now        time.Time
+	MaxCount   int32
+	LeaseToken string
+	LeaseUntil time.Time
+}
+
+type ClaimNotificationsRow struct {
+	ID           string
+	OwnerID      string
+	Kind         string
+	Payload      []byte
+	Attempt      int32
+	CreatedAt    time.Time
+	Available    bool
+	JobState     string
+	JobContextID string
+}
+
+// SKIP LOCKED lets replicas claim distinct notifications concurrently. The
+// linked job is read through its owner's ingestion record, so a notification
+// never resolves another account's publication.
+func (q *Queries) ClaimNotifications(ctx context.Context, arg ClaimNotificationsParams) ([]ClaimNotificationsRow, error) {
+	rows, err := q.db.Query(ctx, claimNotifications,
+		arg.Now,
+		arg.MaxCount,
+		arg.LeaseToken,
+		arg.LeaseUntil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ClaimNotificationsRow
+	for rows.Next() {
+		var i ClaimNotificationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerID,
+			&i.Kind,
+			&i.Payload,
+			&i.Attempt,
+			&i.CreatedAt,
+			&i.Available,
+			&i.JobState,
+			&i.JobContextID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const contextStream = `-- name: ContextStream :one
 SELECT d.expires_at, head.source_id AS head_source_id, head.repository_key AS head_repository_key,
   head.checkout_key AS head_checkout_key, head.branch AS head_branch, head.comparison_policy AS head_comparison_policy
@@ -79,80 +158,42 @@ func (q *Queries) DeleteSubscriptionByID(ctx context.Context, id string) error {
 	return err
 }
 
-const dueNotifications = `-- name: DueNotifications :many
-SELECT n.id, n.owner_id, n.kind, n.payload, n.attempt, n.created_at,
-  EXISTS(SELECT 1 FROM remote_accounts a WHERE a.user_id = n.owner_id
-    AND NOT EXISTS(SELECT 1 FROM disabled_accounts d WHERE d.user_id = a.user_id))::boolean AS available,
-  COALESCE(j.state, '')::text AS job_state, COALESCE(j.context_id, '')::text AS job_context_id
-FROM push_notifications n
-LEFT JOIN ingestion_jobs j ON j.id = n.job_id
-  AND EXISTS(SELECT 1 FROM ingestion_records r WHERE r.sequence = j.sequence AND r.owner_id = n.owner_id)
-WHERE n.state = 'pending' AND n.available_at <= $1
-ORDER BY n.available_at, n.created_at, n.id
-LIMIT $2
-`
-
-type DueNotificationsParams struct {
-	Now      time.Time
-	MaxCount int32
-}
-
-type DueNotificationsRow struct {
-	ID           string
-	OwnerID      string
-	Kind         string
-	Payload      []byte
-	Attempt      int32
-	CreatedAt    time.Time
-	Available    bool
-	JobState     string
-	JobContextID string
-}
-
-// The linked job is read through its owner's ingestion record, so a
-// notification never resolves another account's publication.
-func (q *Queries) DueNotifications(ctx context.Context, arg DueNotificationsParams) ([]DueNotificationsRow, error) {
-	rows, err := q.db.Query(ctx, dueNotifications, arg.Now, arg.MaxCount)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []DueNotificationsRow
-	for rows.Next() {
-		var i DueNotificationsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.OwnerID,
-			&i.Kind,
-			&i.Payload,
-			&i.Attempt,
-			&i.CreatedAt,
-			&i.Available,
-			&i.JobState,
-			&i.JobContextID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const finishNotification = `-- name: FinishNotification :exec
-UPDATE push_notifications SET state = $2 WHERE id = $1 AND state = 'pending'
+const finishNotification = `-- name: FinishNotification :execrows
+UPDATE push_notifications SET state = $1, lease_token = '', lease_until = '-infinity'
+WHERE id = $2 AND lease_token = $3 AND state = 'pending'
 `
 
 type FinishNotificationParams struct {
-	ID    string
-	State string
+	State      string
+	ID         string
+	LeaseToken string
 }
 
-func (q *Queries) FinishNotification(ctx context.Context, arg FinishNotificationParams) error {
-	_, err := q.db.Exec(ctx, finishNotification, arg.ID, arg.State)
-	return err
+func (q *Queries) FinishNotification(ctx context.Context, arg FinishNotificationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, finishNotification, arg.State, arg.ID, arg.LeaseToken)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const holdNotificationLease = `-- name: HoldNotificationLease :one
+SELECT true FROM push_notifications WHERE id = $1 AND lease_token = $2 AND state = 'pending'
+FOR NO KEY UPDATE
+`
+
+type HoldNotificationLeaseParams struct {
+	ID         string
+	LeaseToken string
+}
+
+// Holds the claim until the caller's transaction commits, so no replica
+// reclaims the notification meanwhile.
+func (q *Queries) HoldNotificationLease(ctx context.Context, arg HoldNotificationLeaseParams) (bool, error) {
+	row := q.db.QueryRow(ctx, holdNotificationLease, arg.ID, arg.LeaseToken)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const insertDelivery = `-- name: InsertDelivery :exec
@@ -263,19 +304,29 @@ func (q *Queries) RecordSubscriptionSuccess(ctx context.Context, arg RecordSubsc
 	return err
 }
 
-const retryNotification = `-- name: RetryNotification :exec
-UPDATE push_notifications SET attempt = $2, available_at = $3 WHERE id = $1 AND state = 'pending'
+const retryNotification = `-- name: RetryNotification :execrows
+UPDATE push_notifications SET attempt = $1, available_at = $2, lease_token = '', lease_until = '-infinity'
+WHERE id = $3 AND lease_token = $4 AND state = 'pending'
 `
 
 type RetryNotificationParams struct {
-	ID          string
 	Attempt     int32
 	AvailableAt time.Time
+	ID          string
+	LeaseToken  string
 }
 
-func (q *Queries) RetryNotification(ctx context.Context, arg RetryNotificationParams) error {
-	_, err := q.db.Exec(ctx, retryNotification, arg.ID, arg.Attempt, arg.AvailableAt)
-	return err
+func (q *Queries) RetryNotification(ctx context.Context, arg RetryNotificationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, retryNotification,
+		arg.Attempt,
+		arg.AvailableAt,
+		arg.ID,
+		arg.LeaseToken,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const subscriptionByEndpoint = `-- name: SubscriptionByEndpoint :one

@@ -21,6 +21,10 @@ services:
       DIFFX_SERVER_GOOGLE_CLIENT_SECRET: "${DIFFX_SERVER_GOOGLE_CLIENT_SECRET:-}"
       # Loopback HTTP development only. Use false behind production HTTPS.
       DIFFX_SERVER_INSECURE_COOKIES: "${DIFFX_SERVER_INSECURE_COOKIES:-true}"
+      # Auth rate limiting across replicas: enable only behind an ingress that
+      # sets CLIENT_IP_HEADER (such as X-Real-IP) to the single client IP.
+      DIFFX_SERVER_AUTH_RATE_LIMIT: "${DIFFX_SERVER_AUTH_RATE_LIMIT:-false}"
+      DIFFX_SERVER_CLIENT_IP_HEADER: "${DIFFX_SERVER_CLIENT_IP_HEADER:-}"
       # GitHub App integration: set all or none (empty disables it), then start
       # with `--profile github`. Mount the private key read-only in an override
       # file and point PRIVATE_KEY_FILE at it.

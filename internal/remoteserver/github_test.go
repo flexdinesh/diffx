@@ -1,6 +1,7 @@
 package remoteserver
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/fetchprotocol"
 	"github.com/flexdinesh/diffx/internal/identityservice"
+	"github.com/flexdinesh/diffx/internal/pgstore"
 	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 )
 
@@ -229,5 +231,40 @@ func TestFetchProtocolOnlyOnInternalListenerWithSecret(t *testing.T) {
 	internal.ServeHTTP(w, r)
 	if w.Code != 409 {
 		t.Fatalf("result without a lease: %d", w.Code)
+	}
+}
+
+func TestStartupReconcileRunsOnOneReplicaAtATime(t *testing.T) {
+	url := pgtest.URL(t)
+	open := func() *pgstore.Store {
+		store, err := pgstore.Open(t.Context(), url, pgstore.DefaultRetention)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = store.Close() })
+		return store
+	}
+	first, second := open(), open()
+	running, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		reconcileOnce(t.Context(), func(context.Context) error {
+			close(running)
+			<-release
+			return nil
+		}, first.GitHub())
+	}()
+	<-running
+	calls := 0
+	count := func(context.Context) error { calls++; return nil }
+	reconcileOnce(t.Context(), count, second.GitHub())
+	if calls != 0 {
+		t.Fatal("second replica reconciled concurrently")
+	}
+	close(release)
+	<-done
+	reconcileOnce(t.Context(), count, second.GitHub())
+	if calls != 1 {
+		t.Fatalf("reconciled %d times after the first replica finished", calls)
 	}
 }

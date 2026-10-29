@@ -15,9 +15,14 @@ const (
 
 // PruneExpired removes expired observations with every scope and commit diff,
 // ends streams without observations, and drops finished integration records.
+// It returns without pruning while another replica's pass holds the prune
+// lock; reads enforce expiry, so skipping only defers removal.
 func (store *Store) PruneExpired(now time.Time) error {
 	ctx := context.Background()
 	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
+		if held, err := queries.TryPruneLock(ctx, pruneLock); err != nil || !held {
+			return err
+		}
 		if err := queries.LockExpiredContexts(ctx, now); err != nil {
 			return err
 		}

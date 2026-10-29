@@ -8,11 +8,9 @@ import (
 	"io"
 	"io/fs"
 	"mime"
-	"net"
 	"net/http"
 	"path"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/githubsync"
@@ -315,6 +313,14 @@ func (remote *transport) auth(w http.ResponseWriter, r *http.Request) {
 		problem(w, 405, "Method not allowed")
 		return
 	}
+	var client string
+	if remote.limiter != nil {
+		var ok bool
+		if client, ok = remote.limiter.client(r); !ok {
+			problem(w, 400, "Client IP header missing or invalid")
+			return
+		}
+	}
 	select {
 	case remote.authSlots <- struct{}{}:
 		defer func() { <-remote.authSlots }()
@@ -323,10 +329,17 @@ func (remote *transport) auth(w http.ResponseWriter, r *http.Request) {
 		problem(w, 429, "Authentication busy")
 		return
 	}
-	if !remote.limiter.allow(r.RemoteAddr) {
-		w.Header().Set("Retry-After", "60")
-		problem(w, 429, "Too many authentication attempts")
-		return
+	if remote.limiter != nil {
+		allowed, err := remote.limiter.allow(r.Context(), client)
+		if err != nil {
+			problem(w, 500, "Server could not process request")
+			return
+		}
+		if !allowed {
+			w.Header().Set("Retry-After", "60")
+			problem(w, 429, "Too many authentication attempts")
+			return
+		}
 	}
 	switch r.URL.Path {
 	case "/api/v2/auth/google", "/api/v2/invites/google":
@@ -542,43 +555,4 @@ func problem(w http.ResponseWriter, status int, detail string) {
 		Status int    `json:"status"`
 		Detail string `json:"detail"`
 	}{"about:blank", http.StatusText(status), status, detail})
-}
-
-// The limiter retains at most 1024 peer addresses and one minute of attempts.
-// The HTTP listener's peer address is authoritative; proxy headers are untrusted.
-type attempt struct {
-	since time.Time
-	count int
-}
-type authLimiter struct {
-	mu       sync.Mutex
-	attempts map[string]attempt
-}
-
-func newLimiter() *authLimiter { return &authLimiter{attempts: make(map[string]attempt)} }
-func (limiter *authLimiter) allow(address string) bool {
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		host = address
-	}
-	limiter.mu.Lock()
-	defer limiter.mu.Unlock()
-	now := time.Now()
-	value := limiter.attempts[host]
-	if now.Sub(value.since) >= time.Minute {
-		value = attempt{since: now}
-	}
-	if _, exists := limiter.attempts[host]; !exists && len(limiter.attempts) >= 1024 {
-		for key, entry := range limiter.attempts {
-			if now.Sub(entry.since) >= time.Minute {
-				delete(limiter.attempts, key)
-			}
-		}
-		if len(limiter.attempts) >= 1024 {
-			return false
-		}
-	}
-	value.count++
-	limiter.attempts[host] = value
-	return value.count <= 20
 }

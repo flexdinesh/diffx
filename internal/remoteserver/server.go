@@ -37,6 +37,9 @@ type Settings struct {
 	GitHub          *GitHubSettings
 	// Google enables Google sign-in and invites; it requires PublicURL.
 	Google *GoogleSettings
+	// ClientIPHeader names the header a trusted ingress sets to the client IP.
+	// Non-empty enables authentication rate limiting shared by every replica.
+	ClientIPHeader string
 }
 
 type GoogleSettings struct {
@@ -81,7 +84,8 @@ func (registry *registry) get(account identityservice.Account) (application, err
 	if app, ok := registry.applications[account.ID]; ok {
 		return app, nil
 	}
-	service := contextservice.NewWithContext(registry.ctx, registry.store, reviewdata.User{ID: account.ID, Name: account.Username})
+	// Events come from the store's change feed, so every replica hears every commit.
+	service := contextservice.NewWithContext(registry.ctx, registry.store, reviewdata.User{ID: account.ID, Name: account.Username}, contextservice.ExternalEvents())
 	app := application{service, serverapp.Handler(registry.ctx, service, registry.store, registry.assets, "", serverapp.Options{Queue: registry.store.Queue()})}
 	registry.applications[account.ID] = app
 	return app, nil
@@ -131,7 +135,7 @@ func MultiHandler(ctx context.Context, store *pgstore.Store, assets fs.FS, optio
 	}
 	var once sync.Once
 	var closeErr error
-	return handler, func() error {
+	return probes(store, handler), func() error {
 		once.Do(func() {
 			cancel()
 			for range tasks {
@@ -157,7 +161,14 @@ func compose(ctx context.Context, store *pgstore.Store, assets fs.FS, settings S
 		return nil, nil, nil, nil, err
 	}
 	applications := &registry{ctx: ctx, store: store, assets: assets, applications: make(map[string]application)}
-	remote := &transport{identity: identity, applications: applications, settings: settings, assets: assets, limiter: newLimiter(), authSlots: make(chan struct{}, 4), github: github, push: push}
+	remote := &transport{identity: identity, applications: applications, settings: settings, assets: assets, limiter: newLimiter(store, settings.ClientIPHeader), authSlots: make(chan struct{}, 4), github: github, push: push}
+	// Listening starts before serving, so no commit after compose is missed.
+	feed, err := store.Listen(ctx)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	closeServices := func() error { return errors.Join(applications.close(), feed.Close()) }
+	wake := make(chan struct{}, 1)
 	worker := func(ctx context.Context) error {
 		return ingestionqueue.Run(ctx, store.Queue(), func(ctx context.Context, owner string, input ingestion.Request) (string, error) {
 			accounts, err := identity.Accounts(ctx)
@@ -175,15 +186,15 @@ func compose(ctx context.Context, store *pgstore.Store, assets fs.FS, settings S
 				}
 			}
 			return "", review.Error(403, "Account unavailable")
-		})
+		}, ingestionqueue.Wake(wake))
 	}
-	tasks := []serverapp.Task{worker, push.Run}
+	tasks := []serverapp.Task{worker, push.Run, replicate(feed, applications, wake)}
 	var internal http.Handler
 	if github != nil {
-		tasks = append(tasks, reconcileAtStartup(github))
+		tasks = append(tasks, reconcileAtStartup(github.Reconcile, store.GitHub()))
 		internal = fetchHandler(github, settings.GitHub.FetcherSecret)
 	}
-	return remote, internal, applications.close, tasks, nil
+	return remote, internal, closeServices, tasks, nil
 }
 
 // databasePatience lets a replica start before its database accepts connections.
@@ -215,7 +226,7 @@ func Run(ctx context.Context, settings Settings, ready func(string)) error {
 		return err
 	}
 	defer listener.Close()
-	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 2 * time.Minute, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Handler: probes(store, handler), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 2 * time.Minute, IdleTimeout: 60 * time.Second}
 	defer server.Close()
 	endpoints := []serverapp.Endpoint{{Server: server, Listener: listener}}
 	if internal != nil {

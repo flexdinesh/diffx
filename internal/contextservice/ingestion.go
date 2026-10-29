@@ -22,7 +22,7 @@ func (service *Service) Ingest(ctx context.Context, input ingestion.Request) (Pu
 	if err != nil {
 		return Publication{}, requestError(err)
 	}
-	service.events.publish(binding.ContextID)
+	service.changed(binding.ContextID)
 	item, err := service.Get(ctx, binding.ContextID)
 	if err != nil {
 		return Publication{}, err
@@ -98,6 +98,17 @@ func valueOrEmpty(value *string) string {
 type events struct {
 	mu        sync.Mutex
 	listeners map[chan string]struct{}
+	closed    bool
+}
+
+func (broker *events) close() {
+	broker.mu.Lock()
+	defer broker.mu.Unlock()
+	broker.closed = true
+	for listener := range broker.listeners {
+		close(listener)
+	}
+	broker.listeners = nil
 }
 
 func (broker *events) publish(id string) {
@@ -110,9 +121,17 @@ func (broker *events) publish(id string) {
 		}
 	}
 }
+
+// Subscribe delivers changed context IDs until unsubscribed; the channel closes
+// when the service closes.
 func (service *Service) Subscribe() (<-chan string, func()) {
 	channel := make(chan string, 1)
 	service.events.mu.Lock()
+	if service.events.closed {
+		service.events.mu.Unlock()
+		close(channel)
+		return channel, func() {}
+	}
 	if service.events.listeners == nil {
 		service.events.listeners = make(map[chan string]struct{})
 	}

@@ -75,7 +75,9 @@ Postgres database named by `DIFFX_SERVER_DATABASE_URL`.
 The checked-in Compose file runs a bundled Postgres on a named volume and
 publishes HTTP on host loopback; stopping or recreating containers preserves
 data. Server processes keep no local state, so several replicas may share one
-database.
+database. Each replica holds one extra session that `LISTEN`s for other
+replicas' commits, so the database URL must reach Postgres directly or through
+a session-mode pooler; transaction-mode PgBouncer drops notifications.
 
 Both modes use identical collection, validation, identity, ingestion, catalog
 and review operations. Their lifecycle and submission delivery differ.
@@ -185,13 +187,17 @@ Webhooks arrive at `POST /api/v2/github/webhooks`, authenticated only by the
 only after its effects apply, and recorded IDs are acknowledged without effect,
 so GitHub redeliveries are safe; every effect is idempotent. Pull request events
 for actively followed repositories coalesce into one refresh intent per pull
-request by advancing its generation. GitHub never retries failed deliveries, so
+request by advancing its generation. Deduplication is at-least-once: replicas
+racing on one delivery may both apply it, which is harmless because refresh
+intent coalesces. GitHub never retries failed deliveries, so
 the server reconciles once at startup and on Settings Resync: it requests
 refreshes for every open pull request of each followed repository and for
 previously open ones missing from GitHub's list, which closed without a
 delivery. Resync's run identity makes the resulting submissions fresh, extending
 retention of pull requests idle since their last change; startup
-reconciliation and webhooks do not. There is no periodic poll.
+reconciliation and webhooks do not. Startup reconciliation holds a Postgres
+session advisory lock, so one replica reconciles at a time and replicas
+starting meanwhile skip theirs. There is no periodic poll.
 
 `diffx-fetcher` runs in its own container and turns refresh intent into
 snapshots. It leases one pull request at a time from the server's internal
@@ -224,7 +230,8 @@ account's subscribed browsers. Push is enabled when `DIFFX_SERVER_PUBLIC_URL` is
 https, or http on a loopback host for development; its origin is the VAPID
 subject. Otherwise Settings reports push disabled and registering or testing a
 device answers 409. The VAPID key pair is generated on the first enabled start
-and stored in the server database (`push_keys`); it never rotates automatically, because
+and stored in the server database (`push_keys`); replicas starting together
+all load the first committed pair. It never rotates automatically, because
 every browser subscription is bound to its public key. Local composition has
 no push routes or delivery.
 
@@ -265,7 +272,12 @@ resolves the published context to its stream and sends
 derived from the stream, so undelivered notifications of one stream collapse.
 Each device's outcome is recorded as soon as its push service answers, so a
 retry or restart never sends again to a device that accepted; an interrupted
-send is uncertain and may repeat. Gone devices are removed, other refusals are
+send is uncertain and may repeat. Replicas share delivery: a worker claims one
+notification at a time with `FOR UPDATE SKIP LOCKED` and a five-minute lease
+(ten devices at the 30-second send timeout), and its token fences recording
+outcomes, retrying and finishing. A worker whose claim was replaced abandons
+the notification; an expired lease, as after a crash or shutdown, is claimable
+again and resends only to devices without an outcome. Gone devices are removed, other refusals are
 recorded per device, and rate limits, server failures and network errors retry
 with exponential backoff from 30 seconds capped at an hour, or the push
 service's longer `Retry-After`. Delivery gives up 24 hours after the
@@ -417,7 +429,10 @@ Reviewed marks carry to snapshots whose stored file patch is identical.
 `GET /api/v2/events` supplies transient server-sent ingestion notifications.
 The browser reloads the catalog on events and reconnection. An arrival does not
 silently replace the observation being reviewed. The event stream is a hint to
-query durable state, not a durable queue or an event replay log.
+query durable state, not a durable queue or an event replay log. Every server
+replica streams contexts committed by any replica. An empty `contextId` means
+changes may have been missed, such as after a replica's database listener
+reconnects; clients reload the catalog as for any event.
 
 ## Data and identity
 
@@ -486,8 +501,15 @@ ingestion worker refuses jobs for unavailable accounts.
 Passwords use salted Argon2id hashes. Browser login creates a revocable opaque
 seven-day server-side session in an HttpOnly, Secure, SameSite=Lax cookie. Unsafe
 browser requests require a session CSRF token, including account management.
-Password changes revoke existing sessions. Login and setup admission is bounded and
-login failures do not disclose whether a username exists. Plain HTTP development
+Password changes revoke existing sessions. Each process admits at most four
+concurrent sign-in, setup and invite attempts, and login failures do not
+disclose whether a username exists. Per-client limiting is off by default
+because the listener's peer is the ingress, not the client. With
+`DIFFX_SERVER_AUTH_RATE_LIMIT` it allows 20 attempts per client IP per minute,
+a window starting at the first attempt, counted in Postgres so replicas share
+it. The IP comes only from `DIFFX_SERVER_CLIENT_IP_HEADER`, which a trusted
+ingress must overwrite with one address; enabling limiting without it fails
+startup, and a missing or invalid value (a list, a port) answers 400. Plain HTTP development
 must explicitly opt into insecure cookies; production uses HTTPS.
 
 Users create multiple named API tokens in Settings. Secrets appear only on
@@ -517,7 +539,8 @@ Snapshot retention is configurable in whole days, default seven, after the last
 fresh submission. Changing configuration preserves existing expiry until a
 fresh submission; retries do not extend it. Reads enforce
 expiry immediately; local and remote servers prune at startup and hourly,
-removing all scopes and previews. Commit diffs share their observation's
+removing all scopes and previews. A remote pass takes a transaction advisory
+try-lock and skips while another replica's pass holds it. Commit diffs share their observation's
 expiry: fresh matching submissions extend them, and pruning and deletion remove
 them. Deleting or pruning a snapshot keeps its
 stream's comments and marks while another snapshot of the stream remains; the
@@ -604,7 +627,10 @@ status/shutdown for foreground snapshots. Collection in those sessions never use
 
 Remote credentials establish owner identity before review REST, MCP, ingestion
 jobs, job status or events can access data. Browser assets and mode/login bootstrap
-remain accessible so unauthenticated users can sign in. Settings remain accessible
+remain accessible so unauthenticated users can sign in. Deployment probes are
+also unauthenticated and uncached: `/healthz` reports a serving process without
+the database, and `/readyz` answers 503 while the database refuses queries.
+Neither reports a cause. Settings remain accessible
 without reviews; creating a collector token supplies `remote.url`/`remote.token`
 configuration. Plugins never fall back to local routing. Production terminates
 TLS at the deployment boundary and mounts a persistent database volume.

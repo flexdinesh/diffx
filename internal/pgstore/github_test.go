@@ -607,3 +607,44 @@ func TestGitHubConcurrentClaimsLeaseEachPullRequestOnce(t *testing.T) {
 		})
 	}
 }
+
+func TestGitHubReconcileRunsOnOneReplicaAtATime(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	url := pgtest.URL(t)
+	open := func() *pgstore.GitHubStore {
+		store, err := pgstore.Open(ctx, url, pgstore.DefaultRetention)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = store.Close() })
+		return store.GitHub()
+	}
+	first, second := open(), open()
+	running, release := make(chan struct{}), make(chan struct{})
+	held := make(chan error, 1)
+	go func() {
+		_, err := first.ReconcileAlone(ctx, func(context.Context) error {
+			close(running)
+			<-release
+			return errors.New("partial")
+		})
+		held <- err
+	}()
+	<-running
+	calls := 0
+	count := func(context.Context) error { calls++; return nil }
+	for _, replica := range []*pgstore.GitHubStore{second, first} {
+		if ran, err := replica.ReconcileAlone(ctx, count); err != nil || ran || calls != 0 {
+			t.Fatalf("reconciled beside the holder: %v %v %d", ran, err, calls)
+		}
+	}
+	close(release)
+	if err := <-held; err == nil || err.Error() != "partial" {
+		t.Fatalf("reconcile failure not returned: %v", err)
+	}
+	// A failed reconcile still releases the lock.
+	if ran, err := second.ReconcileAlone(ctx, count); err != nil || !ran || calls != 1 {
+		t.Fatalf("after release: %v %v %d", ran, err, calls)
+	}
+}

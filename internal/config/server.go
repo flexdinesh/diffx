@@ -35,6 +35,11 @@ type ServerValues struct {
 	InternalPort int    `json:"internalPort"`
 	GitHub       GitHub `json:"github"`
 	Google       Google `json:"google"`
+	// AuthRateLimit bounds authentication attempts per client IP across
+	// replicas. The IP comes from ClientIPHeader, which a trusted ingress must
+	// set; both come only from the environment.
+	AuthRateLimit  bool   `json:"-"`
+	ClientIPHeader string `json:"-"`
 }
 
 // Google configures Google sign-in for invited accounts. The secret comes only
@@ -173,6 +178,7 @@ func LoadServerFile(path string) (ServerValues, error) {
 		{"DIFFX_SERVER_GITHUB_WEBHOOK_SECRET", &values.GitHub.WebhookSecret},
 		{"DIFFX_SERVER_GITHUB_TOKEN_KEY", &values.GitHub.TokenKey},
 		{"DIFFX_SERVER_FETCHER_SECRET", &values.GitHub.FetcherSecret},
+		{"DIFFX_SERVER_CLIENT_IP_HEADER", &values.ClientIPHeader},
 	} {
 		if value, exists := os.LookupEnv(field.name); exists {
 			*field.target = value
@@ -207,6 +213,7 @@ func LoadServerFile(path string) (ServerValues, error) {
 		target *bool
 	}{
 		{"DIFFX_SERVER_INSECURE_COOKIES", &values.InsecureCookies},
+		{"DIFFX_SERVER_AUTH_RATE_LIMIT", &values.AuthRateLimit},
 	} {
 		if raw, exists := os.LookupEnv(field.name); exists {
 			value, err := strconv.ParseBool(raw)
@@ -223,6 +230,20 @@ func LoadServerFile(path string) (ServerValues, error) {
 func (values ServerValues) ValidateDatabase() error {
 	if values.DatabaseURL == "" {
 		return errors.New("DIFFX_SERVER_DATABASE_URL is required: a Postgres connection string such as postgres://diffx@db.example.com:5432/diffx?sslmode=verify-full")
+	}
+	return nil
+}
+
+// ValidateAuthRateLimit requires a header name when limiting is enabled; the
+// server cannot tell a client from its ingress without one.
+func (values ServerValues) ValidateAuthRateLimit() error {
+	if !values.AuthRateLimit {
+		return nil
+	}
+	if values.ClientIPHeader == "" || strings.IndexFunc(values.ClientIPHeader, func(r rune) bool {
+		return r != '-' && (r < '0' || r > '9') && (r < 'A' || r > 'Z') && (r < 'a' || r > 'z')
+	}) >= 0 {
+		return errors.New("DIFFX_SERVER_AUTH_RATE_LIMIT needs DIFFX_SERVER_CLIENT_IP_HEADER: the request header name, such as X-Real-IP, that your trusted ingress sets to the single client IP")
 	}
 	return nil
 }

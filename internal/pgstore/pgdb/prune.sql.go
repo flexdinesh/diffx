@@ -43,3 +43,14 @@ func (q *Queries) PruneExpiredObservationDiffs(ctx context.Context, expiresAt *t
 	_, err := q.db.Exec(ctx, pruneExpiredObservationDiffs, expiresAt)
 	return err
 }
+
+const tryPruneLock = `-- name: TryPruneLock :one
+SELECT pg_try_advisory_xact_lock($1::bigint)
+`
+
+func (q *Queries) TryPruneLock(ctx context.Context, key int64) (bool, error) {
+	row := q.db.QueryRow(ctx, tryPruneLock, key)
+	var pg_try_advisory_xact_lock bool
+	err := row.Scan(&pg_try_advisory_xact_lock)
+	return pg_try_advisory_xact_lock, err
+}

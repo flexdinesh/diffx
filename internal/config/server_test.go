@@ -225,3 +225,39 @@ func TestServerDatabaseURLComesOnlyFromEnvironment(t *testing.T) {
 		t.Fatalf("database URL from environment: %v", err)
 	}
 }
+
+func TestAuthRateLimitIsOffByDefaultAndNeedsClientIPHeader(t *testing.T) {
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	values, err := LoadServerFile("")
+	if err != nil || values.AuthRateLimit || values.ClientIPHeader != "" || values.ValidateAuthRateLimit() != nil {
+		t.Fatalf("default auth rate limit: %+v %v", values, err)
+	}
+	t.Setenv("DIFFX_SERVER_AUTH_RATE_LIMIT", "true")
+	for _, header := range []string{"", "X Real IP", "X-Real-IP:"} {
+		t.Setenv("DIFFX_SERVER_CLIENT_IP_HEADER", header)
+		values, err := LoadServerFile("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := values.ValidateAuthRateLimit(); err == nil || !strings.Contains(err.Error(), "DIFFX_SERVER_CLIENT_IP_HEADER") {
+			t.Fatalf("header %q: %v", header, err)
+		}
+	}
+	t.Setenv("DIFFX_SERVER_CLIENT_IP_HEADER", "X-Real-IP")
+	values, err = LoadServerFile("")
+	if err != nil || !values.AuthRateLimit || values.ClientIPHeader != "X-Real-IP" || values.ValidateAuthRateLimit() != nil {
+		t.Fatalf("enabled auth rate limit: %+v %v", values, err)
+	}
+	t.Setenv("DIFFX_SERVER_AUTH_RATE_LIMIT", "maybe")
+	if _, err := LoadServerFile(""); err == nil || !strings.Contains(err.Error(), "DIFFX_SERVER_AUTH_RATE_LIMIT") {
+		t.Fatalf("invalid toggle: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "server.json")
+	if err := os.WriteFile(path, []byte(`{"clientIpHeader":"X-Real-IP"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DIFFX_SERVER_AUTH_RATE_LIMIT", "false")
+	if _, err := LoadServerFile(path); err == nil {
+		t.Fatal("client IP header accepted from config file")
+	}
+}
