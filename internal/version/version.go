@@ -33,6 +33,26 @@ func Number() string {
 	return version
 }
 
+// BuildInfo includes VCS facts from local development builds, whose CLI version
+// deliberately remains "dev". Release linker metadata takes precedence.
+type BuildInfo struct {
+	Version  string
+	Commit   string
+	Date     string
+	Modified bool
+}
+
+func Build() BuildInfo {
+	version, commit, date := metadata()
+	result := BuildInfo{Version: version, Commit: commit, Date: date}
+	if info, ok := readBuildInfo(); ok {
+		result.Commit = buildSetting(info, "vcs.revision", result.Commit)
+		result.Date = buildSetting(info, "vcs.time", result.Date)
+		result.Modified = buildSetting(info, "vcs.modified", "") == "true"
+	}
+	return result
+}
+
 func metadata() (string, string, string) {
 	version := Version
 	commit := Commit

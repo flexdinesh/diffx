@@ -21,6 +21,8 @@ import (
 func run(ctx context.Context, arguments []string, stdin *os.File, stdout, stderr io.Writer) error {
 	if len(arguments) > 0 {
 		switch arguments[0] {
+		case "diagnostics":
+			return runDiagnostics(arguments[1:], stdout)
 		case "config":
 			return runConfigInput(arguments[1:], stdin, stdout)
 		case "sync":

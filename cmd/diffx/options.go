@@ -19,6 +19,7 @@ type options struct {
 	debug            bool
 	retry            bool
 	progress         func(string, string)
+	diagnosticWriter io.Writer
 	host             string
 	hostSet          bool
 	port             int
@@ -111,7 +112,7 @@ func parseOptionsMode(arguments []string, stderr io.Writer, allowHost bool) (opt
 	flags.BoolVar(&values.replace, "replace", false, "replace an existing foreground local instance")
 	flags.BoolVar(&values.resetState, "reset-state", false, "back up local state beside it and start fresh; refuses newer or unrecognized state")
 	flags.BoolVar(&values.print, "print", false, "print only the configured server URL after sync")
-	flags.BoolVar(&values.debug, "debug", false, "show sync progress on stderr")
+	flags.BoolVar(&values.debug, "debug", false, "show collection/sync progress and save successful diagnostics")
 	flags.BoolVar(&values.retry, "retry", false, "retry saved sync submissions without collecting")
 	flags.BoolVar(&values.noBrowser, "no-browser", false, "do not open a browser")
 	flags.BoolVar(&values.version, "version", false, "print version and exit")
@@ -122,6 +123,7 @@ func parseOptionsMode(arguments []string, stderr io.Writer, allowHost bool) (opt
 		fmt.Fprintln(stderr, "         diffx sync [--path DIRECTORY] [--print] [--debug] [--retry]")
 		fmt.Fprintln(stderr, "         diffx remote status [--config-file FILE]")
 		fmt.Fprintln(stderr, "         diffx config {set|get|remove} KEY [VALUE]")
+		fmt.Fprintln(stderr, "         diffx diagnostics export {REPORT_ID|--latest} --output FILE")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(normalizeArguments(arguments)); err != nil {

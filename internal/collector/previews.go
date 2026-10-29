@@ -32,6 +32,14 @@ var (
 	contentsOverBudgetMessage = "Full contents unavailable: comparison exceeds the preview size limit."
 )
 
+// collectionPreviews is the narrow bulk-read contract used only while collecting.
+// Stored review.Source remains scalar and independent of collection caches.
+type collectionPreviews interface {
+	PreparePatches(context.Context, []review.RepositoryDiff, int, int) error
+	Patch(context.Context, review.RepositoryDiff, review.ChangedFile) (review.FilePatch, error)
+	Contents(context.Context, review.RepositoryDiff, review.ChangedFile) (review.FileContents, error)
+}
+
 // previewCandidate is a captured patch that may still receive full contents;
 // base is its preview before the contents budget fallback message.
 type previewCandidate struct {
@@ -93,18 +101,19 @@ func withPreviews(ctx context.Context, source diffsource.Source, request ingesti
 	}
 	budget := max(limits.requestBytes-len(skeleton), 0)
 	scopeUnits, commitUnits := units[:len(scopes)], units[len(scopes):]
-	scopeCandidates, budget, err := capturePatches(ctx, scopeUnits, budget, limits)
+	reader := diffsource.NewCollectionPreviews(source)
+	scopeCandidates, budget, err := capturePatches(ctx, reader, scopeUnits, budget, limits)
 	if err != nil {
 		return ingestion.Request{}, err
 	}
-	commitCandidates, budget, err := capturePatches(ctx, commitUnits, budget, limits)
+	commitCandidates, budget, err := capturePatches(ctx, reader, commitUnits, budget, limits)
 	if err != nil {
 		return ingestion.Request{}, err
 	}
-	if budget, err = captureContents(ctx, scopeUnits, scopeCandidates, budget, limits); err != nil {
+	if budget, err = captureContents(ctx, reader, scopeUnits, scopeCandidates, budget, limits); err != nil {
 		return ingestion.Request{}, err
 	}
-	if _, err = captureContents(ctx, commitUnits, commitCandidates, budget, limits); err != nil {
+	if _, err = captureContents(ctx, reader, commitUnits, commitCandidates, budget, limits); err != nil {
 		return ingestion.Request{}, err
 	}
 	return request, nil
@@ -112,10 +121,25 @@ func withPreviews(ctx context.Context, source diffsource.Source, request ingesti
 
 // capturePatches spends budget on each unit's file patches and returns the
 // files that may still receive full contents, plus the remaining budget.
-func capturePatches(ctx context.Context, units []previewUnit, budget int, limits previewLimits) ([][]previewCandidate, int, error) {
+func capturePatches(ctx context.Context, reader collectionPreviews, units []previewUnit, budget int, limits previewLimits) (result [][]previewCandidate, remaining int, failure error) {
+	scope := review.DiffAll
+	if len(units) > 0 && units[0].snapshot.Mode == review.DiffCommit {
+		scope = review.DiffCommit
+	}
+	finish := observeStage(ctx, Observation{Stage: "patches", Scope: scope})
+	defer func() { finish(failure) }()
+	if budget <= 0 {
+		return make([][]previewCandidate, len(units)), budget, nil
+	}
 	counts := make([]int, len(units))
+	snapshots := make([]review.RepositoryDiff, len(units))
 	for index, unit := range units {
 		counts[index] = min(len(unit.snapshot.Files), limits.files)
+		snapshots[index] = unit.snapshot
+		snapshots[index].Files = unit.snapshot.Files[:counts[index]]
+	}
+	if err := reader.PreparePatches(ctx, snapshots, limits.patchBytes, budget); err != nil {
+		return nil, budget, err
 	}
 	candidates := make([][]previewCandidate, len(units))
 	budget, err := allocate(counts, budget, func(index, position, limit int) (int, bool, error) {
@@ -125,7 +149,7 @@ func capturePatches(ctx context.Context, units []previewUnit, budget int, limits
 		source := units[index].source
 		snapshot := units[index].snapshot
 		file := snapshot.Files[position]
-		direct, err := source.Patch(ctx, snapshot.Mode, file, snapshot.Head)
+		direct, err := reader.Patch(ctx, snapshot, file)
 		if err != nil {
 			return 0, false, err
 		}
@@ -164,7 +188,13 @@ func capturePatches(ctx context.Context, units []previewUnit, budget int, limits
 
 // captureContents spends budget on full contents for files whose patch was
 // captured and returns the remaining budget.
-func captureContents(ctx context.Context, units []previewUnit, candidates [][]previewCandidate, budget int, limits previewLimits) (int, error) {
+func captureContents(ctx context.Context, reader collectionPreviews, units []previewUnit, candidates [][]previewCandidate, budget int, limits previewLimits) (remaining int, failure error) {
+	scope := review.DiffAll
+	if len(units) > 0 && units[0].snapshot.Mode == review.DiffCommit {
+		scope = review.DiffCommit
+	}
+	finish := observeStage(ctx, Observation{Stage: "contents", Scope: scope})
+	defer func() { finish(failure) }()
 	counts := make([]int, len(units))
 	for index := range candidates {
 		counts[index] = len(candidates[index])
@@ -173,11 +203,10 @@ func captureContents(ctx context.Context, units []previewUnit, candidates [][]pr
 		if err := ctx.Err(); err != nil {
 			return 0, false, err
 		}
-		source := units[index].source
 		snapshot := units[index].snapshot
 		candidate := candidates[index][position]
 		patch := candidate.base
-		contents, err := source.Contents(ctx, snapshot.Mode, candidate.file, snapshot.Head)
+		contents, err := reader.Contents(ctx, snapshot, candidate.file)
 		switch {
 		case err == nil && !contentsFit(contents, limits):
 			if patch.Message == nil {

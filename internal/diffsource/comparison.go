@@ -354,6 +354,11 @@ func (source *gitSource) objectsOnly() bool {
 }
 
 func (source *gitSource) objectSubmodule(ctx context.Context, endpoints comparisonEndpoints, file review.ChangedFile) (bool, error) {
+	if source.collection != nil {
+		if objects, ok := source.collection.files[file.Fingerprint]; ok {
+			return objects.before.mode == "160000" || objects.after.mode == "160000", nil
+		}
+	}
 	previous := file.Path
 	if file.OldPath != nil {
 		previous = *file.OldPath

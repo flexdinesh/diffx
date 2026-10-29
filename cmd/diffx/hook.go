@@ -318,6 +318,7 @@ func newHookEngine(directory string) hooks.Engine {
 		return destination.Target, err
 	}
 	engine.Collect = func(ctx context.Context, event hooks.Event, previous string) (ingestion.Request, string, error) {
+		ctx = withCollectionDiagnostics(ctx, options{trigger: "agent-hook"}, io.Discard)
 		settings, err := collectionOptions(options{directory: event.InputPath, sessionName: event.SessionName, agent: event.Agent, runID: event.RunID, trigger: "agent-hook", base: event.Base, branch: event.Branch})
 		if err != nil {
 			return ingestion.Request{}, "", err

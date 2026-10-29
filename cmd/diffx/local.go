@@ -32,6 +32,7 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 	if values.serverSet || values.tokenSet || values.branch != "" || values.fixture != "" || values.print || values.retry {
 		return errors.New("local mode accepts a checkout path or piped diff; use sync for remote collection or dev --fixture for fixtures")
 	}
+	values.diagnosticWriter = stderr
 	input, err := acquireLocalInput(ctx, values, stdin)
 	if err != nil {
 		return err
@@ -152,6 +153,7 @@ func collectWorkspaces(ctx context.Context, values options, input initialInput, 
 		return nil, err
 	}
 	workspaces := collector.Workspaces{Paths: input.Paths, Depth: values.scanDepth, LinkedWorktrees: input.Selection == localserver.DiscoveredCheckouts}
+	ctx = withCollectionDiagnostics(ctx, values, stderr)
 	batch, err := collector.CollectWorkspaces(ctx, workspaces, settings, publish)
 	for _, diagnostic := range batch.Diagnostics {
 		fmt.Fprintf(stderr, "  diffx: %s\n", diagnostic)
@@ -161,7 +163,7 @@ func collectWorkspaces(ctx context.Context, values options, input initialInput, 
 	}
 	failures := make([]localserver.CollectionFailure, 0, len(batch.Failures))
 	for _, failure := range batch.Failures {
-		failures = append(failures, localserver.CollectionFailure{Path: failure.Path, Detail: failure.Detail})
+		failures = append(failures, localserver.CollectionFailure{Path: failure.Path, Detail: failure.Detail, Code: failure.Code, DiagnosticID: failure.DiagnosticID})
 	}
 	return failures, nil
 }

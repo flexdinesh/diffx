@@ -8,6 +8,7 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/diffsource"
 	"github.com/flexdinesh/diffx/internal/ingestion"
+	"github.com/flexdinesh/diffx/internal/review"
 	"github.com/google/uuid"
 )
 
@@ -15,8 +16,10 @@ const collectionWorkers = 4
 
 // Failure names a discovered checkout that could not be collected.
 type Failure struct {
-	Path   string
-	Detail string
+	Path         string
+	Detail       string
+	Code         string
+	DiagnosticID string
 }
 
 // Batch is one collection of every checkout discovered under the workspaces.
@@ -60,7 +63,9 @@ func CollectWorkspaces(ctx context.Context, workspaces Workspaces, options Optio
 	}
 	discoveryDone := make(chan discovered, 1)
 	go func() {
-		value, err := discoverWorkspaces(ctx, workspaces, options.SourceID, options.Base, func(source DiscoverySource) error {
+		discoveryContext, finish := observeCollection(ctx, strings.Join(workspaces.Paths, ", "))
+		stage := observeStage(discoveryContext, Observation{Stage: "discovery"})
+		value, err := discoverWorkspaces(discoveryContext, workspaces, options.SourceID, options.Base, func(source DiscoverySource) error {
 			select {
 			case jobs <- source:
 				return nil
@@ -68,6 +73,15 @@ func CollectWorkspaces(ctx context.Context, workspaces Workspaces, options Optio
 				return ctx.Err()
 			}
 		})
+		if err == nil && len(value.Sources) == 0 {
+			detail := "no Git checkouts found in " + strings.Join(workspaces.Paths, ", ")
+			if len(value.Diagnostics) > 0 {
+				detail += ": " + strings.Join(value.Diagnostics, "; ")
+			}
+			err = errors.New(detail)
+		}
+		stage(err)
+		err = finish(err)
 		close(jobs)
 		discoveryDone <- discovered{value, err}
 	}()
@@ -102,7 +116,12 @@ func CollectWorkspaces(ctx context.Context, workspaces Workspaces, options Optio
 			continue
 		}
 		if result.err != nil {
-			batch.Failures = append(batch.Failures, Failure{Path: result.path, Detail: result.err.Error()})
+			failure := Failure{Path: result.path, Detail: result.err.Error()}
+			var diagnostic *review.DiagnosticError
+			if errors.As(result.err, &diagnostic) {
+				failure.Code, failure.DiagnosticID = diagnostic.Code, diagnostic.ID
+			}
+			batch.Failures = append(batch.Failures, failure)
 			continue
 		}
 		if err := publish(result.request); err != nil {
@@ -120,13 +139,6 @@ func CollectWorkspaces(ctx context.Context, workspaces Workspaces, options Optio
 	}
 	if discovery.err != nil {
 		return batch, discovery.err
-	}
-	if len(discovery.value.Sources) == 0 {
-		detail := "no Git checkouts found in " + strings.Join(workspaces.Paths, ", ")
-		if len(batch.Diagnostics) > 0 {
-			detail += ": " + strings.Join(batch.Diagnostics, "; ")
-		}
-		return batch, errors.New(detail)
 	}
 	return batch, nil
 }

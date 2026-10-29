@@ -76,6 +76,9 @@ owner. See [development.md](development.md) for isolated checkout commands.
 
 - `review`: data, source contract and pure comment/patch rules.
 - `collector`, `diffsource`: Git, discovery, parsing and finite collection.
+- `diagnostics`: bounded producer reports, identifier redaction and private
+  report storage/export. Composition roots connect consumer-owned observers;
+  collection and Git adapters do not depend on report persistence.
 - `ingestion`: versioned request/job contracts, validation and HTTP client.
 - `contextservice`: owner-scoped publication, resolution and catalog.
 - `reviewservice`: shared snapshot reads, comments, marks and capability checks.
@@ -187,6 +190,23 @@ change between runs and installs would orphan per origin.
     database reads, background review daemon, or speculative infrastructure.
 
 ## Contracts and evolution
+
+Collection uses bounded patch streams and immutable object batches rather than
+one Git process per file. Raw diff modes and object IDs stay private to the Git
+adapter. The collector owns preview allocation and retains the existing ordering,
+per-file limits and final mutable checkout verification. Stored review sources
+keep their scalar read contract. Blob reuse lasts one collection and retains at
+most 16 MiB; subprocess admission and process-tree cleanup apply to batch reads.
+
+Local startup/Retry, manual sync and hooks record request-scoped stage and command
+metadata. Failed attempts persist schema-1 diagnostic JSON reports automatically;
+`--debug` also retains successful reports. Reports contain no captured content,
+raw argv, environment or exception text. Paths, refs and URLs are pseudonymized
+with a report-local key. Report references are additive API failure metadata and
+never enter observation identity or ingestion retry payloads. Export is an
+explicit local CLI operation. Report persistence failures cannot change a
+collection's result, and cancellation/cleanup failures remain separate from its
+primary failure.
 
 `mise run test:contracts` runs production dependency checks, frontend token
 guards, shared Go/TypeScript comment examples, the Go suite (including

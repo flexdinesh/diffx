@@ -15,6 +15,7 @@ import (
 // empty tree for a root commit.
 type commitTarget struct {
 	oid, parent string
+	root        bool
 }
 
 // CommitRange is a branch comparison's captured commits, oldest first. Total
@@ -148,7 +149,12 @@ func CommitSource(ctx context.Context, source Source, commit review.Commit) (Sou
 		}
 		parent = strings.TrimSpace(empty)
 	}
-	return &gitSource{root: git.root, comparison: git.comparison, commit: &commitTarget{oid: commit.OID, parent: parent}}, nil
+	if git.collection == nil {
+		git.collection = newCollectionObjects()
+	}
+	target := &commitTarget{oid: commit.OID, parent: parent, root: len(commit.Parents) == 0}
+	git.collection.targets[commit.OID] = target
+	return &gitSource{root: git.root, comparison: git.comparison, commit: target, collection: git.collection}, nil
 }
 
 // bounded keeps valid UTF-8 within maximum bytes.

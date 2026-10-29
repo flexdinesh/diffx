@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -10,6 +11,26 @@ import (
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/review"
 )
+
+type unavailablePreviewReader struct{}
+
+func (unavailablePreviewReader) PreparePatches(context.Context, []review.RepositoryDiff, int, int) error {
+	return fmt.Errorf("preview I/O unavailable")
+}
+func (unavailablePreviewReader) Patch(context.Context, review.RepositoryDiff, review.ChangedFile) (review.FilePatch, error) {
+	return review.FilePatch{}, fmt.Errorf("preview I/O unavailable")
+}
+func (unavailablePreviewReader) Contents(context.Context, review.RepositoryDiff, review.ChangedFile) (review.FileContents, error) {
+	return review.FileContents{}, fmt.Errorf("preview I/O unavailable")
+}
+
+func TestExhaustedPreviewBudgetDoesNotRequireSourceReads(t *testing.T) {
+	units := []previewUnit{{snapshot: review.RepositoryDiff{Mode: review.DiffAll, Files: []review.ChangedFile{{ID: "file", Path: "file"}}}}}
+	candidates, remaining, err := capturePatches(t.Context(), unavailablePreviewReader{}, units, 0, defaultPreviewLimits)
+	if err != nil || remaining != 0 || len(candidates) != 1 || len(candidates[0]) != 0 {
+		t.Fatalf("exhausted budget required preview reads: %v %d %v", candidates, remaining, err)
+	}
+}
 
 func encodedBytes(t *testing.T, request ingestion.Request) int {
 	t.Helper()
@@ -219,5 +240,56 @@ func TestPipedFilesOverPreviewLimitRemainAccepted(t *testing.T) {
 	patch := request.Scopes[0].Patches[request.Scopes[0].Snapshot.Files[0].ID]
 	if patch.Patch != "" || patch.Message == nil || *patch.Message != "Diff exceeds the 1 MiB preview limit." {
 		t.Fatalf("piped file over the preview limit: %+v", patch)
+	}
+}
+
+// Embedding the stored contract exercises its scalar adapter without Git's
+// collection-only metadata/bulk extension.
+type scalarPreviewSource struct{ diffsource.Source }
+
+func TestBulkPreviewAllocationMatchesScalar(t *testing.T) {
+	root := repository(t)
+	for index := range 20 {
+		write(t, root, fmt.Sprintf("file-%02d", index), strings.Repeat("before\n", 100))
+	}
+	git(t, root, "add", ".")
+	git(t, root, "commit", "-m", "base")
+	git(t, root, "switch", "-c", "feature")
+	for index := range 20 {
+		write(t, root, fmt.Sprintf("file-%02d", index), strings.Repeat("after\n", 100))
+	}
+	git(t, root, "commit", "-am", "feature")
+	write(t, root, "file-00", strings.Repeat("working\n", 100))
+	request := collect(t, root)
+	request.Commits = nil
+	request.CommitsTotal = 0
+	source, err := diffsource.OpenComparison(t.Context(), root, "auto", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Populate raw endpoint metadata just as production collection does.
+	for _, scope := range request.Scopes {
+		if _, err := source.Snapshot(t.Context(), scope.Snapshot.Mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, limits := range []previewLimits{
+		defaultPreviewLimits,
+		{requestBytes: skeletonBytes(t, request) + 10000, patchBytes: 512, contentsBytes: 1024, files: 10},
+		{requestBytes: skeletonBytes(t, request) + 2000, patchBytes: 1 << 20, contentsBytes: 1 << 20, files: 1000},
+	} {
+		bulk, err := withPreviews(t.Context(), source, request, limits)
+		if err != nil {
+			t.Fatal(err)
+		}
+		scalar, err := withPreviews(t.Context(), scalarPreviewSource{Source: source}, request, limits)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bulkJSON, _ := json.Marshal(bulk)
+		scalarJSON, _ := json.Marshal(scalar)
+		if string(bulkJSON) != string(scalarJSON) {
+			t.Fatalf("bulk allocator changed previews for limits %+v", limits)
+		}
 	}
 }

@@ -14,7 +14,7 @@ import (
 )
 
 // Each invocation owns a process group, including Git helpers and hooks.
-func runGitCommand(_ context.Context, command *exec.Cmd) error {
+func runGitCommand(ctx context.Context, command *exec.Cmd) error {
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	command.WaitDelay = time.Second
 	command.Cancel = func() error {
@@ -22,6 +22,7 @@ func runGitCommand(_ context.Context, command *exec.Cmd) error {
 		if errors.Is(err, syscall.ESRCH) {
 			return os.ErrProcessDone
 		}
+		observeCleanup(ctx, "cancellation", err)
 		return err
 	}
 	var copyCleanupErr error
@@ -48,6 +49,7 @@ func runGitCommand(_ context.Context, command *exec.Cmd) error {
 	if errors.Is(cleanupErr, syscall.ESRCH) {
 		cleanupErr = nil
 	}
+	observeCleanup(ctx, "cleanup", cleanupErr)
 	cleanupMutex.Lock()
 	defer cleanupMutex.Unlock()
 	return errors.Join(err, cleanupErr, copyCleanupErr)

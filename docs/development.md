@@ -375,6 +375,31 @@ boundary. After changing it, run:
 mise run generate
 ```
 
+## Collection diagnostics
+
+Local collection, manual sync and hooks save failed attempts automatically under
+`config.StateDir()/diagnostics` (normally `~/.local/state/diffx/diagnostics`).
+`DIFFX_RUNTIME_DIR` isolates these reports with the rest of the private state.
+Use `diffx . --debug` or `diffx sync --debug` for stage progress and a successful
+report to compare with failures. Errors include a diagnostic ID and export command:
+
+```sh
+diffx diagnostics export --latest --output failure.json
+diffx diagnostics export REPORT_ID --output failure.json
+```
+
+Reports use schema version 1. They preserve stage totals, command counts, the
+latest 128 commands and the 20 slowest, including queue waits and deadline kind.
+Cancellation and cleanup have separate phase/error codes. Files are private,
+bounded to 1 MiB, and rotated to five reports. Existing output files are refused.
+Share the exported JSON for diagnosis; it excludes captured content and raw
+process/configuration data and pseudonymizes repository identifiers.
+
+Regression tests exercise large synthetic Git workloads and count real Git
+invocations. Compare cold runs on the same machine and include the final contents
+and consistency checks; a shorter trace that ends in failure is not a completed
+benchmark. `BenchmarkCollectBranchWorkload` reports allocations and `git/op`.
+
 ## Frontend conventions
 
 Follow [DESIGN.md](../DESIGN.md). Semantic tokens in `apps/web/src/tokens.css`

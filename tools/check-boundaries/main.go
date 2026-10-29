@@ -19,7 +19,7 @@ const modulePrefix = "github.com/flexdinesh/diffx/"
 var allowed = map[string][]string{
 	"cmd/diffx": {
 		"internal/browser", "internal/collector", "internal/config", "internal/contextservice",
-		"internal/diffsource", "internal/hooks", "internal/ingestion", "internal/localserver",
+		"internal/diagnostics", "internal/diffsource", "internal/hooks", "internal/ingestion", "internal/localserver",
 		"internal/review", "internal/reviewstore", "internal/submission", "internal/version",
 	},
 	"cmd/diffx-fetcher":       {"internal/config", "internal/fetcher", "internal/fetchprotocol", "internal/version"},
@@ -30,6 +30,7 @@ var allowed = map[string][]string{
 	"internal/contextservice": {"internal/review", "internal/reviewdata", "internal/reviewsession", "internal/ingestion"},
 	"internal/controlapi":     {"internal/config", "internal/review"},
 	"internal/diffsource":     {"internal/processlock", "internal/review"},
+	"internal/diagnostics":    {"internal/processlock"},
 	// GitHub wire adapter; integration policy lives in githubsync.
 	"internal/github": {},
 	// Google sign-in wire adapter; account policy lives in identityservice.

@@ -238,6 +238,19 @@ func contextMCP(service *contextservice.Service, catalog *reviewservice.Catalog,
 func applicationError(w http.ResponseWriter, err error) {
 	var request *review.RequestError
 	if errors.As(err, &request) {
+		if request.Code != "" || request.DiagnosticID != "" {
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(request.Status)
+			_ = json.NewEncoder(w).Encode(struct {
+				Type         string `json:"type"`
+				Title        string `json:"title"`
+				Status       int    `json:"status"`
+				Detail       string `json:"detail"`
+				Code         string `json:"code,omitempty"`
+				DiagnosticID string `json:"diagnosticId,omitempty"`
+			}{"about:blank", http.StatusText(request.Status), request.Status, request.Detail, request.Code, request.DiagnosticID})
+			return
+		}
 		problem(w, request.Status, request.Detail)
 		return
 	}

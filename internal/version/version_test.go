@@ -12,6 +12,18 @@ func TestStringDefaultsToDevelopmentVersion(t *testing.T) {
 	}
 }
 
+func TestBuildIncludesDevelopmentRevisionAndDirtyState(t *testing.T) {
+	info := &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}, Settings: []debug.BuildSetting{{Key: "vcs.revision", Value: "abc123"}, {Key: "vcs.time", Value: "2026-10-29T00:00:00Z"}, {Key: "vcs.modified", Value: "true"}}}
+	setBuildMetadata(t, "dev", "", "", info, true)
+	got := Build()
+	if got.Version != "dev" || got.Commit != "abc123" || !got.Modified || got.Date != "2026-10-29T00:00:00Z" {
+		t.Fatalf("missing build facts: %+v", got)
+	}
+	if String() != "diffx dev" {
+		t.Fatal("diagnostics changed CLI version formatting")
+	}
+}
+
 func TestStringIncludesReleaseMetadata(t *testing.T) {
 	setBuildMetadata(t, "0.1.0", "abc123", "2026-09-17T00:00:00Z", nil, false)
 	if got, want := String(), "diffx 0.1.0 abc123 2026-09-17T00:00:00Z"; got != want {

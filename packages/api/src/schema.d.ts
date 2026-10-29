@@ -1349,6 +1349,10 @@ export interface components {
     CollectionFailure: {
       path: string;
       detail: string;
+      /** @description Stable failure category for this collection attempt. */
+      code?: string;
+      /** @description Opaque report ID retained on the producer machine for explicit CLI export. */
+      diagnosticId?: string;
     };
     Probe: {
       /** @constant */
@@ -1600,6 +1604,8 @@ export interface components {
       detail: string;
       code?: string;
       capability?: string;
+      /** @description Opaque report ID retained on the producer machine for explicit CLI export. */
+      diagnosticId?: string;
     };
   };
   responses: {
