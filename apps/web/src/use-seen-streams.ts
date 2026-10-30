@@ -1,6 +1,6 @@
 import type { ApiContext } from "@diffx/api";
 import { useEffect, useState } from "react";
-import { save, saved } from "./preferences.ts";
+import { save, saved } from "@diffx/ui/lib/storage";
 import {
   baselineSeen,
   readSeen,

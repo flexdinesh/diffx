@@ -11,7 +11,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { checkDesign, readDesignSources } from "../../tools/check-design.ts";
+import {
+  checkDesign,
+  readDesignSources,
+  readFrontendSources,
+} from "../../tools/check-design.ts";
+
+const ui = "packages/ui/src/";
+const web = "apps/web/src/";
 
 function check(text: string, path = "new.css") {
   return checkDesign([{ path, text }]);
@@ -48,14 +55,29 @@ test("literal palette cannot escape through custom properties, fallbacks or shor
 });
 
 test("canonical source ownership does not exempt unrelated files", () => {
-  assert.deepEqual(check(":root { --fg: #fff }", "tokens.css"), []);
-  assert.equal(check(".new { color: #fff }", "tokens.css").length, 1);
-  assert.equal(check(":root { --fg: #fff }", "nested/tokens.css").length, 1);
+  assert.deepEqual(check(":root { --fg: #fff }", `${ui}tokens.css`), []);
+  assert.equal(check(".new { color: #fff }", `${ui}tokens.css`).length, 1);
+  assert.equal(
+    check(":root { --fg: #fff }", `${ui}nested/tokens.css`).length,
+    1,
+  );
+  // Apps compose the shared tokens; an app-local copy is not a second owner.
+  assert.equal(check(":root { --fg: #fff }", `${web}tokens.css`).length, 1);
   assert.deepEqual(
-    check(":root { --text-xs: .75rem; font-size: 100% }", "typography.css"),
+    check(
+      ":root { --text-xs: .75rem; font-size: 100% }",
+      `${ui}typography.css`,
+    ),
     [],
   );
-  assert.equal(check(":root { --text-xs: .75rem }", "tokens.css").length, 1);
+  assert.equal(
+    check(":root { --text-xs: .75rem }", `${web}typography.css`).length,
+    1,
+  );
+  assert.equal(
+    check(":root { --text-xs: .75rem }", `${ui}tokens.css`).length,
+    1,
+  );
 });
 
 test("CSS parser handles nesting, comments, strings and multiline values", () => {
@@ -100,12 +122,16 @@ test("type, radius, shadows and layout lengths require tokens", () => {
 
 test("optical exceptions remain exact in selector, value and source", () => {
   assert.deepEqual(
-    check(".file-reviewed-check { border-radius: 50% }", "review.css"),
+    check(".file-reviewed-check { border-radius: 50% }", `${web}review.css`),
     [],
   );
-  assert.equal(check(".new { border-radius: 50% }", "review.css").length, 1);
   assert.equal(
-    check(".file-reviewed-check { border-radius: 25% }", "review.css").length,
+    check(".new { border-radius: 50% }", `${web}review.css`).length,
+    1,
+  );
+  assert.equal(
+    check(".file-reviewed-check { border-radius: 25% }", `${web}review.css`)
+      .length,
     1,
   );
   assert.equal(
@@ -248,15 +274,39 @@ test("new nested frontend files enter the check automatically", () => {
   }
 });
 
-// A minimal theme bridge and spacing scale, as style.css and tokens.css declare them.
+test("the shared design system and every app enter the check", () => {
+  const directory = mkdtempSync(join(tmpdir(), "diffx-design-"));
+  try {
+    for (const root of [`${ui}components`, "apps/console/src/new"])
+      mkdirSync(join(directory, root), { recursive: true });
+    mkdirSync(join(directory, "apps/console/public"));
+    writeFileSync(join(directory, ui, "components/x.css"), ".x { color: red }");
+    writeFileSync(
+      join(directory, "apps/console/src/new/control.css"),
+      ".new { color: red }",
+    );
+    writeFileSync(
+      join(directory, "apps/console/public/x.css"),
+      ".x { color: red }",
+    );
+    assert.deepEqual(
+      readFrontendSources(directory).map((source) => source.path),
+      [`${ui}components/x.css`, "apps/console/src/new/control.css"],
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+// A minimal theme bridge and spacing scale, as styles.css and tokens.css declare them.
 const theme = [
   {
-    path: "style.css",
+    path: `${ui}styles.css`,
     text: `@theme inline { --color-hover: var(--hover); --spacing-icon-sm: var(--icon-sm); }
 @theme inline reference { --radius-control: var(--radius-control); --text-xs: var(--text-xs); }`,
   },
   {
-    path: "tokens.css",
+    path: `${ui}tokens.css`,
     text: ":root { --space-0-5: .125rem; --space-1: .25rem; --space-1-5: .375rem; --space-2: .5rem; --space-3: .75rem }",
   },
 ];
@@ -299,7 +349,7 @@ test("spacing utilities stay on the token scale; 2px steps stay in components", 
     "spacing-scale",
   );
   assert.equal(
-    checkThemed('const classes = "px-2.5";', "components/ui/toggle.tsx")[0]
+    checkThemed('const classes = "px-2.5";', `${ui}components/ui/toggle.tsx`)[0]
       ?.property,
     "spacing-scale",
   );
@@ -308,8 +358,14 @@ test("spacing utilities stay on the token scale; 2px steps stay in components", 
     "spacing-scale",
   );
   assert.deepEqual(
-    checkThemed('const classes = "py-0.5";', "components/ui/badge.tsx"),
+    checkThemed('const classes = "py-0.5";', `${ui}components/ui/badge.tsx`),
     [],
+  );
+  // Only the shared package owns components; an app folder of that name does not.
+  assert.equal(
+    checkThemed('const classes = "py-0.5";', `${web}components/badge.tsx`)[0]
+      ?.property,
+    "spacing-scale",
   );
   assert.deepEqual(
     checkThemed('const classes = "gap-1.5 p-0 mt-3 -ml-1 h-24 size-4";'),
@@ -322,19 +378,19 @@ test("feature CSS cannot reach into primitive slots or style by ID", () => {
   assert.equal(
     check(
       '.sidebar-tabs [data-slot="tabs-trigger"] { min-width: 0 }',
-      "review.css",
+      `${web}review.css`,
     )[0]?.property,
     "slot-selector",
   );
   assert.equal(
-    check("#repo-path { overflow: hidden }", "style.css")[0]?.property,
+    check("#repo-path { overflow: hidden }", `${web}style.css`)[0]?.property,
     "id-selector",
   );
   assert.equal(
     check(":is(#server-status, .popup) svg { flex-shrink: 0 }")[0]?.property,
     "id-selector",
   );
-  assert.deepEqual(check("#viewer { min-height: 0 }", "style.css"), []);
+  assert.deepEqual(check("#viewer { min-height: 0 }", `${web}style.css`), []);
   assert.deepEqual(check('a[href="#top"] { overflow: hidden }'), []);
   // A rule reports once, not per declaration.
   assert.equal(
@@ -343,7 +399,7 @@ test("feature CSS cannot reach into primitive slots or style by ID", () => {
   );
 });
 
-const button = 'import { Button } from "@/components/ui/button";';
+const button = 'import { Button } from "@diffx/ui/components/ui/button";';
 
 test("feature classNames on components arrange them, never restyle them", () => {
   for (const className of [
@@ -379,19 +435,19 @@ test("feature classNames on components arrange them, never restyle them", () => 
 test("feature CSS cannot restyle a component through a hook class", () => {
   // Audited: DiffWorkspace's Reviewed toggle, colored by .review-button.
   const usage = {
-    path: "DiffWorkspace.tsx",
+    path: `${web}DiffWorkspace.tsx`,
     text: `${button} const View = () => <Button className="review-button" />;`,
   };
   const styled = checkDesign([
     usage,
-    { path: "style.css", text: ".review-button { color: var(--muted) }" },
+    { path: `${web}style.css`, text: ".review-button { color: var(--muted) }" },
   ]);
   assert.equal(styled[0]?.property, "component-style");
   assert.deepEqual(
     checkDesign([
       usage,
       {
-        path: "style.css",
+        path: `${web}style.css`,
         text: ".review-button { margin-left: auto } .review-button svg { flex-shrink: 0 }",
       },
     ]),
@@ -403,7 +459,10 @@ test("feature CSS cannot restyle a component through a hook class", () => {
         path: "View.tsx",
         text: 'const View = () => <div className="review-button" />;',
       },
-      { path: "style.css", text: ".review-button { color: var(--muted) }" },
+      {
+        path: `${web}style.css`,
+        text: ".review-button { color: var(--muted) }",
+      },
     ]),
     [],
   );
@@ -418,23 +477,26 @@ test("feature files render primitives instead of raw form controls", () => {
   const directory = mkdtempSync(join(tmpdir(), "diffx-elements-"));
   try {
     writeFileSync(join(directory, ".oxlintrc.json"), JSON.stringify(config));
-    mkdirSync(join(directory, "apps/web/src/components/ui"), {
-      recursive: true,
-    });
     const control =
       'export const Row = () => <button type="button" className="project-row" />;\n';
-    writeFileSync(join(directory, "apps/web/src/ProjectsNav.tsx"), control);
-    writeFileSync(
-      join(directory, "apps/web/src/components/ui/button.tsx"),
-      control,
-    );
+    for (const file of [
+      "apps/web/src/ProjectsNav.tsx",
+      "apps/web/src/components/row.tsx",
+      "apps/console/src/Members.tsx",
+      "packages/ui/src/gallery/Gallery.tsx",
+      "packages/ui/src/components/ui/button.tsx",
+    ]) {
+      mkdirSync(join(directory, file, ".."), { recursive: true });
+      writeFileSync(join(directory, file), control);
+    }
     const result = spawnSync(
       join(root, "node_modules/.bin/oxlint"),
-      ["-c", ".oxlintrc.json", "apps/web/src"],
+      ["-c", ".oxlintrc.json", "apps", "packages"],
       { cwd: directory, encoding: "utf8" },
     );
     const output = result.stdout + result.stderr;
-    assert.match(output, /ProjectsNav\.tsx.*forbid-elements/);
+    for (const name of ["ProjectsNav", "row", "Members", "Gallery"])
+      assert.match(output, new RegExp(`${name}\\.tsx.*forbid-elements`));
     assert.doesNotMatch(output, /button\.tsx.*forbid-elements/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -442,6 +504,6 @@ test("feature files render primitives instead of raw form controls", () => {
 });
 
 test("current frontend satisfies the guard", () => {
-  const root = fileURLToPath(new URL("../../apps/web/src/", import.meta.url));
-  assert.deepEqual(checkDesign(readDesignSources(root)), []);
+  const root = fileURLToPath(new URL("../../", import.meta.url));
+  assert.deepEqual(checkDesign(readFrontendSources(root)), []);
 });

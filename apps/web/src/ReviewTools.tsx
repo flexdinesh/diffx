@@ -5,19 +5,20 @@ import {
   FilePlus2Icon,
   FileSymlinkIcon,
 } from "lucide-react";
-import { CollapsibleSection } from "@/components/collapsible-section";
-import { EmptyState } from "@/components/empty-state";
-import { KeyValue, KeyValueList } from "@/components/key-value-list";
-import { SplitButton } from "@/components/split-button";
-import { Button } from "@/components/ui/button";
-import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
+import { CollapsibleSection } from "@diffx/ui/components/collapsible-section";
+import { EmptyState } from "@diffx/ui/components/empty-state";
+import { KeyValue, KeyValueList } from "@diffx/ui/components/key-value-list";
+import { SplitButton } from "@diffx/ui/components/split-button";
+import { Button } from "@diffx/ui/components/ui/button";
+import { DropdownMenuItem } from "@diffx/ui/components/ui/dropdown-menu";
+import { Separator } from "@diffx/ui/components/ui/separator";
 import {
   useDiffSource,
   useReviewState,
   useReviewedFilesState,
 } from "./app-state.tsx";
-import { formatCount, formatProgress, pluralize } from "./format.ts";
+import { formatCount, pluralize } from "@diffx/ui/lib/format";
+import { formatProgress } from "./format.ts";
 
 import { capabilityEnabled, useSession } from "./session-context.tsx";
 

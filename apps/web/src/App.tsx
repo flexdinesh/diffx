@@ -1,4 +1,4 @@
-import { Scrim } from "@/components/scrim";
+import { Scrim } from "@diffx/ui/components/scrim";
 import { useReviewState } from "./app-state.tsx";
 import { OutdatedCommentsNotice } from "./CommentsPanel.tsx";
 import { DiffWorkspace } from "./DiffWorkspace.tsx";

@@ -12,12 +12,12 @@ import {
   XIcon,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { DisclosureIcon } from "@/components/disclosure";
-import { IconButton } from "@/components/icon-button";
-import { Shortcut } from "@/components/shortcut";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@diffx/ui/components/confirm-dialog";
+import { DisclosureIcon } from "@diffx/ui/components/disclosure";
+import { IconButton } from "@diffx/ui/components/icon-button";
+import { Shortcut } from "@diffx/ui/components/shortcut";
+import { Badge } from "@diffx/ui/components/ui/badge";
+import { Button } from "@diffx/ui/components/ui/button";
 import {
   Card,
   CardAction,
@@ -25,16 +25,16 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@diffx/ui/components/ui/card";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
-import { formatShortcut } from "./format.ts";
+} from "@diffx/ui/components/ui/dialog";
+import { Textarea } from "@diffx/ui/components/ui/textarea";
+import { cn } from "@diffx/ui/lib/utils";
+import { formatShortcut } from "@diffx/ui/lib/format";
 import {
   useDiffSource,
   useDraft,

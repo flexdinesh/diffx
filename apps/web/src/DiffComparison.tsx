@@ -1,7 +1,7 @@
 import { InfoIcon, XIcon } from "lucide-react";
-import { IconButton } from "@/components/icon-button";
-import { KeyValue, KeyValueList } from "@/components/key-value-list";
-import { Button } from "@/components/ui/button";
+import { IconButton } from "@diffx/ui/components/icon-button";
+import { KeyValue, KeyValueList } from "@diffx/ui/components/key-value-list";
+import { Button } from "@diffx/ui/components/ui/button";
 import {
   Popover,
   PopoverClose,
@@ -10,7 +10,7 @@ import {
   PopoverHeader,
   PopoverTitle,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from "@diffx/ui/components/ui/popover";
 import { useDiffSource } from "./app-state.tsx";
 import { diffComparison } from "./diff-comparison.ts";
 import { useSession } from "./session-context.tsx";

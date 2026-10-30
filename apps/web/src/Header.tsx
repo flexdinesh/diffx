@@ -1,5 +1,5 @@
 import { ListTreeIcon, RefreshCwIcon } from "lucide-react";
-import { IconButton } from "@/components/icon-button";
+import { IconButton } from "@diffx/ui/components/icon-button";
 import { useDiffSource } from "./app-state.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
 import { useCatalog, useSession } from "./session-context.tsx";

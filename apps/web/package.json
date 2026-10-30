@@ -14,19 +14,12 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.sw.json"
   },
   "dependencies": {
-    "@base-ui/react": "catalog:",
     "@diffx/api": "workspace:*",
-    "@fontsource-variable/jetbrains-mono": "5.3.0",
+    "@diffx/ui": "workspace:*",
     "@pierre/diffs": "catalog:",
-    "class-variance-authority": "catalog:",
-    "cn": "catalog:",
     "lucide-react": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:",
-    "react-markdown": "catalog:",
-    "remark-gfm": "catalog:",
-    "shadcn": "catalog:",
-    "tw-animate-css": "catalog:"
+    "react-dom": "catalog:"
   },
   "devDependencies": {
     "@playwright/test": "catalog:",

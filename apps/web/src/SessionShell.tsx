@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import { EmptyState } from "@/components/empty-state";
-import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@diffx/ui/components/empty-state";
+import { Skeleton } from "@diffx/ui/components/ui/skeleton";
 import { WorkspaceLoading } from "./WorkspaceLoading.tsx";
 import { navigate } from "./identity-context.tsx";
-import { Button } from "@/components/ui/button";
+import { Button } from "@diffx/ui/components/ui/button";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { Navigation } from "./Navigation.tsx";
 import { SyncButton, Topbar } from "./Topbar.tsx";

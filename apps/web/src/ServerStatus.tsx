@@ -5,8 +5,8 @@ import {
   LoaderCircleIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { KeyValue, KeyValueList } from "@/components/key-value-list";
-import { Button } from "@/components/ui/button";
+import { KeyValue, KeyValueList } from "@diffx/ui/components/key-value-list";
+import { Button } from "@diffx/ui/components/ui/button";
 import {
   Popover,
   PopoverContent,
@@ -15,7 +15,7 @@ import {
   PopoverSection,
   PopoverTitle,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from "@diffx/ui/components/ui/popover";
 import { formatBytes } from "./server-metrics.ts";
 
 const refreshMilliseconds = 2_500;

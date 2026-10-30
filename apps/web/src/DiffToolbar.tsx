@@ -3,8 +3,8 @@ import {
   ChevronsUpDownIcon,
   Settings2Icon,
 } from "lucide-react";
-import { IconButton } from "@/components/icon-button";
-import { SegmentedControl } from "@/components/segmented-control";
+import { IconButton } from "@diffx/ui/components/icon-button";
+import { SegmentedControl } from "@diffx/ui/components/segmented-control";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -15,7 +15,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@diffx/ui/components/ui/dropdown-menu";
 import { useDiffCollapse, useNavigation } from "./app-state.tsx";
 import { useAppearance } from "./appearance-context.tsx";
 import {

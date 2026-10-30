@@ -57,9 +57,6 @@ export default defineConfig(async ({ command }) => {
         },
       },
     },
-    resolve: {
-      alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
-    },
     plugins: [
       react(),
       tailwindcss(),

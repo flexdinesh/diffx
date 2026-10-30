@@ -8,23 +8,23 @@ import {
   XIcon,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { ContextIcon } from "@/components/context-icon";
-import { CountBadge } from "@/components/count-badge";
-import { EmptyState } from "@/components/empty-state";
-import { IconButton } from "@/components/icon-button";
-import { ListRow } from "@/components/list-row";
-import { SearchField } from "@/components/search-field";
-import { Shortcut } from "@/components/shortcut";
-import { Button } from "@/components/ui/button";
+import { ContextIcon } from "@diffx/ui/components/context-icon";
+import { CountBadge } from "@diffx/ui/components/count-badge";
+import { EmptyState } from "@diffx/ui/components/empty-state";
+import { IconButton } from "@diffx/ui/components/icon-button";
+import { ListRow } from "@diffx/ui/components/list-row";
+import { SearchField } from "@diffx/ui/components/search-field";
+import { Shortcut } from "@diffx/ui/components/shortcut";
+import { Button } from "@diffx/ui/components/ui/button";
 import {
   Dialog,
   DialogClose,
   DialogContent,
   DialogDescription,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
-import { pluralize } from "./format.ts";
+} from "@diffx/ui/components/ui/dialog";
+import { cn } from "@diffx/ui/lib/utils";
+import { pluralize } from "@diffx/ui/lib/format";
 import {
   contextChangeLabel,
   contextDetail,

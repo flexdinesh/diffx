@@ -1,6 +1,6 @@
 import { SettingsIcon } from "lucide-react";
-import { ChoiceList, ChoiceListItem } from "@/components/choice-list";
-import { IconButton } from "@/components/icon-button";
+import { ChoiceList, ChoiceListItem } from "@diffx/ui/components/choice-list";
+import { IconButton } from "@diffx/ui/components/icon-button";
 import {
   Popover,
   PopoverContent,
@@ -8,8 +8,8 @@ import {
   PopoverSection,
   PopoverTitle,
   PopoverTrigger,
-} from "@/components/ui/popover";
-import { ThemeSwatch } from "@/components/theme-swatch";
+} from "@diffx/ui/components/ui/popover";
+import { ThemeSwatch } from "@diffx/ui/components/theme-swatch";
 import { useAppearance } from "./appearance-context.tsx";
 import { readThemePreference, swatchPalette, THEMES } from "./theme.ts";
 

@@ -11,17 +11,17 @@ import {
   LockIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { ErrorState } from "@/components/error-state";
-import { LinkButton } from "@/components/link-button";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Toggle } from "@/components/ui/toggle";
+import { ConfirmDialog } from "@diffx/ui/components/confirm-dialog";
+import { ErrorState } from "@diffx/ui/components/error-state";
+import { LinkButton } from "@diffx/ui/components/link-button";
+import { Button } from "@diffx/ui/components/ui/button";
+import { Checkbox } from "@diffx/ui/components/ui/checkbox";
+import { Toggle } from "@diffx/ui/components/ui/toggle";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@diffx/ui/components/ui/tooltip";
 
 const prose = "mb-4 leading-copy text-secondary";
 

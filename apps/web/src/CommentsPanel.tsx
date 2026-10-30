@@ -4,11 +4,11 @@ import {
   MessageSquareWarningIcon,
   Trash2Icon,
 } from "lucide-react";
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { CountBadge } from "@/components/count-badge";
-import { Notice } from "@/components/notice";
-import { SplitButton } from "@/components/split-button";
-import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@diffx/ui/components/confirm-dialog";
+import { CountBadge } from "@diffx/ui/components/count-badge";
+import { Notice } from "@diffx/ui/components/notice";
+import { SplitButton } from "@diffx/ui/components/split-button";
+import { Button } from "@diffx/ui/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,8 +16,8 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { TabsContent } from "@/components/ui/tabs";
+} from "@diffx/ui/components/ui/dropdown-menu";
+import { TabsContent } from "@diffx/ui/components/ui/tabs";
 import {
   useDiffSource,
   useDraft,

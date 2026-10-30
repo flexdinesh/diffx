@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "@babel/parser";
@@ -28,17 +28,22 @@ const radiusProperty = /^border(?:-[\w-]+)?-radius$/;
 const colorProperty =
   /(?:color|background|border|outline|shadow|fill|stroke)|^--/;
 
+// Source paths are repository-relative. The shared design system owns tokens,
+// type, the Tailwind theme bridge and components; apps compose it.
+const ui = "packages/ui/src/";
+const web = "apps/web/src/";
+
 // Exact optical/renderer allowances, not file-wide exclusions. DESIGN.md owns
 // the reasons; token rules still apply to every other declaration in these files.
 const exceptions = new Set([
-  "review.css|.file-reviewed-check|border-radius|50%",
-  "review.css|.file-icon|line-height|1",
-  "review.css|.monogram-icon text|font|700 9px ui-monospace, monospace",
-  "style.css|#viewer|--diff-gutter-divider-width|2px",
+  `${web}review.css|.file-reviewed-check|border-radius|50%`,
+  `${web}review.css|.file-icon|line-height|1`,
+  `${web}review.css|.monogram-icon text|font|700 9px ui-monospace, monospace`,
+  `${web}style.css|#viewer|--diff-gutter-divider-width|2px`,
   // Tailwind resolves breakpoints at build time, so they cannot reference
   // tokens; they mirror the 768px and 1012px queries.
-  "style.css|@theme|--breakpoint-md|48rem",
-  "style.css|@theme|--breakpoint-lg|63.25rem",
+  `${ui}styles.css|@theme|--breakpoint-md|48rem`,
+  `${ui}styles.css|@theme|--breakpoint-lg|63.25rem`,
 ]);
 
 function normalize(value: string): string {
@@ -63,8 +68,8 @@ function invalidValue(
 ): boolean {
   const value = normalize(raw);
   if (exceptions.has(`${path}|${selector}|${property}|${value}`)) return false;
-  const paletteOwner = path === "tokens.css" && property.startsWith("--");
-  const typeOwner = path === "typography.css";
+  const paletteOwner = path === `${ui}tokens.css` && property.startsWith("--");
+  const typeOwner = path === `${ui}typography.css`;
   const remainder = withoutVariables(value).replace(
     /url\([^)]*\)|"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'/gi,
     "",
@@ -80,7 +85,7 @@ function invalidValue(
     );
   // Pierre mixes black into its own addition/deletion backgrounds for comments.
   const pierreMix =
-    path === "DiffWorkspace.tsx" &&
+    path === `${web}DiffWorkspace.tsx` &&
     property === "--diffs-line-bg" &&
     /^color-mix\(in srgb, var\(--diffs-computed-diff-line-bg\) 76%, color-mix\(in srgb, var\(--diffs-(?:addition|deletion)-base\) 72%, black\)\)$/.test(
       value,
@@ -132,7 +137,7 @@ function invalidValue(
     // These inset strokes carry header separators/navigation feedback, no elevation.
     if (
       !(
-        path === "DiffWorkspace.tsx" &&
+        path === `${web}DiffWorkspace.tsx` &&
         property === "box-shadow" &&
         /^(?:inset 0 -1px var\(--border\)|inset 3px 0 var\(--accent\)(?:, inset 0 -1px var\(--border\))?|inset 0 0 transparent(?:, inset 0 -1px var\(--border\))?)$/.test(
           value,
@@ -277,7 +282,7 @@ interface Theme {
   spacing: Set<string>;
 }
 
-// Utilities registered by style.css's theme bridge resolve to canonical tokens.
+// Utilities registered by styles.css's theme bridge resolve to canonical tokens.
 function readTheme(sources: readonly DesignSource[]): Theme {
   const theme: Theme = {
     utilities: new Set(),
@@ -301,7 +306,7 @@ function readTheme(sources: readonly DesignSource[]): Theme {
     [/^--spacing-([\w-]+)$/, "spacing", ""],
   ];
   for (const source of sources) {
-    if (source.path === "tokens.css")
+    if (source.path === `${ui}tokens.css`)
       cssDeclarations(source.text, (_selector, property) => {
         const step = /^--space-(\d+)(-5)?$/.exec(property);
         if (!step?.[1]) return;
@@ -309,7 +314,7 @@ function readTheme(sources: readonly DesignSource[]): Theme {
         theme.spacing.add(name);
         alias(property, "spacing", name);
       });
-    if (source.path !== "style.css") continue;
+    if (source.path !== `${ui}styles.css`) continue;
     cssDeclarations(source.text, (selector, property, value) => {
       if (!selector.startsWith("@theme") || value.trim() === "initial") return;
       const variable = /^var\((--[\w-]+)\)$/.exec(normalize(value))?.[1];
@@ -328,7 +333,7 @@ function readTheme(sources: readonly DesignSource[]): Theme {
 
 // Primitives and composites own visuals; feature files compose them.
 function designSystemFile(path: string): boolean {
-  return path.startsWith("components/");
+  return path.startsWith(`${ui}components/`);
 }
 
 const colorUtility =
@@ -876,7 +881,7 @@ export function checkDesign(
             value === undefined ||
             expressions.some(
               (expression: unknown) =>
-                source.path !== "DiffWorkspace.tsx" ||
+                source.path !== `${web}DiffWorkspace.tsx` ||
                 !record(expression) ||
                 expression.type !== "Identifier" ||
                 expression.name !== "NAVIGATION_CUE_MS",
@@ -936,7 +941,8 @@ export function checkDesign(
   return violations;
 }
 
-export function readDesignSources(root: string): DesignSource[] {
+/** Reads CSS and TypeScript under `root`, with paths relative to `base`. */
+export function readDesignSources(root: string, base = root): DesignSource[] {
   const sources: DesignSource[] = [];
   function walk(directory: string) {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -944,7 +950,7 @@ export function readDesignSources(root: string): DesignSource[] {
       if (entry.isDirectory()) walk(path);
       else if (/\.(css|tsx?)$/.test(path))
         sources.push({
-          path: relative(root, path).split(sep).join("/"),
+          path: relative(base, path).split(sep).join("/"),
           text: readFileSync(path, "utf8"),
         });
     }
@@ -953,12 +959,24 @@ export function readDesignSources(root: string): DesignSource[] {
   return sources;
 }
 
+/** The shared design system and every app's sources, repository-relative. */
+export function readFrontendSources(repository: string): DesignSource[] {
+  const apps = join(repository, "apps");
+  const roots = [
+    join(repository, ui),
+    ...(existsSync(apps) ? readdirSync(apps) : [])
+      .map((app) => join(apps, app, "src"))
+      .filter((root) => existsSync(root)),
+  ];
+  return roots.flatMap((root) => readDesignSources(root, repository));
+}
+
 if (
   process.argv[1] &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  const root = fileURLToPath(new URL("../apps/web/src/", import.meta.url));
-  const violations = checkDesign(readDesignSources(root));
+  const repository = fileURLToPath(new URL("../", import.meta.url));
+  const violations = checkDesign(readFrontendSources(repository));
   for (const violation of violations)
     console.error(
       `${violation.path}:${violation.line}: ${violation.property}: ${violation.value} — use DESIGN.md tokens`,

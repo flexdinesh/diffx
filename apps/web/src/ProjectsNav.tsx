@@ -12,18 +12,18 @@ import {
   XIcon,
 } from "lucide-react";
 import { useEffect, useState, type MouseEvent } from "react";
-import { ContextIcon } from "@/components/context-icon";
-import { CountBadge } from "@/components/count-badge";
-import { DisclosureRow } from "@/components/disclosure-row";
-import { EmptyState } from "@/components/empty-state";
-import { ErrorState } from "@/components/error-state";
-import { IconButton } from "@/components/icon-button";
-import { ListRow } from "@/components/list-row";
-import { Notice } from "@/components/notice";
-import { PanelHeader } from "@/components/panel-header";
-import { Scrim } from "@/components/scrim";
-import { StatusDot } from "@/components/status-dot";
-import { Button } from "@/components/ui/button";
+import { ContextIcon } from "@diffx/ui/components/context-icon";
+import { CountBadge } from "@diffx/ui/components/count-badge";
+import { DisclosureRow } from "@diffx/ui/components/disclosure-row";
+import { EmptyState } from "@diffx/ui/components/empty-state";
+import { ErrorState } from "@diffx/ui/components/error-state";
+import { IconButton } from "@diffx/ui/components/icon-button";
+import { ListRow } from "@diffx/ui/components/list-row";
+import { Notice } from "@diffx/ui/components/notice";
+import { PanelHeader } from "@diffx/ui/components/panel-header";
+import { Scrim } from "@diffx/ui/components/scrim";
+import { StatusDot } from "@diffx/ui/components/status-dot";
+import { Button } from "@diffx/ui/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,10 +32,10 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
-import { pluralize } from "./format.ts";
-import { save, saved } from "./preferences.ts";
+} from "@diffx/ui/components/ui/dropdown-menu";
+import { Separator } from "@diffx/ui/components/ui/separator";
+import { pluralize } from "@diffx/ui/lib/format";
+import { save, saved } from "@diffx/ui/lib/storage";
 import { contextChangeLabel } from "./project-picker.ts";
 import { contextActivity } from "./context-activity.ts";
 import {

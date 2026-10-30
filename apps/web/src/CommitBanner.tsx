@@ -1,9 +1,9 @@
 import { GitCommitHorizontalIcon, GitMergeIcon } from "lucide-react";
 import { useId } from "react";
-import { useSavedOpen } from "@/components/collapsible-section";
-import { DisclosureIcon } from "@/components/disclosure";
-import { IconButton } from "@/components/icon-button";
-import { Badge } from "@/components/ui/badge";
+import { useSavedOpen } from "@diffx/ui/components/collapsible-section";
+import { DisclosureIcon } from "@diffx/ui/components/disclosure";
+import { IconButton } from "@diffx/ui/components/icon-button";
+import { Badge } from "@diffx/ui/components/ui/badge";
 import { useDiffSource } from "./app-state.tsx";
 import { shortOid } from "./commit-view.ts";
 import { relativeAge } from "./project-nav.ts";

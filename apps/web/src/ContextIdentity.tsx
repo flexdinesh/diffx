@@ -1,8 +1,8 @@
 import type { ApiContext } from "@diffx/api";
 import { ChevronDownIcon, GitBranchIcon, GitForkIcon } from "lucide-react";
-import { ContextIcon } from "@/components/context-icon";
-import { CountBadge } from "@/components/count-badge";
-import { Button } from "@/components/ui/button";
+import { ContextIcon } from "@diffx/ui/components/context-icon";
+import { CountBadge } from "@diffx/ui/components/count-badge";
+import { Button } from "@diffx/ui/components/ui/button";
 import {
   Combobox,
   ComboboxContent,
@@ -11,7 +11,7 @@ import {
   ComboboxList,
   ComboboxSearch,
   ComboboxTrigger,
-} from "@/components/ui/combobox";
+} from "@diffx/ui/components/ui/combobox";
 import {
   contextChangeLabel,
   contextCheckoutLabel,

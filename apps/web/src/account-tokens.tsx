@@ -6,17 +6,17 @@ import {
   type ApiAccountToken,
 } from "@diffx/api";
 import { useEffect, useState, type FormEvent } from "react";
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { ErrorState } from "@/components/error-state";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ConfirmDialog } from "@diffx/ui/components/confirm-dialog";
+import { ErrorState } from "@diffx/ui/components/error-state";
+import { Button } from "@diffx/ui/components/ui/button";
+import { Input } from "@diffx/ui/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@diffx/ui/components/ui/select";
 
 const purposes: { value: "collector" | "api"; label: string }[] = [
   { value: "collector", label: "Collector" },

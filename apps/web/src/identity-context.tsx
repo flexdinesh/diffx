@@ -14,8 +14,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { EmptyState } from "@/components/empty-state";
-import { Button } from "@/components/ui/button";
+import { EmptyState } from "@diffx/ui/components/empty-state";
+import { Button } from "@diffx/ui/components/ui/button";
 
 type IdentityState =
   | { status: "loading" }

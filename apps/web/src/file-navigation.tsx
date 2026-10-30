@@ -5,10 +5,10 @@ import {
   MessageSquareIcon,
 } from "lucide-react";
 import type { KeyboardEvent } from "react";
-import { DisclosureIcon } from "@/components/disclosure";
-import { EmptyState } from "@/components/empty-state";
-import { ListRow } from "@/components/list-row";
-import { StatusDot } from "@/components/status-dot";
+import { DisclosureIcon } from "@diffx/ui/components/disclosure";
+import { EmptyState } from "@diffx/ui/components/empty-state";
+import { ListRow } from "@diffx/ui/components/list-row";
+import { StatusDot } from "@diffx/ui/components/status-dot";
 import {
   fileKind,
   gitDecoration,
