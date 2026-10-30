@@ -121,7 +121,17 @@ automatically supplies its owner and has no login or account settings.
 
 Invites, password reset links and account administration live in the admin
 console, a separate `diffx-console` container on its own origin over the same
-database. Admins use the app like any other account.
+database. Admins use the app like any other account. Compose runs it on
+`127.0.0.1:7970`; on first start, find the setup link in
+`docker compose logs console` and open it within 24 hours to create the first
+admin. Admins invite members or other admins, promote and demote accounts,
+disable or delete them, and issue password reset links. Disabling revokes the
+account's sessions and tokens, and deleting removes everything it owns. A
+locked-out admin gets a reset link with the console's environment:
+
+```sh
+diffx-console user reset-password --username alice
+```
 
 Password reset revokes browser sessions; API token
 ownership is independent of passwords. Deploy behind TLS with secure cookies.

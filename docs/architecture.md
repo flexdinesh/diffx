@@ -127,11 +127,13 @@ owner. See [development.md](development.md) for isolated checkout commands.
   member authentication and worker composition; `authhttp`: browser
   authentication HTTP shared by remote transports (session cookie, CSRF,
   problem and identity error mapping, sign-in admission and rate limiting,
-  deployment probes).
+  deployment probes); `consoleserver`: the admin console transport and
+  composition (`diffx-console`), which composes identity for the console
+  audience over the server's store and runs no workers or review services.
 - `config`, `processlock`, `browser`, `version`: configuration and private state
   paths (`StateDir`, honouring `DIFFX_RUNTIME_DIR`), process ownership,
   browser launch and build metadata; `processmetrics`: server process metrics;
-  `webui`: embedded assets. `testsupport` is test-only. `storetest` is the
+  `webui`, `consoleui`: embedded app and console assets. `testsupport` is test-only. `storetest` is the
   test-only behavioral contract every review store runs for shared content and
   review operations; identity, stream and patch digest rules live in
   `ingestion` and `review`, so stores never derive them independently.
@@ -343,6 +345,17 @@ limit and the header parsing; `pgstore` owns the atomic per-client fixed-window
 counter in an UNLOGGED table, which replicas share and which loses only counts
 on a crash. Only remote composition serves `/healthz` and `/readyz`; local mode
 has no deployment probes.
+
+`cmd/diffx-console` composes the admin console from `DIFFX_CONSOLE_*`
+environment only: its own listener (loopback 7970), the server's database URL,
+its origin, the app's origin for invite and member reset links, and its own
+Google client whose callback is on the console origin. It migrates through
+`pgstore` under the same advisory lock as the server, so either binary may start
+first. Account changes reach server replicas through the store's
+`diffx_account` notifications, not through any call between the binaries. The
+console has its own OpenAPI contract (`packages/console-api`, `/api/v1/*`) and
+app (`apps/console`); it shares UI primitives through `packages/ui`, never app
+code or the server contract.
 
 Personal CLI configuration keeps modes in separate namespaces so one machine runs
 both compositions at once: `local.*` and `DIFFX_LOCAL_*` configure only
