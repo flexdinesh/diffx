@@ -344,7 +344,7 @@ test("Replicas sharing one database act as one server", async (t) => {
   const memberToken = await apiToken(clientA, member);
   const memberA = bearer(a.url, memberToken);
   const memberB = bearer(b.url, memberToken);
-  const users = await clientA.GET("/api/v2/admin/users", { headers: admin });
+  const users = await clientA.GET("/api/v2/manage/users", { headers: admin });
   assert.equal(users.response.status, 200);
   for (const user of users.data?.users ?? []) conforms("AdminUser", user);
   assert.equal(users.data?.users.length, 2);
@@ -445,7 +445,7 @@ test("Replicas sharing one database act as one server", async (t) => {
 
   await t.test("disabling the member through A cuts it off on B", async () => {
     const disabled = await clientA.POST(
-      "/api/v2/admin/users/{userId}/disable",
+      "/api/v2/manage/users/{userId}/disable",
       {
         headers: admin,
         params: { path: { userId: memberId } },
@@ -468,7 +468,7 @@ test("Replicas sharing one database act as one server", async (t) => {
     });
     assert.ok(session.data?.mode === "remote");
     assert.equal(session.data.user, null);
-    const users = await clientB.GET("/api/v2/admin/users", { headers: admin });
+    const users = await clientB.GET("/api/v2/manage/users", { headers: admin });
     assert.equal(
       users.data?.users.find((user) => user.id === memberId)?.disabled,
       true,

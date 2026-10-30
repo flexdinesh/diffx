@@ -46,7 +46,7 @@ func projectInvite(invite identityservice.Invite, now time.Time) inviteJSON {
 // invites lists, creates and revokes invites. The link carries its secret in
 // the fragment and is returned only at creation.
 func (remote *transport) invites(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/api/v2/admin/invites" {
+	if r.URL.Path == "/api/v2/manage/invites" {
 		switch r.Method {
 		case http.MethodGet:
 			invites, err := remote.identity.Invites(r.Context())
@@ -90,7 +90,7 @@ func (remote *transport) invites(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	id := strings.TrimPrefix(r.URL.Path, "/api/v2/admin/invites/")
+	id := strings.TrimPrefix(r.URL.Path, "/api/v2/manage/invites/")
 	if id == "" || strings.Contains(id, "/") {
 		http.NotFound(w, r)
 		return
@@ -109,11 +109,11 @@ func (remote *transport) invites(w http.ResponseWriter, r *http.Request) {
 // admin serves account administration to the admin's browser session. Disabling
 // or deleting an account stops its active services; its credentials are already gone.
 func (remote *transport) admin(w http.ResponseWriter, r *http.Request, p principal) {
-	if strings.HasPrefix(r.URL.Path, "/api/v2/admin/invites") {
+	if strings.HasPrefix(r.URL.Path, "/api/v2/manage/invites") {
 		remote.invites(w, r)
 		return
 	}
-	if r.URL.Path == "/api/v2/admin/users" {
+	if r.URL.Path == "/api/v2/manage/users" {
 		if r.Method != http.MethodGet {
 			problem(w, 405, "Method not allowed")
 			return
@@ -132,7 +132,7 @@ func (remote *transport) admin(w http.ResponseWriter, r *http.Request, p princip
 		}{users})
 		return
 	}
-	rest, ok := strings.CutPrefix(r.URL.Path, "/api/v2/admin/users/")
+	rest, ok := strings.CutPrefix(r.URL.Path, "/api/v2/manage/users/")
 	if !ok || rest == "" {
 		http.NotFound(w, r)
 		return

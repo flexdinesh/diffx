@@ -38,11 +38,11 @@ const prose = "mb-4 leading-copy text-secondary";
 /** Failed outcomes the Google callback reports through `/?signin=`. */
 const signInFailures: Record<string, string> = {
   "no-account":
-    "No diffx account uses that Google account. Ask the admin for an invite.",
+    "No diffx account uses that Google account. Ask us for an invite.",
   "invite-mismatch":
     "That Google account does not match the invited email, or Google has not verified it. Open the invite link again and choose the invited account.",
   "invite-invalid":
-    "The invite link is invalid, expired or already used. Ask the admin for a new one.",
+    "The invite link is invalid, expired or already used. Ask us for a new one.",
   failed: "Google sign-in failed. Try again.",
 };
 
@@ -86,8 +86,7 @@ export function SignIn() {
         </>
       ) : (
         <p className={prose}>
-          Sign-in is not available on this server yet. Ask its admin for an
-          invite.
+          Sign-in is not available on this server yet. Ask us for an invite.
         </p>
       )}
     </main>
@@ -219,8 +218,8 @@ export function InviteSignUp() {
       )}
       {invite.status === "invalid" && (
         <p className={prose}>
-          This invite link is invalid, expired or already used. Ask the admin
-          for a new one.
+          This invite link is invalid, expired or already used. Ask us for a new
+          one.
         </p>
       )}
       {invite.status === "ready" && (
@@ -237,16 +236,16 @@ export function InviteSignUp() {
   );
 }
 
-/** Password sign-in for the admin only, at the unlinked /admin/login. */
+/** Password sign-in for the admin only, at the unlinked /console. */
 export function AdminSignIn() {
   return (
     <main className="account-page auth-page">
       <a className="brand" href="/">
         diffx
       </a>
-      <h1 className="mb-2 text-xl font-semibold">Admin sign in</h1>
+      <h1 className="mb-2 text-xl font-semibold">Sign in</h1>
       <p className="mb-4 leading-copy text-secondary">
-        Manage this server and review your collected changes.
+        Sign in with your username and password.
       </p>
       <CredentialForm
         path="/api/v2/auth/login"
@@ -258,7 +257,10 @@ export function AdminSignIn() {
   );
 }
 
-/** One-time admin creation from the setup link the server logged at startup. */
+/**
+ * One-time admin creation from the setup link the server logged at startup.
+ * Once setup is complete the page is the sign-in page, like any unknown path.
+ */
 export function AdminSetup() {
   const [token] = useState(
     () => new URLSearchParams(window.location.hash.slice(1)).get("t") ?? "",
@@ -285,6 +287,7 @@ export function AdminSetup() {
       });
     return () => controller.abort();
   }, []);
+  if (setup === "complete") return <SignIn />;
   return (
     <main className="account-page auth-page">
       <a className="brand" href="/">
@@ -292,28 +295,22 @@ export function AdminSetup() {
       </a>
       <h1 className="mb-2 text-xl font-semibold">Set up diffx</h1>
       {error && <ErrorState message={error} />}
-      {setup === "complete" && (
-        <p className="mb-4 leading-copy text-secondary">
-          This server already has an admin.{" "}
-          <a href="/admin/login">Sign in as admin</a>.
-        </p>
-      )}
       {setup === "required" && !token && (
         <p className="mb-4 leading-copy text-secondary">
-          Open the setup link from the server log to create the admin account.
+          Open the setup link from the server log to create the first account.
         </p>
       )}
       {setup === "required" && token && (
         <>
           <p className="mb-4 leading-copy text-secondary">
-            Create the admin account. It signs in with this password and invites
-            everyone else.
+            Create the server's first account. It signs in with this password
+            and invites everyone else.
           </p>
           <CredentialForm
             path="/api/v2/setup"
             token={token}
-            submitLabel="Create admin"
-            failure="Unable to create the admin. Try again."
+            submitLabel="Create account"
+            failure="Unable to create the account. Try again."
           />
         </>
       )}
@@ -470,7 +467,7 @@ export function AccountSettings() {
           variant="outline"
           touch
           className="mb-4"
-          onClick={() => navigate("/admin")}
+          onClick={() => navigate("/manage")}
         >
           Manage accounts and invites
         </Button>

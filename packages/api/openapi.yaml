@@ -364,7 +364,7 @@ paths:
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
-  /api/v2/admin/users:
+  /api/v2/manage/users:
     get:
       security:
         - browserSession: []
@@ -390,7 +390,7 @@ paths:
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
-  /api/v2/admin/users/{userId}:
+  /api/v2/manage/users/{userId}:
     parameters:
       - $ref: "#/components/parameters/UserId"
     delete:
@@ -411,7 +411,7 @@ paths:
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
-  /api/v2/admin/users/{userId}/disable:
+  /api/v2/manage/users/{userId}/disable:
     parameters:
       - $ref: "#/components/parameters/UserId"
     post:
@@ -432,7 +432,7 @@ paths:
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
-  /api/v2/admin/users/{userId}/enable:
+  /api/v2/manage/users/{userId}/enable:
     parameters:
       - $ref: "#/components/parameters/UserId"
     post:
@@ -453,7 +453,7 @@ paths:
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
-  /api/v2/admin/invites:
+  /api/v2/manage/invites:
     get:
       security:
         - browserSession: []
@@ -521,7 +521,7 @@ paths:
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
-  /api/v2/admin/invites/{inviteId}:
+  /api/v2/manage/invites/{inviteId}:
     parameters:
       - name: inviteId
         in: path

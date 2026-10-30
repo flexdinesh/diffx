@@ -178,12 +178,12 @@ test("server push disabled tells the admin to set an HTTPS public URL", async ()
   assert.equal(screen.queryByRole("heading", { name: "This device" }), null);
 });
 
-test("server push disabled asks members to contact the admin", async () => {
+test("server push disabled asks members to contact us", async () => {
   pushBrowser();
   server({ enabled: false });
   mount();
   await section();
-  assert.ok(screen.getByText(/Ask its admin to turn them on/));
+  assert.ok(screen.getByText(/Ask us to turn them on/));
   assert.equal(screen.queryByText(/--public-url/), null);
 });
 

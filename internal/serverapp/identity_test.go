@@ -47,7 +47,7 @@ func TestLocalIdentityIsAutomaticWithoutAccountManagement(t *testing.T) {
 	}
 	for method, paths := range map[string][]string{
 		http.MethodPost: {"/api/v2/setup", "/api/v2/auth/login", "/api/v2/auth/logout", "/api/v2/account/tokens"},
-		http.MethodGet:  {"/api/v2/account/tokens", "/api/v2/setup", "/api/v2/admin/users"},
+		http.MethodGet:  {"/api/v2/account/tokens", "/api/v2/setup", "/api/v2/manage/users"},
 		http.MethodPut:  {"/api/v2/account/password"},
 	} {
 		for _, path := range paths {
