@@ -93,7 +93,7 @@ test("an admin syncs a checkout and reviews it on a Postgres server", async ({
     await page.getByLabel("Username", { exact: true }).fill(admin.username);
     await page.getByLabel("Password", { exact: true }).fill(admin.password);
     await page
-      .getByRole("button", { name: "Create admin", exact: true })
+      .getByRole("button", { name: "Create account", exact: true })
       .click();
     await expect(
       page.getByRole("heading", { name: "No review contexts yet" }),
@@ -161,7 +161,7 @@ test("an admin syncs a checkout and reviews it on a Postgres server", async ({
     const context = await browser.newContext({ baseURL });
     try {
       const fresh = await context.newPage();
-      await fresh.goto("/admin/login");
+      await fresh.goto("/console");
       await fresh.getByLabel("Username", { exact: true }).fill(admin.username);
       await fresh.getByLabel("Password", { exact: true }).fill(admin.password);
       await fresh.getByRole("button", { name: "Sign in", exact: true }).click();

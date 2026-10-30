@@ -456,13 +456,13 @@ test("Go distribution implements the API contract", async (t) => {
   const cookie = login.response.headers.get("set-cookie")?.split(";")[0];
   assert.ok(cookie);
   const accountHeaders = { Cookie: cookie, "X-CSRF-Token": csrf };
-  const users = await remote.GET("/api/v2/admin/users", {
+  const users = await remote.GET("/api/v2/manage/users", {
     headers: { Cookie: cookie },
   });
   assert.equal(users.response.status, 200);
   assert.equal(users.data?.users.length, 1);
   conforms("AdminUser", users.data?.users[0]);
-  const invites = await remote.GET("/api/v2/admin/invites", {
+  const invites = await remote.GET("/api/v2/manage/invites", {
     headers: { Cookie: cookie },
   });
   assert.equal(invites.response.status, 200);
@@ -489,7 +489,7 @@ test("Go distribution implements the API contract", async (t) => {
   conforms("PushSettings", pushSettings.data);
   assert.equal(pushSettings.data?.enabled, true);
   assert.equal(pushSettings.data?.devices.length, 1);
-  const inviteWithoutGoogle = await remote.POST("/api/v2/admin/invites", {
+  const inviteWithoutGoogle = await remote.POST("/api/v2/manage/invites", {
     headers: accountHeaders,
     body: { email: "member@example.com" },
   });

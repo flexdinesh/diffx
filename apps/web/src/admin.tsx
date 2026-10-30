@@ -43,14 +43,14 @@ function useAdminList<T>(load: (signal: AbortSignal) => Promise<T[]>) {
 }
 
 async function loadUsers(signal: AbortSignal) {
-  const { data, error } = await api.GET("/api/v2/admin/users", { signal });
+  const { data, error } = await api.GET("/api/v2/manage/users", { signal });
   if (!data)
     throw new Error(errorDetail(error, "Unable to load accounts. Try again."));
   return data.users;
 }
 
 async function loadInvites(signal: AbortSignal) {
-  const { data, error } = await api.GET("/api/v2/admin/invites", { signal });
+  const { data, error } = await api.GET("/api/v2/manage/invites", { signal });
   if (!data)
     throw new Error(errorDetail(error, "Unable to load invites. Try again."));
   return data.invites;
@@ -67,7 +67,7 @@ export function AdminPage() {
     return null;
   return (
     <AccountPage username={state.bootstrap.user.username}>
-      <h1 className="mb-2 text-xl font-semibold">Admin</h1>
+      <h1 className="mb-2 text-xl font-semibold">Manage</h1>
       <p className={prose}>Invite people and manage accounts on this server.</p>
       <AdminInvites google={state.bootstrap.googleEnabled} />
       <AdminAccounts />
@@ -120,7 +120,7 @@ function AdminInvites({ google }: { google: boolean }) {
     setCreated(null);
     setCopyStatus("");
     try {
-      const { data, error } = await api.POST("/api/v2/admin/invites", {
+      const { data, error } = await api.POST("/api/v2/manage/invites", {
         body: { email },
       });
       if (!data)
@@ -141,7 +141,7 @@ function AdminInvites({ google }: { google: boolean }) {
     setRevokeError("");
     try {
       const { response, error } = await api.DELETE(
-        "/api/v2/admin/invites/{inviteId}",
+        "/api/v2/manage/invites/{inviteId}",
         { params: { path: { inviteId: id } } },
       );
       if (!response.ok)
@@ -326,10 +326,10 @@ function AdminAccounts() {
       const params = { params: { path: { userId: user.id } } };
       const { response, error } =
         kind === "delete"
-          ? await api.DELETE("/api/v2/admin/users/{userId}", params)
+          ? await api.DELETE("/api/v2/manage/users/{userId}", params)
           : kind === "disable"
-            ? await api.POST("/api/v2/admin/users/{userId}/disable", params)
-            : await api.POST("/api/v2/admin/users/{userId}/enable", params);
+            ? await api.POST("/api/v2/manage/users/{userId}/disable", params)
+            : await api.POST("/api/v2/manage/users/{userId}/enable", params);
       if (!response.ok) throw new Error(errorDetail(error, failure));
       setConfirming(null);
       users.reload();
@@ -373,7 +373,7 @@ function AdminAccounts() {
               <div className="min-w-0 wrap-anywhere">
                 <strong className="flex items-center gap-2 font-medium">
                   {user.username}
-                  {user.admin && <Badge variant="status">Admin</Badge>}
+                  {user.admin && <Badge variant="status">You</Badge>}
                   {user.disabled && (
                     <Badge variant="status" tone="warning">
                       Disabled

@@ -156,7 +156,7 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		remote.pushRoutes(w, r, p)
 		return
 	}
-	if strings.HasPrefix(r.URL.Path, "/api/v2/admin/") {
+	if strings.HasPrefix(r.URL.Path, "/api/v2/manage/") {
 		if p.session == nil || !p.account.Admin {
 			problem(w, 403, "Admin browser session required")
 			return

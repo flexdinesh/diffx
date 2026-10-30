@@ -280,7 +280,7 @@ unset, the link uses the listen address. An https public URL, or loopback http
 for development, also enables Web Push notifications; the server generates its
 VAPID keys once and keeps them in the database.
 
-The admin signs in at `/admin/login`; every other account signs in with Google
+The admin signs in at `/console`; every other account signs in with Google
 and comes from an admin invite. Google sign-in needs
 `DIFFX_SERVER_GOOGLE_CLIENT_ID`, `DIFFX_SERVER_GOOGLE_CLIENT_SECRET` (environment
 only, never the config file) and `DIFFX_SERVER_PUBLIC_URL`; register
@@ -426,9 +426,9 @@ providers around identity; `SessionProvider` owns context selection, routes
 keys workspace owners by context. Lint rejects import cycles, Hook-rule
 violations and type assertions. The identity owner loads server mode and the current
 account before mounting review state; distributed login and `/settings` work with
-zero observations. Signed out, `/setup`, `/admin/login` and `/invite` render
-their pages and every other path renders Google sign-in; `/admin` renders only
-for the admin. Setup and invite pages read their secret from the fragment and
+zero observations. Signed out, `/setup` (until setup completes), `/console` and
+`/invite` render their pages and every other path renders Google sign-in;
+`/manage` renders only for the admin. Setup and invite pages read their secret from the fragment and
 drop it from history before any request. Account changes dispose workspace requests and event streams.
 Local mode bypasses account flows. Consumers subscribe through domain hooks for diff source,
 navigation, draft, review, reviewed files, and collapse state. Collapsed diff

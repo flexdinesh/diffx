@@ -109,7 +109,7 @@ export function AccountNotifications({
               <code>--public-url</code> set to its HTTPS address.
             </>
           ) : (
-            "Push notifications are off on this server. Ask its admin to turn them on."
+            "Push notifications are off on this server. Ask us to turn them on."
           )}
         </p>
       )}

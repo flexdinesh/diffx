@@ -101,16 +101,14 @@ test("members get no password form; invalid admin login preserves recovery", asy
   );
 });
 
-test("a completed setup points to admin sign in and drops the stale secret", async () => {
+test("a completed setup is the sign-in page and drops the stale secret", async () => {
   window.history.replaceState(null, "", "/setup#t=stale-secret");
   remote(() => json({ required: false }), false);
   mount(AdminSetup, false);
-  assert.equal(
-    (
-      await screen.findByRole("link", { name: "Sign in as admin" })
-    ).getAttribute("href"),
-    "/admin/login",
-  );
+  await screen.findByRole("heading", { name: "Sign in" });
+  assert.equal(screen.queryByRole("heading", { name: "Set up diffx" }), null);
+  assert.equal(document.querySelector('a[href="/console"]'), null);
+  assert.equal(screen.queryByText(/admin/i), null);
   assert.equal(window.location.hash, "");
   assert.equal(screen.queryByLabelText("Password", { exact: true }), null);
 });

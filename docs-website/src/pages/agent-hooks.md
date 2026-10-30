@@ -69,7 +69,7 @@ recreating the containers. Set
 `DIFFX_SERVER_PORT=7979` to publish another host port. The project is named
 `diffx`, so its database volume is shared by every checkout. On first start, find the
 setup link in `docker compose logs server` and open it within 24 hours to create
-the admin account; each restart before setup logs a new link. No default
+the server's first account; each restart before setup logs a new link. No default
 account/password is generated and there is no public signup. Compose explicitly enables insecure
 cookies for loopback HTTP development; set `DIFFX_SERVER_INSECURE_COOKIES=false`
 and deploy behind HTTPS for remote access.
@@ -104,9 +104,9 @@ DIFFX_SERVER_DATABASE_URL=postgres://diffx:diffx@127.0.0.1:5432/diffx?sslmode=di
   DIFFX_SERVER_INSECURE_COOKIES=true diffx-server
 ```
 
-Open the setup link the server logs to create the admin account. The admin signs
-in with that password at `/admin/login`; everyone else signs in with Google from
-an admin invite created at `/admin`. Invites need a Google OAuth web client: set
+Open the setup link the server logs to create the server's first account. It
+signs in with that password at `/console`; everyone else signs in with Google
+from an invite created at `/manage`. Invites need a Google OAuth web client: set
 `DIFFX_SERVER_GOOGLE_CLIENT_ID`, `DIFFX_SERVER_GOOGLE_CLIENT_SECRET` and
 `DIFFX_SERVER_PUBLIC_URL`, and register
 `<public URL>/api/v2/auth/google/callback` as its redirect URI. Then open the top-right account settings to create
@@ -117,9 +117,9 @@ sessions use secure cookies; API/MCP and collectors use bearer tokens. Multiple
 users share one Postgres database with private data per account. Local `diffx`
 automatically supplies its owner and has no login or account settings.
 
-The admin can disable or delete accounts from the admin page; disabling revokes
-the account's sessions and tokens, and deleting removes everything it owns. If
-the admin loses its password, run this with the server's
+The first account can disable or delete accounts from `/manage`; disabling
+revokes the account's sessions and tokens, and deleting removes everything it
+owns. If that account loses its password, run this with the server's
 `DIFFX_SERVER_DATABASE_URL`; servers may keep running:
 
 ```sh

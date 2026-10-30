@@ -193,7 +193,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/v2/admin/users": {
+  "/api/v2/manage/users": {
     parameters: {
       query?: never;
       header?: never;
@@ -210,7 +210,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/v2/admin/users/{userId}": {
+  "/api/v2/manage/users/{userId}": {
     parameters: {
       query?: never;
       header?: never;
@@ -229,7 +229,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/v2/admin/users/{userId}/disable": {
+  "/api/v2/manage/users/{userId}/disable": {
     parameters: {
       query?: never;
       header?: never;
@@ -248,7 +248,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/v2/admin/users/{userId}/enable": {
+  "/api/v2/manage/users/{userId}/enable": {
     parameters: {
       query?: never;
       header?: never;
@@ -267,7 +267,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/v2/admin/invites": {
+  "/api/v2/manage/invites": {
     parameters: {
       query?: never;
       header?: never;
@@ -285,7 +285,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/v2/admin/invites/{inviteId}": {
+  "/api/v2/manage/invites/{inviteId}": {
     parameters: {
       query?: never;
       header?: never;

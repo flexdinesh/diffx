@@ -494,9 +494,13 @@ secret for 24 hours, replacing the previous one, and logs it as
 `<public URL>/setup#t=…`. The fragment keeps the secret out of request logs.
 Setup consumes the secret and creates the admin in one transaction, so
 concurrent attempts yield one admin. Only the admin signs in with a password, at
-`/admin/login`; every other account signs in with Google, and a refused password
+the unlinked `/console`; every other account signs in with Google, and a refused password
 login is indistinguishable from a wrong password. Offline `user reset-password`
-recovers only the admin.
+recovers only the admin. Once setup completes, `/setup` renders Google sign-in
+like any unknown path. Public routes and UI copy never name the admin role
+(management is `/manage` and `/api/v2/manage/*`; members see "us"), so the
+password page is not advertised; its protection is the password and the sign-in
+limits, not the path.
 
 Accounts other than the admin exist only through invites. The admin invites an
 email; the link carries a hashed one-time secret in its fragment, is shown once,
@@ -511,7 +515,7 @@ once. A Google account without an account or invite cannot sign up. Without Goog
 configuration the server runs admin-only: Google routes are absent and invites
 cannot be created.
 
-The admin manages accounts and invites at `/admin`, linked from its Settings.
+The admin manages accounts and invites at `/manage`, linked from its Settings.
 It lists accounts and disables, enables or deletes any account except itself. Disabling revokes the account's browser sessions and API tokens in the
 same transaction and refuses new ones; enabling restores sign-in, not those
 credentials. Deleting removes the account and everything it owns, including

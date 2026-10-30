@@ -73,7 +73,9 @@ test("the setup link creates the admin once and keeps its secret out of the URL"
   expect(new URL(page.url()).hash).toBe("");
   await page.getByLabel("Username", { exact: true }).fill("alice");
   await page.getByLabel("Password", { exact: true }).fill("a-secure-password");
-  await page.getByRole("button", { name: "Create admin", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "No review contexts yet" }),
   ).toBeVisible();
@@ -400,7 +402,7 @@ test("Google sign-in starts without CSRF and reports the callback outcome once",
   );
   await page.goto("/?signin=no-account");
   await expect(page.getByRole("alert")).toHaveText(
-    "No diffx account uses that Google account. Ask the admin for an invite.",
+    "No diffx account uses that Google account. Ask us for an invite.",
   );
   expect(new URL(page.url()).search).toBe("");
   await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
@@ -440,7 +442,7 @@ test("an invite link shows its email, hides its secret and starts Google sign-in
   expect(started).toEqual({ token: "invite-secret" });
 });
 
-test("members see their Google email and cannot open the admin page", async ({
+test("members see their Google email and cannot open the manage page", async ({
   page,
 }) => {
   await remote(page, true, false, { email: "alice@example.com" });
@@ -451,7 +453,7 @@ test("members see their Google email and cannot open the admin page", async ({
   await expect(
     page.getByRole("button", { name: "Manage accounts and invites" }),
   ).toHaveCount(0);
-  await page.goto("/admin");
+  await page.goto("/manage");
   await expect(
     page.getByRole("heading", { name: "No review contexts yet" }),
   ).toBeVisible();
@@ -480,7 +482,7 @@ test("the admin invites by email, sees the link once and revokes it", async ({
       usedBy: "carol",
     },
   ];
-  await page.route("**/api/v2/admin/users", (route) =>
+  await page.route("**/api/v2/manage/users", (route) =>
     route.fulfill({
       json: {
         users: [
@@ -496,7 +498,7 @@ test("the admin invites by email, sees the link once and revokes it", async ({
       },
     }),
   );
-  await page.route("**/api/v2/admin/invites", (route) => {
+  await page.route("**/api/v2/manage/invites", (route) => {
     if (route.request().method() === "POST") {
       expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
       expect(route.request().postDataJSON()).toEqual({
@@ -513,7 +515,7 @@ test("the admin invites by email, sees the link once and revokes it", async ({
     }
     return route.fulfill({ json: { invites } });
   });
-  await page.route("**/api/v2/admin/invites/invite-a", (route) => {
+  await page.route("**/api/v2/manage/invites/invite-a", (route) => {
     expect(route.request().method()).toBe("DELETE");
     expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
     invites = invites.map((invite) =>
@@ -525,8 +527,8 @@ test("the admin invites by email, sees the link once and revokes it", async ({
   await page
     .getByRole("button", { name: "Manage accounts and invites" })
     .click();
-  await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
-  expect(new URL(page.url()).pathname).toBe("/admin");
+  await expect(page.getByRole("heading", { name: "Manage" })).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe("/manage");
   await expect(page.getByText("Joined as carol")).toBeVisible();
   await expect(page.getByRole("button", { name: "Delete alice" })).toHaveCount(
     0,
@@ -569,10 +571,10 @@ test("the admin disables, enables and deletes accounts after confirmation", asyn
     createdAt: Date.now(),
   };
   let deleted = false;
-  await page.route("**/api/v2/admin/invites", (route) =>
+  await page.route("**/api/v2/manage/invites", (route) =>
     route.fulfill({ json: { invites: [] } }),
   );
-  await page.route("**/api/v2/admin/users", (route) =>
+  await page.route("**/api/v2/manage/users", (route) =>
     route.fulfill({
       json: {
         users: [
@@ -590,7 +592,7 @@ test("the admin disables, enables and deletes accounts after confirmation", asyn
     }),
   );
   const calls: string[] = [];
-  await page.route("**/api/v2/admin/users/account-b**", (route) => {
+  await page.route("**/api/v2/manage/users/account-b**", (route) => {
     expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
     const path = new URL(route.request().url()).pathname;
     calls.push(`${route.request().method()} ${path}`);
@@ -599,7 +601,7 @@ test("the admin disables, enables and deletes accounts after confirmation", asyn
     else deleted = true;
     return route.fulfill({ status: 204 });
   });
-  await page.goto("/admin");
+  await page.goto("/manage");
   await expect(
     page.getByText("Invites need Google sign-in.", { exact: false }),
   ).toBeVisible();
@@ -623,9 +625,9 @@ test("the admin disables, enables and deletes accounts after confirmation", asyn
     0,
   );
   expect(calls).toEqual([
-    "POST /api/v2/admin/users/account-b/disable",
-    "POST /api/v2/admin/users/account-b/enable",
-    "DELETE /api/v2/admin/users/account-b",
+    "POST /api/v2/manage/users/account-b/disable",
+    "POST /api/v2/manage/users/account-b/enable",
+    "DELETE /api/v2/manage/users/account-b",
   ]);
 });
 

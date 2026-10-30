@@ -26,12 +26,12 @@ func TestAdminRoutesRequireAdminBrowserSession(t *testing.T) {
 		cookie       *http.Cookie
 		csrf, bearer string
 	}{{nil, "", ""}, {memberCookie, memberCSRF, ""}, {nil, "", "Bearer " + adminToken.Secret}} {
-		w := identityRequest(handler, "GET", "/api/v2/admin/users", "", request.cookie, request.csrf, request.bearer)
+		w := identityRequest(handler, "GET", "/api/v2/manage/users", "", request.cookie, request.csrf, request.bearer)
 		if w.Code != 401 && w.Code != 403 {
 			t.Fatalf("non-admin listed users: %d", w.Code)
 		}
 	}
-	w := identityRequest(handler, "GET", "/api/v2/admin/users", "", cookie, "", "")
+	w := identityRequest(handler, "GET", "/api/v2/manage/users", "", cookie, "", "")
 	var listed struct {
 		Users []adminUserJSON `json:"users"`
 	}
@@ -47,12 +47,12 @@ func TestAdminRoutesRequireAdminBrowserSession(t *testing.T) {
 			t.Fatalf("user projection: %+v", user)
 		}
 	}
-	if w := identityRequest(handler, "POST", "/api/v2/admin/users/"+memberID+"/disable", "", cookie, "", ""); w.Code != 403 {
+	if w := identityRequest(handler, "POST", "/api/v2/manage/users/"+memberID+"/disable", "", cookie, "", ""); w.Code != 403 {
 		t.Fatalf("disable without csrf: %d", w.Code)
 	}
-	for _, path := range []string{"/api/v2/admin/users/" + admin.Account.ID + "/disable", "/api/v2/admin/users/" + admin.Account.ID} {
+	for _, path := range []string{"/api/v2/manage/users/" + admin.Account.ID + "/disable", "/api/v2/manage/users/" + admin.Account.ID} {
 		method := "POST"
-		if path == "/api/v2/admin/users/"+admin.Account.ID {
+		if path == "/api/v2/manage/users/"+admin.Account.ID {
 			method = "DELETE"
 		}
 		if w := identityRequest(handler, method, path, "", cookie, csrf, ""); w.Code != 403 {
@@ -62,7 +62,9 @@ func TestAdminRoutesRequireAdminBrowserSession(t *testing.T) {
 	for _, test := range []struct {
 		method, path string
 		want         int
-	}{{"POST", "/api/v2/admin/users/missing/disable", 404}, {"GET", "/api/v2/admin/users/" + memberID + "/disable", 405}, {"POST", "/api/v2/admin/users/" + memberID + "/promote", 404}, {"POST", "/api/v2/admin/settings", 404}} {
+	}{{"POST", "/api/v2/manage/users/missing/disable", 404}, {"GET", "/api/v2/manage/users/" + memberID + "/disable", 405}, {"POST", "/api/v2/manage/users/" + memberID + "/promote", 404}, {"POST", "/api/v2/manage/settings", 404},
+		// Public routes never name the admin.
+		{"GET", "/api/v2/admin/users", 404}, {"GET", "/api/v2/admin/invites", 404}} {
 		if w := identityRequest(handler, test.method, test.path, "", cookie, csrf, ""); w.Code != test.want {
 			t.Fatalf("%s %s: %d want %d", test.method, test.path, w.Code, test.want)
 		}
@@ -83,7 +85,7 @@ func TestAdminRoutesRequireAdminBrowserSession(t *testing.T) {
 	if stream.StatusCode != 200 {
 		t.Fatalf("member stream: %d", stream.StatusCode)
 	}
-	if w := identityRequest(handler, "POST", "/api/v2/admin/users/"+memberID+"/disable", "", cookie, csrf, ""); w.Code != 204 {
+	if w := identityRequest(handler, "POST", "/api/v2/manage/users/"+memberID+"/disable", "", cookie, csrf, ""); w.Code != 204 {
 		t.Fatalf("disable: %d %s", w.Code, w.Body.String())
 	}
 	closed := make(chan error, 1)
@@ -96,13 +98,13 @@ func TestAdminRoutesRequireAdminBrowserSession(t *testing.T) {
 	if w := identityRequest(handler, "GET", "/api/v2/contexts", "", memberCookie, "", ""); w.Code != 401 {
 		t.Fatalf("disabled member session: %d", w.Code)
 	}
-	if w := identityRequest(handler, "POST", "/api/v2/admin/users/"+memberID+"/enable", "", cookie, csrf, ""); w.Code != 204 {
+	if w := identityRequest(handler, "POST", "/api/v2/manage/users/"+memberID+"/enable", "", cookie, csrf, ""); w.Code != 204 {
 		t.Fatalf("enable: %d", w.Code)
 	}
-	if w := identityRequest(handler, "DELETE", "/api/v2/admin/users/"+memberID, "", cookie, csrf, ""); w.Code != 204 {
+	if w := identityRequest(handler, "DELETE", "/api/v2/manage/users/"+memberID, "", cookie, csrf, ""); w.Code != 204 {
 		t.Fatalf("delete: %d", w.Code)
 	}
-	w = identityRequest(handler, "GET", "/api/v2/admin/users", "", cookie, "", "")
+	w = identityRequest(handler, "GET", "/api/v2/manage/users", "", cookie, "", "")
 	if err := json.Unmarshal(w.Body.Bytes(), &listed); err != nil || len(listed.Users) != 1 {
 		t.Fatalf("deleted member listed: %s", w.Body.String())
 	}

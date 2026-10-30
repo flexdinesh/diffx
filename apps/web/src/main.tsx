@@ -56,15 +56,15 @@ function ApplicationRoutes() {
     if (remote && userId) void syncPushDevice().catch(() => {});
   }, [remote, userId]);
   // Local mode has no account pages; signed-in users have no sign-in pages;
-  // only the admin has the admin page.
+  // only the admin has the manage page.
   const misplaced =
     ready &&
-    ((!remote && (path === "/settings" || path === "/admin")) ||
+    ((!remote && (path === "/settings" || path === "/manage")) ||
       (signedIn &&
         (path === "/setup" ||
-          path === "/admin/login" ||
+          path === "/console" ||
           path === "/invite" ||
-          (path === "/admin" && !admin))));
+          (path === "/manage" && !admin))));
   useEffect(() => {
     if (!misplaced) return;
     window.history.replaceState(null, "", "/");
@@ -73,13 +73,13 @@ function ApplicationRoutes() {
   if (state.status !== "ready") return <IdentityStatus />;
   if (state.bootstrap.mode === "remote" && !state.bootstrap.user) {
     if (path === "/setup") return <AdminSetup />;
-    if (path === "/admin/login") return <AdminSignIn />;
+    if (path === "/console") return <AdminSignIn />;
     if (path === "/invite") return <InviteSignUp />;
     return <SignIn />;
   }
   if (path === "/settings" && state.bootstrap.mode === "remote")
     return <AccountSettings />;
-  if (path === "/admin" && admin) return <AdminPage />;
+  if (path === "/manage" && admin) return <AdminPage />;
   return (
     <SessionProvider key={state.bootstrap.user?.id ?? "local"}>
       <SessionShell>
