@@ -5,7 +5,7 @@ import {
   execFileSync,
   spawn,
 } from "node:child_process";
-import { createECDH, createHash, randomBytes } from "node:crypto";
+import { createECDH, randomBytes } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -53,7 +53,7 @@ async function within<T>(promise: Promise<T>, message: string): Promise<T> {
   }
 }
 
-type Replica = { url: string; log: () => string; process: ChildProcess };
+type Replica = { url: string; process: ChildProcess };
 
 /** Resolves once the process exits; SIGTERM is diffx-server's graceful stop. */
 function stop(child: ChildProcess) {
@@ -74,7 +74,7 @@ async function startReplica(
   replicas: Replica[],
 ): Promise<Replica> {
   const child = spawn(remoteBinary, ["--listen", `127.0.0.1:${port}`], {
-    stdio: ["ignore", "ignore", "pipe"],
+    stdio: "ignore",
     env: {
       ...process.env,
       DIFFX_SERVER_DATABASE_URL: databaseUrl,
@@ -83,14 +83,7 @@ async function startReplica(
       DIFFX_SERVER_INSECURE_COOKIES: "true",
     },
   });
-  let log = "";
-  child.stderr?.setEncoding("utf8");
-  child.stderr?.on("data", (chunk: string) => (log += chunk));
-  const replica = {
-    url: `http://127.0.0.1:${port}`,
-    log: () => log,
-    process: child,
-  };
+  const replica = { url: `http://127.0.0.1:${port}`, process: child };
   replicas.push(replica);
   await waitForServer(replica.url);
   return replica;
@@ -255,38 +248,21 @@ test("Replicas sharing one database act as one server", async (t) => {
     }
   });
 
-  // Each replica issues a setup secret on start; the latest replaces earlier ones.
-  const setupToken = await until(
-    async () => /\/setup#t=(\S+)/.exec(b.log())?.[1],
-    `setup link not logged: ${b.log()}`,
-  );
-  const adminPassword = "replica-password-000001";
-  const setup = await clientA.POST("/api/v2/setup", {
-    body: {
-      token: setupToken,
-      username: "replica-admin",
-      password: adminPassword,
-    },
-  });
-  assert.equal(setup.response.status, 200);
-  conforms("Bootstrap", setup.data);
-  assert.ok(setup.data?.mode === "remote" && setup.data.user?.admin);
-  const adminId = setup.data.user.id;
-  assert.deepEqual((await clientB.GET("/api/v2/setup")).data, {
-    required: false,
-  });
-
-  /** Signs the admin in through one replica; returns its browser session headers. */
-  async function signIn(client: typeof clientA) {
-    const login = await client.POST("/api/v2/auth/login", {
-      body: { username: "replica-admin", password: adminPassword },
+  /** Signs a user up through one replica; returns its ID and browser session headers. */
+  async function signUp(client: typeof clientA, username: string) {
+    const signup = await client.POST("/api/v2/auth/signup", {
+      body: { username, password: "replica-password-000001" },
     });
-    assert.equal(login.response.status, 200);
-    conforms("Bootstrap", login.data);
-    assert.ok(login.data?.mode === "remote" && login.data.csrfToken);
-    const cookie = login.response.headers.get("set-cookie")?.split(";")[0];
+    assert.equal(signup.response.status, 200);
+    conforms("Bootstrap", signup.data);
+    assert.ok(signup.data?.mode === "remote" && signup.data.user);
+    assert.ok(signup.data.csrfToken);
+    const cookie = signup.response.headers.get("set-cookie")?.split(";")[0];
     assert.ok(cookie);
-    return { Cookie: cookie, "X-CSRF-Token": login.data.csrfToken };
+    return {
+      id: signup.data.user.id,
+      headers: { Cookie: cookie, "X-CSRF-Token": signup.data.csrfToken },
+    };
   }
   async function apiToken(
     client: typeof clientA,
@@ -312,45 +288,12 @@ test("Replicas sharing one database act as one server", async (t) => {
     return client;
   }
 
-  // A session started on B administers through A.
-  const admin = await signIn(clientB);
-  // Members exist only through Google invites and sign in only with Google,
-  // which a test cannot complete. Seed what that sign-in commits: an account
-  // without a password and one browser session (stored as the SHA-256 of its
-  // 32-byte secret). The member then creates its API token over HTTP.
-  const memberId = `replica-member-${randomBytes(8).toString("hex")}`;
-  const memberSecret = randomBytes(32).toString("base64url");
-  const memberCSRF = randomBytes(32).toString("base64url");
-  await database.query(
-    `WITH account AS (
-       INSERT INTO diffx.users(id, name, created_at) VALUES ($1, 'replica-member', now())
-       RETURNING id
-     ), credential AS (
-       INSERT INTO diffx.remote_accounts(user_id, username, password_hash)
-       SELECT id, 'replica-member', '' FROM account RETURNING user_id
-     )
-     INSERT INTO diffx.browser_sessions(secret_hash, user_id, csrf_token, expires_at)
-     SELECT $2, user_id, $3, now() + interval '1 day' FROM credential`,
-    [
-      memberId,
-      createHash("sha256").update(memberSecret).digest("hex"),
-      memberCSRF,
-    ],
-  );
-  const member = {
-    Cookie: `diffx_session=${memberSecret}`,
-    "X-CSRF-Token": memberCSRF,
-  };
-  const memberToken = await apiToken(clientA, member);
+  // Sessions started on one replica authenticate on the other.
+  const owner = await signUp(clientA, "replica-owner");
+  const member = await signUp(clientB, "replica-member");
+  const memberToken = await apiToken(clientA, member.headers);
   const memberA = bearer(a.url, memberToken);
   const memberB = bearer(b.url, memberToken);
-  const users = await clientA.GET("/api/v2/manage/users", { headers: admin });
-  assert.equal(users.response.status, 200);
-  for (const user of users.data?.users ?? []) conforms("AdminUser", user);
-  assert.equal(users.data?.users.length, 2);
-  const seeded = users.data?.users.find((user) => user.id === memberId);
-  assert.equal(seeded?.admin, false);
-  assert.equal(seeded?.disabled, false);
 
   const eventsB = await openEvents(b.url, memberToken);
 
@@ -443,38 +386,6 @@ test("Replicas sharing one database act as one server", async (t) => {
     );
   });
 
-  await t.test("disabling the member through A cuts it off on B", async () => {
-    const disabled = await clientA.POST(
-      "/api/v2/manage/users/{userId}/disable",
-      {
-        headers: admin,
-        params: { path: { userId: memberId } },
-      },
-    );
-    assert.equal(disabled.response.status, 204);
-    await within(
-      (async () => {
-        while (await eventsB.next());
-      })(),
-      "B kept the disabled member's event stream open",
-    );
-    assert.equal((await memberB.GET("/api/v2/health")).response.status, 401);
-    const events = await fetch(`${b.url}/api/v2/events`, {
-      headers: { Authorization: `Bearer ${memberToken}` },
-    });
-    assert.equal(events.status, 401);
-    const session = await clientB.GET("/api/v2/bootstrap", {
-      headers: { Cookie: member.Cookie },
-    });
-    assert.ok(session.data?.mode === "remote");
-    assert.equal(session.data.user, null);
-    const users = await clientB.GET("/api/v2/manage/users", { headers: admin });
-    assert.equal(
-      users.data?.users.find((user) => user.id === memberId)?.disabled,
-      true,
-    );
-  });
-
   await t.test(
     "replicas deliver each push notification once per device",
     async () => {
@@ -496,7 +407,7 @@ test("Replicas sharing one database act as one server", async (t) => {
       const address = pushService.address();
       assert.ok(address && typeof address !== "string");
       const pushOrigin = `http://127.0.0.1:${address.port}`;
-      // Each replica registers one of the admin's devices.
+      // Each replica registers one of the owner's devices.
       const devices = [
         { client: clientA, path: "/send/first" },
         { client: clientB, path: "/send/second" },
@@ -504,7 +415,7 @@ test("Replicas sharing one database act as one server", async (t) => {
       const endpoints = devices.map((device) => device.path);
       for (const [index, { client, path }] of devices.entries()) {
         const registered = await client.PUT("/api/v2/push/subscriptions", {
-          headers: admin,
+          headers: owner.headers,
           body: {
             endpoint: pushOrigin + path,
             keys: {
@@ -519,8 +430,8 @@ test("Replicas sharing one database act as one server", async (t) => {
         assert.equal(registered.response.status, 200);
         conforms("PushDevice", registered.data);
       }
-      const adminToken = await apiToken(clientA, admin);
-      const admitted = await bearer(a.url, adminToken).POST(
+      const ownerToken = await apiToken(clientA, owner.headers);
+      const admitted = await bearer(a.url, ownerToken).POST(
         "/api/v2/ingestion-jobs",
         {
           body: capture("replica-push", "replica-push"),
@@ -530,7 +441,7 @@ test("Replicas sharing one database act as one server", async (t) => {
       assert.ok(admitted.data);
       const jobId = admitted.data.id;
       await until(async () => {
-        const polled = await bearer(b.url, adminToken).GET(
+        const polled = await bearer(b.url, ownerToken).GET(
           "/api/v2/ingestion-jobs/{jobId}",
           {
             params: { path: { jobId } },
@@ -540,14 +451,14 @@ test("Replicas sharing one database act as one server", async (t) => {
       }, "push job did not succeed");
       // Only the GitHub integration records notification intent, and it needs
       // GitHub. Record it as that admission does: pending rows linked to the
-      // admin's succeeded job, which both replicas' workers then compete for.
+      // owner's succeeded job, which both replicas' workers then compete for.
       const notifications = 6;
       await database.query(
         `INSERT INTO diffx.push_notifications(id, owner_id, job_id, kind, payload, state, available_at, created_at)
        SELECT 'replica-push-' || n, $1, $2, 'pull_request', convert_to($3, 'UTF8'), 'pending', now(), now()
        FROM generate_series(1, $4::integer) n`,
         [
-          adminId,
+          owner.id,
           jobId,
           JSON.stringify({
             title: "replica/repo #1",

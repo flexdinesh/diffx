@@ -220,8 +220,8 @@ startup. In-memory state does not survive restart. Local `local.retentionDays` d
 submissions apply the current setting, while exact retries preserve expiry.
 
 For isolated production-user tests, start `diffx-server` with a temporary
-persistent database and open the setup link it logs to create the admin. Sign in
-and create API tokens through Settings, which works before any upload. New
+persistent database and sign up in the app (signup and password sign-in default
+on). Create API tokens through Settings, which works before any upload. New
 accounts activate without a restart. Operator commands require stopping the
 database owner.
 Credentials scope REST, MCP, jobs and events. Local mode automatically supplies
@@ -233,8 +233,7 @@ against the running personal service.
 Server mode stores everything in PostgreSQL 18. `mise run dev:remote` starts the
 development Postgres from `compose.dev.yml` (loopback port 54329, override with
 `DIFFX_DEV_POSTGRES_PORT`), runs `diffx-server` against it and serves the app
-through Vite HMR at `http://localhost:5173`, which also receives the setup
-link. To run a built binary directly:
+through Vite HMR at `http://localhost:5173`. To run a built binary directly:
 
 ```sh
 mise run db:up
@@ -263,6 +262,8 @@ building the image.
 | `DIFFX_SERVER_PUBLIC_URL`       | Unset          | Unset             | `--public-url URL`      |
 | `DIFFX_SERVER_INSECURE_COOKIES` | `false`        | Compose: `true`   | `--insecure-cookies`    |
 | `DIFFX_SERVER_GOOGLE_CLIENT_ID` | Unset          | Unset             | None                    |
+| `DIFFX_SERVER_SIGNUP`           | `true`         | `true`            | None (env only)         |
+| `DIFFX_SERVER_PASSWORD_SIGNIN`  | `true`         | `true`            | None (env only)         |
 | `DIFFX_SERVER_AUTH_RATE_LIMIT`  | `false`        | `false`           | None (env only)         |
 | `DIFFX_SERVER_CLIENT_IP_HEADER` | Unset          | Unset             | None (env only)         |
 
@@ -271,39 +272,38 @@ run side by side. The `DIFFX_SERVER_` prefix keeps deployment variables from
 configuring the CLI, and the CLI's `DIFFX_LOCAL_*`/`DIFFX_REMOTE_*` from
 configuring the server.
 
-While no admin exists, each start logs a one-time setup link,
-`<public URL>/setup#t=…`, valid for 24 hours; a restart replaces it. The link
-creates the single admin with a username and password. No default credentials
-are generated and there is no public signup. `DIFFX_SERVER_PUBLIC_URL` is the
-browser-facing https origin used in that link (http only with insecure cookies);
-unset, the link uses the listen address. An https public URL, or loopback http
-for development, also enables Web Push notifications; the server generates its
-VAPID keys once and keeps them in the database.
+`DIFFX_SERVER_PUBLIC_URL` is the browser-facing https origin (http only with
+insecure cookies) used in Google redirects and invite and reset links. An https
+public URL, or loopback http for development, also enables Web Push
+notifications; the server generates its VAPID keys once and keeps them in the
+database.
 
-The admin signs in at `/console`; every other account signs in with Google
-and comes from an admin invite. Google sign-in needs
-`DIFFX_SERVER_GOOGLE_CLIENT_ID`, `DIFFX_SERVER_GOOGLE_CLIENT_SECRET` (environment
-only, never the config file) and `DIFFX_SERVER_PUBLIC_URL`; register
+`DIFFX_SERVER_SIGNUP` lets anyone create an account from the app without an
+invite; `DIFFX_SERVER_PASSWORD_SIGNIN` allows username and password accounts.
+Both default to true for development, tests and self-hosting; production sets
+both false so accounts come only from invites and sign in with Google. With
+password sign-in off, password accounts cannot use the app at all, tokens
+included. The server refuses to start with neither Google nor password. Admins
+use the app like any user; first-admin setup, invites and account
+administration live in the console (`diffx-console`).
+
+Google sign-in needs `DIFFX_SERVER_GOOGLE_CLIENT_ID`,
+`DIFFX_SERVER_GOOGLE_CLIENT_SECRET` (environment only, never the config file)
+and `DIFFX_SERVER_PUBLIC_URL`; register
 `<public URL>/api/v2/auth/google/callback` as the OAuth client's redirect URI.
-Without them the server runs admin-only and cannot create invites. Create a named token in Settings. Use the
+Create a named token in Settings. Use the
 `collector` preset for producers, or `api` for review APIs/MCP. Token secrets are
 shown once; expiry defaults to 90 days (selectable 1–365). Tokens cannot manage
 accounts. Browser sessions are seven-day opaque cookies with CSRF protection on
 unsafe requests. Secure cookies are the binary/image default; explicitly enable
 insecure cookies only for HTTP development. Production requires HTTPS.
 
-If the admin loses its password, reset it with the same
-`DIFFX_SERVER_DATABASE_URL`; the command reads the password from stdin and
-refuses non-admin accounts. It is one transaction, so servers may keep running:
-
-```sh
-diffx-server user reset-password --username alice --password-stdin < /path/to/private-password
-```
-
-Password reset revokes browser sessions.
+Password accounts change their password in Settings. A forgotten password needs
+a reset link from the console; completing it revokes browser sessions, not API
+tokens.
 
 Authentication rate limiting is off by default. `DIFFX_SERVER_AUTH_RATE_LIMIT=true`
-allows each client IP 20 sign-in, setup and invite attempts per minute, counted
+allows each client IP 20 sign-in, signup, invite and reset attempts per minute, counted
 in Postgres so every replica shares the limit. The listener's peer is the
 ingress, so it also requires `DIFFX_SERVER_CLIENT_IP_HEADER`, the header your
 trusted ingress overwrites with the single client IP (for example `X-Real-IP`);

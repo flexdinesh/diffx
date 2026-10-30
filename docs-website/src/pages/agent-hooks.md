@@ -67,10 +67,9 @@ Compose publishes HTTP on `127.0.0.1:7980`, outside the local 7981–7990 range,
 and runs a bundled PostgreSQL 18 whose named volume survives stopping or
 recreating the containers. Set
 `DIFFX_SERVER_PORT=7979` to publish another host port. The project is named
-`diffx`, so its database volume is shared by every checkout. On first start, find the
-setup link in `docker compose logs server` and open it within 24 hours to create
-the server's first account; each restart before setup logs a new link. No default
-account/password is generated and there is no public signup. Compose explicitly enables insecure
+`diffx`, so its database volume is shared by every checkout. Open the app and
+create an account; signup and password sign-in are on by default. No default
+account/password is generated. Compose explicitly enables insecure
 cookies for loopback HTTP development; set `DIFFX_SERVER_INSECURE_COOKIES=false`
 and deploy behind HTTPS for remote access.
 See [server development](https://github.com/flexdinesh/diffx/blob/main/docs/development.md#server-development) for configuration
@@ -89,7 +88,8 @@ The env file sets `DIFFX_SERVER_DATABASE_URL`, for example
 reads it only from the environment and never logs it. Its role needs `CREATE` on
 the database, where the server owns the `diffx` schema and migrates it at
 startup. Plain HTTP development requires `DIFFX_SERVER_INSECURE_COOKIES=true`;
-behind HTTPS, set `DIFFX_SERVER_PUBLIC_URL` so the logged setup link uses it. The
+behind HTTPS, set `DIFFX_SERVER_PUBLIC_URL` so Google redirects and invite and
+reset links use it. The
 database contains observations, jobs, accounts and credential hashes; the
 container keeps no state. The image runs without Git or a repository mount, as
 an unprivileged user. SIGTERM drains HTTP and stops the worker; durable
@@ -104,12 +104,14 @@ DIFFX_SERVER_DATABASE_URL=postgres://diffx:diffx@127.0.0.1:5432/diffx?sslmode=di
   DIFFX_SERVER_INSECURE_COOKIES=true diffx-server
 ```
 
-Open the setup link the server logs to create the server's first account. It
-signs in with that password at `/console`; everyone else signs in with Google
-from an invite created at `/manage`. Invites need a Google OAuth web client: set
+Open the app and create an account. `DIFFX_SERVER_SIGNUP=false` turns off open
+signup, so accounts come only from invites, and
+`DIFFX_SERVER_PASSWORD_SIGNIN=false` turns off username and password accounts;
+both default to true. Google sign-in needs a Google OAuth web client: set
 `DIFFX_SERVER_GOOGLE_CLIENT_ID`, `DIFFX_SERVER_GOOGLE_CLIENT_SECRET` and
 `DIFFX_SERVER_PUBLIC_URL`, and register
-`<public URL>/api/v2/auth/google/callback` as its redirect URI. Then open the top-right account settings to create
+`<public URL>/api/v2/auth/google/callback` as its redirect URI. The server
+refuses to start with neither Google nor password. Then open the top-right account settings to create
 a named API token. `collector` tokens support sync and plugins; `api` tokens also
 support the user's review REST/MCP APIs. Both expire after 90 days by default
 (selectable 1–365 days), can be revoked, and show their secret only once. Browser
@@ -117,14 +119,9 @@ sessions use secure cookies; API/MCP and collectors use bearer tokens. Multiple
 users share one Postgres database with private data per account. Local `diffx`
 automatically supplies its owner and has no login or account settings.
 
-The first account can disable or delete accounts from `/manage`; disabling
-revokes the account's sessions and tokens, and deleting removes everything it
-owns. If that account loses its password, run this with the server's
-`DIFFX_SERVER_DATABASE_URL`; servers may keep running:
-
-```sh
-diffx-server user reset-password --username alice --password-stdin < /path/to/private-password
-```
+Invites, password reset links and account administration live in the admin
+console, a separate `diffx-console` container on its own origin over the same
+database. Admins use the app like any other account.
 
 Password reset revokes browser sessions; API token
 ownership is independent of passwords. Deploy behind TLS with secure cookies.

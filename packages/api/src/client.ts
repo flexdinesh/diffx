@@ -68,12 +68,22 @@ export function readBootstrap(value: unknown): ApiBootstrap {
       collect: value.collect,
       input: value.input,
     };
-  if (value.mode !== "remote" || typeof value.googleEnabled !== "boolean")
+  if (
+    value.mode !== "remote" ||
+    typeof value.googleEnabled !== "boolean" ||
+    typeof value.signupEnabled !== "boolean" ||
+    typeof value.passwordEnabled !== "boolean"
+  )
     throw new Error("Invalid server identity response");
+  const methods = {
+    googleEnabled: value.googleEnabled,
+    signupEnabled: value.signupEnabled,
+    passwordEnabled: value.passwordEnabled,
+  };
   if (value.user === null && value.csrfToken === null)
     return {
       mode: "remote",
-      googleEnabled: value.googleEnabled,
+      ...methods,
       user: null,
       csrfToken: null,
     };
@@ -84,18 +94,18 @@ export function readBootstrap(value: unknown): ApiBootstrap {
     typeof value.user.username === "string" &&
     value.user.username.length > 0 &&
     (typeof value.user.email === "string" || value.user.email === null) &&
-    typeof value.user.admin === "boolean" &&
+    (value.user.method === "google" || value.user.method === "password") &&
     typeof value.csrfToken === "string" &&
     value.csrfToken.length > 0
   )
     return {
       mode: "remote",
-      googleEnabled: value.googleEnabled,
+      ...methods,
       user: {
         id: value.user.id,
         username: value.user.username,
         email: value.user.email,
-        admin: value.user.admin,
+        method: value.user.method,
       },
       csrfToken: value.csrfToken,
     };
