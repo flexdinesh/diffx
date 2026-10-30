@@ -427,10 +427,11 @@ providers around identity; `SessionProvider` owns context selection, routes
 keys workspace owners by context. Lint rejects import cycles, Hook-rule
 violations and type assertions. The identity owner loads server mode and the current
 account before mounting review state; distributed login and `/settings` work with
-zero observations. Signed out, `/setup` (until setup completes), `/console` and
-`/invite` render their pages and every other path renders Google sign-in;
-`/manage` renders only for the admin. Setup and invite pages read their secret from the fragment and
-drop it from history before any request. Account changes dispose workspace requests and event streams.
+zero observations. Signed out, `/invite`, `/signup` (while signup is on) and
+`/reset-password` (while password sign-in is on) render their pages and every
+other path renders sign-in with the enabled methods. The app has no admin
+pages; admins use the console. Invite and reset pages read their secret from the
+fragment and drop it from history before any request. Account changes dispose workspace requests and event streams.
 Local mode bypasses account flows. Consumers subscribe through domain hooks for diff source,
 navigation, draft, review, reviewed files, and collapse state. Collapsed diff
 files (per stream and scope), closed tree folders and Hide reviewed files (per

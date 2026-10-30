@@ -22,12 +22,11 @@ import {
 } from "./identity-context.tsx";
 import {
   AccountSettings,
-  AdminSetup,
-  AdminSignIn,
   InviteSignUp,
+  ResetPassword,
   SignIn,
+  SignUp,
 } from "./account.tsx";
-import { AdminPage } from "./admin.tsx";
 import { startPwa } from "./pwa.ts";
 import { syncPushDevice } from "./push.ts";
 import { TooltipProvider } from "@diffx/ui/components/ui/tooltip";
@@ -45,7 +44,6 @@ function ApplicationRoutes() {
   const ready = state.status === "ready";
   const remote = ready && state.bootstrap.mode === "remote";
   const signedIn = ready && state.bootstrap.user !== null;
-  const admin = signedIn && state.bootstrap.user?.admin === true;
   const userId = (ready && state.bootstrap.user?.id) || null;
   // Only the remote server is an installable app with push notifications.
   useEffect(() => {
@@ -54,16 +52,14 @@ function ApplicationRoutes() {
   useEffect(() => {
     if (remote && userId) void syncPushDevice().catch(() => {});
   }, [remote, userId]);
-  // Local mode has no account pages; signed-in users have no sign-in pages;
-  // only the admin has the manage page.
+  // Local mode has no account pages; signed-in users have no sign-in pages.
   const misplaced =
     ready &&
-    ((!remote && (path === "/settings" || path === "/manage")) ||
+    ((!remote && path === "/settings") ||
       (signedIn &&
-        (path === "/setup" ||
-          path === "/console" ||
+        (path === "/signup" ||
           path === "/invite" ||
-          (path === "/manage" && !admin))));
+          path === "/reset-password")));
   useEffect(() => {
     if (!misplaced) return;
     window.history.replaceState(null, "", "/");
@@ -71,14 +67,15 @@ function ApplicationRoutes() {
   }, [misplaced]);
   if (state.status !== "ready") return <IdentityStatus />;
   if (state.bootstrap.mode === "remote" && !state.bootstrap.user) {
-    if (path === "/setup") return <AdminSetup />;
-    if (path === "/console") return <AdminSignIn />;
+    // Pages for a method the server turned off render sign-in.
+    if (path === "/signup" && state.bootstrap.signupEnabled) return <SignUp />;
     if (path === "/invite") return <InviteSignUp />;
+    if (path === "/reset-password" && state.bootstrap.passwordEnabled)
+      return <ResetPassword />;
     return <SignIn />;
   }
   if (path === "/settings" && state.bootstrap.mode === "remote")
     return <AccountSettings />;
-  if (path === "/manage" && admin) return <AdminPage />;
   return (
     <SessionProvider key={state.bootstrap.user?.id ?? "local"}>
       <SessionShell>

@@ -5,6 +5,7 @@ import { ErrorState } from "@diffx/ui/components/error-state";
 import { IconButton } from "@diffx/ui/components/icon-button";
 import { Button } from "@diffx/ui/components/ui/button";
 import { Input } from "@diffx/ui/components/ui/input";
+import { Separator } from "@diffx/ui/components/ui/separator";
 import { navigate, useIdentity } from "./identity-context.tsx";
 import { AccountGitHub, type GitHubFollowing } from "./account-github.tsx";
 import { AccountNotifications } from "./account-notifications.tsx";
@@ -56,45 +57,131 @@ function takeSignInOutcome() {
   return outcome;
 }
 
-/** Members sign in with Google; accounts come only from invites. */
-export function SignIn() {
+/** The deployment's sign-in methods, from the bootstrap. */
+function useMethods() {
   const { state } = useIdentity();
-  const [outcome] = useState(takeSignInOutcome);
-  const google =
-    state.status === "ready" &&
-    state.bootstrap.mode === "remote" &&
-    state.bootstrap.googleEnabled;
-  const failure = signInFailures[outcome];
+  const remote =
+    state.status === "ready" && state.bootstrap.mode === "remote"
+      ? state.bootstrap
+      : null;
+  return {
+    google: remote?.googleEnabled === true,
+    password: remote?.passwordEnabled === true,
+    signup: remote?.signupEnabled === true,
+  };
+}
+
+/** An in-app link that keeps the page loaded. */
+function PageLink({ to, children }: { to: string; children: ReactNode }) {
+  return (
+    <a
+      href={to}
+      className="text-accent underline underline-offset-2"
+      onClick={(event) => {
+        event.preventDefault();
+        navigate(to);
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
+/** The signed-out page shell shared by every account form. */
+function AuthPage({ title, children }: { title: string; children: ReactNode }) {
   return (
     <main className="account-page auth-page">
       <a className="brand" href="/">
         diffx
       </a>
-      <h1 className="mb-2 text-xl font-semibold">Sign in</h1>
+      <h1 className="mb-4 text-xl font-semibold">{title}</h1>
+      {children}
+    </main>
+  );
+}
+
+/** Separates Google from the password form when both are offered. */
+function MethodSeparator() {
+  return <Separator className="my-6" />;
+}
+
+/** Signs in with each enabled method; signup links appear when open. */
+export function SignIn() {
+  const { google, password, signup } = useMethods();
+  const [outcome] = useState(takeSignInOutcome);
+  const failure = signInFailures[outcome];
+  return (
+    <AuthPage title="Sign in">
       {outcome === "cancelled" && (
         <p className={prose} role="status">
           Google sign-in was cancelled.
         </p>
       )}
       {failure && <ErrorState message={failure} className="mb-4" />}
-      {google ? (
-        <>
-          <p className={prose}>
-            Use the Google account your invite was sent to.
-          </p>
-          <ContinueWithGoogle />
-        </>
-      ) : (
-        <p className={prose}>
-          Sign-in is not available on this server yet. Ask us for an invite.
-        </p>
+      {!google && !password && (
+        <p className={prose}>Sign-in is not available on this server.</p>
       )}
-    </main>
+      {google && <ContinueWithGoogle secondary={password} />}
+      {google && password && <MethodSeparator />}
+      {password && (
+        <CredentialForm
+          path="/api/v2/auth/login"
+          submitLabel="Sign in"
+          failure="Unable to sign in. Check your username and password."
+        />
+      )}
+      <p className="mt-6 leading-copy text-secondary">
+        {signup ? (
+          <>
+            New here? <PageLink to="/signup">Create an account</PageLink>
+          </>
+        ) : (
+          "Accounts are by invite. Ask us for one."
+        )}
+      </p>
+    </AuthPage>
   );
 }
 
-/** Starts Google sign-in, accepting the invite when one is given. */
-function ContinueWithGoogle({ invite }: { invite?: string }) {
+/** Open signup with each enabled method; Google names the account by email. */
+export function SignUp() {
+  const { google, password } = useMethods();
+  return (
+    <AuthPage title="Create an account">
+      {google && (
+        <>
+          <p className={prose}>
+            Continue with Google to use your verified email as your username.
+          </p>
+          <ContinueWithGoogle secondary={password} />
+        </>
+      )}
+      {google && password && <MethodSeparator />}
+      {password && (
+        <CredentialForm
+          path="/api/v2/auth/signup"
+          submitLabel="Create account"
+          failure="Unable to create the account. Try again."
+        />
+      )}
+      <p className="mt-6 leading-copy text-secondary">
+        Already have an account? <PageLink to="/">Sign in</PageLink>
+      </p>
+    </AuthPage>
+  );
+}
+
+/**
+ * Starts Google sign-in, accepting the invite when one is given. Secondary
+ * beside a password form, so each page keeps one primary action.
+ */
+function ContinueWithGoogle({
+  invite,
+  secondary = false,
+}: {
+  invite?: string;
+  secondary?: boolean;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function start() {
@@ -124,6 +211,7 @@ function ContinueWithGoogle({ invite }: { invite?: string }) {
       {error && <ErrorState message={error} className="mb-4" />}
       <Button
         touch
+        variant={secondary ? "outline" : "default"}
         className="self-start"
         disabled={busy}
         aria-busy={busy}
@@ -135,197 +223,275 @@ function ContinueWithGoogle({ invite }: { invite?: string }) {
   );
 }
 
-function fragmentToken() {
-  return new URLSearchParams(window.location.hash.slice(1)).get("t") ?? "";
-}
-
-type InviteState =
-  | { status: "loading" }
-  | { status: "invalid" }
-  | { status: "error"; message: string }
-  | { status: "ready"; email: string; expiresAt: number };
-
-/** Accepts an invite link: its secret stays in the fragment, never a request URL. */
-export function InviteSignUp() {
-  const [token, setToken] = useState(fragmentToken);
-  const [invite, setInvite] = useState<InviteState>({ status: "loading" });
-  const [attempt, setAttempt] = useState(0);
+/**
+ * Reads a link secret from the fragment once and drops it from history, so it
+ * never reaches a request URL or the back button. Another link opened in this
+ * tab changes only the fragment.
+ */
+function useFragmentToken(path: string) {
+  const [token, setToken] = useState(
+    () => new URLSearchParams(window.location.hash.slice(1)).get("t") ?? "",
+  );
   useEffect(() => {
-    // Another link opened in this tab changes only the fragment.
+    window.history.replaceState(null, "", path);
     const changed = () => {
-      const next = fragmentToken();
-      window.history.replaceState(null, "", "/invite");
+      const next =
+        new URLSearchParams(window.location.hash.slice(1)).get("t") ?? "";
+      window.history.replaceState(null, "", path);
       if (next) setToken(next);
     };
     window.addEventListener("hashchange", changed);
     return () => window.removeEventListener("hashchange", changed);
-  }, []);
+  }, [path]);
+  return token;
+}
+
+type LinkState<T> =
+  | { status: "loading" }
+  | { status: "invalid" }
+  | { status: "error"; message: string }
+  | { status: "ready"; value: T };
+
+const lookupInvite = (token: string, signal: AbortSignal) =>
+  api.POST("/api/v2/invites/lookup", { body: { token }, signal });
+const lookupReset = (token: string, signal: AbortSignal) =>
+  api.POST("/api/v2/password-reset/lookup", { body: { token }, signal });
+
+/**
+ * Resolves a link secret; 404 means invalid, expired or used. Pass a stable
+ * lookup, such as one defined at module scope.
+ */
+function useLink<T>(
+  token: string,
+  lookup: (
+    token: string,
+    signal: AbortSignal,
+  ) => Promise<{ data?: T; error?: unknown; response: Response }>,
+  failure: string,
+) {
+  const [link, setLink] = useState<LinkState<T>>({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    // The secret stays out of history once read.
-    window.history.replaceState(null, "", "/invite");
     if (!token) {
-      setInvite({ status: "invalid" });
+      setLink({ status: "invalid" });
       return;
     }
     const controller = new AbortController();
-    setInvite({ status: "loading" });
-    void api
-      .POST("/api/v2/invites/lookup", {
-        body: { token },
-        signal: controller.signal,
-      })
+    setLink({ status: "loading" });
+    void lookup(token, controller.signal)
       .then(({ data, error, response }) => {
         if (controller.signal.aborted) return;
         if (response.status === 404) {
-          setInvite({ status: "invalid" });
+          setLink({ status: "invalid" });
           return;
         }
-        if (!data)
-          throw new Error(errorDetail(error, "Unable to load the invite"));
-        setInvite({
-          status: "ready",
-          email: data.email,
-          expiresAt: data.expiresAt,
-        });
+        if (!data) throw new Error(errorDetail(error, failure));
+        setLink({ status: "ready", value: data });
       })
-      .catch((failure: unknown) => {
+      .catch((error: unknown) => {
         if (!controller.signal.aborted)
-          setInvite({
-            status: "error",
-            message: errorDetail(failure, "Unable to load the invite"),
-          });
+          setLink({ status: "error", message: errorDetail(error, failure) });
       });
     return () => controller.abort();
-  }, [token, attempt]);
+  }, [token, attempt, lookup, failure]);
+  return { link, retry: () => setAttempt((value) => value + 1) };
+}
+
+/** Accepts an invite link with Google or, where allowed, a password. */
+export function InviteSignUp() {
+  const { google, password } = useMethods();
+  const token = useFragmentToken("/invite");
+  const { link, retry } = useLink(
+    token,
+    lookupInvite,
+    "Unable to load the invite",
+  );
   return (
-    <main className="account-page auth-page">
-      <a className="brand" href="/">
-        diffx
-      </a>
-      <h1 className="mb-2 text-xl font-semibold">Join diffx</h1>
-      {invite.status === "loading" && (
+    <AuthPage title="Join diffx">
+      {link.status === "loading" && (
         <p className={prose} role="status">
           Checking your invite…
         </p>
       )}
-      {invite.status === "error" && (
+      {link.status === "error" && (
         <ErrorState
-          message={invite.message}
+          message={link.message}
           className="mb-4"
           touch
-          onRetry={() => setAttempt((value) => value + 1)}
+          onRetry={retry}
         />
       )}
-      {invite.status === "invalid" && (
+      {link.status === "invalid" && (
         <p className={prose}>
           This invite link is invalid, expired or already used. Ask us for a new
           one.
         </p>
       )}
-      {invite.status === "ready" && (
+      {link.status === "ready" && (
         <>
           <p className={prose}>
-            You are invited as <strong>{invite.email}</strong>. Continue with
-            the Google account for that email. The invite expires{" "}
-            {new Date(invite.expiresAt).toLocaleString()}.
+            You are invited as <strong>{link.value.email}</strong>
+            {link.value.admin && " and as an admin of this server's console"}.
+            The invite expires {new Date(link.value.expiresAt).toLocaleString()}
+            .
           </p>
-          <ContinueWithGoogle invite={token} />
+          {google && (
+            <>
+              <p className={prose}>
+                Continue with the Google account for that email.
+              </p>
+              <ContinueWithGoogle invite={token} secondary={password} />
+            </>
+          )}
+          {google && password && <MethodSeparator />}
+          {password && (
+            <>
+              <p className={prose}>
+                {google ? "Or choose" : "Choose"} a username and password.
+              </p>
+              <CredentialForm
+                path="/api/v2/invites/password"
+                token={token}
+                submitLabel="Create account"
+                failure="Unable to create the account. Try again."
+              />
+            </>
+          )}
         </>
       )}
-    </main>
+    </AuthPage>
   );
 }
 
-/** Password sign-in for the admin only, at the unlinked /console. */
-export function AdminSignIn() {
-  return (
-    <main className="account-page auth-page">
-      <a className="brand" href="/">
-        diffx
-      </a>
-      <h1 className="mb-2 text-xl font-semibold">Sign in</h1>
-      <p className="mb-4 leading-copy text-secondary">
-        Sign in with your username and password.
-      </p>
-      <CredentialForm
-        path="/api/v2/auth/login"
-        token=""
-        submitLabel="Sign in"
-        failure="Unable to sign in. Try again."
-      />
-    </main>
+/** Sets a new password from a reset link an admin issued. */
+export function ResetPassword() {
+  const token = useFragmentToken("/reset-password");
+  const { link, retry } = useLink(
+    token,
+    lookupReset,
+    "Unable to load the reset link",
   );
-}
-
-/**
- * One-time admin creation from the setup link the server logged at startup.
- * Once setup is complete the page is the sign-in page, like any unknown path.
- */
-export function AdminSetup() {
-  const [token] = useState(
-    () => new URLSearchParams(window.location.hash.slice(1)).get("t") ?? "",
-  );
-  const [setup, setSetup] = useState<"loading" | "required" | "complete">(
-    "loading",
-  );
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  useEffect(() => {
-    // The secret stays out of history once read.
-    window.history.replaceState(null, "", "/setup");
-    const controller = new AbortController();
-    void api
-      .GET("/api/v2/setup", { signal: controller.signal })
-      .then(({ data, error }) => {
-        if (controller.signal.aborted) return;
-        if (!data)
-          throw new Error(errorDetail(error, "Unable to load setup status"));
-        setSetup(data.required ? "required" : "complete");
-      })
-      .catch((failure: unknown) => {
-        if (!controller.signal.aborted)
-          setError(errorDetail(failure, "Unable to load setup status"));
+  const [done, setDone] = useState(false);
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const { response, error } = await api.POST("/api/v2/password-reset", {
+        body: { token, password },
       });
-    return () => controller.abort();
-  }, []);
-  if (setup === "complete") return <SignIn />;
+      if (!response.ok)
+        throw new Error(
+          errorDetail(error, "Unable to set the password. Try again."),
+        );
+      setPassword("");
+      setDone(true);
+    } catch (failure: unknown) {
+      setError(errorDetail(failure, "Unable to set the password. Try again."));
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
-    <main className="account-page auth-page">
-      <a className="brand" href="/">
-        diffx
-      </a>
-      <h1 className="mb-2 text-xl font-semibold">Set up diffx</h1>
-      {error && <ErrorState message={error} />}
-      {setup === "required" && !token && (
-        <p className="mb-4 leading-copy text-secondary">
-          Open the setup link from the server log to create the first account.
+    <AuthPage title="Reset password">
+      {done ? (
+        <p className={prose} role="status">
+          Your password is set and your browser sessions are signed out.{" "}
+          <PageLink to="/">Sign in</PageLink> with the new password.
         </p>
-      )}
-      {setup === "required" && token && (
+      ) : (
         <>
-          <p className="mb-4 leading-copy text-secondary">
-            Create the server's first account. It signs in with this password
-            and invites everyone else.
-          </p>
-          <CredentialForm
-            path="/api/v2/setup"
-            token={token}
-            submitLabel="Create account"
-            failure="Unable to create the account. Try again."
-          />
+          {link.status === "loading" && (
+            <p className={prose} role="status">
+              Checking your reset link…
+            </p>
+          )}
+          {link.status === "error" && (
+            <ErrorState
+              message={link.message}
+              className="mb-4"
+              touch
+              onRetry={retry}
+            />
+          )}
+          {link.status === "invalid" && (
+            <p className={prose}>
+              This reset link is invalid, expired or already used. Ask us for a
+              new one.
+            </p>
+          )}
+          {link.status === "ready" && (
+            <>
+              <p className={prose}>
+                Choose a new password for <strong>{link.value.username}</strong>
+                . This signs out your browser sessions; API tokens remain
+                active.
+              </p>
+              <form className="account-form" onSubmit={submit}>
+                {/* Lets password managers save the new password for this account. */}
+                <Input
+                  type="text"
+                  name="username"
+                  autoComplete="username"
+                  value={link.value.username}
+                  readOnly
+                  hidden
+                />
+                <label htmlFor="new-password">New password</label>
+                <Input
+                  id="new-password"
+                  type="password"
+                  autoComplete="new-password"
+                  touch
+                  minLength={12}
+                  maxLength={128}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                  disabled={busy}
+                  aria-describedby="new-password-hint"
+                />
+                <p
+                  id="new-password-hint"
+                  className="text-sm leading-copy text-secondary"
+                >
+                  Use at least 12 characters.
+                </p>
+                {error && <ErrorState message={error} />}
+                <Button
+                  type="submit"
+                  touch
+                  className="mt-2 justify-self-start"
+                  disabled={busy}
+                  aria-busy={busy}
+                >
+                  Set password
+                </Button>
+              </form>
+            </>
+          )}
         </>
       )}
-    </main>
+    </AuthPage>
   );
 }
 
+/** Username and password sign-in, signup or invite acceptance. */
 function CredentialForm({
   path,
-  token,
+  token = "",
   submitLabel,
   failure,
 }: {
-  path: "/api/v2/auth/login" | "/api/v2/setup";
-  token: string;
+  path:
+    | "/api/v2/auth/login"
+    | "/api/v2/auth/signup"
+    | "/api/v2/invites/password";
+  token?: string;
   submitLabel: string;
   failure: string;
 }) {
@@ -334,16 +500,17 @@ function CredentialForm({
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const creating = path === "/api/v2/setup";
+  const creating = path !== "/api/v2/auth/login";
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
     setBusy(true);
     setError("");
     try {
-      const { data, error } = creating
-        ? await api.POST(path, { body: { token, username, password } })
-        : await api.POST(path, { body: { username, password } });
+      const { data, error } =
+        path === "/api/v2/invites/password"
+          ? await api.POST(path, { body: { token, username, password } })
+          : await api.POST(path, { body: { username, password } });
       if (!data) throw new Error(errorDetail(error, failure));
       const bootstrap = readBootstrap(data);
       if (
@@ -390,9 +557,10 @@ function CredentialForm({
         minLength={creating ? 12 : undefined}
         maxLength={128}
         disabled={busy}
+        aria-describedby={creating ? "password-hint" : undefined}
       />
       {creating && (
-        <p className="text-sm leading-copy text-secondary">
+        <p id="password-hint" className="text-sm leading-copy text-secondary">
           Use at least 12 characters.
         </p>
       )}
@@ -462,24 +630,10 @@ export function AccountSettings() {
         Signed in as <strong>{user.username}</strong>
         {user.email !== null && <> with Google as {user.email}</>}.
       </p>
-      {user.admin && (
-        <Button
-          variant="outline"
-          touch
-          className="mb-4"
-          onClick={() => navigate("/manage")}
-        >
-          Manage accounts and invites
-        </Button>
-      )}
       <AccountTokens />
       <AccountGitHub notify={pushEnabled} onFollowingChange={setGitHub} />
-      <AccountNotifications
-        admin={user.admin}
-        github={github}
-        onEnabledChange={setPushEnabled}
-      />
-      {user.admin && <PasswordSettings />}
+      <AccountNotifications github={github} onEnabledChange={setPushEnabled} />
+      {user.method === "password" && <PasswordSettings />}
       <section
         className="mt-8 border-t border-separator pt-6"
         aria-labelledby="session-title"

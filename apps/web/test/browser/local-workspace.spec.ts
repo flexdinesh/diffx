@@ -1662,13 +1662,17 @@ for (const mode of ["local", "remote"]) {
         json: {
           mode,
           googleEnabled: false,
+          ...(mode === "remote" && {
+            signupEnabled: false,
+            passwordEnabled: true,
+          }),
           user:
             mode === "remote"
               ? {
                   id: "account-a",
                   username: "alice",
                   email: null,
-                  admin: false,
+                  method: "password",
                 }
               : null,
           csrfToken: mode === "remote" ? "csrf" : null,
@@ -2244,7 +2248,14 @@ test("each remote account baselines its own seen heads", async ({ page }) => {
       json: {
         mode: "remote",
         googleEnabled: false,
-        user: { id: "account-b", username: "bob", email: null, admin: false },
+        signupEnabled: false,
+        passwordEnabled: false,
+        user: {
+          id: "account-b",
+          username: "bob",
+          email: null,
+          method: "google",
+        },
         csrfToken: "csrf",
         collect: false,
       },
@@ -2361,7 +2372,14 @@ test("a remote server shows the review column for a single review", async ({
       json: {
         mode: "remote",
         googleEnabled: false,
-        user: { id: "account-a", username: "alice", email: null, admin: false },
+        signupEnabled: false,
+        passwordEnabled: false,
+        user: {
+          id: "account-a",
+          username: "alice",
+          email: null,
+          method: "google",
+        },
         csrfToken: "csrf",
         collect: false,
       },
@@ -2926,7 +2944,9 @@ test("saved comparison preferences belong to the active account", async ({
       json: {
         mode: "remote",
         googleEnabled: false,
-        user: { id: account, username: account, email: null, admin: false },
+        signupEnabled: false,
+        passwordEnabled: false,
+        user: { id: account, username: account, email: null, method: "google" },
         csrfToken: "test",
         collect: false,
       },
@@ -2953,7 +2973,14 @@ test("pull request reviews show GitHub identity and a sanitized description; clo
       json: {
         mode: "remote",
         googleEnabled: false,
-        user: { id: "account-a", username: "alice", email: null, admin: false },
+        signupEnabled: false,
+        passwordEnabled: false,
+        user: {
+          id: "account-a",
+          username: "alice",
+          email: null,
+          method: "google",
+        },
         csrfToken: "csrf",
         collect: false,
       },

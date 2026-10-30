@@ -661,7 +661,7 @@ at `/design.html` (see `docs/development.md`).
 
 - Settings (`/settings`, remote server only) is one reading-width column of
   sections in a fixed order: API tokens, GitHub, Notifications, Password
-  (admin), Browser session. Each section is an `h2` above a separator, short
+  (password accounts), Browser session. Each section is an `h2` above a separator, short
   `--text-secondary` prose, then its controls; subsections use `h3`. Async
   feedback uses an always-mounted `role="status"` paragraph; failures use
   `ErrorState`. Removing or revoking something on another device or service
@@ -674,8 +674,7 @@ at `/design.html` (see `docs/development.md`).
 - Notifications is scoped to this device first, then other devices, with at
   most one primary action. Prose names what notifies (a followed pull request
   opening or getting new commits) and points to GitHub when nothing is
-  followed. This device shows one state: server push off (the admin variant
-  names `--public-url`), browser without push, iPhone or iPad Safari (Home
+  followed. This device shows one state: server push off, browser without push, iPhone or iPad Safari (Home
   Screen steps), blocked (site settings, no button), “Turn on notifications”
   (the only place the browser permission prompt is requested), or on: the
   “Send notifications to this device” checkbox and an outline “Send test
@@ -683,6 +682,16 @@ at `/design.html` (see `docs/development.md`).
   installation; an installed app shows muted “Installed as an app.” Other
   devices list label, added and last-notified dates and a destructive Remove.
   No banners or counters advertise notifications elsewhere.
+
+### Sign-in pages
+
+- Sign-in, signup, invite and reset pages share one narrow `auth-page` column:
+  the brand link, an `h1`, short `--text-secondary` prose, then the methods the
+  server enables. Google comes first; beside a password form it is an outline
+  button so the form's submit stays the one primary action, and a separator
+  divides the two. Links between these pages are inline accent links.
+- Pages for a method the server turned off render sign-in, like unknown paths.
+  Link secrets come from the fragment and leave history before any request.
 
 ## App icons
 

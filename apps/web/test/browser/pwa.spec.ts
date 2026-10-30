@@ -10,7 +10,14 @@ async function remote(page: Page) {
       json: {
         mode: "remote",
         googleEnabled: false,
-        user: { id: "account-a", username: "alice", email: null, admin: false },
+        signupEnabled: false,
+        passwordEnabled: false,
+        user: {
+          id: "account-a",
+          username: "alice",
+          email: null,
+          method: "google",
+        },
         csrfToken: "session-csrf",
       },
     }),
