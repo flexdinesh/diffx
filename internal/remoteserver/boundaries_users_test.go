@@ -22,7 +22,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func TestRunSetupAdminPersistsAcrossRestart(t *testing.T) {
+func TestRunSignupPersistsAcrossRestart(t *testing.T) {
 	databaseURL := pgtest.URL(t)
 	var logs syncBuffer
 	log.SetOutput(&logs)
@@ -33,7 +33,7 @@ func TestRunSetupAdminPersistsAcrossRestart(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		ready, done := make(chan string, 1), make(chan error, 1)
 		go func() {
-			done <- Run(ctx, Settings{DatabaseURL: databaseURL, Listen: "127.0.0.1:0", PublicURL: "https://diffx.example.com", InsecureCookies: true}, func(address string) { ready <- address })
+			done <- Run(ctx, Settings{DatabaseURL: databaseURL, Listen: "127.0.0.1:0", PublicURL: "https://diffx.example.com", InsecureCookies: true, Members: openMembers}, func(address string) { ready <- address })
 		}()
 		var address string
 		select {
@@ -45,24 +45,11 @@ func TestRunSetupAdminPersistsAcrossRestart(t *testing.T) {
 			cancel()
 			t.Fatal("startup timeout")
 		}
-		path, body := "/api/v2/auth/login", `{"username":"admin","password":"`+testPassword+`"}`
+		path := "/api/v2/auth/login"
 		if attempt == 0 {
-			// The link is logged just after ready reports the address.
-			var link string
-			found := false
-			for deadline := time.Now().Add(3 * time.Second); !found && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
-				_, link, found = strings.Cut(logs.String(), "open https://diffx.example.com/setup#t=")
-			}
-			if !found {
-				cancel()
-				t.Fatalf("setup link not logged: %q", logs.String())
-			}
-			path, body = "/api/v2/setup", `{"token":"`+strings.TrimSpace(link)+`","username":"admin","password":"`+testPassword+`"}`
-		} else if strings.Count(logs.String(), "setup#t=") != 1 {
-			cancel()
-			t.Fatal("setup link logged after admin exists")
+			path = "/api/v2/auth/signup"
 		}
-		response, err := client.Post("http://"+address+path, "application/json", strings.NewReader(body))
+		response, err := client.Post("http://"+address+path, "application/json", strings.NewReader(`{"username":"owner","password":"`+testPassword+`"}`))
 		if err != nil {
 			cancel()
 			t.Fatal(err)
@@ -70,7 +57,7 @@ func TestRunSetupAdminPersistsAcrossRestart(t *testing.T) {
 		var result bootstrapJSON
 		err = json.NewDecoder(response.Body).Decode(&result)
 		response.Body.Close()
-		if err != nil || response.StatusCode != 200 || result.User == nil || !result.User.Admin {
+		if err != nil || response.StatusCode != 200 || result.User == nil {
 			cancel()
 			t.Fatalf("%s: %v status%d", path, err, response.StatusCode)
 		}
@@ -89,6 +76,10 @@ func TestRunSetupAdminPersistsAcrossRestart(t *testing.T) {
 		case <-time.After(3 * time.Second):
 			t.Fatal("shutdown timeout")
 		}
+	}
+	// The console owns admin setup; the server never issues a setup link.
+	if strings.Contains(logs.String(), "setup") {
+		t.Fatalf("server logged setup: %q", logs.String())
 	}
 }
 

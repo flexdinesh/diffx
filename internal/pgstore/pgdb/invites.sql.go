@@ -111,13 +111,14 @@ func (q *Queries) InsertGoogleIdentity(ctx context.Context, arg InsertGoogleIden
 }
 
 const insertInvite = `-- name: InsertInvite :exec
-INSERT INTO account_invites(id, token_hash, email, created_at, expires_at) VALUES ($1, $2, $3, $4, $5)
+INSERT INTO account_invites(id, token_hash, email, admin, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6)
 `
 
 type InsertInviteParams struct {
 	ID        string
 	TokenHash string
 	Email     string
+	Admin     bool
 	CreatedAt time.Time
 	ExpiresAt time.Time
 }
@@ -127,6 +128,7 @@ func (q *Queries) InsertInvite(ctx context.Context, arg InsertInviteParams) erro
 		arg.ID,
 		arg.TokenHash,
 		arg.Email,
+		arg.Admin,
 		arg.CreatedAt,
 		arg.ExpiresAt,
 	)
@@ -134,7 +136,7 @@ func (q *Queries) InsertInvite(ctx context.Context, arg InsertInviteParams) erro
 }
 
 const invite = `-- name: Invite :one
-SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
+SELECT i.id, i.email, i.admin, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
 FROM account_invites i LEFT JOIN remote_accounts a ON a.user_id = i.used_by
 WHERE i.id = $1
 `
@@ -142,6 +144,7 @@ WHERE i.id = $1
 type InviteRow struct {
 	ID        string
 	Email     string
+	Admin     bool
 	CreatedAt time.Time
 	ExpiresAt time.Time
 	UsedAt    *time.Time
@@ -155,6 +158,7 @@ func (q *Queries) Invite(ctx context.Context, id string) (InviteRow, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
+		&i.Admin,
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.UsedAt,
@@ -181,7 +185,7 @@ func (q *Queries) InviteEmailLock(ctx context.Context, arg InviteEmailLockParams
 }
 
 const invites = `-- name: Invites :many
-SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
+SELECT i.id, i.email, i.admin, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
 FROM account_invites i LEFT JOIN remote_accounts a ON a.user_id = i.used_by
 ORDER BY i.created_at DESC, i.id COLLATE "C"
 `
@@ -189,6 +193,7 @@ ORDER BY i.created_at DESC, i.id COLLATE "C"
 type InvitesRow struct {
 	ID        string
 	Email     string
+	Admin     bool
 	CreatedAt time.Time
 	ExpiresAt time.Time
 	UsedAt    *time.Time
@@ -208,6 +213,7 @@ func (q *Queries) Invites(ctx context.Context) ([]InvitesRow, error) {
 		if err := rows.Scan(
 			&i.ID,
 			&i.Email,
+			&i.Admin,
 			&i.CreatedAt,
 			&i.ExpiresAt,
 			&i.UsedAt,
@@ -225,7 +231,7 @@ func (q *Queries) Invites(ctx context.Context) ([]InvitesRow, error) {
 }
 
 const pendingInvite = `-- name: PendingInvite :one
-SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
+SELECT i.id, i.email, i.admin, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
 FROM account_invites i LEFT JOIN remote_accounts a ON a.user_id = i.used_by
 WHERE i.token_hash = $1 AND i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > $2
 `
@@ -238,6 +244,7 @@ type PendingInviteParams struct {
 type PendingInviteRow struct {
 	ID        string
 	Email     string
+	Admin     bool
 	CreatedAt time.Time
 	ExpiresAt time.Time
 	UsedAt    *time.Time
@@ -251,6 +258,7 @@ func (q *Queries) PendingInvite(ctx context.Context, arg PendingInviteParams) (P
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
+		&i.Admin,
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.UsedAt,
@@ -349,10 +357,11 @@ func (q *Queries) TakeGoogleFlow(ctx context.Context, arg TakeGoogleFlowParams) 
 	return i, err
 }
 
-const useInvite = `-- name: UseInvite :execrows
+const useInvite = `-- name: UseInvite :one
 UPDATE account_invites SET used_at = $1::timestamptz, used_by = $2::text
 WHERE id = $3 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > $1::timestamptz
   AND NOT EXISTS (SELECT 1 FROM google_identities WHERE sub = $4::text)
+RETURNING admin
 `
 
 type UseInviteParams struct {
@@ -362,15 +371,33 @@ type UseInviteParams struct {
 	Sub    string
 }
 
-func (q *Queries) UseInvite(ctx context.Context, arg UseInviteParams) (int64, error) {
-	result, err := q.db.Exec(ctx, useInvite,
+func (q *Queries) UseInvite(ctx context.Context, arg UseInviteParams) (bool, error) {
+	row := q.db.QueryRow(ctx, useInvite,
 		arg.Now,
 		arg.UserID,
 		arg.ID,
 		arg.Sub,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	var admin bool
+	err := row.Scan(&admin)
+	return admin, err
+}
+
+const usePasswordInvite = `-- name: UsePasswordInvite :one
+UPDATE account_invites SET used_at = $1::timestamptz, used_by = $2::text
+WHERE id = $3 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > $1::timestamptz
+RETURNING admin
+`
+
+type UsePasswordInviteParams struct {
+	Now    time.Time
+	UserID string
+	ID     string
+}
+
+func (q *Queries) UsePasswordInvite(ctx context.Context, arg UsePasswordInviteParams) (bool, error) {
+	row := q.db.QueryRow(ctx, usePasswordInvite, arg.Now, arg.UserID, arg.ID)
+	var admin bool
+	err := row.Scan(&admin)
+	return admin, err
 }

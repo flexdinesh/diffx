@@ -19,6 +19,11 @@ var (
 // millisecond is the identity contract's resolution, matching the SQLite store.
 func millisecond(at time.Time) time.Time { return time.UnixMilli(at.UnixMilli()) }
 
+// account builds an identity account from a row's columns.
+func account(id, username string, admin bool, method string) identityservice.Account {
+	return identityservice.Account{ID: id, Username: username, Admin: admin, Method: identityservice.Method(method)}
+}
+
 func foreignKeyViolation(err error) bool {
 	var failure *pgconn.PgError
 	return errors.As(err, &failure) && failure.Code == "23503"
@@ -38,8 +43,8 @@ func insertAccount(ctx context.Context, queries *pgdb.Queries, account identitys
 	return nil
 }
 
-// CreateAccount commits a non-admin owner and its credential together. An empty
-// hash never verifies, so such an account has no password sign-in.
+// CreateAccount commits a member and its credential together. An empty hash
+// never verifies, so such an account has no password sign-in.
 func (store *Store) CreateAccount(ctx context.Context, account identityservice.Account, passwordHash string, created time.Time) error {
 	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
 		return insertAccount(ctx, queries, account, passwordHash, created)
@@ -49,7 +54,7 @@ func (store *Store) CreateAccount(ctx context.Context, account identityservice.A
 func (store *Store) PutAdminSetup(ctx context.Context, tokenHash string, expires time.Time) (bool, error) {
 	var stored bool
 	err := store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
-		if err := queries.IdentityLock(ctx, adminSetupLock); err != nil {
+		if err := queries.IdentityLock(ctx, adminLock); err != nil {
 			return err
 		}
 		count, err := queries.PutAdminSetup(ctx, pgdb.PutAdminSetupParams{TokenHash: tokenHash, ExpiresAt: millisecond(expires)})
@@ -66,7 +71,7 @@ func (store *Store) AdminExists(ctx context.Context) (bool, error) {
 // CreateAdmin consumes the setup secret, so concurrent setups create one admin.
 func (store *Store) CreateAdmin(ctx context.Context, account identityservice.Account, passwordHash, setupHash string, now time.Time) error {
 	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
-		if err := queries.IdentityLock(ctx, adminSetupLock); err != nil {
+		if err := queries.IdentityLock(ctx, adminLock); err != nil {
 			return err
 		}
 		count, err := queries.ConsumeAdminSetup(ctx, pgdb.ConsumeAdminSetupParams{TokenHash: setupHash, Now: millisecond(now)})
@@ -91,24 +96,36 @@ func (store *Store) AccountSummaries(ctx context.Context) ([]identityservice.Acc
 	accounts := make([]identityservice.AccountSummary, 0, len(rows))
 	for _, row := range rows {
 		accounts = append(accounts, identityservice.AccountSummary{
-			Account: identityservice.Account{ID: row.UserID, Username: row.Username, Admin: row.Admin},
+			Account: account(row.UserID, row.Username, row.Admin, row.Method),
 			Email:   row.Email, Disabled: row.Disabled, CreatedAt: millisecond(row.CreatedAt),
 		})
 	}
 	return accounts, nil
 }
 
-// targetAccount locks the account an admin action applies to, refusing the admin.
-func targetAccount(ctx context.Context, queries *pgdb.Queries, accountID string) error {
-	admin, err := queries.LockTargetAccount(ctx, accountID)
+// targetAccount locks the account an admin action applies to. When the action
+// removes an enabled admin (removesAdmin), it refuses unless another enabled
+// admin remains; the admin lock orders it with every other admin change.
+func targetAccount(ctx context.Context, queries *pgdb.Queries, accountID string, removesAdmin bool) error {
+	if err := queries.IdentityLock(ctx, adminLock); err != nil {
+		return err
+	}
+	target, err := queries.LockTargetAccount(ctx, accountID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return identityservice.ErrNotFound
 	}
 	if err != nil {
 		return err
 	}
-	if admin {
-		return identityservice.ErrForbidden
+	if !removesAdmin || !target.Admin || target.Disabled {
+		return nil
+	}
+	others, err := queries.OtherEnabledAdmin(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	if !others {
+		return identityservice.ErrLastAdmin
 	}
 	return nil
 }
@@ -117,7 +134,7 @@ func targetAccount(ctx context.Context, queries *pgdb.Queries, accountID string)
 // that disables the account; enabling restores sign-in, not those credentials.
 func (store *Store) SetAccountDisabled(ctx context.Context, accountID string, disabled bool, at time.Time) error {
 	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
-		if err := targetAccount(ctx, queries, accountID); err != nil {
+		if err := targetAccount(ctx, queries, accountID, disabled); err != nil {
 			return err
 		}
 		if !disabled {
@@ -141,7 +158,7 @@ func (store *Store) SetAccountDisabled(ctx context.Context, accountID string, di
 // first; the owner lock keeps new records out until the delete commits.
 func (store *Store) DeleteAccount(ctx context.Context, accountID string) error {
 	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
-		if err := targetAccount(ctx, queries, accountID); err != nil {
+		if err := targetAccount(ctx, queries, accountID, true); err != nil {
 			return err
 		}
 		if err := queries.DeleteAccountJobs(ctx, accountID); err != nil {
@@ -154,6 +171,20 @@ func (store *Store) DeleteAccount(ctx context.Context, accountID string) error {
 	})
 }
 
+// SetAdmin grants or removes the admin role; removing the last enabled admin
+// is ErrLastAdmin.
+func (store *Store) SetAdmin(ctx context.Context, accountID string, admin bool) error {
+	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
+		if err := targetAccount(ctx, queries, accountID, !admin); err != nil {
+			return err
+		}
+		if admin {
+			return queries.GrantAdmin(ctx, accountID)
+		}
+		return queries.RevokeAdmin(ctx, accountID)
+	})
+}
+
 func (store *Store) AccountPassword(ctx context.Context, username string) (identityservice.PasswordCredential, error) {
 	row, err := store.queries.AccountPassword(ctx, username)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -162,7 +193,7 @@ func (store *Store) AccountPassword(ctx context.Context, username string) (ident
 	if err != nil {
 		return identityservice.PasswordCredential{}, err
 	}
-	return identityservice.PasswordCredential{Account: identityservice.Account{ID: row.UserID, Username: row.Username, Admin: row.Admin}, Hash: row.PasswordHash}, nil
+	return identityservice.PasswordCredential{Account: account(row.UserID, row.Username, row.Admin, row.Method), Hash: row.PasswordHash}, nil
 }
 
 func (store *Store) AccountPasswordByID(ctx context.Context, accountID string) (identityservice.PasswordCredential, error) {
@@ -173,7 +204,7 @@ func (store *Store) AccountPasswordByID(ctx context.Context, accountID string) (
 	if err != nil {
 		return identityservice.PasswordCredential{}, err
 	}
-	return identityservice.PasswordCredential{Account: identityservice.Account{ID: row.UserID, Username: row.Username, Admin: row.Admin}, Hash: row.PasswordHash}, nil
+	return identityservice.PasswordCredential{Account: account(row.UserID, row.Username, row.Admin, row.Method), Hash: row.PasswordHash}, nil
 }
 
 // ReplacePassword fences authentication against password changes/reset, and
@@ -223,7 +254,7 @@ func (store *Store) ResolveSession(ctx context.Context, secretHash string, now t
 	if err != nil {
 		return identityservice.Session{}, err
 	}
-	return identityservice.Session{Account: identityservice.Account{ID: row.UserID, Username: row.Username, Admin: row.Admin}, CSRFToken: row.CsrfToken, ExpiresAt: millisecond(row.ExpiresAt)}, nil
+	return identityservice.Session{Account: account(row.UserID, row.Username, row.Admin, row.Method), CSRFToken: row.CsrfToken, ExpiresAt: millisecond(row.ExpiresAt)}, nil
 }
 
 func (store *Store) DeleteSession(ctx context.Context, secretHash string) error {
@@ -285,7 +316,7 @@ func (store *Store) ResolveIdentityToken(ctx context.Context, secretHash string,
 	if err != nil {
 		return identityservice.TokenIdentity{}, err
 	}
-	return identityservice.TokenIdentity{Account: identityservice.Account{ID: row.UserID, Username: row.Username, Admin: row.Admin}, Purpose: identityservice.Purpose(row.Purpose), ExpiresAt: millisecond(row.ExpiresAt)}, nil
+	return identityservice.TokenIdentity{Account: account(row.UserID, row.Username, row.Admin, row.Method), Purpose: identityservice.Purpose(row.Purpose), ExpiresAt: millisecond(row.ExpiresAt)}, nil
 }
 
 func (store *Store) IdentityAccounts(ctx context.Context) ([]identityservice.Account, error) {
@@ -295,7 +326,51 @@ func (store *Store) IdentityAccounts(ctx context.Context) ([]identityservice.Acc
 	}
 	accounts := make([]identityservice.Account, 0, len(rows))
 	for _, row := range rows {
-		accounts = append(accounts, identityservice.Account{ID: row.UserID, Username: row.Username, Admin: row.Admin})
+		accounts = append(accounts, account(row.UserID, row.Username, row.Admin, row.Method))
 	}
 	return accounts, nil
+}
+
+// PutPasswordReset replaces the account's pending reset.
+func (store *Store) PutPasswordReset(ctx context.Context, accountID, tokenHash string, expires time.Time) error {
+	err := store.queries.PutPasswordReset(ctx, pgdb.PutPasswordResetParams{UserID: accountID, TokenHash: tokenHash, ExpiresAt: millisecond(expires)})
+	// The account was deleted after the caller read it.
+	if foreignKeyViolation(err) {
+		return identityservice.ErrNotFound
+	}
+	return err
+}
+
+func (store *Store) PasswordReset(ctx context.Context, tokenHash string, now time.Time) (identityservice.PasswordCredential, error) {
+	row, err := store.queries.PasswordReset(ctx, pgdb.PasswordResetParams{TokenHash: tokenHash, Now: millisecond(now)})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return identityservice.PasswordCredential{}, identityservice.ErrNotFound
+	}
+	if err != nil {
+		return identityservice.PasswordCredential{}, err
+	}
+	return identityservice.PasswordCredential{Account: account(row.UserID, row.Username, row.Admin, row.Method), Hash: row.PasswordHash}, nil
+}
+
+// CompletePasswordReset consumes the reset, replaces the password fenced on
+// the verified hash and revokes browser sessions at one commit.
+func (store *Store) CompletePasswordReset(ctx context.Context, tokenHash, expected, replacement string, now time.Time) error {
+	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
+		accountID, err := queries.ConsumePasswordReset(ctx, pgdb.ConsumePasswordResetParams{TokenHash: tokenHash, Now: millisecond(now)})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return identityservice.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		count, err := queries.ReplacePassword(ctx, pgdb.ReplacePasswordParams{Replacement: replacement, UserID: accountID, Expected: expected})
+		if err != nil {
+			return err
+		}
+		// The password changed after the reset was read.
+		if count != 1 {
+			return identityservice.ErrNotFound
+		}
+		return queries.DeleteAccountSessions(ctx, accountID)
+	})
 }

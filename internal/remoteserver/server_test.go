@@ -269,7 +269,7 @@ func TestRemoteRunShutdownClosesActiveEventStream(t *testing.T) {
 		t.Fatal(err)
 	}
 	go func() {
-		done <- Run(ctx, Settings{Listen: "127.0.0.1:0", DatabaseURL: databaseURL, InsecureCookies: true}, func(address string) { ready <- address })
+		done <- Run(ctx, Settings{Listen: "127.0.0.1:0", DatabaseURL: databaseURL, InsecureCookies: true, Members: openMembers}, func(address string) { ready <- address })
 	}()
 	var address string
 	select {

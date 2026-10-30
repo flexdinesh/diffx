@@ -234,7 +234,7 @@ func TestUndeliverableNotificationsAreDropped(t *testing.T) {
 		},
 		"disabled account": func(t *testing.T, h *harness) {
 			h.publish(t)
-			if err := identityservice.New(h.store).DisableAccount(t.Context(), h.owner.ID); err != nil {
+			if err := identityservice.New(h.store).DisableAccount(t.Context(), "admin", h.owner.ID); err != nil {
 				t.Fatal(err)
 			}
 		},

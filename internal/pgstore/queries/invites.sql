@@ -10,30 +10,36 @@ SELECT EXISTS (SELECT 1 FROM google_identities WHERE email = $1);
 UPDATE account_invites SET revoked_at = @at::timestamptz WHERE email = @email AND used_at IS NULL AND revoked_at IS NULL;
 
 -- name: InsertInvite :exec
-INSERT INTO account_invites(id, token_hash, email, created_at, expires_at) VALUES ($1, $2, $3, $4, $5);
+INSERT INTO account_invites(id, token_hash, email, admin, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6);
 
 -- name: Invites :many
-SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
+SELECT i.id, i.email, i.admin, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
 FROM account_invites i LEFT JOIN remote_accounts a ON a.user_id = i.used_by
 ORDER BY i.created_at DESC, i.id COLLATE "C";
 
 -- name: Invite :one
-SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
+SELECT i.id, i.email, i.admin, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
 FROM account_invites i LEFT JOIN remote_accounts a ON a.user_id = i.used_by
 WHERE i.id = $1;
 
 -- name: PendingInvite :one
-SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
+SELECT i.id, i.email, i.admin, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
 FROM account_invites i LEFT JOIN remote_accounts a ON a.user_id = i.used_by
 WHERE i.token_hash = @token_hash AND i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > @now;
 
 -- name: RevokeInvite :execrows
 UPDATE account_invites SET revoked_at = @at::timestamptz WHERE id = @id AND used_at IS NULL AND revoked_at IS NULL;
 
--- name: UseInvite :execrows
+-- name: UseInvite :one
 UPDATE account_invites SET used_at = @now::timestamptz, used_by = @user_id::text
 WHERE id = @id AND used_at IS NULL AND revoked_at IS NULL AND expires_at > @now::timestamptz
-  AND NOT EXISTS (SELECT 1 FROM google_identities WHERE sub = @sub::text);
+  AND NOT EXISTS (SELECT 1 FROM google_identities WHERE sub = @sub::text)
+RETURNING admin;
+
+-- name: UsePasswordInvite :one
+UPDATE account_invites SET used_at = @now::timestamptz, used_by = @user_id::text
+WHERE id = @id AND used_at IS NULL AND revoked_at IS NULL AND expires_at > @now::timestamptz
+RETURNING admin;
 
 -- name: InsertGoogleIdentity :execrows
 INSERT INTO google_identities(sub, user_id, email, updated_at) VALUES ($1, $2, $3, $4)

@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/flexdinesh/diffx/internal/authhttp"
+
 	"github.com/flexdinesh/diffx/internal/identityservice"
 )
 
@@ -24,11 +26,11 @@ func (remote *transport) googleStart(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			Token string `json:"token"`
 		}
-		if !decodeJSON(w, r, &input) {
+		if !authhttp.DecodeJSON(w, r, &input) {
 			return
 		}
 		invite = input.Token
-	} else if !decodeJSON(w, r, &struct{}{}) {
+	} else if !authhttp.DecodeJSON(w, r, &struct{}{}) {
 		return
 	}
 	authorize, binding, err := remote.identity.StartGoogle(r.Context(), invite)
@@ -38,18 +40,19 @@ func (remote *transport) googleStart(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: flowCookie, Value: binding, Path: googleCallback, MaxAge: int(identityservice.GoogleFlowLifetime / time.Second),
 		HttpOnly: true, Secure: !remote.settings.InsecureCookies, SameSite: http.SameSiteLaxMode})
-	writeJSON(w, 200, struct {
+	authhttp.WriteJSON(w, 200, struct {
 		AuthorizeURL string `json:"authorizeUrl"`
 	}{authorize})
 }
 
-// inviteLookup resolves an invite secret for the invite page. The secret comes
+// inviteLookup resolves an invite secret for the invite page, which offers the
+// deployment's sign-in methods. The secret comes
 // in the body so it never appears in request logs.
 func (remote *transport) inviteLookup(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Token string `json:"token"`
 	}
-	if !decodeJSON(w, r, &input) {
+	if !authhttp.DecodeJSON(w, r, &input) {
 		return
 	}
 	invite, err := remote.identity.PendingInvite(r.Context(), input.Token)
@@ -57,10 +60,11 @@ func (remote *transport) inviteLookup(w http.ResponseWriter, r *http.Request) {
 		googleError(w, r, err)
 		return
 	}
-	writeJSON(w, 200, struct {
+	authhttp.WriteJSON(w, 200, struct {
 		Email     string `json:"email"`
+		Admin     bool   `json:"admin"`
 		ExpiresAt int64  `json:"expiresAt"`
-	}{invite.Email, invite.ExpiresAt.UnixMilli()})
+	}{invite.Email, invite.Admin, invite.ExpiresAt.UnixMilli()})
 }
 
 func googleError(w http.ResponseWriter, r *http.Request, err error) {
@@ -68,9 +72,9 @@ func googleError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, identityservice.ErrGoogleDisabled):
 		http.NotFound(w, r)
 	case errors.Is(err, identityservice.ErrNotFound):
-		problem(w, 404, "Invite link is invalid, expired or already used")
+		authhttp.Problem(w, 404, "Invite link is invalid, expired or already used")
 	default:
-		identityError(w, err)
+		authhttp.IdentityError(w, err)
 	}
 }
 
@@ -83,7 +87,7 @@ func (remote *transport) googleCallbackRoute(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if r.Method != http.MethodGet {
-		problem(w, 405, "Method not allowed")
+		authhttp.Problem(w, 405, "Method not allowed")
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: flowCookie, Path: googleCallback, MaxAge: -1, HttpOnly: true, Secure: !remote.settings.InsecureCookies, SameSite: http.SameSiteLaxMode})
@@ -96,7 +100,7 @@ func (remote *transport) googleCallbackRoute(w http.ResponseWriter, r *http.Requ
 	if cookie, err := r.Cookie(flowCookie); err == nil {
 		binding = cookie.Value
 	}
-	session, err := remote.identity.CompleteGoogle(r.Context(), query.Get("state"), binding, query.Get("code"))
+	session, err := remote.identity.CompleteGoogle(r.Context(), identityservice.AudienceMembers, query.Get("state"), binding, query.Get("code"))
 	outcome := ""
 	switch {
 	case err == nil:

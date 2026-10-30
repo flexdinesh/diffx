@@ -30,8 +30,6 @@ export type ApiGitHubConnection = components["schemas"]["GitHubConnection"];
 export type ApiGitHubRepository = components["schemas"]["GitHubRepository"];
 export type ApiPushSettings = components["schemas"]["PushSettings"];
 export type ApiPushDevice = components["schemas"]["PushDevice"];
-export type ApiAdminUser = components["schemas"]["AdminUser"];
-export type ApiInvite = components["schemas"]["Invite"];
 
 export function errorDetail(error: unknown, fallback: string) {
   if (error instanceof Error) return error.message;
