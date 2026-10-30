@@ -12,11 +12,14 @@ services:
       # own Postgres 18+ to drop the bundled service.
       DIFFX_SERVER_DATABASE_URL: "${DIFFX_SERVER_DATABASE_URL:-postgres://diffx:${DIFFX_POSTGRES_PASSWORD:-diffx}@postgres:5432/diffx?sslmode=disable}"
       DIFFX_SERVER_RETENTION_DAYS: "${DIFFX_SERVER_RETENTION_DAYS:-7}"
-      # Until the admin exists, each start logs a one-time setup link on this
-      # origin; no default credentials are generated.
+      # Browser-facing origin for Google redirects and invite and reset links.
       DIFFX_SERVER_PUBLIC_URL: "${DIFFX_SERVER_PUBLIC_URL:-}"
-      # Google sign-in for invited accounts: set both (empty runs admin-only).
-      # Needs DIFFX_SERVER_PUBLIC_URL for the callback.
+      # Open signup and password accounts; production sets both false so
+      # accounts come only from console invites and sign in with Google.
+      DIFFX_SERVER_SIGNUP: "${DIFFX_SERVER_SIGNUP:-true}"
+      DIFFX_SERVER_PASSWORD_SIGNIN: "${DIFFX_SERVER_PASSWORD_SIGNIN:-true}"
+      # Google sign-in: set both (empty disables it). Needs
+      # DIFFX_SERVER_PUBLIC_URL for the callback.
       DIFFX_SERVER_GOOGLE_CLIENT_ID: "${DIFFX_SERVER_GOOGLE_CLIENT_ID:-}"
       DIFFX_SERVER_GOOGLE_CLIENT_SECRET: "${DIFFX_SERVER_GOOGLE_CLIENT_SECRET:-}"
       # Loopback HTTP development only. Use false behind production HTTPS.
@@ -44,6 +47,36 @@ services:
     networks:
       - default
       - fetch
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  # Admin console on its own origin over the same database. Until an admin
+  # exists, each start logs a one-time setup link on this origin.
+  console:
+    build:
+      context: .
+      target: console
+    image: diffx-console:local
+    environment:
+      DIFFX_CONSOLE_HOST: 0.0.0.0
+      DIFFX_CONSOLE_PORT: "7970"
+      DIFFX_CONSOLE_DATABASE_URL: "${DIFFX_SERVER_DATABASE_URL:-postgres://diffx:${DIFFX_POSTGRES_PASSWORD:-diffx}@postgres:5432/diffx?sslmode=disable}"
+      DIFFX_CONSOLE_PUBLIC_URL: "${DIFFX_CONSOLE_PUBLIC_URL:-http://localhost:${DIFFX_CONSOLE_PORT:-7970}}"
+      # The app's origin, used in invite and member reset links.
+      DIFFX_CONSOLE_APP_URL: "${DIFFX_SERVER_PUBLIC_URL:-http://localhost:${DIFFX_SERVER_PORT:-7980}}"
+      # The console's own Google OAuth client for Google admins: set both
+      # (empty disables it). Register <console URL>/api/v1/auth/google/callback.
+      DIFFX_CONSOLE_GOOGLE_CLIENT_ID: "${DIFFX_CONSOLE_GOOGLE_CLIENT_ID:-}"
+      DIFFX_CONSOLE_GOOGLE_CLIENT_SECRET: "${DIFFX_CONSOLE_GOOGLE_CLIENT_SECRET:-}"
+      DIFFX_CONSOLE_INSECURE_COOKIES: "${DIFFX_CONSOLE_INSECURE_COOKIES:-true}"
+      DIFFX_CONSOLE_AUTH_RATE_LIMIT: "${DIFFX_CONSOLE_AUTH_RATE_LIMIT:-false}"
+      DIFFX_CONSOLE_CLIENT_IP_HEADER: "${DIFFX_CONSOLE_CLIENT_IP_HEADER:-}"
+    ports:
+      - "127.0.0.1:${DIFFX_CONSOLE_PORT:-7970}:7970"
     depends_on:
       postgres:
         condition: service_healthy

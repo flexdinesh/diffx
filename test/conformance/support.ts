@@ -4,19 +4,29 @@ import { createServer } from "node:net";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { parse } from "yaml";
 
-const contract: unknown = parse(
-  readFileSync(
-    new URL("../../packages/api/openapi.yaml", import.meta.url),
-    "utf8",
-  ),
-);
-assert.ok(typeof contract === "object" && contract !== null);
 const validator = new Ajv2020({ strict: false, validateFormats: false });
-validator.addSchema(contract, "api");
+for (const [id, path] of Object.entries({
+  api: "../../packages/api/openapi.yaml",
+  console: "../../packages/console-api/openapi.yaml",
+})) {
+  const contract: unknown = parse(
+    readFileSync(new URL(path, import.meta.url), "utf8"),
+  );
+  assert.ok(typeof contract === "object" && contract !== null);
+  validator.addSchema(contract, id);
+}
 
 /** Asserts that a real HTTP response value matches an OpenAPI schema. */
 export function conforms(name: string, value: unknown) {
   const check = validator.compile({ $ref: "api#/components/schemas/" + name });
+  assert.ok(check(value), JSON.stringify(check.errors));
+}
+
+/** Asserts that a real console response value matches a console schema. */
+export function consoleConforms(name: string, value: unknown) {
+  const check = validator.compile({
+    $ref: "console#/components/schemas/" + name,
+  });
   assert.ok(check(value), JSON.stringify(check.errors));
 }
 
@@ -40,11 +50,12 @@ export async function freePort() {
 export async function waitForServer(
   url: string,
   headers: Record<string, string> = {},
+  path = "/api/v2/bootstrap",
 ) {
   let lastError: unknown;
   for (let attempt = 0; attempt < 200; attempt++) {
     try {
-      const response = await fetch(`${url}/api/v2/bootstrap`, { headers });
+      const response = await fetch(`${url}${path}`, { headers });
       if (response.ok) return;
     } catch (error) {
       lastError = error;

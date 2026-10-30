@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds the server and fetcher images, pushes commit and channel tags, then rolls
+# Builds the server, fetcher and console images, pushes commit and channel tags, then rolls
 # the diffx Deployments that exist in the target namespace to the pushed digests.
 # A release tag targets diffx-prod with the floating "release" tag; main targets
 # diffx-staging with "main". Prod runs without the fetcher until GitHub is enabled.
@@ -23,16 +23,19 @@ push_digest() {
 }
 server_tag="${REGISTRY}/diffx-server:${version}"
 fetcher_tag="${REGISTRY}/diffx-fetcher:${version}"
+console_tag="${REGISTRY}/diffx-console:${version}"
 docker build --tag "${server_tag}" .
 docker build --target fetcher --tag "${fetcher_tag}" .
+docker build --target console --tag "${console_tag}" .
 server_image=$(push_digest "${server_tag}")
 fetcher_image=$(push_digest "${fetcher_tag}")
-for tag in "${server_tag}" "${fetcher_tag}"; do
+console_image=$(push_digest "${console_tag}")
+for tag in "${server_tag}" "${fetcher_tag}" "${console_tag}"; do
   docker tag "${tag}" "${tag%:*}:${channel}"
   docker push "${tag%:*}:${channel}"
 done
-echo "${version}: ${server_image} ${fetcher_image}"
-for pair in "diffx-server=${server_image}" "diffx-fetcher=${fetcher_image}"; do
+echo "${version}: ${server_image} ${fetcher_image} ${console_image}"
+for pair in "diffx-server=${server_image}" "diffx-fetcher=${fetcher_image}" "diffx-console=${console_image}"; do
   deployment=${pair%%=*}
   if ! kubectl get deployment "${deployment}" --namespace "${namespace}" >/dev/null 2>&1; then
     echo "Skipping ${deployment}: not provisioned in ${namespace} (deehomelab/k8s-cluster apps/diffx)" >&2

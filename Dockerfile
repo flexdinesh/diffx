@@ -25,6 +25,23 @@ VOLUME ["/mirrors"]
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/diffx-fetcher"]
 
+FROM build AS console-build
+ARG TARGETOS=linux
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -o /diffx-console ./cmd/diffx-console
+
+# Admin console: `docker build --target console .`. Stateless like the server,
+# over the same DIFFX_CONSOLE_DATABASE_URL Postgres, on its own origin.
+FROM scratch AS console
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=console-build /diffx-console /diffx-console
+USER 10001:10001
+ENV DIFFX_CONSOLE_HOST=0.0.0.0
+ENV DIFFX_CONSOLE_PORT=7970
+EXPOSE 7970
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/diffx-console"]
+
 # The server is stateless: all state lives in DIFFX_SERVER_DATABASE_URL's
 # Postgres. CA roots let it verify TLS to Postgres, GitHub and Google.
 FROM scratch

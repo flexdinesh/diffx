@@ -1,4 +1,4 @@
-# Publishes diffx-server and diffx-fetcher images to the homelab registry and
+# Publishes diffx-server, diffx-fetcher and diffx-console images to the homelab registry and
 # rolls deehomelab/k8s-cluster apps/diffx: main updates diffx-staging, a vX.Y.Z
 # release tag updates diffx-prod. Verification stays in GitHub Actions.
 when:
@@ -26,6 +26,7 @@ steps:
       GOTOOLCHAIN: local
     commands:
       - go run ./tools/stage-web apps/web/dist internal/webui/dist
+      - go run ./tools/stage-web apps/console/dist internal/consoleui/dist
 
   deploy:
     image: docker.io/library/docker:29.9.2-cli
