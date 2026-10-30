@@ -402,15 +402,16 @@ benchmark. `BenchmarkCollectBranchWorkload` reports allocations and `git/op`.
 
 ## Frontend conventions
 
-Follow [DESIGN.md](../DESIGN.md). Semantic tokens in `apps/web/src/tokens.css`
+Follow [DESIGN.md](../DESIGN.md). The shared design system lives in
+`packages/ui` (`@diffx/ui`). Semantic tokens in `packages/ui/src/tokens.css`
 are exposed as same-name Tailwind utilities (`bg-panel`, `border-control`,
-`h-control`). Primitives in `apps/web/src/components/ui` and composites in
-`apps/web/src/components` own all visuals; feature code arranges them and adds
+`h-control`). Primitives in `packages/ui/src/components/ui` and composites in
+`packages/ui/src/components` own all visuals; feature code arranges them and adds
 semantic variants there when a look is missing. Keep authored CSS for
 specialized layout, dynamic geometry, and Pierre's measured rendering boundary.
 `mise run check:design` and oxlint enforce this.
 
-The dev-only gallery renders every variant: run `pnpm dev` in `apps/web` and
+The dev-only gallery renders every variant: run `pnpm dev` in `packages/ui` and
 open `/design.html` (`?theme=dark`, `?page=overlays`, `?page=dialog`). It is not
 part of the production build. Exhaustive gallery browser tests and screenshot
 goldens are not maintained. Review affected variants in the gallery when changing

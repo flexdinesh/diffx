@@ -6,18 +6,23 @@ import {
   EyeOffIcon,
   XIcon,
 } from "lucide-react";
-import { CountBadge } from "@/components/count-badge";
-import { IconButton } from "@/components/icon-button";
-import { PanelHeader } from "@/components/panel-header";
-import { SearchField } from "@/components/search-field";
-import { StatusDot } from "@/components/status-dot";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Toggle } from "@/components/ui/toggle";
+import { CountBadge } from "@diffx/ui/components/count-badge";
+import { IconButton } from "@diffx/ui/components/icon-button";
+import { PanelHeader } from "@diffx/ui/components/panel-header";
+import { SearchField } from "@diffx/ui/components/search-field";
+import { StatusDot } from "@diffx/ui/components/status-dot";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@diffx/ui/components/ui/tabs";
+import { Toggle } from "@diffx/ui/components/ui/toggle";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@diffx/ui/components/ui/tooltip";
 import {
   togglePath,
   useDiffSource,

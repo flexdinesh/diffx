@@ -4,8 +4,8 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
 } from "lucide-react";
-import { IconButton } from "@/components/icon-button";
-import { Button } from "@/components/ui/button";
+import { IconButton } from "@diffx/ui/components/icon-button";
+import { Button } from "@diffx/ui/components/ui/button";
 import {
   Combobox,
   ComboboxContent,
@@ -14,10 +14,10 @@ import {
   ComboboxList,
   ComboboxSearch,
   ComboboxTrigger,
-} from "@/components/ui/combobox";
+} from "@diffx/ui/components/ui/combobox";
 import { useDiffSource } from "./app-state.tsx";
 import { commitMatches, shortOid } from "./commit-view.ts";
-import { formatCount, pluralize } from "./format.ts";
+import { formatCount, pluralize } from "@diffx/ui/lib/format";
 import { relativeAge } from "./project-nav.ts";
 import { useNow } from "./ProjectsNav.tsx";
 

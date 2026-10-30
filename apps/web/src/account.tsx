@@ -1,10 +1,10 @@
 import { api, errorDetail, readBootstrap } from "@diffx/api";
 import { ArrowLeftIcon, UserRoundIcon } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { ErrorState } from "@/components/error-state";
-import { IconButton } from "@/components/icon-button";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ErrorState } from "@diffx/ui/components/error-state";
+import { IconButton } from "@diffx/ui/components/icon-button";
+import { Button } from "@diffx/ui/components/ui/button";
+import { Input } from "@diffx/ui/components/ui/input";
 import { navigate, useIdentity } from "./identity-context.tsx";
 import { AccountGitHub, type GitHubFollowing } from "./account-github.tsx";
 import { AccountNotifications } from "./account-notifications.tsx";

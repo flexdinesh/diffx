@@ -1,7 +1,7 @@
 import { ChevronDownIcon } from "lucide-react";
-import { CountBadge } from "@/components/count-badge";
-import { Button } from "@/components/ui/button";
-import { SegmentedControl } from "@/components/segmented-control";
+import { CountBadge } from "@diffx/ui/components/count-badge";
+import { Button } from "@diffx/ui/components/ui/button";
+import { SegmentedControl } from "@diffx/ui/components/segmented-control";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,11 +9,11 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@diffx/ui/components/ui/dropdown-menu";
 import { useDiffSource } from "./app-state.tsx";
 import { CommitStepper } from "./CommitStepper.tsx";
 import { comparisonKind, comparisonLabel } from "./diff-mode.ts";
-import { pluralize } from "./format.ts";
+import { pluralize } from "@diffx/ui/lib/format";
 import { useSession } from "./session-context.tsx";
 
 export function ComparisonPicker() {

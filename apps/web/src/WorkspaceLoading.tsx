@@ -1,4 +1,4 @@
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@diffx/ui/components/ui/skeleton";
 import { useAppearance } from "./appearance-context.tsx";
 import { SettingsButton } from "./SettingsButton.tsx";
 

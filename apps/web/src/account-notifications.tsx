@@ -5,10 +5,10 @@ import {
   type ApiPushSettings,
 } from "@diffx/api";
 import { useEffect, useState } from "react";
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { ErrorState } from "@/components/error-state";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog } from "@diffx/ui/components/confirm-dialog";
+import { ErrorState } from "@diffx/ui/components/error-state";
+import { Button } from "@diffx/ui/components/ui/button";
+import { Checkbox } from "@diffx/ui/components/ui/checkbox";
 import type { GitHubFollowing } from "./account-github.tsx";
 import { useInstallPrompt } from "./pwa.ts";
 import {

@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
 import { Trash2Icon } from "lucide-react";
 import { errorDetail } from "@diffx/api";
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { IconButton } from "@/components/icon-button";
-import { DialogTrigger } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@diffx/ui/components/confirm-dialog";
+import { IconButton } from "@diffx/ui/components/icon-button";
+import { DialogTrigger } from "@diffx/ui/components/ui/dialog";
 import { useDeleteContext, useSession } from "./session-context.tsx";
 import { contextDiagnostics } from "./project-picker.ts";
 

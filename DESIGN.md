@@ -38,19 +38,24 @@ chrome competing with additions, deletions, syntax, or selected lines.
 
 ## Sources of truth
 
-- `apps/web/src/tokens.css`: semantic colors, spacing, geometry, elevation,
+`packages/ui` (`@diffx/ui`) is the shared design system; apps import it and
+never fork it.
+
+- `packages/ui/src/tokens.css`: semantic colors, spacing, geometry, elevation,
   responsive gutters, light/dark equivalents, and theme palettes.
 - `apps/web/src/theme.ts`: the theme registry (id, label, kind, mode and
   matching code theme).
-- `apps/web/src/typography.css`: fonts, text/icon sizes, weights, line heights.
-- `apps/web/src/style.css`: Tailwind entry point, shadcn theme bridge, shell,
-  navigation, and viewer boundary.
-- `apps/web/src/components/ui`: repository-owned shadcn/Base UI primitives and
-  shared variants.
-- `apps/web/src/components`: shared composites built from those primitives
+- `packages/ui/src/typography.css`: fonts, text/icon sizes, weights, line heights.
+- `packages/ui/src/styles.css`: Tailwind entry point, token-utility and shadcn
+  theme bridge, and element defaults.
+- `apps/web/src/style.css`: imports `@diffx/ui/styles.css`; shell, navigation,
+  and viewer boundary.
+- `packages/ui/src/components/ui`: repository-owned shadcn/Base UI primitives
+  and shared variants.
+- `packages/ui/src/components`: shared composites built from those primitives
   (see [Component inventory](#component-inventory)).
-- `apps/web/design.html` and `apps/web/src/gallery`: the dev-only gallery of
-  every primitive and composite variant; its goldens are visual contracts.
+- `packages/ui/design.html` and `packages/ui/src/gallery`: the dev-only gallery
+  of every primitive and composite variant; its goldens are visual contracts.
 - `apps/web/src/review.css`: review/sidebar composition and touch adaptations.
 - `apps/web/src/DiffWorkspace.tsx`: Pierre options, React slots, measured metrics.
 - `apps/web/src/display-options.ts`: supported Pierre syntax-theme pairs.
@@ -64,10 +69,11 @@ system for Tailwind or shadcn.
 
 - React and Vite own application composition and delivery.
 - Tailwind CSS v4 supplies utility styling through its Vite integration and the
-  single global entry stylesheet.
+  single global entry stylesheet, `@diffx/ui/styles.css`, which each app's
+  stylesheet imports once; its `@source` generates the package's utilities.
 - shadcn/ui uses Base UI for interactive primitives. Generated components are
   source code owned by this repository, not an opaque dependency.
-- Add or update primitives through `apps/web/components.json`, then customize
+- Add or update primitives through `packages/ui/components.json`, then customize
   the shared component source once to match this design system.
 - Prefer a shared shadcn primitive and its variants for standard controls. Use
   authored CSS for shell/responsive composition, dynamic tree depth, resizing,
@@ -79,7 +85,7 @@ system for Tailwind or shadcn.
   `className`, a hook class, `[data-slot]` or an ID. A missing look is a new
   semantic variant on the owning component, used everywhere it applies.
 
-`style.css` exposes each semantic token as a Tailwind utility under its own
+`styles.css` exposes each semantic token as a Tailwind utility under its own
 name, so markup and tokens share one vocabulary. Default Tailwind scales are
 cleared; only these exist:
 
@@ -96,7 +102,7 @@ cleared; only these exist:
 
 Use the utility when one exists; `bg-(--panel)` or `p-[var(--space-2)]` for a
 token that already has a utility is rejected. 2px (`*-0.5`) steps are optical
-insets reserved for `components/`.
+insets reserved for `packages/ui/src/components/`.
 
 `[data-theme]` always carries the resolved light/dark mode; the Tailwind
 `dark` variant and Pierre's `themeType` read it. Palette themes additionally set
@@ -477,7 +483,7 @@ such detail into a token. New layout spacing must use the scale.
 Reach for these before writing markup or CSS. Each owns its visuals; extend it
 with a semantic variant instead of overriding it.
 
-| Need                                   | Component (`apps/web/src/components`)                                                                                                    |
+| Need                                   | Component (`packages/ui/src/components`)                                                                                                 |
 | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Navigation styled as a button          | `link-button` (keeps link semantics; `external` opens a new tab)                                                                         |
 | Untrusted Markdown prose               | `markdown` (`MarkdownText`: no raw HTML, images as links)                                                                                |
@@ -809,13 +815,13 @@ Before adding a value or visual pattern:
 
 ## Enforcement
 
-`mise run check:design` scans CSS, TypeScript and TSX under `apps/web/src`,
-including new nested files, static utilities, inline style objects, SVG colors
+`mise run check:design` scans CSS, TypeScript and TSX under `packages/ui/src`
+and every `apps/*/src`, including new nested files, static utilities, inline style objects, SVG colors
 and Pierre's `unsafeCSS`. Local `mise run check` and pre-push run the guard
 and its contracts. It rejects literal palettes outside `tokens.css` definitions,
 independent typography, literal radii/elevation, and arbitrary padding/margin/gap
 lengths. Spacing utilities stay on the `--space-*` scale; 2px steps stay in
-`components/`. Arbitrary values that name a token with its own utility must use
+`packages/ui/src/components/`. Arbitrary values that name a token with its own utility must use
 that utility. Compose authored values from the canonical tokens. Zero, automatic
 spacing and 1px optical insets remain valid; dimensions, breakpoints and dynamic
 measured geometry require review rather than a blanket literal-value ban.
@@ -825,7 +831,8 @@ The guard also enforces component ownership. Feature CSS may not select
 set visual properties (color, background, border, padding, height, font,
 outline, shadow, opacity) on a hook class that feature code passes to a
 component. Feature `className`s on components may only arrange them. oxlint's
-`react/forbid-elements` rejects raw form controls outside `components/`.
+`react/forbid-elements` rejects raw form controls outside
+`packages/ui/src/components/`.
 
 The guard has exact exceptions for the reviewed-file check circle, SVG monogram
 units, icon line boxes, the Pierre gutter divider, Tailwind breakpoints, and

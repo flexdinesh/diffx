@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { save, saved } from "./preferences.ts";
+import { save, saved } from "@diffx/ui/lib/storage";
 import { useModalDrawer } from "./use-modal-drawer.ts";
 
 /** Below the 1012px breakpoint, navigation opens as one modal drawer at a time. */

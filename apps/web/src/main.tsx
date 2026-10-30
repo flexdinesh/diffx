@@ -9,9 +9,8 @@ import { AppProvider } from "./app-state.tsx";
 import { highlighterOptions, poolOptions } from "./diff-workers.ts";
 import { SessionProvider } from "./session-context.tsx";
 import { SessionShell } from "./SessionShell.tsx";
-import "@fontsource-variable/jetbrains-mono/wght.css";
-import "./typography.css";
-import "./tokens.css";
+import "@diffx/ui/typography.css";
+import "@diffx/ui/tokens.css";
 import "./style.css";
 import "./loading.css";
 import "./review.css";
@@ -31,7 +30,7 @@ import {
 import { AdminPage } from "./admin.tsx";
 import { startPwa } from "./pwa.ts";
 import { syncPushDevice } from "./push.ts";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@diffx/ui/components/ui/tooltip";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing React root");

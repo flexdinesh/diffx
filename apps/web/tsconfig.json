@@ -1,16 +1,15 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "types": ["node", "webmcp-types"],
-    "paths": {
-      "@/*": ["./src/*", "./src/*.ts", "./src/*.tsx"]
-    }
+    "types": ["node", "webmcp-types"]
   },
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
     "src/**/*.d.ts",
     "test/**/*.ts",
+    // tsx compiles imported design-system components with these options in DOM tests.
+    "../../packages/ui/src/components/**/*.tsx",
     "vite.config.ts",
     "playwright.config.ts"
   ],

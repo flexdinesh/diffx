@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { FolderSyncIcon, LoaderCircleIcon, SearchIcon } from "lucide-react";
-import { IconButton } from "@/components/icon-button";
+import { IconButton } from "@diffx/ui/components/icon-button";
 import { AccountButton } from "./account.tsx";
 import { ContextIdentity } from "./ContextIdentity.tsx";
 import { HeaderBrand, ProjectsToggle } from "./ProjectsNav.tsx";

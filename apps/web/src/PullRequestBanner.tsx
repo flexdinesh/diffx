@@ -8,12 +8,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useId } from "react";
-import { useSavedOpen } from "@/components/collapsible-section";
-import { DisclosureIcon } from "@/components/disclosure";
-import { IconButton } from "@/components/icon-button";
-import { LinkButton } from "@/components/link-button";
-import { MarkdownText } from "@/components/markdown";
-import { Badge } from "@/components/ui/badge";
+import { useSavedOpen } from "@diffx/ui/components/collapsible-section";
+import { DisclosureIcon } from "@diffx/ui/components/disclosure";
+import { IconButton } from "@diffx/ui/components/icon-button";
+import { LinkButton } from "@diffx/ui/components/link-button";
+import { MarkdownText } from "@diffx/ui/components/markdown";
+import { Badge } from "@diffx/ui/components/ui/badge";
 import { pullRequestOf } from "./project-nav.ts";
 import { useSession } from "./session-context.tsx";
 

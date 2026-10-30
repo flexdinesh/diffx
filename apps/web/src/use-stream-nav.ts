@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { save, saved } from "./preferences.ts";
+import { save, saved } from "@diffx/ui/lib/storage";
 import type { StreamGroupMode } from "./project-nav.ts";
 
 /** The desktop review column: a repository rail or the stream list. */

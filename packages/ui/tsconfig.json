@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    // The shadcn CLI resolves components.json aliases through these paths.
+    "paths": {
+      "@diffx/ui/*": ["./src/*", "./src/*.ts", "./src/*.tsx"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
+}

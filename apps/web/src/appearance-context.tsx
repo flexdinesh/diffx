@@ -12,7 +12,7 @@ import {
   readLineDiffType,
   savedDiffTheme,
 } from "./display-options.ts";
-import { save, saved } from "./preferences.ts";
+import { save, saved } from "@diffx/ui/lib/storage";
 import { useSidebarState } from "./sidebar-context.tsx";
 import {
   readThemePreference,

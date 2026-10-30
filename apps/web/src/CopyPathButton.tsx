@@ -1,7 +1,7 @@
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-import { IconButton } from "@/components/icon-button";
-import { cn } from "@/lib/utils";
+import { IconButton } from "@diffx/ui/components/icon-button";
+import { cn } from "@diffx/ui/lib/utils";
 
 export function CopyPathButton({
   value,

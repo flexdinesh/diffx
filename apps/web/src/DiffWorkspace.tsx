@@ -25,18 +25,18 @@ import {
   type ApiRepositoryDiff as RepositoryDiff,
 } from "@diffx/api";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { DisclosureIcon } from "@/components/disclosure";
-import { EmptyState } from "@/components/empty-state";
-import { IconButton } from "@/components/icon-button";
-import { Notice } from "@/components/notice";
-import { Shortcut } from "@/components/shortcut";
-import { Button } from "@/components/ui/button";
+import { DisclosureIcon } from "@diffx/ui/components/disclosure";
+import { EmptyState } from "@diffx/ui/components/empty-state";
+import { IconButton } from "@diffx/ui/components/icon-button";
+import { Notice } from "@diffx/ui/components/notice";
+import { Shortcut } from "@diffx/ui/components/shortcut";
+import { Button } from "@diffx/ui/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+} from "@diffx/ui/components/ui/tooltip";
+import { cn } from "@diffx/ui/lib/utils";
 import {
   togglePath,
   useDiffSource,

@@ -5,11 +5,11 @@ import {
   type ApiInvite as Invite,
 } from "@diffx/api";
 import { useEffect, useState, type FormEvent } from "react";
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { ErrorState } from "@/components/error-state";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ConfirmDialog } from "@diffx/ui/components/confirm-dialog";
+import { ErrorState } from "@diffx/ui/components/error-state";
+import { Badge } from "@diffx/ui/components/ui/badge";
+import { Button } from "@diffx/ui/components/ui/button";
+import { Input } from "@diffx/ui/components/ui/input";
 import { AccountPage } from "./account.tsx";
 import { useIdentity } from "./identity-context.tsx";
 

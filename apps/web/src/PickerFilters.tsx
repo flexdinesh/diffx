@@ -1,14 +1,14 @@
 import { ChevronDownIcon } from "lucide-react";
-import { EmptyState } from "@/components/empty-state";
-import { SegmentedControl } from "@/components/segmented-control";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { EmptyState } from "@diffx/ui/components/empty-state";
+import { SegmentedControl } from "@diffx/ui/components/segmented-control";
+import { Button } from "@diffx/ui/components/ui/button";
+import { Checkbox } from "@diffx/ui/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@diffx/ui/components/ui/dropdown-menu";
 import {
   defaultPickerFilters,
   type PickerFilters,

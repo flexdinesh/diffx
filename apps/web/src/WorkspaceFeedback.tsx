@@ -3,7 +3,7 @@ import {
   useReviewState,
   useReviewedFilesState,
 } from "./app-state.tsx";
-import { ErrorState } from "@/components/error-state";
+import { ErrorState } from "@diffx/ui/components/error-state";
 import { useCatalog } from "./session-context.tsx";
 
 export function WorkspaceFeedback() {
