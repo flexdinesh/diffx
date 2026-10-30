@@ -7,7 +7,7 @@ import { type Page } from "@playwright/test";
 import { reviewedToggle } from "./fixtures.ts";
 import { expect, test } from "./remote-fixtures.ts";
 
-const admin = { username: "admin", password: "browser-password-0001" };
+const account = { username: "alice", password: "browser-password-0001" };
 
 /** A checkout with one uncommitted change for `diffx sync` to collect. */
 async function changedCheckout(home: string) {
@@ -76,22 +76,22 @@ async function expectStoredReview(page: Page) {
   ).toBeVisible();
 }
 
-test("an admin syncs a checkout and reviews it on a Postgres server", async ({
+test("a signed-up user syncs a checkout and reviews it on a Postgres server", async ({
   page,
   browser,
   baseURL,
-  remoteServer,
   fixtureBuild: { binary },
 }) => {
   if (!binary || !baseURL) throw new Error("Missing diffx CLI build");
   const home = await mkdtemp(join(tmpdir(), "diffx-browser-remote-"));
   try {
-    await page.goto(remoteServer.setupLink);
+    // Signup and password sign-in are on by default.
+    await page.goto("/signup");
     await expect(
-      page.getByRole("heading", { name: "Set up diffx" }),
+      page.getByRole("heading", { name: "Create an account" }),
     ).toBeVisible();
-    await page.getByLabel("Username", { exact: true }).fill(admin.username);
-    await page.getByLabel("Password", { exact: true }).fill(admin.password);
+    await page.getByLabel("Username", { exact: true }).fill(account.username);
+    await page.getByLabel("Password", { exact: true }).fill(account.password);
     await page
       .getByRole("button", { name: "Create account", exact: true })
       .click();
@@ -161,9 +161,13 @@ test("an admin syncs a checkout and reviews it on a Postgres server", async ({
     const context = await browser.newContext({ baseURL });
     try {
       const fresh = await context.newPage();
-      await fresh.goto("/console");
-      await fresh.getByLabel("Username", { exact: true }).fill(admin.username);
-      await fresh.getByLabel("Password", { exact: true }).fill(admin.password);
+      await fresh.goto("/");
+      await fresh
+        .getByLabel("Username", { exact: true })
+        .fill(account.username);
+      await fresh
+        .getByLabel("Password", { exact: true })
+        .fill(account.password);
       await fresh.getByRole("button", { name: "Sign in", exact: true }).click();
       await expectStoredReview(fresh);
     } finally {

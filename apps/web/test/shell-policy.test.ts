@@ -19,6 +19,8 @@ const inputs: ("checkout" | "checkouts")[] = ["checkout", "checkouts"];
 const remote: ApiBootstrap = {
   mode: "remote",
   googleEnabled: false,
+  signupEnabled: false,
+  passwordEnabled: false,
   user: null,
   csrfToken: null,
 };

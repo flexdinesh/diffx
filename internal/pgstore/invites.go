@@ -29,7 +29,7 @@ func (store *Store) CreateInvite(ctx context.Context, invite identityservice.Inv
 		if err := queries.RevokePendingInvites(ctx, pgdb.RevokePendingInvitesParams{At: millisecond(invite.CreatedAt), Email: invite.Email}); err != nil {
 			return err
 		}
-		return queries.InsertInvite(ctx, pgdb.InsertInviteParams{ID: invite.ID, TokenHash: tokenHash, Email: invite.Email, CreatedAt: millisecond(invite.CreatedAt), ExpiresAt: millisecond(invite.ExpiresAt)})
+		return queries.InsertInvite(ctx, pgdb.InsertInviteParams{ID: invite.ID, TokenHash: tokenHash, Email: invite.Email, Admin: invite.Admin, CreatedAt: millisecond(invite.CreatedAt), ExpiresAt: millisecond(invite.ExpiresAt)})
 	})
 }
 
@@ -43,7 +43,7 @@ func optionalMillisecond(at *time.Time) *time.Time {
 
 func inviteFromRow(row pgdb.InviteRow) identityservice.Invite {
 	return identityservice.Invite{
-		ID: row.ID, Email: row.Email, CreatedAt: millisecond(row.CreatedAt), ExpiresAt: millisecond(row.ExpiresAt),
+		ID: row.ID, Email: row.Email, Admin: row.Admin, CreatedAt: millisecond(row.CreatedAt), ExpiresAt: millisecond(row.ExpiresAt),
 		UsedAt: optionalMillisecond(row.UsedAt), UsedBy: row.UsedBy, RevokedAt: optionalMillisecond(row.RevokedAt),
 	}
 }
@@ -105,15 +105,61 @@ func (store *Store) AcceptInvite(ctx context.Context, inviteID string, account i
 		if err := insertAccount(ctx, queries, account, "", now); err != nil {
 			return err
 		}
-		count, err := queries.UseInvite(ctx, pgdb.UseInviteParams{Now: now, UserID: account.ID, ID: inviteID, Sub: identity.Subject})
+		admin, err := queries.UseInvite(ctx, pgdb.UseInviteParams{Now: now, UserID: account.ID, ID: inviteID, Sub: identity.Subject})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return identityservice.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if admin {
+			if err := queries.GrantAdmin(ctx, account.ID); err != nil {
+				return err
+			}
+		}
+		// A concurrent acceptance linked the subject first.
+		count, err := queries.InsertGoogleIdentity(ctx, pgdb.InsertGoogleIdentityParams{Sub: identity.Subject, UserID: account.ID, Email: identity.Email, UpdatedAt: now})
 		if err != nil {
 			return err
 		}
 		if count != 1 {
 			return identityservice.ErrNotFound
 		}
-		// A concurrent acceptance linked the subject first.
-		count, err = queries.InsertGoogleIdentity(ctx, pgdb.InsertGoogleIdentityParams{Sub: identity.Subject, UserID: account.ID, Email: identity.Email, UpdatedAt: now})
+		return nil
+	})
+}
+
+// AcceptPasswordInvite uses the pending invite in the password account's
+// transaction, so two acceptances create one account.
+func (store *Store) AcceptPasswordInvite(ctx context.Context, inviteID string, account identityservice.Account, passwordHash string, now time.Time) error {
+	now = millisecond(now)
+	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
+		if err := insertAccount(ctx, queries, account, passwordHash, now); err != nil {
+			return err
+		}
+		admin, err := queries.UsePasswordInvite(ctx, pgdb.UsePasswordInviteParams{Now: now, UserID: account.ID, ID: inviteID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return identityservice.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if admin {
+			return queries.GrantAdmin(ctx, account.ID)
+		}
+		return nil
+	})
+}
+
+// CreateGoogleAccount commits an account and its Google identity without an
+// invite; a subject linked concurrently is ErrNotFound.
+func (store *Store) CreateGoogleAccount(ctx context.Context, account identityservice.Account, identity google.Identity, now time.Time) error {
+	now = millisecond(now)
+	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
+		if err := insertAccount(ctx, queries, account, "", now); err != nil {
+			return err
+		}
+		count, err := queries.InsertGoogleIdentity(ctx, pgdb.InsertGoogleIdentityParams{Sub: identity.Subject, UserID: account.ID, Email: identity.Email, UpdatedAt: now})
 		if err != nil {
 			return err
 		}
@@ -132,9 +178,9 @@ func (store *Store) GoogleAccount(ctx context.Context, identity google.Identity,
 	if err != nil {
 		return identityservice.Account{}, false, err
 	}
-	account := identityservice.Account{ID: row.UserID, Username: row.Username, Admin: row.Admin}
+	linked := account(row.UserID, row.Username, row.Admin, string(identityservice.MethodGoogle))
 	err = store.queries.RecordGoogleEmail(ctx, pgdb.RecordGoogleEmailParams{Email: identity.Email, Now: millisecond(now), Sub: identity.Subject})
-	return account, row.Disabled, err
+	return linked, row.Disabled, err
 }
 
 func (store *Store) GoogleEmail(ctx context.Context, accountID string) (string, error) {

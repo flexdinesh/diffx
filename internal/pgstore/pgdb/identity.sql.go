@@ -13,6 +13,7 @@ import (
 const accountPassword = `-- name: AccountPassword :one
 SELECT a.user_id, a.username,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
+  CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
   a.password_hash
 FROM remote_accounts a
 WHERE a.username = $1 AND NOT EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.user_id = a.user_id)
@@ -22,6 +23,7 @@ type AccountPasswordRow struct {
 	UserID       string
 	Username     string
 	Admin        bool
+	Method       string
 	PasswordHash string
 }
 
@@ -32,6 +34,7 @@ func (q *Queries) AccountPassword(ctx context.Context, username string) (Account
 		&i.UserID,
 		&i.Username,
 		&i.Admin,
+		&i.Method,
 		&i.PasswordHash,
 	)
 	return i, err
@@ -40,6 +43,7 @@ func (q *Queries) AccountPassword(ctx context.Context, username string) (Account
 const accountPasswordByID = `-- name: AccountPasswordByID :one
 SELECT a.user_id, a.username,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
+  CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
   a.password_hash
 FROM remote_accounts a
 WHERE a.user_id = $1 AND NOT EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.user_id = a.user_id)
@@ -49,6 +53,7 @@ type AccountPasswordByIDRow struct {
 	UserID       string
 	Username     string
 	Admin        bool
+	Method       string
 	PasswordHash string
 }
 
@@ -59,6 +64,7 @@ func (q *Queries) AccountPasswordByID(ctx context.Context, userID string) (Accou
 		&i.UserID,
 		&i.Username,
 		&i.Admin,
+		&i.Method,
 		&i.PasswordHash,
 	)
 	return i, err
@@ -69,6 +75,7 @@ SELECT a.user_id, a.username,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   COALESCE(g.email, '')::text AS email,
   EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.user_id = a.user_id) AS disabled,
+  (CASE WHEN g.sub IS NULL THEN 'password' ELSE 'google' END)::text AS method,
   u.created_at
 FROM remote_accounts a JOIN users u ON u.id = a.user_id
 LEFT JOIN google_identities g ON g.user_id = a.user_id
@@ -81,6 +88,7 @@ type AccountSummariesRow struct {
 	Admin     bool
 	Email     string
 	Disabled  bool
+	Method    string
 	CreatedAt time.Time
 }
 
@@ -99,6 +107,7 @@ func (q *Queries) AccountSummaries(ctx context.Context) ([]AccountSummariesRow, 
 			&i.Admin,
 			&i.Email,
 			&i.Disabled,
+			&i.Method,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -138,6 +147,23 @@ func (q *Queries) ConsumeAdminSetup(ctx context.Context, arg ConsumeAdminSetupPa
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const consumePasswordReset = `-- name: ConsumePasswordReset :one
+DELETE FROM password_resets WHERE token_hash = $1 AND expires_at > $2
+RETURNING user_id
+`
+
+type ConsumePasswordResetParams struct {
+	TokenHash string
+	Now       time.Time
+}
+
+func (q *Queries) ConsumePasswordReset(ctx context.Context, arg ConsumePasswordResetParams) (string, error) {
+	row := q.db.QueryRow(ctx, consumePasswordReset, arg.TokenHash, arg.Now)
+	var user_id string
+	err := row.Scan(&user_id)
+	return user_id, err
 }
 
 const deleteAccountJobs = `-- name: DeleteAccountJobs :exec
@@ -225,9 +251,19 @@ func (q *Queries) EnableAccount(ctx context.Context, userID string) error {
 	return err
 }
 
+const grantAdmin = `-- name: GrantAdmin :exec
+INSERT INTO admin_account(user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING
+`
+
+func (q *Queries) GrantAdmin(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, grantAdmin, userID)
+	return err
+}
+
 const identityAccounts = `-- name: IdentityAccounts :many
 SELECT a.user_id, a.username,
-  EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin
+  EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
+  CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method
 FROM remote_accounts a
 WHERE NOT EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.user_id = a.user_id)
 ORDER BY a.username COLLATE "C"
@@ -237,6 +273,7 @@ type IdentityAccountsRow struct {
 	UserID   string
 	Username string
 	Admin    bool
+	Method   string
 }
 
 func (q *Queries) IdentityAccounts(ctx context.Context) ([]IdentityAccountsRow, error) {
@@ -248,7 +285,12 @@ func (q *Queries) IdentityAccounts(ctx context.Context) ([]IdentityAccountsRow, 
 	var items []IdentityAccountsRow
 	for rows.Next() {
 		var i IdentityAccountsRow
-		if err := rows.Scan(&i.UserID, &i.Username, &i.Admin); err != nil {
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Username,
+			&i.Admin,
+			&i.Method,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -429,18 +471,74 @@ func (q *Queries) LockSessionAccount(ctx context.Context, userID string) error {
 }
 
 const lockTargetAccount = `-- name: LockTargetAccount :one
-SELECT EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin
+SELECT EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
+  EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.user_id = a.user_id) AS disabled
 FROM remote_accounts a JOIN users u ON u.id = a.user_id
 WHERE a.user_id = $1
 FOR UPDATE
 `
 
+type LockTargetAccountRow struct {
+	Admin    bool
+	Disabled bool
+}
+
 // Locks the account and its owner row against credential issuance and new owned data.
-func (q *Queries) LockTargetAccount(ctx context.Context, userID string) (bool, error) {
+func (q *Queries) LockTargetAccount(ctx context.Context, userID string) (LockTargetAccountRow, error) {
 	row := q.db.QueryRow(ctx, lockTargetAccount, userID)
-	var admin bool
-	err := row.Scan(&admin)
-	return admin, err
+	var i LockTargetAccountRow
+	err := row.Scan(&i.Admin, &i.Disabled)
+	return i, err
+}
+
+const otherEnabledAdmin = `-- name: OtherEnabledAdmin :one
+SELECT EXISTS (
+  SELECT 1 FROM admin_account m
+  WHERE m.user_id <> $1 AND NOT EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.user_id = m.user_id)
+)
+`
+
+func (q *Queries) OtherEnabledAdmin(ctx context.Context, userID string) (bool, error) {
+	row := q.db.QueryRow(ctx, otherEnabledAdmin, userID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const passwordReset = `-- name: PasswordReset :one
+SELECT a.user_id, a.username,
+  EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
+  CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
+  a.password_hash
+FROM password_resets r JOIN remote_accounts a ON a.user_id = r.user_id
+WHERE r.token_hash = $1 AND r.expires_at > $2
+  AND NOT EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.user_id = a.user_id)
+`
+
+type PasswordResetParams struct {
+	TokenHash string
+	Now       time.Time
+}
+
+type PasswordResetRow struct {
+	UserID       string
+	Username     string
+	Admin        bool
+	Method       string
+	PasswordHash string
+}
+
+func (q *Queries) PasswordReset(ctx context.Context, arg PasswordResetParams) (PasswordResetRow, error) {
+	row := q.db.QueryRow(ctx, passwordReset, arg.TokenHash, arg.Now)
+	var i PasswordResetRow
+	err := row.Scan(
+		&i.UserID,
+		&i.Username,
+		&i.Admin,
+		&i.Method,
+		&i.PasswordHash,
+	)
+	return i, err
 }
 
 const pruneBrowserSessions = `-- name: PruneBrowserSessions :exec
@@ -452,6 +550,15 @@ DELETE FROM browser_sessions WHERE secret_hash IN (
 // Skips sessions another transaction holds, so cleanup never waits or deadlocks.
 func (q *Queries) PruneBrowserSessions(ctx context.Context, expiresAt time.Time) error {
 	_, err := q.db.Exec(ctx, pruneBrowserSessions, expiresAt)
+	return err
+}
+
+const prunePasswordResets = `-- name: PrunePasswordResets :exec
+DELETE FROM password_resets WHERE expires_at <= $1
+`
+
+func (q *Queries) PrunePasswordResets(ctx context.Context, expiresAt time.Time) error {
+	_, err := q.db.Exec(ctx, prunePasswordResets, expiresAt)
 	return err
 }
 
@@ -472,6 +579,22 @@ func (q *Queries) PutAdminSetup(ctx context.Context, arg PutAdminSetupParams) (i
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const putPasswordReset = `-- name: PutPasswordReset :exec
+INSERT INTO password_resets(user_id, token_hash, expires_at) VALUES ($1, $2, $3)
+ON CONFLICT (user_id) DO UPDATE SET token_hash = excluded.token_hash, expires_at = excluded.expires_at
+`
+
+type PutPasswordResetParams struct {
+	UserID    string
+	TokenHash string
+	ExpiresAt time.Time
+}
+
+func (q *Queries) PutPasswordReset(ctx context.Context, arg PutPasswordResetParams) error {
+	_, err := q.db.Exec(ctx, putPasswordReset, arg.UserID, arg.TokenHash, arg.ExpiresAt)
+	return err
 }
 
 const replacePassword = `-- name: ReplacePassword :execrows
@@ -499,6 +622,7 @@ WHERE a.user_id = t.user_id AND t.secret_hash = $2 AND t.expires_at > $1::timest
   AND NOT EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.user_id = a.user_id)
 RETURNING a.user_id, a.username,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
+  CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
   t.purpose, t.expires_at
 `
 
@@ -511,6 +635,7 @@ type ResolveIdentityTokenRow struct {
 	UserID    string
 	Username  string
 	Admin     bool
+	Method    string
 	Purpose   string
 	ExpiresAt time.Time
 }
@@ -523,6 +648,7 @@ func (q *Queries) ResolveIdentityToken(ctx context.Context, arg ResolveIdentityT
 		&i.UserID,
 		&i.Username,
 		&i.Admin,
+		&i.Method,
 		&i.Purpose,
 		&i.ExpiresAt,
 	)
@@ -532,6 +658,7 @@ func (q *Queries) ResolveIdentityToken(ctx context.Context, arg ResolveIdentityT
 const resolveSession = `-- name: ResolveSession :one
 SELECT a.user_id, a.username,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
+  CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
   s.csrf_token, s.expires_at
 FROM browser_sessions s JOIN remote_accounts a ON a.user_id = s.user_id
 WHERE s.secret_hash = $1 AND s.expires_at > $2
@@ -547,6 +674,7 @@ type ResolveSessionRow struct {
 	UserID    string
 	Username  string
 	Admin     bool
+	Method    string
 	CsrfToken string
 	ExpiresAt time.Time
 }
@@ -558,8 +686,18 @@ func (q *Queries) ResolveSession(ctx context.Context, arg ResolveSessionParams) 
 		&i.UserID,
 		&i.Username,
 		&i.Admin,
+		&i.Method,
 		&i.CsrfToken,
 		&i.ExpiresAt,
 	)
 	return i, err
+}
+
+const revokeAdmin = `-- name: RevokeAdmin :exec
+DELETE FROM admin_account WHERE user_id = $1
+`
+
+func (q *Queries) RevokeAdmin(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, revokeAdmin, userID)
+	return err
 }

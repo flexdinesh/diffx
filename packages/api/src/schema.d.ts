@@ -30,7 +30,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Distributed only. Admin password sign-in; same-origin JSON request creating a browser session. Every other account signs in with Google, and any refusal is the same 401. */
+    /** @description Distributed only, when password sign-in is enabled (otherwise 404). Password account sign-in; same-origin JSON request creating a browser session. Google accounts never sign in with a password, and any refusal is the same 401. */
     post: operations["login"];
     delete?: never;
     options?: never;
@@ -38,18 +38,17 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/v2/setup": {
+  "/api/v2/auth/signup": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /** @description Distributed only. Whether the server still needs its admin. Never exposes the setup secret. */
-    get: operations["getSetup"];
+    get?: never;
     put?: never;
-    /** @description Distributed only. Create the admin from the one-time secret the server logged at startup (the setup link's `#t=` fragment) and sign it in. The secret expires after 24 hours and is replaced on each start until used. */
-    post: operations["completeSetup"];
+    /** @description Distributed only, when both sign-up and password sign-in are enabled (otherwise 404). Create a password account without an invite and sign it in. */
+    post: operations["signUp"];
     delete?: never;
     options?: never;
     head?: never;
@@ -65,7 +64,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Distributed only, when Google sign-in is configured (otherwise 404). Start Google sign-in for an existing account. Sets an HttpOnly flow cookie binding the authorization to this browser; navigate to `authorizeUrl` within 10 minutes. */
+    /** @description Distributed only, when Google sign-in is configured (otherwise 404). Start Google sign-in for an existing account, or a new one when sign-up is enabled. Sets an HttpOnly flow cookie binding the authorization to this browser; navigate to `authorizeUrl` within 10 minutes. */
     post: operations["startGoogleSignIn"];
     delete?: never;
     options?: never;
@@ -99,7 +98,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Distributed only, when Google sign-in is configured. Resolve a pending invite from its link's `#t=` secret. The secret travels in the body so it stays out of request logs. */
+    /** @description Distributed only. Resolve a pending invite from its link's `#t=` secret; the page offers the sign-in methods the bootstrap reports. The secret travels in the body so it stays out of request logs. */
     post: operations["lookupInvite"];
     delete?: never;
     options?: never;
@@ -118,6 +117,57 @@ export interface paths {
     put?: never;
     /** @description Distributed only, when Google sign-in is configured. Start Google sign-in that accepts a pending invite. The callback creates the account only when Google reports a verified email equal to the invite's; the invite is used once. */
     post: operations["startInviteGoogleSignIn"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/invites/password": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Distributed only, when password sign-in is enabled (otherwise 404). Accept a pending invite by choosing a username and password, and sign in. Holding the link is the proof; the invited email is not verified. The invite is used once. */
+    post: operations["acceptInviteWithPassword"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/password-reset/lookup": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Distributed only, when password sign-in is enabled (otherwise 404). Resolve a pending password reset from its link's `#t=` secret, issued from the console. The secret travels in the body so it stays out of request logs. */
+    post: operations["lookupPasswordReset"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/password-reset": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Distributed only, when password sign-in is enabled (otherwise 404). Set a new password from a reset link, which expires 24 hours after it was issued and works once. Revokes the account's browser sessions; API tokens are unaffected. */
+    post: operations["completePasswordReset"];
     delete?: never;
     options?: never;
     head?: never;
@@ -149,7 +199,7 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** @description Verify the current password, change it, and revoke all browser sessions. Distributed browser sessions only. */
+    /** @description Verify the current password, change it, and revoke all browser sessions. Password accounts' distributed browser sessions only. */
     put: operations["changePassword"];
     post?: never;
     delete?: never;
@@ -188,117 +238,6 @@ export interface paths {
     post?: never;
     /** @description Revoke an account token immediately. Distributed browser sessions only. */
     delete: operations["revokeAccountToken"];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v2/manage/users": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** @description Every account, including disabled ones. Admin browser session only. */
-    get: operations["listAdminUsers"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v2/manage/users/{userId}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        userId: components["parameters"]["UserId"];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post?: never;
-    /** @description Delete the account and everything it owns. The admin account cannot be deleted. Admin browser session only. */
-    delete: operations["deleteAdminUser"];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v2/manage/users/{userId}/disable": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        userId: components["parameters"]["UserId"];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** @description Block sign-in and revoke every browser session and API token. The admin account cannot be disabled. Admin browser session only. */
-    post: operations["disableAdminUser"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v2/manage/users/{userId}/enable": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        userId: components["parameters"]["UserId"];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** @description Allow sign-in again. Revoked sessions and tokens stay revoked. Admin browser session only. */
-    post: operations["enableAdminUser"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v2/manage/invites": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** @description Every invite, newest first. Never exposes invite secrets. Admin browser session only. */
-    get: operations["listInvites"];
-    put?: never;
-    /** @description Invite an email to sign up with Google. Replaces the email's pending invite. The link is returned only here and expires after 48 hours. 409 when Google sign-in is not configured or an account already uses the email. Admin browser session only. */
-    post: operations["createInvite"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v2/manage/invites/{inviteId}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        inviteId: string;
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post?: never;
-    /** @description Revoke a pending invite. Used or revoked invites are 404. Admin browser session only. */
-    delete: operations["revokeInvite"];
     options?: never;
     head?: never;
     patch?: never;
@@ -991,35 +930,20 @@ export interface components {
       /** @description The secret from the invite link's `#t=` fragment. */
       token: string;
     };
-    Invite: {
-      id: string;
-      email: string;
-      /** @enum {string} */
-      status: "pending" | "used" | "expired" | "revoked";
-      /** Format: int64 */
-      createdAt: number;
-      /** Format: int64 */
-      expiresAt: number;
-      /** @description Username of the account the invite created; null until used or after that account is deleted. */
-      usedBy: string | null;
+    ResetToken: {
+      /** @description The secret from the reset link's `#t=` fragment. */
+      token: string;
     };
     AccountUser: {
       id: string;
       username: string;
-      /** @description The latest email Google reported for the account; null for the admin. */
+      /** @description The latest email Google reported for the account; null for password accounts. */
       email: string | null;
-      /** @description The single account that signs in with a password and manages other accounts. */
-      admin: boolean;
-    };
-    AdminUser: {
-      id: string;
-      username: string;
-      /** @description The latest email Google reported for the account; null for the admin. */
-      email: string | null;
-      admin: boolean;
-      disabled: boolean;
-      /** Format: int64 */
-      createdAt: number;
+      /**
+       * @description How the account signs in, fixed when it was created.
+       * @enum {string}
+       */
+      method: "google" | "password";
     };
     Bootstrap:
       | {
@@ -1040,8 +964,12 @@ export interface components {
       | {
           /** @enum {string} */
           mode: "remote";
-          /** @description Whether members can sign in with Google. */
+          /** @description Whether people can sign in with Google. */
           googleEnabled: boolean;
+          /** @description Whether people can create accounts without an invite, with any enabled method. */
+          signupEnabled: boolean;
+          /** @description Whether password accounts can sign in, sign up, accept invites and reset passwords. */
+          passwordEnabled: boolean;
           user: components["schemas"]["AccountUser"] | null;
           csrfToken: string | null;
         };
@@ -1710,30 +1638,7 @@ export interface operations {
       default: components["responses"]["Problem"];
     };
   };
-  getSetup: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Setup status. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            required: boolean;
-          };
-        };
-      };
-      default: components["responses"]["Problem"];
-    };
-  };
-  completeSetup: {
+  signUp: {
     parameters: {
       query?: never;
       header?: never;
@@ -1742,15 +1647,11 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": {
-          token: string;
-          username: string;
-          password: string;
-        };
+        "application/json": components["schemas"]["PasswordCredentials"];
       };
     };
     responses: {
-      /** @description Admin browser identity. */
+      /** @description The new account's browser identity. */
       200: {
         headers: {
           [name: string]: unknown;
@@ -1834,6 +1735,8 @@ export interface operations {
         content: {
           "application/json": {
             email: string;
+            /** @description Whether accepting makes the account an admin, who can also sign in to the console. */
+            admin: boolean;
             /** Format: int64 */
             expiresAt: number;
           };
@@ -1860,6 +1763,103 @@ export interface operations {
     };
     responses: {
       200: components["responses"]["GoogleAuthorization"];
+      400: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      429: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  acceptInviteWithPassword: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          /** @description The secret from the invite link's `#t=` fragment. */
+          token: string;
+          username: string;
+          password: string;
+        };
+      };
+    };
+    responses: {
+      /** @description The new account's browser identity. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Bootstrap"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+      429: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  lookupPasswordReset: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ResetToken"];
+      };
+    };
+    responses: {
+      /** @description The account the link resets. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            username: string;
+          };
+        };
+      };
+      400: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      429: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  completePasswordReset: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          /** @description The secret from the reset link's `#t=` fragment. */
+          token: string;
+          password: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Password changed; sign in again. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
       400: components["responses"]["Problem"];
       403: components["responses"]["Problem"];
       404: components["responses"]["Problem"];
@@ -2016,201 +2016,6 @@ export interface operations {
         content?: never;
       };
       400: components["responses"]["Problem"];
-      401: components["responses"]["Problem"];
-      403: components["responses"]["Problem"];
-      404: components["responses"]["Problem"];
-      default: components["responses"]["Problem"];
-    };
-  };
-  listAdminUsers: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Accounts. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            users: components["schemas"]["AdminUser"][];
-          };
-        };
-      };
-      401: components["responses"]["Problem"];
-      403: components["responses"]["Problem"];
-      default: components["responses"]["Problem"];
-    };
-  };
-  deleteAdminUser: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
-        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
-      };
-      path: {
-        userId: components["parameters"]["UserId"];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Deleted. */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      401: components["responses"]["Problem"];
-      403: components["responses"]["Problem"];
-      404: components["responses"]["Problem"];
-      default: components["responses"]["Problem"];
-    };
-  };
-  disableAdminUser: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
-        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
-      };
-      path: {
-        userId: components["parameters"]["UserId"];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Disabled. */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      401: components["responses"]["Problem"];
-      403: components["responses"]["Problem"];
-      404: components["responses"]["Problem"];
-      default: components["responses"]["Problem"];
-    };
-  };
-  enableAdminUser: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
-        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
-      };
-      path: {
-        userId: components["parameters"]["UserId"];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Enabled. */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      401: components["responses"]["Problem"];
-      403: components["responses"]["Problem"];
-      404: components["responses"]["Problem"];
-      default: components["responses"]["Problem"];
-    };
-  };
-  listInvites: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Invites. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            invites: components["schemas"]["Invite"][];
-          };
-        };
-      };
-      401: components["responses"]["Problem"];
-      403: components["responses"]["Problem"];
-      default: components["responses"]["Problem"];
-    };
-  };
-  createInvite: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
-        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": {
-          email: string;
-        };
-      };
-    };
-    responses: {
-      /** @description Created invite and its one-time link. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            invite: components["schemas"]["Invite"];
-            url: string;
-          };
-        };
-      };
-      400: components["responses"]["Problem"];
-      401: components["responses"]["Problem"];
-      403: components["responses"]["Problem"];
-      409: components["responses"]["Problem"];
-      default: components["responses"]["Problem"];
-    };
-  };
-  revokeInvite: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
-        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
-      };
-      path: {
-        inviteId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Revoked. */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
       401: components["responses"]["Problem"];
       403: components["responses"]["Problem"];
       404: components["responses"]["Problem"];

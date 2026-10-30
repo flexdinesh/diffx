@@ -3,6 +3,7 @@ package remoteserver
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,7 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/diffx/internal/testsupport"
+	"github.com/flexdinesh/diffx/internal/authhttp"
+	"github.com/flexdinesh/diffx/internal/identityservice"
+	"github.com/flexdinesh/diffx/internal/pgstore"
 )
 
 // fakeGoogle issues ID tokens for codes; claims per code are set by the test.
@@ -113,7 +116,7 @@ func sessionFrom(t *testing.T, w *httptest.ResponseRecorder) *http.Cookie {
 		t.Fatalf("sign-in redirect: %d %s", w.Code, w.Header().Get("Location"))
 	}
 	for _, cookie := range w.Result().Cookies() {
-		if cookie.Name == sessionCookie && cookie.Value != "" {
+		if cookie.Name == authhttp.SessionCookie && cookie.Value != "" {
 			return cookie
 		}
 	}
@@ -121,35 +124,25 @@ func sessionFrom(t *testing.T, w *httptest.ResponseRecorder) *http.Cookie {
 	return nil
 }
 
-func createInvite(t *testing.T, handler http.Handler, cookie *http.Cookie, csrf, email string) string {
+// createInvite issues an invite as the console does and returns its secret.
+func createInvite(t *testing.T, store *pgstore.Store, email string) string {
 	t.Helper()
-	w := identityRequest(handler, "POST", "/api/v2/manage/invites", `{"email":"`+email+`"}`, cookie, csrf, "")
-	if w.Code != 201 {
-		t.Fatalf("create invite: %d %s", w.Code, w.Body.String())
-	}
-	var created struct {
-		Invite inviteJSON `json:"invite"`
-		URL    string     `json:"url"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+	_, secret, err := identityservice.New(store).CreateInvite(t.Context(), email, false)
+	if err != nil {
 		t.Fatal(err)
-	}
-	link, secret, found := strings.Cut(created.URL, "/invite#t=")
-	if !found || link != "https://diffx.example.com" || created.Invite.Status != "pending" || created.Invite.ExpiresAt-created.Invite.CreatedAt != (48*time.Hour).Milliseconds() {
-		t.Fatalf("invite: %+v", created)
 	}
 	return secret
 }
 
 func TestInviteSignupThenGoogleSignInByStableSubject(t *testing.T) {
 	fake := newFakeGoogle(t)
-	store, handler := identityHandler(t, Settings{PublicURL: "https://diffx.example.com", Google: fake.settings()})
-	testsupport.RemoteAdmin(t, store, "admin", testPassword)
-	admin, csrf := loginIdentity(t, handler, "admin")
-	if w := identityRequest(handler, "GET", "/api/v2/bootstrap", "", nil, "", ""); !strings.Contains(w.Body.String(), `"googleEnabled":true`) {
+	// Sign-up is closed: only invites create accounts.
+	store, handler := identityHandler(t, Settings{PublicURL: "https://diffx.example.com", Google: fake.settings(), Members: identityservice.MemberPolicy{Password: true}})
+	identity := identityservice.New(store)
+	if w := identityRequest(handler, "GET", "/api/v2/bootstrap", "", nil, "", ""); !strings.Contains(w.Body.String(), `"googleEnabled":true,"signupEnabled":false`) {
 		t.Fatalf("bootstrap: %s", w.Body.String())
 	}
-	secret := createInvite(t, handler, admin, csrf, "Alice.Smith@Example.com")
+	secret := createInvite(t, store, "Alice.Smith@Example.com")
 
 	w := identityRequest(handler, "POST", "/api/v2/invites/lookup", `{"token":"`+secret+`"}`, nil, "", "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"email":"alice.smith@example.com"`) {
@@ -177,14 +170,14 @@ func TestInviteSignupThenGoogleSignInByStableSubject(t *testing.T) {
 		t.Fatalf("state reused: %s", w.Header().Get("Location"))
 	}
 	w = identityRequest(handler, "GET", "/api/v2/bootstrap", "", member, "", "")
-	if !strings.Contains(w.Body.String(), `"username":"alice.smith","email":"alice.smith@example.com","admin":false`) {
+	if !strings.Contains(w.Body.String(), `"username":"alice.smith","email":"alice.smith@example.com","method":"google"`) {
 		t.Fatalf("member identity: %s", w.Body.String())
 	}
 	if w := identityRequest(handler, "POST", "/api/v2/invites/lookup", `{"token":"`+secret+`"}`, nil, "", ""); w.Code != 404 {
 		t.Fatalf("used invite still pending: %d", w.Code)
 	}
-	if w := identityRequest(handler, "POST", "/api/v2/manage/invites", `{"email":"alice.smith@example.com"}`, admin, csrf, ""); w.Code != 409 {
-		t.Fatalf("invited an existing account's email: %d", w.Code)
+	if _, _, err := identity.CreateInvite(t.Context(), "alice.smith@example.com", false); !errors.Is(err, identityservice.ErrConflict) {
+		t.Fatalf("invited an existing account's email: %v", err)
 	}
 
 	// The same Google account signs in after changing its email.
@@ -195,9 +188,8 @@ func TestInviteSignupThenGoogleSignInByStableSubject(t *testing.T) {
 	if !strings.Contains(w.Body.String(), `"username":"alice.smith","email":"alice@new.example.com"`) {
 		t.Fatalf("email change changed account: %s", w.Body.String())
 	}
-	w = identityRequest(handler, "GET", "/api/v2/manage/users", "", admin, "", "")
-	if !strings.Contains(w.Body.String(), `"email":"alice@new.example.com"`) {
-		t.Fatalf("email change not recorded: %s", w.Body.String())
+	if summaries, err := identity.AccountSummaries(t.Context()); err != nil || len(summaries) != 1 || summaries[0].Email != "alice@new.example.com" {
+		t.Fatalf("email change not recorded: %+v %v", summaries, err)
 	}
 
 	// A Google account without an account or invite cannot sign up.
@@ -207,75 +199,72 @@ func TestInviteSignupThenGoogleSignInByStableSubject(t *testing.T) {
 		t.Fatalf("uninvited Google account: %s", w.Header().Get("Location"))
 	}
 	if w := identityRequest(handler, "POST", "/api/v2/auth/login", `{"username":"alice.smith","password":""}`, nil, "", ""); w.Code != 401 {
-		t.Fatalf("member password login: %d", w.Code)
+		t.Fatalf("Google account password login: %d", w.Code)
 	}
 }
 
-func TestInviteAdministrationAndDisabledGoogleAccount(t *testing.T) {
+func TestOpenSignupCreatesVerifiedGoogleAccounts(t *testing.T) {
 	fake := newFakeGoogle(t)
-	store, handler := identityHandler(t, Settings{PublicURL: "https://diffx.example.com", Google: fake.settings()})
-	testsupport.RemoteAdmin(t, store, "admin", testPassword)
-	admin, csrf := loginIdentity(t, handler, "admin")
-	first := createInvite(t, handler, admin, csrf, "bob@example.com")
-	second := createInvite(t, handler, admin, csrf, "bob@example.com")
+	store, handler := identityHandler(t, Settings{PublicURL: "https://diffx.example.com", Google: fake.settings(), Members: identityservice.MemberPolicy{Signup: true}})
+	authorize, flow := startGoogle(t, handler, "/api/v2/auth/google", `{}`)
+	state := fake.authorize(t, authorize, "unverified", "subject-new", "new@example.com", false)
+	if w := callback(handler, state, "unverified", flow); w.Header().Get("Location") != "/?signin=failed" {
+		t.Fatalf("unverified email signed up: %s", w.Header().Get("Location"))
+	}
+	authorize, flow = startGoogle(t, handler, "/api/v2/auth/google", `{}`)
+	state = fake.authorize(t, authorize, "verified", "subject-new", "New.Person@Example.com", true)
+	session := sessionFrom(t, callback(handler, state, "verified", flow))
+	w := identityRequest(handler, "GET", "/api/v2/bootstrap", "", session, "", "")
+	if !strings.Contains(w.Body.String(), `"username":"new.person","email":"new.person@example.com","method":"google"`) {
+		t.Fatalf("signed-up identity: %s", w.Body.String())
+	}
+	authorize, flow = startGoogle(t, handler, "/api/v2/auth/google", `{}`)
+	state = fake.authorize(t, authorize, "again", "subject-new", "new.person@example.com", true)
+	sessionFrom(t, callback(handler, state, "again", flow))
+	if summaries, err := identityservice.New(store).AccountSummaries(t.Context()); err != nil || len(summaries) != 1 || summaries[0].Admin {
+		t.Fatalf("sign-up accounts: %+v %v", summaries, err)
+	}
+}
+
+func TestReplacedRevokedInvitesAndDisabledGoogleAccounts(t *testing.T) {
+	fake := newFakeGoogle(t)
+	store, handler := identityHandler(t, Settings{PublicURL: "https://diffx.example.com", Google: fake.settings(), Members: identityservice.MemberPolicy{Password: true}})
+	identity := identityservice.New(store)
+	first := createInvite(t, store, "bob@example.com")
+	_, second, err := identity.CreateInvite(t.Context(), "bob@example.com", false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if w := identityRequest(handler, "POST", "/api/v2/invites/google", `{"token":"`+first+`"}`, nil, "", ""); w.Code != 404 {
 		t.Fatalf("replaced invite started sign-in: %d", w.Code)
 	}
-	w := identityRequest(handler, "GET", "/api/v2/manage/invites", "", admin, "", "")
-	var listed struct {
-		Invites []inviteJSON `json:"invites"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &listed); err != nil || len(listed.Invites) != 2 || listed.Invites[0].Status == listed.Invites[1].Status {
-		t.Fatalf("invites: %s %v", w.Body.String(), err)
-	}
-	if listed.Invites[0].Status != "pending" {
-		listed.Invites[0], listed.Invites[1] = listed.Invites[1], listed.Invites[0]
-	}
-	if listed.Invites[1].Status != "revoked" {
-		t.Fatalf("replaced invite: %+v", listed.Invites)
-	}
-	if strings.Contains(w.Body.String(), second) {
-		t.Fatal("invite listing leaks the secret")
-	}
-	memberCookie, memberCSRF := memberSession(t, store, "member")
-	for _, request := range []struct {
-		method, path, body string
-	}{{"GET", "/api/v2/manage/invites", ""}, {"POST", "/api/v2/manage/invites", `{"email":"x@example.com"}`}, {"DELETE", "/api/v2/manage/invites/" + listed.Invites[0].ID, ""}} {
-		if w := identityRequest(handler, request.method, request.path, request.body, memberCookie, memberCSRF, ""); w.Code != 403 {
-			t.Fatalf("member %s %s: %d", request.method, request.path, w.Code)
-		}
-	}
-	if w := identityRequest(handler, "POST", "/api/v2/manage/invites", `{"email":"not-an-email"}`, admin, csrf, ""); w.Code != 400 {
-		t.Fatalf("invalid email: %d", w.Code)
+	invites, err := identity.Invites(t.Context())
+	if err != nil || len(invites) != 2 {
+		t.Fatalf("invites: %+v %v", invites, err)
 	}
 	authorize, flow := startGoogle(t, handler, "/api/v2/invites/google", `{"token":"`+second+`"}`)
-	if w := identityRequest(handler, "DELETE", "/api/v2/manage/invites/"+listed.Invites[0].ID, "", admin, csrf, ""); w.Code != 204 {
-		t.Fatalf("revoke: %d", w.Code)
+	for _, invite := range invites {
+		if invite.Status(time.Now()) == identityservice.InvitePending {
+			if err := identity.RevokeInvite(t.Context(), invite.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	state := fake.authorize(t, authorize, "late", "subject-bob", "bob@example.com", true)
 	if w := callback(handler, state, "late", flow); w.Header().Get("Location") != "/?signin=invite-invalid" {
 		t.Fatalf("revoked invite accepted: %s", w.Header().Get("Location"))
 	}
 
-	bob := createInvite(t, handler, admin, csrf, "bob@example.com")
+	bob := createInvite(t, store, "bob@example.com")
 	authorize, flow = startGoogle(t, handler, "/api/v2/invites/google", `{"token":"`+bob+`"}`)
 	state = fake.authorize(t, authorize, "bob", "subject-bob", "bob@example.com", true)
 	sessionFrom(t, callback(handler, state, "bob", flow))
-	w = identityRequest(handler, "GET", "/api/v2/manage/users", "", admin, "", "")
-	var users struct {
-		Users []adminUserJSON `json:"users"`
+	summaries, err := identity.AccountSummaries(t.Context())
+	if err != nil || len(summaries) != 1 {
+		t.Fatalf("accounts: %+v %v", summaries, err)
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &users); err != nil {
+	if err := identity.DisableAccount(t.Context(), "admin", summaries[0].ID); err != nil {
 		t.Fatal(err)
-	}
-	var bobID string
-	for _, user := range users.Users {
-		if user.Username == "bob" {
-			bobID = user.ID
-		}
-	}
-	if w := identityRequest(handler, "POST", "/api/v2/manage/users/"+bobID+"/disable", "", admin, csrf, ""); w.Code != 204 {
-		t.Fatalf("disable: %d", w.Code)
 	}
 	authorize, flow = startGoogle(t, handler, "/api/v2/auth/google", `{}`)
 	state = fake.authorize(t, authorize, "disabled", "subject-bob", "bob@example.com", true)
@@ -285,9 +274,7 @@ func TestInviteAdministrationAndDisabledGoogleAccount(t *testing.T) {
 }
 
 func TestGoogleRoutesAbsentWithoutConfiguration(t *testing.T) {
-	store, handler := identityHandler(t, Settings{})
-	testsupport.RemoteAdmin(t, store, "admin", testPassword)
-	admin, csrf := loginIdentity(t, handler, "admin")
+	_, handler := identityHandler(t, Settings{})
 	for _, path := range []string{"/api/v2/auth/google", "/api/v2/invites/google", "/api/v2/invites/lookup"} {
 		if w := identityRequest(handler, "POST", path, `{"token":"`+strings.Repeat("x", 43)+`"}`, nil, "", ""); w.Code != 404 && w.Code != 400 {
 			t.Fatalf("unconfigured %s: %d", path, w.Code)
@@ -298,11 +285,5 @@ func TestGoogleRoutesAbsentWithoutConfiguration(t *testing.T) {
 	}
 	if w := callback(handler, "state", "code", nil); w.Code != 404 {
 		t.Fatalf("unconfigured callback: %d", w.Code)
-	}
-	if w := identityRequest(handler, "POST", "/api/v2/manage/invites", `{"email":"a@example.com"}`, admin, csrf, ""); w.Code != 409 {
-		t.Fatalf("invite without Google: %d", w.Code)
-	}
-	if w := identityRequest(handler, "GET", "/api/v2/manage/invites", "", admin, "", ""); w.Code != 200 {
-		t.Fatalf("invite listing without Google: %d", w.Code)
 	}
 }

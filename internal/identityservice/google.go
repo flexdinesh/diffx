@@ -19,7 +19,8 @@ const (
 var (
 	// ErrGoogleDisabled reports Google sign-in is not configured.
 	ErrGoogleDisabled = errors.New("google sign-in is not configured")
-	// ErrNoAccount reports a Google account without a diffx account or invite.
+	// ErrNoAccount reports a Google account without a diffx account or invite
+	// while sign-up is closed.
 	ErrNoAccount = errors.New("no account for this Google account")
 	// ErrInviteMismatch reports a verified Google email that differs from the invite.
 	ErrInviteMismatch = errors.New("google account does not match the invite")
@@ -33,7 +34,7 @@ type GoogleClient interface {
 
 type Option func(*Service)
 
-// WithGoogle enables Google sign-in and invites.
+// WithGoogle enables Google sign-in.
 func WithGoogle(client GoogleClient) Option {
 	return func(service *Service) { service.google = client }
 }
@@ -48,8 +49,10 @@ const (
 )
 
 type Invite struct {
-	ID        string
-	Email     string
+	ID    string
+	Email string
+	// Admin makes the accepting account an admin.
+	Admin     bool
 	CreatedAt time.Time
 	ExpiresAt time.Time
 	UsedAt    *time.Time
@@ -90,9 +93,16 @@ type GoogleStore interface {
 	// PendingInvite resolves an unexpired, unused, unrevoked invite by its secret.
 	PendingInvite(ctx context.Context, tokenHash string, now time.Time) (Invite, error)
 	// AcceptInvite creates the account and its Google identity and uses the
-	// pending invite in one transaction. A taken username is ErrConflict; an
+	// pending invite in one transaction, granting admin for an admin invite. A taken username is ErrConflict; an
 	// unavailable invite or an already linked subject is ErrNotFound.
 	AcceptInvite(ctx context.Context, inviteID string, account Account, identity google.Identity, now time.Time) error
+	// AcceptPasswordInvite creates a password account and uses the pending
+	// invite in one transaction, granting admin for an admin invite. A taken username is ErrConflict; an
+	// unavailable invite is ErrNotFound.
+	AcceptPasswordInvite(ctx context.Context, inviteID string, account Account, passwordHash string, now time.Time) error
+	// CreateGoogleAccount creates an account and its Google identity without an
+	// invite. A taken username is ErrConflict; an already linked subject is ErrNotFound.
+	CreateGoogleAccount(ctx context.Context, account Account, identity google.Identity, now time.Time) error
 	// GoogleAccount resolves a linked subject, recording the latest email.
 	GoogleAccount(ctx context.Context, identity google.Identity, now time.Time) (account Account, disabled bool, err error)
 	// GoogleEmail is the latest email Google reported for the account; "" for
@@ -105,7 +115,7 @@ type GoogleStore interface {
 
 func (service *Service) GoogleEnabled() bool { return service.google != nil }
 
-// GoogleEmail is the account's latest Google email, or "" for the admin.
+// GoogleEmail is the account's latest Google email, or "" for password accounts.
 func (service *Service) GoogleEmail(ctx context.Context, accountID string) (string, error) {
 	return service.store.GoogleEmail(ctx, accountID)
 }
@@ -120,11 +130,10 @@ func canonicalEmail(email string) (string, error) {
 }
 
 // CreateInvite issues a single-use 48 hour invite for one email, replacing any
-// pending invite for it. The secret is returned once and stored hashed.
-func (service *Service) CreateInvite(ctx context.Context, email string) (Invite, string, error) {
-	if service.google == nil {
-		return Invite{}, "", ErrGoogleDisabled
-	}
+// pending invite for it. The secret is returned once and stored hashed. The
+// web app decides which sign-in methods can accept it. An admin invite makes
+// the accepting account an admin.
+func (service *Service) CreateInvite(ctx context.Context, email string, admin bool) (Invite, string, error) {
 	email, err := canonicalEmail(email)
 	if err != nil {
 		return Invite{}, "", err
@@ -138,7 +147,7 @@ func (service *Service) CreateInvite(ctx context.Context, email string) (Invite,
 		return Invite{}, "", err
 	}
 	now := service.now()
-	invite := Invite{ID: id, Email: email, CreatedAt: now, ExpiresAt: now.Add(InviteLifetime)}
+	invite := Invite{ID: id, Email: email, Admin: admin, CreatedAt: now, ExpiresAt: now.Add(InviteLifetime)}
 	if err := service.store.CreateInvite(ctx, invite, credentialHash(secret)); err != nil {
 		return Invite{}, "", err
 	}
@@ -155,9 +164,6 @@ func (service *Service) RevokeInvite(ctx context.Context, id string) error {
 
 // PendingInvite resolves an invite link for the invite page.
 func (service *Service) PendingInvite(ctx context.Context, secret string) (Invite, error) {
-	if service.google == nil {
-		return Invite{}, ErrGoogleDisabled
-	}
 	if len(secret) != 43 {
 		return Invite{}, ErrNotFound
 	}
@@ -195,10 +201,11 @@ func (service *Service) StartGoogle(ctx context.Context, inviteSecret string) (s
 }
 
 // CompleteGoogle finishes authorization in the browser that started it. A
-// linked Google subject signs in, keeping its account when the email changes.
-// Otherwise an invite flow creates the account when Google verified the
-// invited email.
-func (service *Service) CompleteGoogle(ctx context.Context, state, binding, code string) (Session, error) {
+// linked Google subject signs in to an audience that admits it, keeping its
+// account when the email changes. For the web app, an invite flow creates the
+// account when Google verified the invited email, and open sign-up creates one
+// for any verified email. The console never creates accounts.
+func (service *Service) CompleteGoogle(ctx context.Context, audience Audience, state, binding, code string) (Session, error) {
 	if service.google == nil {
 		return Session{}, ErrGoogleDisabled
 	}
@@ -221,7 +228,7 @@ func (service *Service) CompleteGoogle(ctx context.Context, state, binding, code
 	}
 	account, disabled, err := service.store.GoogleAccount(ctx, identity, service.now())
 	if err == nil {
-		if disabled {
+		if disabled || !service.admits(audience, account) {
 			return Session{}, ErrAuthentication
 		}
 		return service.issueSession(ctx, account, "")
@@ -229,10 +236,49 @@ func (service *Service) CompleteGoogle(ctx context.Context, state, binding, code
 	if !errors.Is(err, ErrNotFound) {
 		return Session{}, err
 	}
-	if flow.InviteID == "" {
+	if audience == AudienceConsole {
 		return Session{}, ErrNoAccount
 	}
-	return service.acceptInvite(ctx, flow.InviteID, identity)
+	if flow.InviteID != "" {
+		return service.acceptInvite(ctx, flow.InviteID, identity)
+	}
+	if !service.members.Signup {
+		return Session{}, ErrNoAccount
+	}
+	// Open sign-up still requires an email Google verified, which names the account.
+	email, err := canonicalEmail(identity.Email)
+	if err != nil || !identity.EmailVerified {
+		return Session{}, ErrAuthentication
+	}
+	identity.Email = email
+	created, err := service.createNamedAccount(email, Account{Method: MethodGoogle}, func(account Account) error {
+		return service.store.CreateGoogleAccount(ctx, account, identity, service.now())
+	})
+	if err != nil {
+		return Session{}, err
+	}
+	return service.issueSession(ctx, created, "")
+}
+
+// AcceptPasswordInvite creates a password account from an invite link and
+// signs it in. Holding the link is the proof; the invited email is not verified.
+func (service *Service) AcceptPasswordInvite(ctx context.Context, secret, username, password string) (Session, error) {
+	if !service.members.Password {
+		return Session{}, ErrDisabled
+	}
+	account, hash, err := service.newPasswordAccount(username, password)
+	if err != nil {
+		return Session{}, err
+	}
+	invite, err := service.PendingInvite(ctx, secret)
+	if err != nil {
+		return Session{}, err
+	}
+	account.Admin = invite.Admin
+	if err := service.store.AcceptPasswordInvite(ctx, invite.ID, account, hash, service.now()); err != nil {
+		return Session{}, err
+	}
+	return service.issueSession(ctx, account, hash)
 }
 
 func (service *Service) acceptInvite(ctx context.Context, inviteID string, identity google.Identity) (Session, error) {
@@ -248,9 +294,21 @@ func (service *Service) acceptInvite(ctx context.Context, inviteID string, ident
 		return Session{}, ErrInviteMismatch
 	}
 	identity.Email = email
-	id, err := opaqueSecret()
+	account, err := service.createNamedAccount(email, Account{Admin: invite.Admin, Method: MethodGoogle}, func(account Account) error {
+		return service.store.AcceptInvite(ctx, inviteID, account, identity, service.now())
+	})
 	if err != nil {
 		return Session{}, err
+	}
+	return service.issueSession(ctx, account, "")
+}
+
+// createNamedAccount creates an account like template, named after the email
+// and numbered until the name is free.
+func (service *Service) createNamedAccount(email string, template Account, create func(Account) error) (Account, error) {
+	id, err := opaqueSecret()
+	if err != nil {
+		return Account{}, err
 	}
 	base := usernameFromEmail(email)
 	for attempt := 1; attempt <= 100; attempt++ {
@@ -259,17 +317,18 @@ func (service *Service) acceptInvite(ctx context.Context, inviteID string, ident
 			suffix := fmt.Sprintf("-%d", attempt)
 			username = strings.TrimRight(base[:min(len(base), 32-len(suffix))], "._-") + suffix
 		}
-		account := Account{ID: id, Username: username}
-		err := service.store.AcceptInvite(ctx, inviteID, account, identity, service.now())
+		account := template
+		account.ID, account.Username = id, username
+		err := create(account)
 		if errors.Is(err, ErrConflict) {
 			continue
 		}
 		if err != nil {
-			return Session{}, err
+			return Account{}, err
 		}
-		return service.issueSession(ctx, account, "")
+		return account, nil
 	}
-	return Session{}, ErrConflict
+	return Account{}, ErrConflict
 }
 
 // usernameFromEmail derives a valid username from the email's local part.

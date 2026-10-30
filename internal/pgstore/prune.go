@@ -40,6 +40,9 @@ func (store *Store) PruneExpired(now time.Time) error {
 		if err := queries.EndStreams(ctx); err != nil {
 			return err
 		}
+		if err := queries.PrunePasswordResets(ctx, now); err != nil {
+			return err
+		}
 		if err := queries.PruneGitHubStates(ctx, now); err != nil {
 			return err
 		}

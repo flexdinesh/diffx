@@ -15,10 +15,10 @@ import {
 } from "../../src/identity-context.tsx";
 import {
   AccountSettings,
-  AdminSetup,
-  AdminSignIn,
   InviteSignUp,
+  ResetPassword,
   SignIn,
+  SignUp,
 } from "../../src/account.tsx";
 import { json, requests } from "./setup.ts";
 
@@ -27,12 +27,29 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-function bootstrap(signedIn = true, admin = false) {
+type Policy = {
+  method?: "google" | "password";
+  google?: boolean;
+  password?: boolean;
+  signup?: boolean;
+};
+
+function bootstrap(
+  signedIn = true,
+  {
+    method = "google",
+    google = false,
+    password = false,
+    signup = false,
+  }: Policy = {},
+) {
   return {
     mode: "remote",
-    googleEnabled: false,
+    googleEnabled: google,
+    signupEnabled: signup,
+    passwordEnabled: password,
     user: signedIn
-      ? { id: "account-a", username: "alice", email: null, admin }
+      ? { id: "account-a", username: "alice", email: null, method }
       : null,
     csrfToken: signedIn ? "session-csrf" : null,
   };
@@ -43,6 +60,9 @@ function mount(Page: ComponentType, signedIn = true) {
     const { state } = useIdentity();
     if (state.status !== "ready") return createElement(IdentityStatus);
     if (signedIn && !state.bootstrap.user) return createElement(SignIn);
+    // Signed-out pages hand over to the app once they establish a session.
+    if (!signedIn && state.bootstrap.user)
+      return createElement("h1", null, "Signed in");
     return createElement(Page);
   }
   return render(createElement(IdentityProvider, null, createElement(Content)));
@@ -51,11 +71,11 @@ function mount(Page: ComponentType, signedIn = true) {
 function remote(
   handler: (request: Request) => Response | Promise<Response>,
   signedIn = true,
-  admin = false,
+  policy: Policy = {},
 ) {
   requests((request) => {
     const path = new URL(request.url).pathname;
-    if (path === "/api/v2/bootstrap") return json(bootstrap(signedIn, admin));
+    if (path === "/api/v2/bootstrap") return json(bootstrap(signedIn, policy));
     if (path === "/api/v2/github/connection") return json({}, 404);
     if (path === "/api/v2/push") return json({}, 404);
     return handler(request);
@@ -77,14 +97,27 @@ test("bootstrap failure stays an error and retries without inferring local mode"
   await screen.findByRole("heading", { name: "Sign in" });
 });
 
-test("members get no password form; invalid admin login preserves recovery", async () => {
-  remote(() => json({ detail: "Authentication required" }, 401), false);
-  const view = mount(SignIn, false);
-  await screen.findByRole("heading", { name: "Sign in" });
+test("invite-only Google offers no password form or signup", async () => {
+  remote(() => json({ detail: "Unexpected" }, 500), false, { google: true });
+  mount(SignIn, false);
+  await screen.findByRole("button", { name: "Continue with Google" });
   assert.equal(screen.queryByLabelText("Password", { exact: true }), null);
-  view.unmount();
-  mount(AdminSignIn, false);
-  fireEvent.change(await screen.findByLabelText("Username", { exact: true }), {
+  assert.equal(screen.queryByRole("link", { name: "Create an account" }), null);
+  assert.ok(screen.getByText("Accounts are by invite. Ask us for one."));
+});
+
+test("failed password sign-in preserves recovery", async () => {
+  remote(() => json({ detail: "Authentication required" }, 401), false, {
+    google: true,
+    password: true,
+    signup: true,
+  });
+  mount(SignIn, false);
+  assert.ok(
+    await screen.findByRole("button", { name: "Continue with Google" }),
+  );
+  assert.ok(screen.getByRole("link", { name: "Create an account" }));
+  fireEvent.change(screen.getByLabelText("Username", { exact: true }), {
     target: { value: "alice" },
   });
   fireEvent.change(screen.getByLabelText("Password", { exact: true }), {
@@ -101,20 +134,112 @@ test("members get no password form; invalid admin login preserves recovery", asy
   );
 });
 
-test("a completed setup is the sign-in page and drops the stale secret", async () => {
-  window.history.replaceState(null, "", "/setup#t=stale-secret");
-  remote(() => json({ required: false }), false);
-  mount(AdminSetup, false);
-  await screen.findByRole("heading", { name: "Sign in" });
-  assert.equal(screen.queryByRole("heading", { name: "Set up diffx" }), null);
-  assert.equal(document.querySelector('a[href="/console"]'), null);
-  assert.equal(screen.queryByText(/admin/i), null);
-  assert.equal(window.location.hash, "");
-  assert.equal(screen.queryByLabelText("Password", { exact: true }), null);
+test("password signup signs the new account in", async () => {
+  let body: unknown;
+  remote(
+    async (request) => {
+      assert.equal(new URL(request.url).pathname, "/api/v2/auth/signup");
+      body = await request.json();
+      return json(bootstrap(true, { method: "password", password: true }));
+    },
+    false,
+    { password: true, signup: true },
+  );
+  mount(SignUp, false);
+  fireEvent.change(await screen.findByLabelText("Username", { exact: true }), {
+    target: { value: "alice" },
+  });
+  fireEvent.change(screen.getByLabelText("Password", { exact: true }), {
+    target: { value: "new-password-456" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+  await screen.findByRole("heading", { name: "Signed in" });
+  assert.deepEqual(body, { username: "alice", password: "new-password-456" });
 });
 
-test("member settings have no password section", async () => {
-  remote(() => json({ tokens: [] }));
+test("an admin invite accepts a password with its secret", async () => {
+  window.history.replaceState(null, "", "/invite#t=invite-secret");
+  const bodies: unknown[] = [];
+  remote(
+    async (request) => {
+      const path = new URL(request.url).pathname;
+      bodies.push(await request.json());
+      if (path === "/api/v2/invites/lookup")
+        return json({ email: "new@example.com", admin: true, expiresAt: 0 });
+      assert.equal(path, "/api/v2/invites/password");
+      return json(bootstrap(true, { method: "password", password: true }));
+    },
+    false,
+    { password: true },
+  );
+  mount(InviteSignUp, false);
+  assert.ok(
+    await screen.findByText(/and as an admin of this server's console/),
+  );
+  assert.equal(window.location.hash, "");
+  assert.equal(
+    screen.queryByRole("button", { name: "Continue with Google" }),
+    null,
+  );
+  fireEvent.change(screen.getByLabelText("Username", { exact: true }), {
+    target: { value: "newbie" },
+  });
+  fireEvent.change(screen.getByLabelText("Password", { exact: true }), {
+    target: { value: "new-password-456" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+  await screen.findByRole("heading", { name: "Signed in" });
+  assert.deepEqual(bodies, [
+    { token: "invite-secret" },
+    {
+      token: "invite-secret",
+      username: "newbie",
+      password: "new-password-456",
+    },
+  ]);
+});
+
+test("a reset link sets a new password once and hides its secret", async () => {
+  window.history.replaceState(null, "", "/reset-password#t=reset-secret");
+  const bodies: unknown[] = [];
+  remote(
+    async (request) => {
+      bodies.push(await request.json());
+      return new URL(request.url).pathname === "/api/v2/password-reset/lookup"
+        ? json({ username: "alice" })
+        : new Response(null, { status: 204 });
+    },
+    false,
+    { password: true },
+  );
+  mount(ResetPassword, false);
+  assert.ok(await screen.findByText("alice"));
+  assert.equal(window.location.hash, "");
+  fireEvent.change(screen.getByLabelText("New password", { exact: true }), {
+    target: { value: "new-password-456" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Set password" }));
+  await screen.findByText(/Your password is set/);
+  assert.deepEqual(bodies, [
+    { token: "reset-secret" },
+    { token: "reset-secret", password: "new-password-456" },
+  ]);
+});
+
+test("an unusable reset link says so", async () => {
+  window.history.replaceState(null, "", "/reset-password#t=used-secret");
+  remote(() => json({ detail: "Reset link is invalid" }, 404), false, {
+    password: true,
+  });
+  mount(ResetPassword, false);
+  await screen.findByText(
+    /This reset link is invalid, expired or already used/,
+  );
+  assert.equal(screen.queryByLabelText("New password", { exact: true }), null);
+});
+
+test("Google accounts have no password section", async () => {
+  remote(() => json({ tokens: [] }), true, { password: true });
   mount(AccountSettings);
   await screen.findByRole("heading", { name: "API tokens" });
   assert.equal(screen.queryByRole("heading", { name: "Password" }), null);
@@ -159,7 +284,7 @@ test("password change sends CSRF and signs out after revoking sessions", async (
       return new Response(null, { status: 204 });
     },
     true,
-    true,
+    { method: "password", password: true },
   );
   mount(AccountSettings);
   fireEvent.change(
@@ -199,13 +324,13 @@ test("logout failure stays recoverable and success disposes account UI", async (
   await screen.findByRole("heading", { name: "Sign in" });
 });
 
-test("without Google configuration sign in offers no Google action", async () => {
+test("without any sign-in method sign in offers no action", async () => {
   window.history.replaceState(null, "", "/?signin=cancelled");
   remote(() => {
     throw new Error("Unexpected account request");
   }, false);
   mount(SignIn, false);
-  await screen.findByText(/Sign-in is not available on this server yet/);
+  await screen.findByText(/Sign-in is not available on this server/);
   assert.equal(
     screen.queryByRole("button", { name: "Continue with Google" }),
     null,
@@ -217,7 +342,7 @@ test("an unusable invite hides its secret and offers no Google action", async ()
   window.history.replaceState(null, "", "/invite#t=used-secret");
   requests((request) =>
     new URL(request.url).pathname === "/api/v2/bootstrap"
-      ? json({ ...bootstrap(false), googleEnabled: true })
+      ? json(bootstrap(false, { google: true }))
       : json(
           { detail: "Invite link is invalid, expired or already used" },
           404,

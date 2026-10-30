@@ -107,18 +107,12 @@ const devices = [
 ];
 
 interface Server {
-  admin?: boolean;
   enabled?: boolean;
   github?: "absent" | "disconnected";
   handle?: (request: Request) => Response | Promise<Response> | undefined;
 }
 
-function server({
-  admin = false,
-  enabled = true,
-  github = "absent",
-  handle,
-}: Server = {}) {
+function server({ enabled = true, github = "absent", handle }: Server = {}) {
   const calls: string[] = [];
   const bodies: unknown[] = [];
   requests(async (request) => {
@@ -127,7 +121,14 @@ function server({
       return json({
         mode: "remote",
         googleEnabled: false,
-        user: { id: "account-a", username: "alice", email: null, admin },
+        signupEnabled: false,
+        passwordEnabled: false,
+        user: {
+          id: "account-a",
+          username: "alice",
+          email: null,
+          method: "google",
+        },
         csrfToken: "session-csrf",
       });
     if (path === "/api/v2/account/tokens") return json({ tokens: [] });
@@ -168,23 +169,14 @@ async function section() {
   await screen.findByRole("heading", { name: "Notifications" });
 }
 
-test("server push disabled tells the admin to set an HTTPS public URL", async () => {
-  pushBrowser();
-  server({ enabled: false, admin: true });
-  mount();
-  await section();
-  assert.ok(screen.getByText(/need an HTTPS public URL/));
-  assert.ok(screen.getByText("--public-url"));
-  assert.equal(screen.queryByRole("heading", { name: "This device" }), null);
-});
-
-test("server push disabled asks members to contact us", async () => {
+test("server push disabled asks every account to contact us", async () => {
   pushBrowser();
   server({ enabled: false });
   mount();
   await section();
   assert.ok(screen.getByText(/Ask us to turn them on/));
   assert.equal(screen.queryByText(/--public-url/), null);
+  assert.equal(screen.queryByRole("heading", { name: "This device" }), null);
 });
 
 test("a browser without push explains it and still lists other devices", async () => {

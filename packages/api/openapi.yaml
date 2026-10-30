@@ -22,7 +22,7 @@ paths:
   /api/v2/auth/login:
     post:
       operationId: login
-      description: Distributed only. Admin password sign-in; same-origin JSON request creating a browser session. Every other account signs in with Google, and any refusal is the same 401.
+      description: Distributed only, when password sign-in is enabled (otherwise 404). Password account sign-in; same-origin JSON request creating a browser session. Google accounts never sign in with a password, and any refusal is the same 401.
       requestBody:
         required: true
         content:
@@ -46,45 +46,19 @@ paths:
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
-  /api/v2/setup:
-    get:
-      operationId: getSetup
-      description: Distributed only. Whether the server still needs its admin. Never exposes the setup secret.
-      responses:
-        "200":
-          description: Setup status.
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required: [required]
-                properties:
-                  required:
-                    type: boolean
-        default:
-          $ref: "#/components/responses/Problem"
+  /api/v2/auth/signup:
     post:
-      operationId: completeSetup
-      description: Distributed only. Create the admin from the one-time secret the server logged at startup (the setup link's `#t=` fragment) and sign it in. The secret expires after 24 hours and is replaced on each start until used.
+      operationId: signUp
+      description: Distributed only, when both sign-up and password sign-in are enabled (otherwise 404). Create a password account without an invite and sign it in.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: false
-              required: [token, username, password]
-              properties:
-                token:
-                  type: string
-                username:
-                  type: string
-                password:
-                  type: string
+              $ref: "#/components/schemas/PasswordCredentials"
       responses:
         "200":
-          description: Admin browser identity.
+          description: The new account's browser identity.
           content:
             application/json:
               schema:
@@ -104,7 +78,7 @@ paths:
   /api/v2/auth/google:
     post:
       operationId: startGoogleSignIn
-      description: Distributed only, when Google sign-in is configured (otherwise 404). Start Google sign-in for an existing account. Sets an HttpOnly flow cookie binding the authorization to this browser; navigate to `authorizeUrl` within 10 minutes.
+      description: Distributed only, when Google sign-in is configured (otherwise 404). Start Google sign-in for an existing account, or a new one when sign-up is enabled. Sets an HttpOnly flow cookie binding the authorization to this browser; navigate to `authorizeUrl` within 10 minutes.
       requestBody:
         required: true
         content:
@@ -148,7 +122,7 @@ paths:
   /api/v2/invites/lookup:
     post:
       operationId: lookupInvite
-      description: Distributed only, when Google sign-in is configured. Resolve a pending invite from its link's `#t=` secret. The secret travels in the body so it stays out of request logs.
+      description: Distributed only. Resolve a pending invite from its link's `#t=` secret; the page offers the sign-in methods the bootstrap reports. The secret travels in the body so it stays out of request logs.
       requestBody:
         required: true
         content:
@@ -163,10 +137,13 @@ paths:
               schema:
                 type: object
                 additionalProperties: false
-                required: [email, expiresAt]
+                required: [email, admin, expiresAt]
                 properties:
                   email:
                     type: string
+                  admin:
+                    type: boolean
+                    description: Whether accepting makes the account an admin, who can also sign in to the console.
                   expiresAt:
                     type: integer
                     format: int64
@@ -203,6 +180,108 @@ paths:
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v2/invites/password:
+    post:
+      operationId: acceptInviteWithPassword
+      description: Distributed only, when password sign-in is enabled (otherwise 404). Accept a pending invite by choosing a username and password, and sign in. Holding the link is the proof; the invited email is not verified. The invite is used once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, username, password]
+              properties:
+                token:
+                  type: string
+                  description: The secret from the invite link's `#t=` fragment.
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        "200":
+          description: The new account's browser identity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bootstrap"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/password-reset/lookup:
+    post:
+      operationId: lookupPasswordReset
+      description: Distributed only, when password sign-in is enabled (otherwise 404). Resolve a pending password reset from its link's `#t=` secret, issued from the console. The secret travels in the body so it stays out of request logs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetToken"
+      responses:
+        "200":
+          description: The account the link resets.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [username]
+                properties:
+                  username:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/password-reset:
+    post:
+      operationId: completePasswordReset
+      description: Distributed only, when password sign-in is enabled (otherwise 404). Set a new password from a reset link, which expires 24 hours after it was issued and works once. Revokes the account's browser sessions; API tokens are unaffected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, password]
+              properties:
+                token:
+                  type: string
+                  description: The secret from the reset link's `#t=` fragment.
+                password:
+                  type: string
+      responses:
+        "204":
+          description: Password changed; sign in again.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v2/auth/logout:
     post:
       security:
@@ -229,7 +308,7 @@ paths:
       security:
         - browserSession: []
       operationId: changePassword
-      description: Verify the current password, change it, and revoke all browser sessions. Distributed browser sessions only.
+      description: Verify the current password, change it, and revoke all browser sessions. Password accounts' distributed browser sessions only.
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
       requestBody:
@@ -356,188 +435,6 @@ paths:
           description: Credential revoked.
         "400":
           $ref: "#/components/responses/Problem"
-        "401":
-          $ref: "#/components/responses/Problem"
-        "403":
-          $ref: "#/components/responses/Problem"
-        "404":
-          $ref: "#/components/responses/Problem"
-        default:
-          $ref: "#/components/responses/Problem"
-  /api/v2/manage/users:
-    get:
-      security:
-        - browserSession: []
-      operationId: listAdminUsers
-      description: Every account, including disabled ones. Admin browser session only.
-      responses:
-        "200":
-          description: Accounts.
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required: [users]
-                properties:
-                  users:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/AdminUser"
-        "401":
-          $ref: "#/components/responses/Problem"
-        "403":
-          $ref: "#/components/responses/Problem"
-        default:
-          $ref: "#/components/responses/Problem"
-  /api/v2/manage/users/{userId}:
-    parameters:
-      - $ref: "#/components/parameters/UserId"
-    delete:
-      security:
-        - browserSession: []
-      operationId: deleteAdminUser
-      description: Delete the account and everything it owns. The admin account cannot be deleted. Admin browser session only.
-      parameters:
-        - $ref: "#/components/parameters/CsrfToken"
-      responses:
-        "204":
-          description: Deleted.
-        "401":
-          $ref: "#/components/responses/Problem"
-        "403":
-          $ref: "#/components/responses/Problem"
-        "404":
-          $ref: "#/components/responses/Problem"
-        default:
-          $ref: "#/components/responses/Problem"
-  /api/v2/manage/users/{userId}/disable:
-    parameters:
-      - $ref: "#/components/parameters/UserId"
-    post:
-      security:
-        - browserSession: []
-      operationId: disableAdminUser
-      description: Block sign-in and revoke every browser session and API token. The admin account cannot be disabled. Admin browser session only.
-      parameters:
-        - $ref: "#/components/parameters/CsrfToken"
-      responses:
-        "204":
-          description: Disabled.
-        "401":
-          $ref: "#/components/responses/Problem"
-        "403":
-          $ref: "#/components/responses/Problem"
-        "404":
-          $ref: "#/components/responses/Problem"
-        default:
-          $ref: "#/components/responses/Problem"
-  /api/v2/manage/users/{userId}/enable:
-    parameters:
-      - $ref: "#/components/parameters/UserId"
-    post:
-      security:
-        - browserSession: []
-      operationId: enableAdminUser
-      description: Allow sign-in again. Revoked sessions and tokens stay revoked. Admin browser session only.
-      parameters:
-        - $ref: "#/components/parameters/CsrfToken"
-      responses:
-        "204":
-          description: Enabled.
-        "401":
-          $ref: "#/components/responses/Problem"
-        "403":
-          $ref: "#/components/responses/Problem"
-        "404":
-          $ref: "#/components/responses/Problem"
-        default:
-          $ref: "#/components/responses/Problem"
-  /api/v2/manage/invites:
-    get:
-      security:
-        - browserSession: []
-      operationId: listInvites
-      description: Every invite, newest first. Never exposes invite secrets. Admin browser session only.
-      responses:
-        "200":
-          description: Invites.
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required: [invites]
-                properties:
-                  invites:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Invite"
-        "401":
-          $ref: "#/components/responses/Problem"
-        "403":
-          $ref: "#/components/responses/Problem"
-        default:
-          $ref: "#/components/responses/Problem"
-    post:
-      security:
-        - browserSession: []
-      operationId: createInvite
-      description: Invite an email to sign up with Google. Replaces the email's pending invite. The link is returned only here and expires after 48 hours. 409 when Google sign-in is not configured or an account already uses the email. Admin browser session only.
-      parameters:
-        - $ref: "#/components/parameters/CsrfToken"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [email]
-              properties:
-                email:
-                  type: string
-      responses:
-        "201":
-          description: Created invite and its one-time link.
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required: [invite, url]
-                properties:
-                  invite:
-                    $ref: "#/components/schemas/Invite"
-                  url:
-                    type: string
-        "400":
-          $ref: "#/components/responses/Problem"
-        "401":
-          $ref: "#/components/responses/Problem"
-        "403":
-          $ref: "#/components/responses/Problem"
-        "409":
-          $ref: "#/components/responses/Problem"
-        default:
-          $ref: "#/components/responses/Problem"
-  /api/v2/manage/invites/{inviteId}:
-    parameters:
-      - name: inviteId
-        in: path
-        required: true
-        schema:
-          type: string
-    delete:
-      security:
-        - browserSession: []
-      operationId: revokeInvite
-      description: Revoke a pending invite. Used or revoked invites are 404. Admin browser session only.
-      parameters:
-        - $ref: "#/components/parameters/CsrfToken"
-      responses:
-        "204":
-          description: Revoked.
         "401":
           $ref: "#/components/responses/Problem"
         "403":
@@ -1699,31 +1596,18 @@ components:
         token:
           type: string
           description: The secret from the invite link's `#t=` fragment.
-    Invite:
+    ResetToken:
       type: object
       additionalProperties: false
-      required: [id, email, status, createdAt, expiresAt, usedBy]
+      required: [token]
       properties:
-        id:
+        token:
           type: string
-        email:
-          type: string
-        status:
-          type: string
-          enum: [pending, used, expired, revoked]
-        createdAt:
-          type: integer
-          format: int64
-        expiresAt:
-          type: integer
-          format: int64
-        usedBy:
-          type: [string, "null"]
-          description: Username of the account the invite created; null until used or after that account is deleted.
+          description: The secret from the reset link's `#t=` fragment.
     AccountUser:
       type: object
       additionalProperties: false
-      required: [id, username, email, admin]
+      required: [id, username, email, method]
       properties:
         id:
           type: string
@@ -1731,29 +1615,11 @@ components:
           type: string
         email:
           type: [string, "null"]
-          description: The latest email Google reported for the account; null for the admin.
-        admin:
-          type: boolean
-          description: The single account that signs in with a password and manages other accounts.
-    AdminUser:
-      type: object
-      additionalProperties: false
-      required: [id, username, email, admin, disabled, createdAt]
-      properties:
-        id:
+          description: The latest email Google reported for the account; null for password accounts.
+        method:
           type: string
-        username:
-          type: string
-        email:
-          type: [string, "null"]
-          description: The latest email Google reported for the account; null for the admin.
-        admin:
-          type: boolean
-        disabled:
-          type: boolean
-        createdAt:
-          type: integer
-          format: int64
+          enum: [google, password]
+          description: How the account signs in, fixed when it was created.
     Bootstrap:
       oneOf:
         - type: object
@@ -1779,14 +1645,28 @@ components:
               description: What this process serves. `checkout` reviews one selected checkout; `checkouts` reviews discovered checkouts and their worktrees; `capture` reviews one fixed patch (piped stdin or a fixture) and has nothing to switch to.
         - type: object
           additionalProperties: false
-          required: [mode, googleEnabled, user, csrfToken]
+          required:
+            [
+              mode,
+              googleEnabled,
+              signupEnabled,
+              passwordEnabled,
+              user,
+              csrfToken,
+            ]
           properties:
             mode:
               type: string
               enum: [remote]
             googleEnabled:
               type: boolean
-              description: Whether members can sign in with Google.
+              description: Whether people can sign in with Google.
+            signupEnabled:
+              type: boolean
+              description: Whether people can create accounts without an invite, with any enabled method.
+            passwordEnabled:
+              type: boolean
+              description: Whether password accounts can sign in, sign up, accept invites and reset passwords.
             user:
               oneOf:
                 - $ref: "#/components/schemas/AccountUser"

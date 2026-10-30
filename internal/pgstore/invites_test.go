@@ -122,7 +122,7 @@ func TestGoogleAccountFollowsEmailChangesAndDisable(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
 	value := invite(t, store, "invite", "old@example.com", now)
-	account := identityservice.Account{ID: "account", Username: "old"}
+	account := identityservice.Account{ID: "account", Username: "old", Method: identityservice.MethodGoogle}
 	if err := store.AcceptInvite(ctx, value.ID, account, google.Identity{Subject: "subject", Email: "old@example.com", EmailVerified: true}, now); err != nil {
 		t.Fatal(err)
 	}
@@ -146,13 +146,13 @@ func TestGoogleAccountFollowsEmailChangesAndDisable(t *testing.T) {
 	if _, _, err := store.GoogleAccount(ctx, google.Identity{Subject: "other", Email: "new@example.com"}, now); !errors.Is(err, identityservice.ErrNotFound) {
 		t.Fatalf("email matched another subject: %v", err)
 	}
-	if err := service.DisableAccount(ctx, account.ID); err != nil {
+	if err := service.DisableAccount(ctx, "admin", account.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, disabled, err := store.GoogleAccount(ctx, google.Identity{Subject: "subject", Email: "new@example.com"}, now); err != nil || !disabled {
 		t.Fatalf("disabled google account: %v %v", disabled, err)
 	}
-	if err := service.DeleteAccount(ctx, account.ID); err != nil {
+	if err := service.DeleteAccount(ctx, "admin", account.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := store.GoogleAccount(ctx, google.Identity{Subject: "subject"}, now); !errors.Is(err, identityservice.ErrNotFound) {
@@ -375,5 +375,64 @@ func TestInviteDuringAcceptanceOfEmailConflicts(t *testing.T) {
 	}
 	if _, err := store.PendingInvite(ctx, "hash-again", now); !errors.Is(err, identityservice.ErrNotFound) {
 		t.Fatalf("pending invite for a linked email: %v", err)
+	}
+}
+
+func TestAdminInvitesGrantAdminByEitherMethod(t *testing.T) {
+	t.Parallel()
+	store, service, conn := identityStore(t)
+	ctx := context.Background()
+	member, memberSecret, err := service.CreateInvite(ctx, "member@example.com", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, adminSecret, err := service.CreateInvite(ctx, "Admin@Example.com", true)
+	if err != nil || !admin.Admin || admin.Email != "admin@example.com" {
+		t.Fatalf("admin invite: %+v %v", admin, err)
+	}
+	if pending, err := service.PendingInvite(ctx, adminSecret); err != nil || !pending.Admin {
+		t.Fatalf("pending admin invite: %+v %v", pending, err)
+	}
+	closed := identityservice.New(store, identityservice.WithMembers(identityservice.MemberPolicy{Signup: true}))
+	if _, err := closed.AcceptPasswordInvite(ctx, memberSecret, "member", adminPassword); !errors.Is(err, identityservice.ErrDisabled) {
+		t.Fatalf("password invite accepted while passwords are off: %v", err)
+	}
+	session, err := service.AcceptPasswordInvite(ctx, memberSecret, "member", adminPassword)
+	if err != nil || session.Account.Admin || session.Account.Method != identityservice.MethodPassword {
+		t.Fatalf("member invite: %+v %v", session, err)
+	}
+	if _, err := service.AcceptPasswordInvite(ctx, memberSecret, "again", adminPassword); !errors.Is(err, identityservice.ErrNotFound) {
+		t.Fatalf("invite reused: %v", err)
+	}
+	if used, err := store.Invite(ctx, member.ID); err != nil || used.UsedBy != "member" {
+		t.Fatalf("used invite: %+v %v", used, err)
+	}
+	if _, err := service.AcceptPasswordInvite(ctx, adminSecret, "member", adminPassword); !errors.Is(err, identityservice.ErrConflict) {
+		t.Fatalf("taken username accepted: %v", err)
+	}
+	session, err = service.AcceptPasswordInvite(ctx, adminSecret, "lead", adminPassword)
+	if err != nil || !session.Account.Admin {
+		t.Fatalf("admin invite by password: %+v %v", session, err)
+	}
+	if _, err := service.AuthenticateSession(ctx, identityservice.AudienceConsole, session.Secret); err != nil {
+		t.Fatalf("invited admin refused by the console: %v", err)
+	}
+	now := time.Now()
+	googleAdmin := invite(t, store, "google-admin", "g@example.com", now)
+	if _, err := conn.Exec(ctx, `UPDATE diffx.account_invites SET admin = true WHERE id = $1`, googleAdmin.ID); err != nil {
+		t.Fatal(err)
+	}
+	account := identityservice.Account{ID: "google-admin", Username: "g", Method: identityservice.MethodGoogle}
+	if err := store.AcceptInvite(ctx, googleAdmin.ID, account, google.Identity{Subject: "subject-g", Email: "g@example.com", EmailVerified: true}, now); err != nil {
+		t.Fatal(err)
+	}
+	summaries, err := service.AccountSummaries(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, summary := range summaries {
+		if want := summary.Username != "member"; summary.Admin != want {
+			t.Fatalf("admin role after invites: %+v", summary)
+		}
 	}
 }

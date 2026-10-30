@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/diffx/internal/google"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 )
 
@@ -38,20 +39,20 @@ func RemoteAdmin(t testing.TB, store identityservice.Store, username, password s
 
 // AccountStore creates accounts directly; server storage implements it.
 type AccountStore interface {
-	CreateAccount(ctx context.Context, account identityservice.Account, passwordHash string, created time.Time) error
+	CreateGoogleAccount(ctx context.Context, account identityservice.Account, identity google.Identity, now time.Time) error
 }
 
-// RemoteAccount creates a passwordless member account, as an accepted invite does.
+// RemoteAccount creates a Google member account, as an accepted invite does.
 func RemoteAccount(t testing.TB, store AccountStore, username string) identityservice.Account {
 	t.Helper()
-	account := identityservice.Account{ID: secret(t), Username: username}
-	if err := store.CreateAccount(t.Context(), account, "", time.Now()); err != nil {
+	account := identityservice.Account{ID: secret(t), Username: username, Method: identityservice.MethodGoogle}
+	identity := google.Identity{Subject: "subject-" + account.ID, Email: username + "@example.com", EmailVerified: true}
+	if err := store.CreateGoogleAccount(t.Context(), account, identity, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	return account
 }
 
-// RemoteSession signs a member in without Google, as a completed sign-in does.
 func RemoteSession(t testing.TB, store identityservice.Store, account identityservice.Account) identityservice.Session {
 	t.Helper()
 	session := identityservice.Session{Account: account, Secret: secret(t), CSRFToken: secret(t), ExpiresAt: time.Now().Add(identityservice.SessionLifetime)}

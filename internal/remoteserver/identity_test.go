@@ -11,6 +11,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/flexdinesh/diffx/internal/authhttp"
 	"github.com/flexdinesh/diffx/internal/collector"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
@@ -19,8 +20,16 @@ import (
 	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 )
 
+// openMembers admits sign-up and password accounts, the development default.
+var openMembers = identityservice.MemberPolicy{Signup: true, Password: true}
+
+// identityHandler serves settings, admitting sign-up and password accounts
+// unless the test chose a member policy.
 func identityHandler(t *testing.T, settings Settings) (*pgstore.Store, http.Handler) {
 	t.Helper()
+	if settings.Members == (identityservice.MemberPolicy{}) {
+		settings.Members = openMembers
+	}
 	store := pgtest.Store(t)
 	handler, closeServices, err := Handler(t.Context(), store, settings, fstest.MapFS{"index.html": {Data: []byte("app shell")}, "assets/app.js": {Data: []byte("app()")}})
 	if err != nil {
@@ -62,11 +71,11 @@ func loginIdentity(t *testing.T, handler http.Handler, name string) (*http.Cooki
 	return cookies[0], *result.CSRFToken
 }
 
-// memberSession signs in a passwordless member, as Google sign-in does.
+// memberSession signs in a Google member, as Google sign-in does.
 func memberSession(t *testing.T, store *pgstore.Store, name string) (*http.Cookie, string) {
 	t.Helper()
 	session := testsupport.RemoteSession(t, store, testsupport.RemoteAccount(t, store, name))
-	return &http.Cookie{Name: sessionCookie, Value: session.Secret}, session.CSRFToken
+	return &http.Cookie{Name: authhttp.SessionCookie, Value: session.Secret}, session.CSRFToken
 }
 func TestRemoteSessionCSRFAndTokenLifecycle(t *testing.T) {
 	store, handler := identityHandler(t, Settings{})
@@ -153,23 +162,15 @@ func TestRemoteSessionCSRFAndTokenLifecycle(t *testing.T) {
 		}
 	}
 }
-func TestSetupActivatesAdminWithoutRestart(t *testing.T) {
-	store, handler := identityHandler(t, Settings{InsecureCookies: true})
-	setup, err := identityservice.New(store).PrepareSetup(t.Context())
-	if err != nil {
-		t.Fatal(err)
+func TestSignupActivatesOwnerWithoutRestart(t *testing.T) {
+	_, handler := identityHandler(t, Settings{InsecureCookies: true})
+	w := identityRequest(handler, "POST", "/api/v2/auth/signup", `{"username":"ab","password":"`+testPassword+`"}`, nil, "", "")
+	if w.Code != 400 {
+		t.Fatalf("invalid username: %d %s", w.Code, w.Body.String())
 	}
-	w := identityRequest(handler, "GET", "/api/v2/setup", "", nil, "", "")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"required":true`) {
-		t.Fatalf("setup required: %d %s", w.Code, w.Body.String())
-	}
-	w = identityRequest(handler, "POST", "/api/v2/setup", `{"token":"`+strings.Repeat("x", 43)+`","username":"admin","password":"`+testPassword+`"}`, nil, "", "")
-	if w.Code != 404 {
-		t.Fatalf("forged setup: %d %s", w.Code, w.Body.String())
-	}
-	w = identityRequest(handler, "POST", "/api/v2/setup", `{"token":"`+setup+`","username":"admin","password":"`+testPassword+`"}`, nil, "", "")
+	w = identityRequest(handler, "POST", "/api/v2/auth/signup", `{"username":"Newcomer","password":"`+testPassword+`"}`, nil, "", "")
 	if w.Code != 200 {
-		t.Fatalf("setup: %d %s", w.Code, w.Body.String())
+		t.Fatalf("signup: %d %s", w.Code, w.Body.String())
 	}
 	cookies := w.Result().Cookies()
 	if len(cookies) != 1 || cookies[0].Secure {
@@ -179,16 +180,11 @@ func TestSetupActivatesAdminWithoutRestart(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.User == nil || !result.User.Admin || result.CSRFToken == nil {
-		t.Fatal("setup identity absent")
+	if result.User == nil || result.User.Username != "newcomer" || result.User.Method != identityservice.MethodPassword || result.CSRFToken == nil {
+		t.Fatalf("signup identity: %+v", result.User)
 	}
-	w = identityRequest(handler, "GET", "/api/v2/setup", "", nil, "", "")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"required":false`) {
-		t.Fatalf("setup still required: %d %s", w.Code, w.Body.String())
-	}
-	w = identityRequest(handler, "POST", "/api/v2/setup", `{"token":"`+setup+`","username":"second","password":"`+testPassword+`"}`, nil, "", "")
-	if w.Code != 404 {
-		t.Fatalf("setup reused: %d", w.Code)
+	if w = identityRequest(handler, "POST", "/api/v2/auth/signup", `{"username":"newcomer","password":"`+testPassword+`"}`, nil, "", ""); w.Code != 409 {
+		t.Fatalf("duplicate signup: %d", w.Code)
 	}
 	w = identityRequest(handler, "POST", "/api/v2/account/tokens", `{"name":"collector","purpose":"collector","expiresInDays":1}`, cookies[0], *result.CSRFToken, "")
 	if w.Code != 201 {
@@ -203,7 +199,7 @@ func TestSetupActivatesAdminWithoutRestart(t *testing.T) {
 	server := httptest.NewServer(handler)
 	defer server.Close()
 	patch := "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-before\n+after\n"
-	input, err := collector.CollectPatch(t.Context(), patch, t.TempDir(), collector.Options{SourceID: "setup", SubmissionID: "first"})
+	input, err := collector.CollectPatch(t.Context(), patch, t.TempDir(), collector.Options{SourceID: "signup", SubmissionID: "first"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +217,7 @@ func TestSetupActivatesAdminWithoutRestart(t *testing.T) {
 		t.Fatalf("new owner handler did not activate: %d %s", w.Code, w.Body.String())
 	}
 }
-func TestPasswordLoginIsAdminOnly(t *testing.T) {
+func TestPasswordLoginAdmitsPasswordAccounts(t *testing.T) {
 	store, handler := identityHandler(t, Settings{})
 	testsupport.RemoteAdmin(t, store, "alice", testPassword)
 	testsupport.RemoteAccount(t, store, "member")
@@ -231,13 +227,110 @@ func TestPasswordLoginIsAdminOnly(t *testing.T) {
 			t.Fatalf("login %s: %d %s", body, w.Code, w.Body.String())
 		}
 	}
-	cookie, csrf := loginIdentity(t, handler, "alice")
-	if w := identityRequest(handler, "POST", "/api/v2/auth/signup", `{"username":"new","password":"`+testPassword+`"}`, cookie, csrf, ""); w.Code != 404 {
-		t.Fatalf("public signup route: %d", w.Code)
-	}
+	// Admins use the web app like every other account.
+	cookie, _ := loginIdentity(t, handler, "alice")
 	w := identityRequest(handler, "GET", "/api/v2/bootstrap", "", cookie, "", "")
-	if strings.Contains(w.Body.String(), "signupEnabled") || !strings.Contains(w.Body.String(), `"googleEnabled":false`) || !strings.Contains(w.Body.String(), `"email":null,"admin":true`) {
+	if strings.Contains(w.Body.String(), "admin") || !strings.Contains(w.Body.String(), `"googleEnabled":false,"signupEnabled":true,"passwordEnabled":true`) || !strings.Contains(w.Body.String(), `"email":null,"method":"password"`) {
 		t.Fatalf("bootstrap: %s", w.Body.String())
+	}
+	for _, path := range []string{"/api/v2/setup", "/api/v2/manage/users", "/api/v2/manage/invites"} {
+		if w := identityRequest(handler, "GET", path, "", cookie, "", ""); w.Code != 404 {
+			t.Fatalf("admin route %s on the web app: %d", path, w.Code)
+		}
+	}
+}
+func TestClosedMemberPolicyRemovesPasswordFlows(t *testing.T) {
+	store := pgtest.Store(t)
+	handler, closeServices, err := Handler(t.Context(), store, Settings{}, fstest.MapFS{"index.html": {Data: []byte("app shell")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closeServices() })
+	open := identityservice.New(store, identityservice.WithMembers(openMembers))
+	session, err := open.SignUp(t.Context(), "member", testPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := open.CreateToken(t.Context(), session.Account.ID, "api", identityservice.PurposeAPI, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, reset, err := open.ResetPassword(t.Context(), session.Account.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invite, inviteSecret, err := open.CreateInvite(t.Context(), "new@example.com", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct{ path, body string }{
+		{"/api/v2/auth/signup", `{"username":"another","password":"` + testPassword + `"}`},
+		{"/api/v2/auth/login", `{"username":"member","password":"` + testPassword + `"}`},
+		{"/api/v2/invites/password", `{"token":"` + inviteSecret + `","username":"invited","password":"` + testPassword + `"}`},
+		{"/api/v2/password-reset/lookup", `{"token":"` + reset + `"}`},
+		{"/api/v2/password-reset", `{"token":"` + reset + `","password":"` + testPassword + `"}`},
+		{"/api/v2/auth/google", `{}`},
+	} {
+		if w := identityRequest(handler, "POST", test.path, test.body, nil, "", ""); w.Code != 404 {
+			t.Fatalf("%s with passwords off: %d %s", test.path, w.Code, w.Body.String())
+		}
+	}
+	cookie := &http.Cookie{Name: authhttp.SessionCookie, Value: session.Secret}
+	if w := identityRequest(handler, "GET", "/api/v2/contexts", "", cookie, "", ""); w.Code != 401 {
+		t.Fatalf("password session with passwords off: %d", w.Code)
+	}
+	if w := identityRequest(handler, "GET", "/api/v2/contexts", "", nil, "", "Bearer "+token.Secret); w.Code != 401 {
+		t.Fatalf("password account token with passwords off: %d", w.Code)
+	}
+	w := identityRequest(handler, "POST", "/api/v2/invites/lookup", `{"token":"`+inviteSecret+`"}`, nil, "", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"email":"`+invite.Email+`","admin":false`) {
+		t.Fatalf("invite lookup: %d %s", w.Code, w.Body.String())
+	}
+	w = identityRequest(handler, "GET", "/api/v2/bootstrap", "", nil, "", "")
+	if !strings.Contains(w.Body.String(), `"signupEnabled":false,"passwordEnabled":false`) {
+		t.Fatalf("bootstrap: %s", w.Body.String())
+	}
+}
+func TestPasswordInviteAndResetLinks(t *testing.T) {
+	store, handler := identityHandler(t, Settings{InsecureCookies: true})
+	identity := identityservice.New(store, identityservice.WithMembers(openMembers))
+	_, inviteSecret, err := identity.CreateInvite(t.Context(), "lead@example.com", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := identityRequest(handler, "POST", "/api/v2/invites/lookup", `{"token":"`+inviteSecret+`"}`, nil, "", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"admin":true`) {
+		t.Fatalf("invite lookup: %d %s", w.Code, w.Body.String())
+	}
+	w = identityRequest(handler, "POST", "/api/v2/invites/password", `{"token":"`+inviteSecret+`","username":"lead","password":"`+testPassword+`"}`, nil, "", "")
+	if w.Code != 200 || len(w.Result().Cookies()) != 1 {
+		t.Fatalf("password invite: %d %s", w.Code, w.Body.String())
+	}
+	cookie := w.Result().Cookies()[0]
+	w = identityRequest(handler, "POST", "/api/v2/invites/password", `{"token":"`+inviteSecret+`","username":"again","password":"`+testPassword+`"}`, nil, "", "")
+	if w.Code != 404 || !strings.Contains(w.Body.String(), "Invite link is invalid") {
+		t.Fatalf("invite reused: %d %s", w.Code, w.Body.String())
+	}
+	account, reset, err := identity.ResetPasswordByUsername(t.Context(), "lead")
+	if err != nil || !account.Admin {
+		t.Fatalf("reset: %+v %v", account, err)
+	}
+	w = identityRequest(handler, "POST", "/api/v2/password-reset/lookup", `{"token":"`+reset+`"}`, nil, "", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"username":"lead"`) {
+		t.Fatalf("reset lookup: %d %s", w.Code, w.Body.String())
+	}
+	w = identityRequest(handler, "POST", "/api/v2/password-reset", `{"token":"`+reset+`","password":"a new password value"}`, nil, "", "")
+	if w.Code != 204 {
+		t.Fatalf("reset: %d %s", w.Code, w.Body.String())
+	}
+	if w = identityRequest(handler, "POST", "/api/v2/password-reset", `{"token":"`+reset+`","password":"another password value"}`, nil, "", ""); w.Code != 404 {
+		t.Fatalf("reset reused: %d", w.Code)
+	}
+	if w = identityRequest(handler, "GET", "/api/v2/contexts", "", cookie, "", ""); w.Code != 401 {
+		t.Fatalf("reset kept the session: %d", w.Code)
+	}
+	if w = identityRequest(handler, "POST", "/api/v2/auth/login", `{"username":"lead","password":"a new password value"}`, nil, "", ""); w.Code != 200 {
+		t.Fatalf("login with reset password: %d %s", w.Code, w.Body.String())
 	}
 }
 func TestAuthFormsGuardAndRateLimit(t *testing.T) {
@@ -277,7 +370,7 @@ func TestAuthRateLimitIsSharedAndNeedsClientIP(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = replica.Close() })
-		handler, closeServices, err := Handler(t.Context(), replica, Settings{ClientIPHeader: "X-Real-IP"}, fstest.MapFS{"index.html": {Data: []byte("app shell")}})
+		handler, closeServices, err := Handler(t.Context(), replica, Settings{ClientIPHeader: "X-Real-IP", Members: openMembers}, fstest.MapFS{"index.html": {Data: []byte("app shell")}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -300,7 +393,7 @@ func TestAuthRateLimitIsSharedAndNeedsClientIP(t *testing.T) {
 			t.Fatalf("client IP %q: %d %s", clientIP, w.Code, w.Body.String())
 		}
 	}
-	for i := range authAttemptLimit {
+	for i := range authhttp.AttemptLimit {
 		if w := login(handlers[i%2], "192.0.2.1"); w.Code != 401 {
 			t.Fatalf("attempt %d: %d %s", i+1, w.Code, w.Body.String())
 		}
@@ -313,12 +406,12 @@ func TestAuthRateLimitIsSharedAndNeedsClientIP(t *testing.T) {
 	if w := login(handlers[0], "192.0.2.2"); w.Code != 401 {
 		t.Fatalf("other client limited: %d %s", w.Code, w.Body.String())
 	}
-	// Reading setup status verifies no secret and is not limited.
-	r := httptest.NewRequest("GET", "/api/v2/setup", nil)
+	// Reading the bootstrap verifies no secret and is not limited.
+	r := httptest.NewRequest("GET", "/api/v2/bootstrap", nil)
 	w = httptest.NewRecorder()
 	handlers[0].ServeHTTP(w, r)
 	if w.Code != 200 {
-		t.Fatalf("setup status: %d %s", w.Code, w.Body.String())
+		t.Fatalf("bootstrap: %d %s", w.Code, w.Body.String())
 	}
 }
 func TestRevocationAndExpiryCloseActiveStreams(t *testing.T) {
@@ -326,8 +419,8 @@ func TestRevocationAndExpiryCloseActiveStreams(t *testing.T) {
 		t.Run(action, func(t *testing.T) {
 			store, handler := identityHandler(t, Settings{InsecureCookies: true})
 			testsupport.RemoteAdmin(t, store, "alice", testPassword)
-			identity := identityservice.New(store)
-			session, err := identity.Login(t.Context(), "alice", testPassword)
+			identity := identityservice.New(store, identityservice.WithMembers(openMembers))
+			session, err := identity.Login(t.Context(), identityservice.AudienceMembers, "alice", testPassword)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -349,7 +442,7 @@ func TestRevocationAndExpiryCloseActiveStreams(t *testing.T) {
 				}
 				r.Header.Set("Authorization", "Bearer "+token.Secret)
 			} else {
-				r.AddCookie(&http.Cookie{Name: sessionCookie, Value: session.Secret})
+				r.AddCookie(&http.Cookie{Name: authhttp.SessionCookie, Value: session.Secret})
 			}
 			response, err := server.Client().Do(r)
 			if err != nil {
@@ -363,7 +456,10 @@ func TestRevocationAndExpiryCloseActiveStreams(t *testing.T) {
 			case "logout":
 				err = identity.Logout(t.Context(), session.Secret)
 			case "reset":
-				err = identity.ResetPassword(t.Context(), "alice", "reset-password-123")
+				var secret string
+				if _, secret, err = identity.ResetPasswordByUsername(t.Context(), "alice"); err == nil {
+					err = identity.CompletePasswordReset(t.Context(), identityservice.AudienceMembers, secret, "reset-password-123")
+				}
 			case "revoke":
 				err = identity.RevokeToken(t.Context(), session.Account.ID, token.ID)
 			}

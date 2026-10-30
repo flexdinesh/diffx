@@ -5,7 +5,7 @@ import { test as base } from "./fixtures.ts";
 
 export { expect } from "./fixtures.ts";
 
-type RemoteServer = { origin: string; setupLink: string };
+type RemoteServer = { origin: string };
 
 /**
  * Each worker owns one diffx-server on its own Postgres database. The server
@@ -24,7 +24,7 @@ export const test = base.extend<object, { remoteServer: RemoteServer }>({
           DIFFX_SERVER_DATABASE_URL: database.url,
           DIFFX_SERVER_INSECURE_COOKIES: "true",
         },
-        stdio: ["ignore", "ignore", "pipe"],
+        stdio: ["ignore", "pipe", "pipe"],
       });
       // "close" also follows a failed spawn, which never emits "exit".
       const exited = new Promise<void>((resolve) =>
@@ -38,9 +38,10 @@ export const test = base.extend<object, { remoteServer: RemoteServer }>({
         await database.drop();
       };
       try {
-        // Without a public URL the setup link uses the bound listener address.
-        const setupLink = await new Promise<string>((resolve, reject) => {
-          const lines = createInterface({ input: child.stderr });
+        child.stderr.on("data", (chunk) => process.stderr.write(chunk));
+        // The server reports the bound listener once it serves.
+        const address = await new Promise<string>((resolve, reject) => {
+          const lines = createInterface({ input: child.stdout });
           const timer = setTimeout(
             () => reject(new Error("Timed out starting diffx-server")),
             60_000,
@@ -54,14 +55,13 @@ export const test = base.extend<object, { remoteServer: RemoteServer }>({
             ),
           );
           lines.on("line", (line) => {
-            process.stderr.write(`${line}\n`);
-            const link = /(http:\/\/\S+\/setup#t=\S+)/.exec(line)?.[1];
-            if (!link) return;
+            const listening = /listening on (\S+)/.exec(line)?.[1];
+            if (!listening) return;
             clearTimeout(timer);
-            resolve(link);
+            resolve(listening);
           });
         });
-        await use({ origin: new URL(setupLink).origin, setupLink });
+        await use({ origin: `http://${address}` });
       } finally {
         await stop();
       }

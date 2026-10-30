@@ -487,46 +487,58 @@ records; producer paths do not identify server files.
 Accounts have stable opaque IDs independent of username, passwords, browser
 sessions and API tokens. Username matching is case-insensitive and usernames are
 fixed in this version. Local mode automatically resolves one stable OS-backed
-owner; users never manage local identity. A remote server has exactly one admin,
-the only account with a password; there is no public signup and no default
-credential. While no admin exists, each start stores a hashed one-time setup
-secret for 24 hours, replacing the previous one, and logs it as
-`<public URL>/setup#t=…`. The fragment keeps the secret out of request logs.
-Setup consumes the secret and creates the admin in one transaction, so
-concurrent attempts yield one admin. Only the admin signs in with a password, at
-the unlinked `/console`; every other account signs in with Google, and a refused password
-login is indistinguishable from a wrong password. Offline `user reset-password`
-recovers only the admin. Once setup completes, `/setup` renders Google sign-in
-like any unknown path. Public routes and UI copy never name the admin role
-(management is `/manage` and `/api/v2/manage/*`; members see "us"), so the
-password page is not advertised; its protection is the password and the sign-in
-limits, not the path.
+owner; users never manage local identity. A remote server has no default
+credential. Each account has one sign-in method, fixed when it is created:
+Google (it has a Google identity) or password. Admin is a role on a regular
+account: admins use the app like any user and also sign in to the console
+(`diffx-console`, a separate binary and origin over the same database), which
+owns first-admin setup and account administration. `diffx-server` serves no
+admin routes or UI.
 
-Accounts other than the admin exist only through invites. The admin invites an
-email; the link carries a hashed one-time secret in its fragment, is shown once,
-expires after 48 hours and replaces that email's pending invite. Accepting
-requires Google sign-in reporting a verified email equal to the invite's, and
-uses the invite and creates the account in one transaction. The username derives
-from the email. Google accounts are identified by their stable subject, not
-email: a changed email keeps the account and updates its recorded email. Google
-sign-in uses the authorization code flow with PKCE, state and nonce; a short-lived
-HttpOnly cookie binds the flow to the starting browser and each state is consumed
-once. A Google account without an account or invite cannot sign up. Without Google
-configuration the server runs admin-only: Google routes are absent and invites
-cannot be created.
+Two settings shape the app's sign-in. `DIFFX_SERVER_SIGNUP` lets anyone create
+an account without an invite, by any enabled method. `DIFFX_SERVER_PASSWORD_SIGNIN`
+makes password an app sign-in method. Both default to true; production sets
+both false (invite-only Google). With password off, the app refuses every flow
+for password accounts, admins included: login, signup, invite acceptance by
+password, reset links, password change, browser sessions and API tokens. The
+server refuses to start without a method: Google configuration or password.
+The console admits admins by password regardless of this setting. A refused
+login is indistinguishable from a wrong password.
 
-The admin manages accounts and invites at `/manage`, linked from its Settings.
-It lists accounts and disables, enables or deletes any account except itself. Disabling revokes the account's browser sessions and API tokens in the
+Invites come from the console. An invite names an email and whether it grants
+admin; the link carries a hashed one-time secret in its fragment, is shown
+once, expires after 48 hours and replaces that email's pending invite.
+Accepting with Google requires a verified email equal to the invite's and
+derives the username from it; accepting with a password (when enabled) takes a
+username and password. Either way the invite is used and the account created in
+one transaction. Open signup with Google requires a verified email. Google
+accounts are identified by their stable subject, not email: a changed email
+keeps the account and updates its recorded email. Google sign-in uses the
+authorization code flow with PKCE, state and nonce; a short-lived HttpOnly
+cookie binds the flow to the starting browser and each state is consumed once.
+Without signup or an invite, a Google account cannot create an account. Without
+Google configuration, Google routes are absent.
+
+Password reset links come from the console or `diffx-console user
+reset-password`. A link carries a hashed one-time secret in its fragment,
+expires after 24 hours and replaces the account's pending link. Completing it
+sets the password and revokes browser sessions, not API tokens, in one
+transaction; the app completes member links only while password sign-in is on.
+
+Admins disable, enable or delete accounts other than their own, and promote or
+demote them. The store refuses, atomically under an advisory lock, any change
+that leaves no enabled admin. Disabling revokes the account's browser sessions and API tokens in the
 same transaction and refuses new ones; enabling restores sign-in, not those
 credentials. Deleting removes the account and everything it owns, including
-queued ingestion jobs. Both stop the account's active services, and the
-ingestion worker refuses jobs for unavailable accounts.
+queued ingestion jobs. Both notify every server replica, which stops the
+account's active services, and the ingestion worker refuses jobs for
+unavailable accounts.
 
 Passwords use salted Argon2id hashes. Browser login creates a revocable opaque
 seven-day server-side session in an HttpOnly, Secure, SameSite=Lax cookie. Unsafe
 browser requests require a session CSRF token, including account management.
 Password changes revoke existing sessions. Each process admits at most four
-concurrent sign-in, setup and invite attempts, and login failures do not
+concurrent sign-in, signup, invite and reset attempts, and login failures do not
 disclose whether a username exists. Per-client limiting is off by default
 because the listener's peer is the ingress, not the client. With
 `DIFFX_SERVER_AUTH_RATE_LIMIT` it allows 20 attempts per client IP per minute,

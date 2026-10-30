@@ -38,11 +38,9 @@ type Settings =
  * server has no push endpoint (local mode or an older server).
  */
 export function AccountNotifications({
-  admin,
   github,
   onEnabledChange,
 }: {
-  admin: boolean;
   /** Null until the GitHub section knows; then whether anything can notify. */
   github: GitHubFollowing | null;
   /** Reports whether this server sends push notifications. */
@@ -103,14 +101,7 @@ export function AccountNotifications({
       )}
       {ready && !ready.enabled && (
         <p className={prose}>
-          {admin ? (
-            <>
-              Push notifications need an HTTPS public URL. Start the server with{" "}
-              <code>--public-url</code> set to its HTTPS address.
-            </>
-          ) : (
-            "Push notifications are off on this server. Ask us to turn them on."
-          )}
+          Push notifications are off on this server. Ask us to turn them on.
         </p>
       )}
       {ready?.enabled && (

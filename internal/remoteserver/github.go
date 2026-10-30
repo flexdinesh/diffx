@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/flexdinesh/diffx/internal/authhttp"
+
 	"github.com/flexdinesh/diffx/internal/github"
 	"github.com/flexdinesh/diffx/internal/githubsync"
 	"github.com/flexdinesh/diffx/internal/pgstore"
@@ -107,21 +109,21 @@ func (remote *transport) githubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != http.MethodPost {
-		problem(w, 405, "Method not allowed")
+		authhttp.Problem(w, 405, "Method not allowed")
 		return
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxWebhookBytes))
 	if err != nil {
-		problem(w, 413, "Webhook payload too large")
+		authhttp.Problem(w, 413, "Webhook payload too large")
 		return
 	}
 	err = remote.github.Webhook(r.Context(), r.Header.Get("X-GitHub-Event"), r.Header.Get("X-GitHub-Delivery"), r.Header.Get("X-Hub-Signature-256"), body)
 	switch {
 	case errors.Is(err, githubsync.ErrSignature):
-		problem(w, 401, "Invalid webhook signature")
+		authhttp.Problem(w, 401, "Invalid webhook signature")
 	case err != nil:
 		log.Printf("GitHub webhook: %v", err)
-		problem(w, 500, "Webhook not applied")
+		authhttp.Problem(w, 500, "Webhook not applied")
 	default:
 		w.WriteHeader(http.StatusAccepted)
 	}
@@ -133,7 +135,7 @@ func (remote *transport) githubCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if r.Method != http.MethodGet {
-		problem(w, 405, "Method not allowed")
+		authhttp.Problem(w, 405, "Method not allowed")
 		return
 	}
 	p, err := remote.authenticate(r)
@@ -158,7 +160,7 @@ func (remote *transport) githubCallback(w http.ResponseWriter, r *http.Request) 
 // browser session, because it handles GitHub user credentials.
 func (remote *transport) githubAccount(w http.ResponseWriter, r *http.Request, p principal) {
 	if remote.github == nil {
-		problem(w, 404, "GitHub integration is not configured")
+		authhttp.Problem(w, 404, "GitHub integration is not configured")
 		return
 	}
 	ctx, owner := r.Context(), p.account.ID
@@ -184,7 +186,7 @@ func (remote *transport) githubAccount(w http.ResponseWriter, r *http.Request, p
 	case strings.HasPrefix(path, "follows/"):
 		id, err := strconv.ParseInt(strings.TrimPrefix(path, "follows/"), 10, 64)
 		if err != nil || id <= 0 {
-			problem(w, 404, "Repository not found")
+			authhttp.Problem(w, 404, "Repository not found")
 			return
 		}
 		switch r.Method {
@@ -196,19 +198,19 @@ func (remote *transport) githubAccount(w http.ResponseWriter, r *http.Request, p
 			var input struct {
 				Notify *bool `json:"notify"`
 			}
-			if !decodeJSON(w, r, &input) {
+			if !authhttp.DecodeJSON(w, r, &input) {
 				return
 			}
 			if input.Notify == nil {
-				problem(w, 400, "notify is required")
+				authhttp.Problem(w, 400, "notify is required")
 				return
 			}
 			githubResult(w, nil, remote.github.SetNotify(ctx, owner, id, *input.Notify))
 		default:
-			problem(w, 405, "Method not allowed")
+			authhttp.Problem(w, 405, "Method not allowed")
 		}
 	case path == "connection" || path == "repositories" || path == "resync":
-		problem(w, 405, "Method not allowed")
+		authhttp.Problem(w, 405, "Method not allowed")
 	default:
 		http.NotFound(w, r)
 	}
@@ -220,20 +222,20 @@ func githubResult(w http.ResponseWriter, value any, err error) {
 	case err == nil && value == nil:
 		w.WriteHeader(http.StatusNoContent)
 	case err == nil:
-		writeJSON(w, 200, value)
+		authhttp.WriteJSON(w, 200, value)
 	case errors.Is(err, githubsync.ErrNotConnected):
-		problem(w, 409, err.Error())
+		authhttp.Problem(w, 409, err.Error())
 	case errors.Is(err, githubsync.ErrReconnect):
-		problem(w, 409, githubsync.ErrReconnect.Error())
+		authhttp.Problem(w, 409, githubsync.ErrReconnect.Error())
 	case errors.Is(err, githubsync.ErrForbidden):
-		problem(w, 403, err.Error())
+		authhttp.Problem(w, 403, err.Error())
 	case errors.Is(err, githubsync.ErrNotFound):
-		problem(w, 404, "Repository not followed")
+		authhttp.Problem(w, 404, "Repository not followed")
 	case errors.As(err, &api) && api.Status == 429:
 		w.Header().Set("Retry-After", "60")
-		problem(w, 429, "GitHub rate limit reached; try again later")
+		authhttp.Problem(w, 429, "GitHub rate limit reached; try again later")
 	default:
 		log.Printf("GitHub integration: %v", err)
-		problem(w, 502, "GitHub request failed")
+		authhttp.Problem(w, 502, "GitHub request failed")
 	}
 }

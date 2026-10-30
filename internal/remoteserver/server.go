@@ -5,13 +5,13 @@ import (
 	"context"
 	"errors"
 	"io/fs"
-	"log"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/flexdinesh/diffx/internal/authhttp"
 	"github.com/flexdinesh/diffx/internal/contextservice"
 	"github.com/flexdinesh/diffx/internal/google"
 	"github.com/flexdinesh/diffx/internal/identityservice"
@@ -29,14 +29,17 @@ type Settings struct {
 	Listen string
 	// DatabaseURL selects the shared Postgres database; it holds credentials and is never logged.
 	DatabaseURL string
-	// PublicURL is the browser-facing origin used in the logged setup link. An
-	// https origin, or loopback http for development, enables Web Push.
+	// PublicURL is the browser-facing origin. An https origin, or loopback http
+	// for development, enables Web Push.
 	PublicURL       string
 	InsecureCookies bool
 	RetentionDays   int
 	GitHub          *GitHubSettings
-	// Google enables Google sign-in and invites; it requires PublicURL.
+	// Google enables Google sign-in; it requires PublicURL.
 	Google *GoogleSettings
+	// Members chooses whether people sign up without an invite and whether
+	// password accounts may use the web app.
+	Members identityservice.MemberPolicy
 	// ClientIPHeader names the header a trusted ingress sets to the client IP.
 	// Non-empty enables authentication rate limiting shared by every replica.
 	ClientIPHeader string
@@ -52,14 +55,14 @@ type GoogleSettings struct {
 // composeIdentity composes account rules with Google sign-in when configured.
 func composeIdentity(store *pgstore.Store, settings Settings) *identityservice.Service {
 	if settings.Google == nil {
-		return identityservice.New(store)
+		return identityservice.New(store, identityservice.WithMembers(settings.Members))
 	}
 	var options []google.Option
 	if settings.Google.tokenURL != "" {
 		options = append(options, google.WithEndpoints(settings.Google.authorizeURL, settings.Google.tokenURL))
 	}
 	redirect := strings.TrimSuffix(settings.PublicURL, "/") + googleCallback
-	return identityservice.New(store, identityservice.WithGoogle(google.New(settings.Google.ClientID, settings.Google.ClientSecret, redirect, options...)))
+	return identityservice.New(store, identityservice.WithMembers(settings.Members), identityservice.WithGoogle(google.New(settings.Google.ClientID, settings.Google.ClientSecret, redirect, options...)))
 }
 
 type application struct {
@@ -135,7 +138,7 @@ func MultiHandler(ctx context.Context, store *pgstore.Store, assets fs.FS, optio
 	}
 	var once sync.Once
 	var closeErr error
-	return probes(store, handler), func() error {
+	return authhttp.Probes(store, handler), func() error {
 		once.Do(func() {
 			cancel()
 			for range tasks {
@@ -161,7 +164,7 @@ func compose(ctx context.Context, store *pgstore.Store, assets fs.FS, settings S
 		return nil, nil, nil, nil, err
 	}
 	applications := &registry{ctx: ctx, store: store, assets: assets, applications: make(map[string]application)}
-	remote := &transport{identity: identity, applications: applications, settings: settings, assets: assets, limiter: newLimiter(store, settings.ClientIPHeader), authSlots: make(chan struct{}, 4), github: github, push: push}
+	remote := &transport{identity: identity, applications: applications, settings: settings, assets: assets, admission: authhttp.NewAdmission(store, settings.ClientIPHeader), github: github, push: push}
 	// Listening starts before serving, so no commit after compose is missed.
 	feed, err := store.Listen(ctx)
 	if err != nil {
@@ -226,7 +229,7 @@ func Run(ctx context.Context, settings Settings, ready func(string)) error {
 		return err
 	}
 	defer listener.Close()
-	server := &http.Server{Handler: probes(store, handler), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 2 * time.Minute, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Handler: authhttp.Probes(store, handler), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 2 * time.Minute, IdleTimeout: 60 * time.Second}
 	defer server.Close()
 	endpoints := []serverapp.Endpoint{{Server: server, Listener: listener}}
 	if internal != nil {
@@ -240,20 +243,9 @@ func Run(ctx context.Context, settings Settings, ready func(string)) error {
 		defer internalServer.Close()
 		endpoints = append(endpoints, serverapp.Endpoint{Server: internalServer, Listener: internalListener})
 	}
-	setup, err := identityservice.New(store).PrepareSetup(ctx)
-	if err != nil {
-		return err
-	}
 	return serverapp.Run(ctx, endpoints, append(tasks, serverapp.Prune(store.PruneExpired)), func() {
 		if ready != nil {
 			ready(listener.Addr().String())
-		}
-		if setup != "" {
-			origin := strings.TrimSuffix(settings.PublicURL, "/")
-			if origin == "" {
-				origin = "http://" + listener.Addr().String()
-			}
-			log.Printf("diffx-server setup: no admin yet; within %s open %s/setup#t=%s", identityservice.SetupLifetime, origin, setup)
 		}
 	})
 }

@@ -17,11 +17,11 @@ type AccountInvite struct {
 	UsedAt    *time.Time
 	UsedBy    *string
 	RevokedAt *time.Time
+	Admin     bool
 }
 
 type AdminAccount struct {
-	Singleton bool
-	UserID    string
+	UserID string
 }
 
 type AdminSetup struct {
@@ -304,6 +304,12 @@ type ObservationSubmission struct {
 	ContextID    string
 	PayloadHash  string
 	Metadata     []byte
+}
+
+type PasswordReset struct {
+	UserID    string
+	TokenHash string
+	ExpiresAt time.Time
 }
 
 type PushDelivery struct {

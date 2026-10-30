@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/flexdinesh/diffx/internal/authhttp"
+
 	"github.com/flexdinesh/diffx/internal/pushservice"
 )
 
@@ -27,7 +29,7 @@ func (remote *transport) pushRoutes(w http.ResponseWriter, r *http.Request, p pr
 	ctx, owner := r.Context(), p.account.ID
 	if r.URL.Path == "/api/v2/push" {
 		if r.Method != http.MethodGet {
-			problem(w, 405, "Method not allowed")
+			authhttp.Problem(w, 405, "Method not allowed")
 			return
 		}
 		settings, err := remote.push.Settings(ctx, owner)
@@ -39,7 +41,7 @@ func (remote *transport) pushRoutes(w http.ResponseWriter, r *http.Request, p pr
 		for _, device := range settings.Devices {
 			devices = append(devices, projectDevice(device))
 		}
-		writeJSON(w, 200, struct {
+		authhttp.WriteJSON(w, 200, struct {
 			Enabled   bool             `json:"enabled"`
 			PublicKey string           `json:"publicKey,omitempty"`
 			Devices   []pushDeviceJSON `json:"devices"`
@@ -49,7 +51,7 @@ func (remote *transport) pushRoutes(w http.ResponseWriter, r *http.Request, p pr
 	path := strings.TrimPrefix(r.URL.Path, "/api/v2/push/")
 	if path == "subscriptions" {
 		if r.Method != http.MethodPut {
-			problem(w, 405, "Method not allowed")
+			authhttp.Problem(w, 405, "Method not allowed")
 			return
 		}
 		var input struct {
@@ -60,7 +62,7 @@ func (remote *transport) pushRoutes(w http.ResponseWriter, r *http.Request, p pr
 			} `json:"keys"`
 			Label string `json:"label"`
 		}
-		if !decodeJSON(w, r, &input) {
+		if !authhttp.DecodeJSON(w, r, &input) {
 			return
 		}
 		device, err := remote.push.Subscribe(ctx, owner, pushservice.SubscriptionInput{Endpoint: input.Endpoint, P256dh: input.Keys.P256dh, Auth: input.Keys.Auth, Label: input.Label})
@@ -68,7 +70,7 @@ func (remote *transport) pushRoutes(w http.ResponseWriter, r *http.Request, p pr
 			pushResult(w, err)
 			return
 		}
-		writeJSON(w, 200, projectDevice(device))
+		authhttp.WriteJSON(w, 200, projectDevice(device))
 		return
 	}
 	id, rest, _ := strings.Cut(strings.TrimPrefix(path, "subscriptions/"), "/")
@@ -82,7 +84,7 @@ func (remote *transport) pushRoutes(w http.ResponseWriter, r *http.Request, p pr
 	case rest == "test" && r.Method == http.MethodPost:
 		pushResult(w, remote.push.Test(ctx, owner, id))
 	case rest == "" || rest == "test":
-		problem(w, 405, "Method not allowed")
+		authhttp.Problem(w, 405, "Method not allowed")
 	default:
 		http.NotFound(w, r)
 	}
@@ -94,23 +96,23 @@ func pushResult(w http.ResponseWriter, err error) {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, pushservice.ErrDisabled):
-		problem(w, 409, pushservice.ErrDisabled.Error())
+		authhttp.Problem(w, 409, pushservice.ErrDisabled.Error())
 	case errors.Is(err, pushservice.ErrNotFound):
-		problem(w, 404, "Push subscription not found")
+		authhttp.Problem(w, 404, "Push subscription not found")
 	case errors.Is(err, pushservice.ErrInvalid):
-		problem(w, 400, err.Error())
+		authhttp.Problem(w, 400, err.Error())
 	case errors.As(err, &limited):
 		seconds := int64(limited.RetryAfter.Seconds())
 		if seconds < 1 {
 			seconds = 60
 		}
 		w.Header().Set("Retry-After", strconv.FormatInt(seconds, 10))
-		problem(w, 429, "Push service rate limit reached; try again later")
+		authhttp.Problem(w, 429, "Push service rate limit reached; try again later")
 	case errors.Is(err, pushservice.ErrRejected):
 		log.Printf("push test: %v", err)
-		problem(w, 502, "Push service did not accept the notification")
+		authhttp.Problem(w, 502, "Push service did not accept the notification")
 	default:
 		log.Printf("push: %v", err)
-		problem(w, 500, "Server could not process request")
+		authhttp.Problem(w, 500, "Server could not process request")
 	}
 }

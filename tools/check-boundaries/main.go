@@ -22,8 +22,10 @@ var allowed = map[string][]string{
 		"internal/diagnostics", "internal/diffsource", "internal/hooks", "internal/ingestion", "internal/localserver",
 		"internal/review", "internal/reviewstore", "internal/submission", "internal/version",
 	},
-	"cmd/diffx-fetcher":       {"internal/config", "internal/fetcher", "internal/fetchprotocol", "internal/version"},
-	"cmd/diffx-server":        {"internal/config", "internal/identityservice", "internal/pgstore", "internal/remoteserver", "internal/version"},
+	"cmd/diffx-fetcher": {"internal/config", "internal/fetcher", "internal/fetchprotocol", "internal/version"},
+	"cmd/diffx-server":  {"internal/config", "internal/identityservice", "internal/pgstore", "internal/remoteserver", "internal/version"},
+	// HTTP rules shared by the remote server and the console transports.
+	"internal/authhttp":       {"internal/identityservice"},
 	"internal/browser":        {},
 	"internal/collector":      {"internal/diffsource", "internal/ingestion", "internal/review"},
 	"internal/config":         {"internal/processlock"},
@@ -66,7 +68,7 @@ var allowed = map[string][]string{
 	// its Store contract and composition is remote only.
 	"internal/pushservice": {"internal/webpush"},
 	"internal/remoteserver": {
-		"internal/contextservice", "internal/fetchprotocol", "internal/github", "internal/githubsync", "internal/google", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/pgstore", "internal/pushservice", "internal/review",
+		"internal/authhttp", "internal/contextservice", "internal/fetchprotocol", "internal/github", "internal/githubsync", "internal/google", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/pgstore", "internal/pushservice", "internal/review",
 		"internal/reviewdata", "internal/serverapp", "internal/webui", "packages/api",
 	},
 	"internal/review":        {},
@@ -84,7 +86,7 @@ var allowed = map[string][]string{
 	// The store contract sees only the consumer interfaces it verifies.
 	"internal/storetest": {"internal/contextservice", "internal/ingestion", "internal/review", "internal/reviewdata", "internal/reviewservice"},
 	"internal/testsupport": {
-		"internal/contextservice", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/review",
+		"internal/contextservice", "internal/google", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/review",
 		"internal/reviewservice", "internal/serverapp", "internal/webui",
 	},
 	"internal/testsupport/pgtest": {"internal/pgstore"},

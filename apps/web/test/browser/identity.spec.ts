@@ -3,18 +3,28 @@ import { expect, test } from "./fixtures.ts";
 
 interface RemoteOptions {
   googleEnabled?: boolean;
+  signupEnabled?: boolean;
+  passwordEnabled?: boolean;
   email?: string | null;
+  method?: "google" | "password";
 }
 function bootstrap(
   signedIn: boolean,
-  admin = false,
-  { googleEnabled = false, email = null }: RemoteOptions = {},
+  {
+    googleEnabled = false,
+    signupEnabled = false,
+    passwordEnabled = false,
+    email = null,
+    method = "google",
+  }: RemoteOptions = {},
 ) {
   return {
     mode: "remote",
     googleEnabled,
+    signupEnabled,
+    passwordEnabled,
     user: signedIn
-      ? { id: "account-a", username: "alice", email, admin }
+      ? { id: "account-a", username: "alice", email, method }
       : null,
     csrfToken: signedIn ? "session-csrf" : null,
   };
@@ -22,11 +32,10 @@ function bootstrap(
 async function remote(
   page: Page,
   signedIn = true,
-  admin = false,
   options: RemoteOptions = {},
 ) {
   await page.route("**/api/v2/bootstrap", (route) =>
-    route.fulfill({ json: bootstrap(signedIn, admin, options) }),
+    route.fulfill({ json: bootstrap(signedIn, options) }),
   );
   await page.route("**/api/v2/contexts?*", (route) =>
     route.fulfill({ json: { contexts: [], nextCursor: null } }),
@@ -52,25 +61,28 @@ test("local mode has no account UI and settings resolves to reviews", async ({
   ).toHaveCount(0);
 });
 
-test("the setup link creates the admin once and keeps its secret out of the URL", async ({
+test("open signup creates a password account with a password section", async ({
   page,
 }) => {
-  await remote(page, false);
-  await page.route("**/api/v2/setup", (route) => {
-    if (route.request().method() === "GET")
-      return route.fulfill({ json: { required: true } });
+  const open = { signupEnabled: true, passwordEnabled: true };
+  await remote(page, false, open);
+  await page.route("**/api/v2/auth/signup", (route) => {
+    expect(route.request().headers()["x-csrf-token"]).toBeUndefined();
     expect(route.request().postDataJSON()).toEqual({
-      token: "setup-secret",
       username: "alice",
       password: "a-secure-password",
     });
-    return route.fulfill({ json: bootstrap(true, true) });
+    return route.fulfill({
+      json: bootstrap(true, { ...open, method: "password" }),
+    });
   });
-  await page.goto("/setup#t=setup-secret");
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await page.getByRole("link", { name: "Create an account" }).click();
   await expect(
-    page.getByRole("heading", { name: "Set up diffx" }),
+    page.getByRole("heading", { name: "Create an account" }),
   ).toBeVisible();
-  expect(new URL(page.url()).hash).toBe("");
+  expect(new URL(page.url()).pathname).toBe("/signup");
   await page.getByLabel("Username", { exact: true }).fill("alice");
   await page.getByLabel("Password", { exact: true }).fill("a-secure-password");
   await page
@@ -85,6 +97,20 @@ test("the setup link creates the admin once and keeps its secret out of the URL"
   await expect(
     page.getByText("No tokens yet.", { exact: false }),
   ).toBeVisible();
+});
+
+test("closed signup renders sign-in at the signup and reset pages", async ({
+  page,
+}) => {
+  await remote(page, false, { googleEnabled: true });
+  for (const path of ["/signup", "/reset-password#t=secret", "/setup"]) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: "Create an account" }),
+    ).toHaveCount(0);
+  }
 });
 
 test("collector token secret appears once, with owner CSRF and revocation", async ({
@@ -388,7 +414,7 @@ test("expired GitHub authorization asks to connect again and disconnect confirms
 test("Google sign-in starts without CSRF and reports the callback outcome once", async ({
   page,
 }) => {
-  await remote(page, false, false, { googleEnabled: true });
+  await remote(page, false, { googleEnabled: true });
   let started: unknown;
   await page.route("**/api/v2/auth/google", (route) => {
     expect(route.request().headers()["x-csrf-token"]).toBeUndefined();
@@ -415,11 +441,15 @@ test("Google sign-in starts without CSRF and reports the callback outcome once",
 test("an invite link shows its email, hides its secret and starts Google sign-in with it", async ({
   page,
 }) => {
-  await remote(page, false, false, { googleEnabled: true });
+  await remote(page, false, { googleEnabled: true });
   await page.route("**/api/v2/invites/lookup", (route) => {
     expect(route.request().postDataJSON()).toEqual({ token: "invite-secret" });
     return route.fulfill({
-      json: { email: "bob@example.com", expiresAt: Date.now() + 86_400_000 },
+      json: {
+        email: "bob@example.com",
+        admin: false,
+        expiresAt: Date.now() + 86_400_000,
+      },
     });
   });
   let started: unknown;
@@ -442,204 +472,100 @@ test("an invite link shows its email, hides its secret and starts Google sign-in
   expect(started).toEqual({ token: "invite-secret" });
 });
 
-test("members see their Google email and cannot open the manage page", async ({
-  page,
-}) => {
-  await remote(page, true, false, { email: "alice@example.com" });
+test("members see their Google email and no admin pages", async ({ page }) => {
+  await remote(page, true, { email: "alice@example.com" });
   await page.goto("/settings");
   await expect(
     page.getByText("with Google as alice@example.com", { exact: false }),
   ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Password" })).toHaveCount(0);
+  await expect(page.getByText(/manage/i)).toHaveCount(0);
+  for (const path of ["/manage", "/console", "/setup"]) {
+    await page.goto(path);
+    await expect(
+      page.getByRole("heading", { name: "No review contexts yet" }),
+    ).toBeVisible();
+  }
+});
+
+test("an admin invite accepted with a password signs the account in", async ({
+  page,
+}) => {
+  await remote(page, false, { googleEnabled: true, passwordEnabled: true });
+  await page.route("**/api/v2/invites/lookup", (route) =>
+    route.fulfill({
+      json: {
+        email: "bob@example.com",
+        admin: true,
+        expiresAt: Date.now() + 86_400_000,
+      },
+    }),
+  );
+  await page.route("**/api/v2/invites/password", (route) => {
+    expect(route.request().postDataJSON()).toEqual({
+      token: "invite-secret",
+      username: "bob",
+      password: "a-secure-password",
+    });
+    return route.fulfill({
+      json: bootstrap(true, { passwordEnabled: true, method: "password" }),
+    });
+  });
+  await page.goto("/invite#t=invite-secret");
   await expect(
-    page.getByRole("button", { name: "Manage accounts and invites" }),
-  ).toHaveCount(0);
-  await page.goto("/manage");
+    page.getByText("and as an admin of this server's console", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Continue with Google" }),
+  ).toBeVisible();
+  await page.getByLabel("Username", { exact: true }).fill("bob");
+  await page.getByLabel("Password", { exact: true }).fill("a-secure-password");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "No review contexts yet" }),
   ).toBeVisible();
-  expect(new URL(page.url()).pathname).toBe("/");
 });
 
-test("the admin invites by email, sees the link once and revokes it", async ({
-  page,
-}) => {
-  await remote(page, true, true, { googleEnabled: true });
-  const now = Date.now();
-  const pending = {
-    id: "invite-a",
-    email: "bob@example.com",
-    status: "pending",
-    createdAt: now,
-    expiresAt: now + 48 * 3_600_000,
-    usedBy: null,
-  };
-  let invites: unknown[] = [
-    {
-      ...pending,
-      id: "invite-old",
-      email: "carol@example.com",
-      status: "used",
-      usedBy: "carol",
-    },
-  ];
-  await page.route("**/api/v2/manage/users", (route) =>
-    route.fulfill({
-      json: {
-        users: [
-          {
-            id: "account-a",
-            username: "alice",
-            email: null,
-            admin: true,
-            disabled: false,
-            createdAt: now,
-          },
-        ],
-      },
-    }),
+test("a reset link sets a password and hides its secret", async ({ page }) => {
+  await remote(page, false, { passwordEnabled: true });
+  await page.route("**/api/v2/password-reset/lookup", (route) =>
+    route.fulfill({ json: { username: "alice" } }),
   );
-  await page.route("**/api/v2/manage/invites", (route) => {
-    if (route.request().method() === "POST") {
-      expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
-      expect(route.request().postDataJSON()).toEqual({
-        email: "bob@example.com",
-      });
-      invites = [pending, ...invites];
-      return route.fulfill({
-        status: 201,
-        json: {
-          invite: pending,
-          url: "https://diffx.example.com/invite#t=one-time",
-        },
-      });
-    }
-    return route.fulfill({ json: { invites } });
-  });
-  await page.route("**/api/v2/manage/invites/invite-a", (route) => {
-    expect(route.request().method()).toBe("DELETE");
-    expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
-    invites = invites.map((invite) =>
-      invite === pending ? { ...pending, status: "revoked" } : invite,
-    );
+  let completed: unknown;
+  await page.route("**/api/v2/password-reset", (route) => {
+    completed = route.request().postDataJSON();
     return route.fulfill({ status: 204 });
   });
-  await page.goto("/settings");
-  await page
-    .getByRole("button", { name: "Manage accounts and invites" })
-    .click();
-  await expect(page.getByRole("heading", { name: "Manage" })).toBeVisible();
-  expect(new URL(page.url()).pathname).toBe("/manage");
-  await expect(page.getByText("Joined as carol")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Delete alice" })).toHaveCount(
-    0,
-  );
-  await page.getByLabel("Email", { exact: true }).fill("bob@example.com");
-  await page.getByRole("button", { name: "Create invite" }).click();
+  await page.goto("/reset-password#t=reset-secret");
   await expect(
-    page.getByRole("heading", { name: "Send this invite link" }),
+    page.getByRole("heading", { name: "Reset password" }),
   ).toBeVisible();
-  await expect(page.locator("pre")).toHaveText(
-    "https://diffx.example.com/invite#t=one-time",
-  );
-  await page
-    .getByRole("button", { name: "Revoke invite for bob@example.com" })
-    .click();
-  const confirm = page.getByRole("dialog", {
-    name: "Revoke invite for bob@example.com?",
+  expect(new URL(page.url()).hash).toBe("");
+  await page.getByLabel("New password", { exact: true }).fill("a-new-password");
+  await page.getByRole("button", { name: "Set password" }).click();
+  await expect(page.getByText("Your password is set")).toBeVisible();
+  expect(completed).toEqual({
+    token: "reset-secret",
+    password: "a-new-password",
   });
-  await confirm.getByRole("button", { name: "Revoke invite" }).click();
-  await expect(confirm).toBeHidden();
-  await expect(
-    page.getByRole("heading", { name: "Send this invite link" }),
-  ).toHaveCount(0);
-  await expect(page.getByText("Revoked", { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Revoke invite for bob@example.com" }),
-  ).toHaveCount(0);
-});
-
-test("the admin disables, enables and deletes accounts after confirmation", async ({
-  page,
-}) => {
-  await remote(page, true, true);
-  let member = {
-    id: "account-b",
-    username: "bob",
-    email: "bob@example.com",
-    admin: false,
-    disabled: false,
-    createdAt: Date.now(),
-  };
-  let deleted = false;
-  await page.route("**/api/v2/manage/invites", (route) =>
-    route.fulfill({ json: { invites: [] } }),
-  );
-  await page.route("**/api/v2/manage/users", (route) =>
-    route.fulfill({
-      json: {
-        users: [
-          {
-            id: "account-a",
-            username: "alice",
-            email: null,
-            admin: true,
-            disabled: false,
-            createdAt: Date.now(),
-          },
-          ...(deleted ? [] : [member]),
-        ],
-      },
-    }),
-  );
-  const calls: string[] = [];
-  await page.route("**/api/v2/manage/users/account-b**", (route) => {
-    expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
-    const path = new URL(route.request().url()).pathname;
-    calls.push(`${route.request().method()} ${path}`);
-    if (path.endsWith("/disable")) member = { ...member, disabled: true };
-    else if (path.endsWith("/enable")) member = { ...member, disabled: false };
-    else deleted = true;
-    return route.fulfill({ status: 204 });
-  });
-  await page.goto("/manage");
-  await expect(
-    page.getByText("Invites need Google sign-in.", { exact: false }),
-  ).toBeVisible();
-  await expect(page.getByLabel("Email", { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByText("bob@example.com", { exact: false }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Disable bob" }).click();
-  const disable = page.getByRole("dialog", { name: "Disable bob?" });
-  await expect(disable.getByRole("button", { name: "Cancel" })).toBeFocused();
-  await disable.getByRole("button", { name: "Disable account" }).click();
-  await expect(disable).toBeHidden();
-  await expect(page.getByText("Disabled", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Enable bob" }).click();
-  await expect(page.getByRole("button", { name: "Disable bob" })).toBeVisible();
-  await page.getByRole("button", { name: "Delete bob" }).click();
-  const remove = page.getByRole("dialog", { name: "Delete bob?" });
-  await remove.getByRole("button", { name: "Delete account" }).click();
-  await expect(remove).toBeHidden();
-  await expect(page.getByText("bob@example.com", { exact: false })).toHaveCount(
-    0,
-  );
-  expect(calls).toEqual([
-    "POST /api/v2/manage/users/account-b/disable",
-    "POST /api/v2/manage/users/account-b/enable",
-    "DELETE /api/v2/manage/users/account-b",
-  ]);
+  await page.getByRole("link", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 });
 
 test("another invite link opened in the same tab loads that invite", async ({
   page,
 }) => {
-  await remote(page, false, false, { googleEnabled: true });
+  await remote(page, false, { googleEnabled: true });
   await page.route("**/api/v2/invites/lookup", (route) => {
     const { token } = route.request().postDataJSON();
     return route.fulfill({
       json: {
         email: token === "second" ? "carol@example.com" : "bob@example.com",
+        admin: false,
         expiresAt: Date.now() + 86_400_000,
       },
     });

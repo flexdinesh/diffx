@@ -84,7 +84,8 @@ owner. See [development.md](development.md) for isolated checkout commands.
 - `reviewservice`: shared snapshot reads, comments, marks and capability checks.
 - `reviewdata`: storage-independent identities, results and errors.
 - `reviewsession`: a resolved review and its source/policy capabilities.
-- `identityservice`: account, admin setup, password, session, API-token,
+- `identityservice`: account, sign-in method and audience (app members or
+  console admins), password, reset link, session, API-token, admin role,
   account administration, invite and Google sign-in policies.
 - `google`: Google OpenID Connect wire adapter: authorization URL with PKCE and
   nonce, code exchange and ID token claim checks. No storage or diffx policy.
@@ -123,8 +124,10 @@ owner. See [development.md](development.md) for isolated checkout commands.
   reach review operations through `reviewservice.Catalog` and hold no store.
 - `serverapp`: transport/task composition; `localserver`: local lifecycle;
   `controlapi`: its private authenticated control API; `remoteserver`: remote
-  authentication, its rate limiting policy, deployment probes and worker
-  composition.
+  member authentication and worker composition; `authhttp`: browser
+  authentication HTTP shared by remote transports (session cookie, CSRF,
+  problem and identity error mapping, sign-in admission and rate limiting,
+  deployment probes).
 - `config`, `processlock`, `browser`, `version`: configuration and private state
   paths (`StateDir`, honouring `DIFFX_RUNTIME_DIR`), process ownership,
   browser launch and build metadata; `processmetrics`: server process metrics;
@@ -152,9 +155,11 @@ Remote services therefore skip in-process publication
 (`contextservice.ExternalEvents`); local composition keeps it. Notifications
 are hints: after a lost session the listener reconnects with backoff and asks
 every active owner's clients to reload, and the worker keeps polling.
-Identity service owns credential and administration rules, including
-the single admin; transports own cookies, CSRF and route permissions, such as
-admin routes requiring the admin's browser session.
+Identity service owns credential and administration rules, including sign-in
+policy, admin roles and the last-admin guard; each entry point composes its
+audience (members for `diffx-server`, admins for the console) and the member
+sign-in policy from configuration, and transports own cookies, CSRF and route
+permissions. `diffx-server` serves no admin routes.
 
 The frontend identity owner loads the explicit server mode before mounting review
 state. Distributed login and settings work without any observations. Account
@@ -333,7 +338,7 @@ durable queue. It holds credentials, so it is read only from the environment,
 never a file or flag, and diagnostics never echo it.
 `DIFFX_SERVER_AUTH_RATE_LIMIT` (default off) and `DIFFX_SERVER_CLIENT_IP_HEADER`
 are also environment only, because trusting a client IP header is a property of
-the deployment's ingress, not of a portable config file. `remoteserver` owns the
+the deployment's ingress, not of a portable config file. `authhttp` owns the
 limit and the header parsing; `pgstore` owns the atomic per-client fixed-window
 counter in an UNLOGGED table, which replicas share and which loses only counts
 on a crash. Only remote composition serves `/healthz` and `/readyz`; local mode

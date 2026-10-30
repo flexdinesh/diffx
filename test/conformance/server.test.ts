@@ -372,7 +372,7 @@ test("Go distribution implements the API contract", async (t) => {
     remoteBinary,
     ["--listen", `127.0.0.1:${remotePort}`],
     {
-      stdio: ["ignore", "ignore", "pipe"],
+      stdio: "ignore",
       env: {
         ...process.env,
         DIFFX_SERVER_DATABASE_URL: databaseUrl,
@@ -383,9 +383,6 @@ test("Go distribution implements the API contract", async (t) => {
     },
   );
   t.after(() => remoteServer.kill("SIGTERM"));
-  let serverLog = "";
-  remoteServer.stderr.setEncoding("utf8");
-  remoteServer.stderr.on("data", (chunk: string) => (serverLog += chunk));
   const remoteUrl = `http://127.0.0.1:${remotePort}`;
   await waitForServer(remoteUrl);
   const remote = createApiClient({ baseUrl: remoteUrl });
@@ -402,45 +399,39 @@ test("Go distribution implements the API contract", async (t) => {
   assert.deepEqual(remoteBootstrap.data, {
     mode: "remote",
     googleEnabled: false,
+    signupEnabled: true,
+    passwordEnabled: true,
     user: null,
     csrfToken: null,
   });
-  const retiredSignup = await fetch(`${remoteUrl}/api/v2/auth/signup`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      username: "second-user",
-      password: "contract-password-000002",
-    }),
-  });
-  assert.equal(retiredSignup.status, 401);
-  const pendingSetup = await remote.GET("/api/v2/setup");
-  assert.deepEqual(pendingSetup.data, { required: true });
-  let setupToken = "";
-  for (let attempt = 0; !setupToken && attempt < 40; attempt++) {
-    setupToken =
-      /http:\/\/localhost:\d+\/setup#t=(\S+)/.exec(serverLog)?.[1] ?? "";
-    if (!setupToken) await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  assert.ok(setupToken, `setup link not logged: ${serverLog}`);
-  const setup = await remote.POST("/api/v2/setup", {
+  // Defaults open password signup; admin setup belongs to the console.
+  const signup = await remote.POST("/api/v2/auth/signup", {
     body: {
-      token: setupToken,
       username: "contract-user",
       password: "contract-password-000001",
     },
   });
-  assert.equal(setup.response.status, 200);
-  conforms("Bootstrap", setup.data);
-  assert.equal(setup.data?.mode === "remote" && setup.data.user?.admin, true);
-  const reusedSetup = await remote.POST("/api/v2/setup", {
+  assert.equal(signup.response.status, 200);
+  conforms("Bootstrap", signup.data);
+  assert.equal(
+    signup.data?.mode === "remote" && signup.data.user?.method,
+    "password",
+  );
+  const takenSignup = await remote.POST("/api/v2/auth/signup", {
     body: {
-      token: setupToken,
-      username: "second-user",
+      username: "contract-user",
       password: "contract-password-000002",
     },
   });
-  assert.equal(reusedSetup.response.status, 404);
+  assert.equal(takenSignup.response.status, 409);
+  const signupCookie = signup.response.headers.get("set-cookie")?.split(";")[0];
+  assert.ok(signupCookie);
+  for (const path of ["/api/v2/setup", "/api/v2/manage/users"]) {
+    const retired: Response = await fetch(`${remoteUrl}${path}`, {
+      headers: { Cookie: signupCookie },
+    });
+    assert.equal(retired.status, 404);
+  }
   const login = await remote.POST("/api/v2/auth/login", {
     body: {
       username: "contract-user",
@@ -456,17 +447,6 @@ test("Go distribution implements the API contract", async (t) => {
   const cookie = login.response.headers.get("set-cookie")?.split(";")[0];
   assert.ok(cookie);
   const accountHeaders = { Cookie: cookie, "X-CSRF-Token": csrf };
-  const users = await remote.GET("/api/v2/manage/users", {
-    headers: { Cookie: cookie },
-  });
-  assert.equal(users.response.status, 200);
-  assert.equal(users.data?.users.length, 1);
-  conforms("AdminUser", users.data?.users[0]);
-  const invites = await remote.GET("/api/v2/manage/invites", {
-    headers: { Cookie: cookie },
-  });
-  assert.equal(invites.response.status, 200);
-  assert.deepEqual(invites.data?.invites, []);
   const browserKey = createECDH("prime256v1");
   const pushDevice = await remote.PUT("/api/v2/push/subscriptions", {
     headers: accountHeaders,
@@ -489,11 +469,6 @@ test("Go distribution implements the API contract", async (t) => {
   conforms("PushSettings", pushSettings.data);
   assert.equal(pushSettings.data?.enabled, true);
   assert.equal(pushSettings.data?.devices.length, 1);
-  const inviteWithoutGoogle = await remote.POST("/api/v2/manage/invites", {
-    headers: accountHeaders,
-    body: { email: "member@example.com" },
-  });
-  assert.equal(inviteWithoutGoogle.response.status, 409);
   const googleWithoutConfig = await remote.POST("/api/v2/auth/google", {
     body: {},
   });

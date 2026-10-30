@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,12 +9,10 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 
 	"github.com/flexdinesh/diffx/internal/config"
 	"github.com/flexdinesh/diffx/internal/identityservice"
-	"github.com/flexdinesh/diffx/internal/pgstore"
 	"github.com/flexdinesh/diffx/internal/remoteserver"
 	"github.com/flexdinesh/diffx/internal/version"
 )
@@ -25,7 +22,7 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 	flags := flag.NewFlagSet("diffx-server", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.StringVar(&settings.Listen, "listen", net.JoinHostPort("127.0.0.1", strconv.Itoa(config.DefaultServerPort)), "HTTP listen address; terminate TLS at the deployment boundary")
-	flags.StringVar(&settings.PublicURL, "public-url", "", "browser-facing https origin used in the logged admin setup link; also enables Web Push")
+	flags.StringVar(&settings.PublicURL, "public-url", "", "browser-facing https origin used for Google sign-in and Web Push")
 	flags.BoolVar(&settings.InsecureCookies, "insecure-cookies", false, "allow browser sessions over HTTP for development")
 	flags.IntVar(&settings.RetentionDays, "retention-days", 7, "snapshot retention in days")
 	path := flags.String("config-file", "", "optional read-only server JSON config path; defaults to DIFFX_SERVER_CONFIG")
@@ -71,6 +68,7 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 	if err := values.ValidateIdentity(); err != nil {
 		return settings, false, err
 	}
+	settings.Members = identityservice.MemberPolicy{Signup: values.Signup, Password: values.PasswordSignIn}
 	if values.Google.Enabled() {
 		settings.Google = &remoteserver.GoogleSettings{ClientID: values.Google.ClientID, ClientSecret: values.Google.ClientSecret}
 	}
@@ -98,16 +96,6 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 	return settings, false, nil
 }
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "user" {
-		if err := manageUser(os.Args[2:], os.Stdin, os.Stdout, os.Stderr); err != nil {
-			if err == flag.ErrHelp {
-				return
-			}
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		return
-	}
 	settings, showVersion, err := parseSettings(os.Args[1:], os.Stderr)
 	if err != nil {
 		if err == flag.ErrHelp {
@@ -126,61 +114,4 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-}
-
-// Admin recovery is one transaction against the shared database, so it may run
-// while replicas serve. Only the admin has a password; the setup link creates
-// it. Passwords are read from an explicitly selected environment variable or
-// stdin; they are never command arguments or printed output.
-func manageUser(arguments []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	if len(arguments) == 0 || arguments[0] != "reset-password" {
-		return fmt.Errorf("usage: diffx-server user reset-password --username ADMIN --password-env VAR|--password-stdin")
-	}
-	operation := arguments[0]
-	flags := flag.NewFlagSet("diffx-server user "+operation, flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	username := flags.String("username", "", "admin username")
-	configPath := flags.String("config-file", "", "optional server JSON config path")
-	passwordEnv := flags.String("password-env", "", "read password from this environment variable")
-	passwordStdin := flags.Bool("password-stdin", false, "read password from stdin")
-	if err := flags.Parse(arguments[1:]); err != nil {
-		return err
-	}
-	if flags.NArg() != 0 || *username == "" || (*passwordEnv != "") == *passwordStdin {
-		return fmt.Errorf("provide username and exactly one password source")
-	}
-	values, err := config.LoadServerFile(*configPath)
-	if err != nil {
-		return err
-	}
-	if err := values.ValidateDatabase(); err != nil {
-		return err
-	}
-	var password string
-	if *passwordStdin {
-		raw, err := io.ReadAll(io.LimitReader(stdin, 1025))
-		if err != nil {
-			return err
-		}
-		if len(raw) > 1024 {
-			return fmt.Errorf("password input too long")
-		}
-		password = strings.TrimSuffix(strings.TrimSuffix(string(raw), "\n"), "\r")
-	} else {
-		password = os.Getenv(*passwordEnv)
-	}
-	store, err := pgstore.Open(context.Background(), values.DatabaseURL, pgstore.DefaultRetention)
-	if err != nil {
-		return err
-	}
-	defer store.Close()
-	err = identityservice.New(store).ResetPassword(context.Background(), *username, password)
-	if errors.Is(err, identityservice.ErrNotFound) {
-		return fmt.Errorf("no admin account named %s", *username)
-	}
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintf(stdout, "User %s: %s complete\n", *username, operation)
-	return err
 }

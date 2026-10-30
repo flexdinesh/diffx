@@ -32,10 +32,13 @@ const IdentityContext = createContext<Identity | null>(null);
 const anonymous = new Set([
   "/api/v2/bootstrap",
   "/api/v2/auth/login",
-  "/api/v2/setup",
+  "/api/v2/auth/signup",
   "/api/v2/auth/google",
   "/api/v2/invites/lookup",
   "/api/v2/invites/google",
+  "/api/v2/invites/password",
+  "/api/v2/password-reset/lookup",
+  "/api/v2/password-reset",
 ]);
 
 export function navigate(path: string) {

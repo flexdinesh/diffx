@@ -172,8 +172,11 @@ func TestGoogleSignInNeedsBothCredentialsAndPublicURL(t *testing.T) {
 	if _, err := LoadServerFile(path); err == nil || !strings.Contains(err.Error(), "clientSecret") {
 		t.Fatalf("secret accepted from config file: %v", err)
 	}
-	if (Google{}).Enabled() || (ServerValues{}).ValidateIdentity() != nil {
-		t.Fatal("absent Google sign-in must be valid and disabled")
+	if (Google{}).Enabled() || (ServerValues{PasswordSignIn: true}).ValidateIdentity() != nil {
+		t.Fatal("absent Google sign-in must be valid and disabled while passwords sign in")
+	}
+	if err := (ServerValues{}).ValidateIdentity(); err == nil || !strings.Contains(err.Error(), "no sign-in method") {
+		t.Fatalf("no sign-in method accepted: %v", err)
 	}
 }
 

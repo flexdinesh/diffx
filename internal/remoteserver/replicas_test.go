@@ -109,7 +109,7 @@ func TestReplicasShareEventsAndAccountRemoval(t *testing.T) {
 	}
 	subscription, unsubscribe := app.service.Subscribe()
 	defer unsubscribe()
-	if err := identity.DisableAccount(t.Context(), account.ID); err != nil {
+	if err := identity.DisableAccount(t.Context(), "admin", account.ID); err != nil {
 		t.Fatal(err)
 	}
 	timeout := time.After(10 * time.Second)

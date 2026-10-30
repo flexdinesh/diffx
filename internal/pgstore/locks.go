@@ -6,8 +6,9 @@ package pgstore
 const (
 	// schemaLock serializes schema creation, which precedes goose's own lock.
 	schemaLock = 7_469_000_001
-	// adminSetupLock serializes setup issuance with admin creation.
-	adminSetupLock = 7_469_000_010
+	// adminLock serializes setup issuance, first-admin creation and admin
+	// role, disable and delete changes, so one enabled admin always remains.
+	adminLock = 7_469_000_010
 	// pruneLock admits one replica's retention pass; others skip theirs.
 	pruneLock = 7_469_000_020
 	// githubReconcileLock admits one replica's startup reconciliation; others skip theirs.

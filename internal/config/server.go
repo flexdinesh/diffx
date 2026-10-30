@@ -35,6 +35,11 @@ type ServerValues struct {
 	InternalPort int    `json:"internalPort"`
 	GitHub       GitHub `json:"github"`
 	Google       Google `json:"google"`
+	// Signup lets people create accounts from the web app without an invite.
+	Signup bool `json:"signup"`
+	// PasswordSignIn admits password accounts to the web app. Both default to
+	// true for development and self-hosting; production turns them off.
+	PasswordSignIn bool `json:"passwordSignIn"`
 	// AuthRateLimit bounds authentication attempts per client IP across
 	// replicas. The IP comes from ClientIPHeader, which a trusted ingress must
 	// set; both come only from the environment.
@@ -42,7 +47,7 @@ type ServerValues struct {
 	ClientIPHeader string `json:"-"`
 }
 
-// Google configures Google sign-in for invited accounts. The secret comes only
+// Google configures Google sign-in. The secret comes only
 // from DIFFX_SERVER_GOOGLE_CLIENT_SECRET, never the config file.
 type Google struct {
 	ClientID     string `json:"clientId"`
@@ -118,13 +123,16 @@ func validOrigin(raw string, insecureCookies bool) bool {
 		(public.Scheme == "https" || public.Scheme == "http" && insecureCookies)
 }
 
-// ValidateIdentity checks the optional origin used in links the server issues,
-// and Google sign-in, which needs both credentials and that origin.
+// ValidateIdentity checks the optional public origin, that people have a way
+// to sign in, and Google sign-in, which needs both credentials and that origin.
 func (values ServerValues) ValidateIdentity() error {
 	if values.PublicURL != "" && !validOrigin(values.PublicURL, values.InsecureCookies) {
 		return errors.New("publicUrl must be an https origin such as https://diffx.example.com (http only with insecure cookies)")
 	}
 	if !values.Google.Enabled() {
+		if !values.PasswordSignIn {
+			return errors.New("no sign-in method: set DIFFX_SERVER_GOOGLE_CLIENT_ID and DIFFX_SERVER_GOOGLE_CLIENT_SECRET, or DIFFX_SERVER_PASSWORD_SIGNIN=true")
+		}
 		return nil
 	}
 	if values.Google.ClientID == "" || values.Google.ClientSecret == "" {
@@ -140,7 +148,7 @@ func (values ServerValues) ValidateIdentity() error {
 // It never discovers personal config, creates files, or acquires a config lock.
 // Variables use the DIFFX_SERVER_ prefix so they never configure the local CLI.
 func LoadServerFile(path string) (ServerValues, error) {
-	values := ServerValues{Host: "127.0.0.1", Port: DefaultServerPort, InternalPort: DefaultInternalPort, RetentionDays: 7}
+	values := ServerValues{Host: "127.0.0.1", Port: DefaultServerPort, InternalPort: DefaultInternalPort, RetentionDays: 7, Signup: true, PasswordSignIn: true}
 	if path == "" {
 		path = os.Getenv("DIFFX_SERVER_CONFIG")
 	}
@@ -214,6 +222,8 @@ func LoadServerFile(path string) (ServerValues, error) {
 	}{
 		{"DIFFX_SERVER_INSECURE_COOKIES", &values.InsecureCookies},
 		{"DIFFX_SERVER_AUTH_RATE_LIMIT", &values.AuthRateLimit},
+		{"DIFFX_SERVER_SIGNUP", &values.Signup},
+		{"DIFFX_SERVER_PASSWORD_SIGNIN", &values.PasswordSignIn},
 	} {
 		if raw, exists := os.LookupEnv(field.name); exists {
 			value, err := strconv.ParseBool(raw)
