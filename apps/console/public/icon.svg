@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- diffx "dx" monogram and favicon. Source of the PNG icons; colors are
+       the shell canvas and accent tokens, light and dark. -->
+  <style>
+    .tile { fill: #edeef2; }
+    .ink { stroke: #5957d2; }
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #292a30; }
+      .ink { stroke: #aba7ff; }
+    }
+  </style>
+  <rect class="tile" x="16" y="16" width="480" height="480" rx="112"/>
+  <g class="ink">
+    <g fill="none" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="184" cy="288" r="64"/>
+      <path d="M248 144V352"/>
+      <path d="M300 224l92 128M392 224l-92 128"/>
+    </g>
+  </g>
+</svg>

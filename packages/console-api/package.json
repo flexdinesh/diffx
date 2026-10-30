@@ -1,0 +1,19 @@
+{
+  "name": "@diffx/console-api",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": "./src/client.ts",
+  "scripts": {
+    "generate": "openapi-typescript openapi.yaml -o src/schema.d.ts && oxfmt src/schema.d.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "oxfmt": "catalog:",
+    "typescript": "5.9.3"
+  }
+}

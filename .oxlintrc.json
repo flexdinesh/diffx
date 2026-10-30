@@ -21,7 +21,7 @@
   },
   "overrides": [
     {
-      "files": ["apps/web/test/browser/**"],
+      "files": ["apps/*/test/browser/**"],
       "rules": { "react/rules-of-hooks": "off" }
     },
     {

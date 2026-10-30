@@ -27,6 +27,7 @@ run = [
   "pnpm prepare",
   "pnpm test:browser:install",
   { task = "web:stage" },
+  { task = "console:stage" },
 ]
 
 [tasks.generate]
@@ -42,7 +43,7 @@ description = "Generate typed Go Postgres queries from internal/pgstore SQL"
 run = "sqlc generate -f internal/pgstore/sqlc.yaml"
 
 [tasks."web:build"]
-description = "Generate API types and build the web app"
+description = "Generate API types and build the web app and console"
 sources = [
   "apps/web/src/**/*",
   "apps/web/public/**/*",
@@ -50,6 +51,12 @@ sources = [
   "apps/web/vite.config.ts",
   "apps/web/tsconfig.json",
   "apps/web/package.json",
+  "apps/console/src/**/*",
+  "apps/console/public/**/*",
+  "apps/console/index.html",
+  "apps/console/vite.config.ts",
+  "apps/console/tsconfig.json",
+  "apps/console/package.json",
   "packages/ui/src/**/*",
   "packages/ui/tsconfig.json",
   "packages/ui/components.json",
@@ -57,10 +64,18 @@ sources = [
   "packages/api/openapi.yaml",
   "packages/api/src/**/*",
   "packages/api/package.json",
+  "packages/console-api/openapi.yaml",
+  "packages/console-api/src/**/*",
+  "packages/console-api/package.json",
   "package.json",
   "pnpm-lock.yaml",
 ]
-outputs = ["apps/web/dist/**/*", "packages/api/src/schema.d.ts"]
+outputs = [
+  "apps/web/dist/**/*",
+  "apps/console/dist/**/*",
+  "packages/api/src/schema.d.ts",
+  "packages/console-api/src/schema.d.ts",
+]
 run = "pnpm build"
 
 [tasks."web:stage"]
@@ -70,22 +85,32 @@ sources = ["apps/web/dist/**/*", "tools/stage-web/**/*"]
 outputs = ["internal/webui/dist/**/*"]
 run = "go run ./tools/stage-web apps/web/dist internal/webui/dist"
 
+[tasks."console:stage"]
+description = "Build and stage ignored embedded console assets for Go builds"
+depends = ["web:build"]
+sources = ["apps/console/dist/**/*", "tools/stage-web/**/*"]
+outputs = ["internal/consoleui/dist/**/*"]
+run = "go run ./tools/stage-web apps/console/dist internal/consoleui/dist"
+
 [tasks.build]
-description = "Build the standalone CLI at dist/diffx"
-depends = ["web:stage"]
+description = "Build the standalone CLI at dist/diffx, diffx-server and diffx-console"
+depends = ["web:stage", "console:stage"]
 sources = [
   "cmd/**/*",
   "internal/**/*",
   "packages/api/*.go",
   "packages/api/openapi.yaml",
+  "packages/console-api/*.go",
+  "packages/console-api/openapi.yaml",
   "go.mod",
   "go.sum",
 ]
-outputs = ["dist/diffx", "dist/diffx-server"]
+outputs = ["dist/diffx", "dist/diffx-server", "dist/diffx-console"]
 run = [
   "node -e \"require('node:fs').mkdirSync('dist', { recursive: true })\"",
   "go build -trimpath -o dist/diffx ./cmd/diffx",
   "go build -trimpath -o dist/diffx-server ./cmd/diffx-server",
+  "go build -trimpath -o dist/diffx-console ./cmd/diffx-console",
 ]
 
 [tasks.install]
@@ -97,6 +122,23 @@ run = "go install -trimpath ./cmd/diffx"
 description = "Start Vite HMR and its managed Go fixture server"
 alias = "dev:web"
 run = "pnpm dev:web"
+
+[tasks."dev:console"]
+description = "Run diffx-console on the development Postgres behind Vite HMR"
+depends = ["db:up", "console:stage"]
+shell = "bash -e -o pipefail -c"
+# The setup link and cookies use Vite's origin; Vite proxies the API to the console.
+# Invite and member reset links open the app from mise run dev:remote.
+run = '''
+export DIFFX_CONSOLE_DATABASE_URL="${DIFFX_CONSOLE_DATABASE_URL:-postgres://diffx:diffx@127.0.0.1:${DIFFX_DEV_POSTGRES_PORT:-54329}/diffx?sslmode=disable}"
+export DIFFX_CONSOLE_INSECURE_COOKIES=true
+export DIFFX_CONSOLE_PUBLIC_URL="${DIFFX_CONSOLE_PUBLIC_URL:-http://localhost:5174}"
+export DIFFX_CONSOLE_APP_URL="${DIFFX_CONSOLE_APP_URL:-http://localhost:5173}"
+DIFFX_CONSOLE_PORT=7970 go run ./cmd/diffx-console &
+console=$!
+trap 'kill "$console" 2>/dev/null; wait "$console" 2>/dev/null' EXIT
+DIFFX_CONSOLE_URL=http://127.0.0.1:7970 pnpm dev:console --port 5174 --strictPort
+'''
 
 [tasks."plugins:build"]
 description = "Build self-contained agent plugin adapters"
@@ -199,7 +241,7 @@ if ! sqlc diff -f internal/pgstore/sqlc.yaml; then
   echo 'Run `mise run generate:sql` and commit internal/pgstore/pgdb.' >&2
   exit 1
 fi
-generated_changes=$(git status --porcelain --untracked-files=all -- packages/api/src/schema.d.ts packages/plugin-opencode/dist packages/plugin-pi/dist)
+generated_changes=$(git status --porcelain --untracked-files=all -- packages/api/src/schema.d.ts packages/console-api/src/schema.d.ts packages/plugin-opencode/dist packages/plugin-pi/dist)
 if [ -n "$generated_changes" ]; then
   printf '%s\n' "$generated_changes"
   echo 'Commit generated API types and built plugins before pushing.' >&2
@@ -290,12 +332,12 @@ run = "ruby -c homebrew-tap/Formula/diffx.rb"
 
 [tasks."docker:build"]
 description = "Build the remote server image with staged embedded assets"
-depends = ["web:stage"]
+depends = ["web:stage", "console:stage"]
 run = "docker build --tag diffx-server:local ."
 
 [tasks."docker:up"]
-description = "Build and start the server with its bundled persistent Postgres"
-depends = ["web:stage"]
+description = "Build and start the server and console with their bundled persistent Postgres"
+depends = ["web:stage", "console:stage"]
 run = "docker compose up --build -d"
 
 [tasks."docker:down"]

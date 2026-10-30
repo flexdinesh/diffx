@@ -1,8 +1,9 @@
 # AGENTS.md
 
 One product, multi-project repo. Go CLI/server module at the root (`cmd/`,
-`internal/`, `tools/`); embedded React/Vite app in `apps/web/`; OpenAPI contract
-(Go embed + generated TS client) in `packages/api/`; shared React design
+`internal/`, `tools/`); embedded React/Vite app in `apps/web/` and admin
+console in `apps/console/`; OpenAPI contracts (Go embed + generated TS client)
+in `packages/api/` and `packages/console-api/`; shared React design
 system in `packages/ui/`; agent plugins in `packages/plugin-*`; user docs site
 in `docs-website/`; maintainer docs in `docs/`; cross-package conformance,
 contract and release tests in `test/`.
@@ -13,7 +14,7 @@ contract and release tests in `test/`.
 - Use mise tasks or pnpm scripts for project commands; toolchain and orchestration live in `mise.toml`.
 - Run relevant checks for changes; `mise run check` runs all checks.
 - Keep full suites and architecture/design guards local through the pre-push hook; keep CI/release verification lightweight.
-- `internal/webui/dist` is ignored on `main`; run `mise run web:stage` before Go builds/tests. CI commits it only on release tags and `edge`.
+- `internal/webui/dist` and `internal/consoleui/dist` are ignored on `main`; run `mise run web:stage` and `mise run console:stage` (or `mise run build`) before Go builds/tests. CI commits only the web assets, on release tags and `edge`.
 - See `docs/development.md` and `docs/release.md` for workflows.
 
 ## Design and architecture

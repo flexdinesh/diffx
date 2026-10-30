@@ -1,0 +1,206 @@
+import { type APIRequestContext, type Page } from "@playwright/test";
+import { expect, root, signIn, test } from "./fixtures.ts";
+
+// One deployment per worker: setup runs once, so the journeys run in order.
+test.describe.configure({ mode: "serial" });
+
+const memberPassword = "member-password-0001";
+
+async function signUpMember(
+  request: APIRequestContext,
+  app: string,
+  username: string,
+) {
+  const response = await request.post(`${app}/api/v2/auth/signup`, {
+    data: { username, password: memberPassword },
+  });
+  expect(response.status()).toBe(200);
+}
+
+function accountRow(page: Page, username: string) {
+  return page
+    .getByRole("listitem")
+    .filter({ has: page.getByText(username, { exact: true }) });
+}
+
+async function accountAction(page: Page, username: string, action: string) {
+  await page.getByRole("button", { name: `Actions for ${username}` }).click();
+  await page.getByRole("menuitem", { name: action }).click();
+}
+
+test("the setup link creates the first admin", async ({ page, deployment }) => {
+  await page.goto("/");
+  await expect(page.getByText("This server has no admin yet.")).toBeVisible();
+  await page.goto(deployment.setup);
+  // The secret leaves the address bar before any request.
+  await expect(page).toHaveURL(/\/setup$/);
+  await expect(
+    page.getByRole("heading", { name: "Set up the console" }),
+  ).toBeVisible();
+  await page.getByLabel("Username").fill(root.username);
+  await page.getByLabel("Password").fill(root.password);
+  await page.getByRole("button", { name: "Create admin" }).click();
+  await expect(page).toHaveURL(/\/accounts$/);
+  const self = accountRow(page, root.username);
+  await expect(self.getByText("You")).toBeVisible();
+  await expect(self.getByText("Admin")).toBeVisible();
+  // Admins take no actions on themselves.
+  await expect(
+    page.getByRole("button", { name: `Actions for ${root.username}` }),
+  ).toHaveCount(0);
+
+  // The link works once.
+  await page.getByRole("link", { name: "Admin" }).click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await page.goto(deployment.setup);
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+});
+
+test("only admins sign in", async ({ page, request, deployment }) => {
+  await signUpMember(request, deployment.app, "member");
+  await signIn(page, { username: "member", password: memberPassword });
+  await expect(page.getByRole("alert")).toContainText("Unable to sign in");
+  await signIn(page, root);
+  await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
+  // Unknown paths land on Accounts.
+  await page.goto("/manage");
+  await expect(page).toHaveURL(/\/accounts$/);
+});
+
+test("admins manage roles, access and recovery", async ({
+  page,
+  request,
+  deployment,
+}) => {
+  await signUpMember(request, deployment.app, "alice");
+  await signIn(page, root);
+  const alice = accountRow(page, "alice");
+  await expect(alice).toContainText("Password");
+
+  await accountAction(page, "alice", "Make admin");
+  await expect(page.getByText("alice is now an admin.")).toBeVisible();
+  await expect(alice.getByText("Admin")).toBeVisible();
+
+  // An admin's reset link opens this console.
+  await accountAction(page, "alice", "Create reset link");
+  const panel = page
+    .getByRole("status")
+    .filter({ hasText: "Send this reset link to alice" });
+  await expect(panel).toContainText("It opens this console");
+  const adminLink = await panel.locator("pre").innerText();
+  expect(adminLink.startsWith(`${deployment.origin}/reset-password#t=`)).toBe(
+    true,
+  );
+
+  // A member's reset link opens the app.
+  await accountAction(page, "member", "Create reset link");
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: "Send this reset link to member" }),
+  ).toContainText(`${deployment.app}/reset-password#t=`);
+
+  await accountAction(page, "member", "Disable…");
+  const disable = page.getByRole("dialog");
+  await expect(disable).toContainText("Disable member?");
+  await disable.getByRole("button", { name: "Disable account" }).click();
+  await expect(accountRow(page, "member").getByText("Disabled")).toBeVisible();
+  await accountAction(page, "member", "Enable");
+  await expect(accountRow(page, "member").getByText("Disabled")).toHaveCount(0);
+
+  await accountAction(page, "member", "Delete…");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete account" })
+    .click();
+  await expect(accountRow(page, "member")).toHaveCount(0);
+
+  // alice sets her password from the console link, then signs in here.
+  const other = await page.context().browser()?.newPage();
+  if (!other) throw new Error("Missing browser");
+  await other.goto(adminLink);
+  await expect(other).toHaveURL(/\/reset-password$/);
+  await expect(other.getByText("Choose a new password for")).toContainText(
+    "alice",
+  );
+  await other.getByLabel("New password").fill("alice-console-password-1");
+  await other.getByRole("button", { name: "Set password" }).click();
+  await expect(other.getByText("Your password is set")).toBeVisible();
+  await other.getByRole("link", { name: "Sign in" }).click();
+  await other.getByLabel("Username").fill("alice");
+  await other.getByLabel("Password").fill("alice-console-password-1");
+  await other.getByRole("button", { name: "Sign in" }).click();
+  await expect(other.getByRole("heading", { name: "Accounts" })).toBeVisible();
+  await other.close();
+});
+
+test("admins invite members and admins to the app", async ({
+  page,
+  request,
+  deployment,
+}) => {
+  await signIn(page, root);
+  await page.getByRole("link", { name: "Invites" }).click();
+  await expect(page.getByText("No invites yet.")).toBeVisible();
+  await page.getByLabel("Email").fill("dana@example.com");
+  await page
+    .getByRole("checkbox", { name: "Make them an admin of this console" })
+    .check();
+  await page.getByRole("button", { name: "Create invite" }).click();
+  const panel = page
+    .getByRole("status")
+    .filter({ hasText: "Send this invite link" });
+  await expect(panel).toContainText("for dana@example.com as an admin");
+  const link = await panel.locator("pre").innerText();
+  const token = link.split(`${deployment.app}/invite#t=`)[1];
+  expect(token).toBeTruthy();
+  // The app resolves the console's invite as an admin invite.
+  const lookup = await request.post(`${deployment.app}/api/v2/invites/lookup`, {
+    data: { token },
+  });
+  expect(await lookup.json()).toMatchObject({
+    email: "dana@example.com",
+    admin: true,
+  });
+
+  const invite = page.getByRole("listitem").filter({ hasText: "dana@" });
+  await expect(invite.getByText("Pending")).toBeVisible();
+  await expect(invite.getByText("Admin")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Revoke invite for dana@example.com" })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Revoke invite" })
+    .click();
+  await expect(invite.getByText("Revoked")).toBeVisible();
+  await expect(panel).toHaveCount(0);
+});
+
+test("a password change signs the admin out", async ({ page }) => {
+  await signIn(page, root);
+  await page.getByRole("link", { name: "Admin" }).click();
+  await expect(page.getByRole("link", { name: "Admin" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await page.getByLabel("Current password").fill("wrong-password-0000");
+  await page.getByLabel("New password").fill("root-console-password-2");
+  await page
+    .getByRole("button", { name: "Change password and sign out" })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Current password incorrect",
+  );
+  await page.getByLabel("Current password").fill(root.password);
+  await page
+    .getByRole("button", { name: "Change password and sign out" })
+    .click();
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await signIn(page, {
+    username: root.username,
+    password: "root-console-password-2",
+  });
+  await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
+});

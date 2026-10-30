@@ -62,6 +62,7 @@ build.
 | Start the development Postgres (`compose.dev.yml`)         | `mise run db:up`                 |
 | Stop it, preserving data / delete its data and restart     | `mise run db:down` / `db:reset`  |
 | Run `diffx-server` on the dev Postgres behind Vite HMR     | `mise run dev:remote`            |
+| Run `diffx-console` on the dev Postgres behind Vite HMR    | `mise run dev:console`           |
 | Start the container server with its bundled Postgres       | `mise run docker:up`             |
 | Stop the container server, preserving its database         | `mise run docker:down`           |
 | Install Playwright Chromium                                | `pnpm test:browser:install`      |
@@ -136,11 +137,14 @@ not by mise. PR evidence records full local validation.
 `$GOBIN`, or `$GOPATH/bin` when `GOBIN` is unset. Ensure that directory is on
 `PATH`.
 
-The production web build is staged into `internal/webui/dist`, which is ignored
-on `main`. Go builds, tests and vet embed that directory, so run
-`mise run web:stage` after a fresh checkout or frontend change; without it Go
-fails with `pattern all:dist: no matching files found`. CI commits the assets
-only on release tags and the `edge` branch; see [release.md](release.md).
+The production web build is staged into `internal/webui/dist` and the console
+build into `internal/consoleui/dist`; both are ignored on `main`. Go builds,
+tests and vet embed them, so run `mise run web:stage` and
+`mise run console:stage` (or `mise run build`) after a fresh checkout or
+frontend change; without them Go fails with
+`pattern all:dist: no matching files found`. CI commits the web assets only on
+release tags and the `edge` branch; see [release.md](release.md). The console
+ships only as a container, built by the deploy pipeline.
 
 ## Development data
 
@@ -359,6 +363,64 @@ SIGTERM stops HTTP and workers before releasing storage; unfinished admitted
 jobs recover from the durable queue after leases expire.
 Replicas are stateless and share one Postgres database; scale them freely.
 `LISTEN` needs a direct or session-mode connection URL.
+
+### Admin console
+
+`diffx-console` is the admin console: a separate binary and container
+(`docker build --target console .`) on its own origin over the server's
+database. It never serves the app or ingests. Configure it only through the
+environment:
+
+| Setting                              | Binary default | Container default |
+| ------------------------------------ | -------------- | ----------------- |
+| `DIFFX_CONSOLE_HOST`                 | `127.0.0.1`    | `0.0.0.0`         |
+| `DIFFX_CONSOLE_PORT`                 | `7970`         | `7970`            |
+| `DIFFX_CONSOLE_DATABASE_URL`         | Required       | Compose: bundled  |
+| `DIFFX_CONSOLE_APP_URL`              | Required       | Compose: app      |
+| `DIFFX_CONSOLE_PUBLIC_URL`           | Unset          | Compose: loopback |
+| `DIFFX_CONSOLE_INSECURE_COOKIES`     | `false`        | Compose: `true`   |
+| `DIFFX_CONSOLE_GOOGLE_CLIENT_ID`     | Unset          | Unset             |
+| `DIFFX_CONSOLE_GOOGLE_CLIENT_SECRET` | Unset          | Unset             |
+| `DIFFX_CONSOLE_AUTH_RATE_LIMIT`      | `false`        | `false`           |
+| `DIFFX_CONSOLE_CLIENT_IP_HEADER`     | Unset          | Unset             |
+
+`DIFFX_CONSOLE_DATABASE_URL` is the server's database; either binary may start
+first and migrate it. `DIFFX_CONSOLE_APP_URL` is the app's origin, used in
+invite and member reset links. `DIFFX_CONSOLE_PUBLIC_URL` is the console's
+origin, used in the setup link, admin reset links and the Google callback;
+unset, links use the listen address. While no admin exists, each start logs a
+one-time setup link, `<console URL>/setup#t=…`, valid for 24 hours; a restart
+replaces it. It creates the first admin with a username and password,
+whatever the app's sign-in settings.
+
+Admins sign in to the console with their password, or with Google when the
+console has its own OAuth client: set both Google variables and register
+`<console URL>/api/v1/auth/google/callback`. The console admits only enabled
+admins and never creates accounts. Admins invite members or admins, promote and
+demote, disable, enable and delete other accounts, and issue password reset
+links; no change may leave zero enabled admins, and admins never act on
+themselves. Disabling or deleting stops the account on every server replica.
+Rate limiting works as on the server, with the console's own variables.
+
+A locked-out admin or user gets a reset link offline, with the console's
+environment; servers may keep running:
+
+```sh
+diffx-console user reset-password --username alice
+```
+
+Admins' links open the console, other accounts' open the app. Completing a
+link revokes browser sessions, not API tokens.
+
+The console app (`apps/console`) is a document-style React app on
+`packages/ui` and the `packages/console-api` client. Signed out, `/setup`
+(while no admin exists) and `/reset-password` render their pages and every
+other path renders sign-in. Signed in, `/accounts`, `/invites` and `/admin`
+render under the console header and other paths redirect to `/accounts`. Its
+Playwright specs (`apps/console/test/browser`) run the built `diffx-server` and
+`diffx-console` on one fresh database per worker. `mise run dev:console` serves
+it with Vite HMR at `localhost:5174`, beside `mise run dev:remote` at
+`localhost:5173`.
 
 ## Build pipeline
 

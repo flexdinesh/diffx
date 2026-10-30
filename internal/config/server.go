@@ -250,23 +250,31 @@ func (values ServerValues) ValidateAuthRateLimit() error {
 	if !values.AuthRateLimit {
 		return nil
 	}
-	if values.ClientIPHeader == "" || strings.IndexFunc(values.ClientIPHeader, func(r rune) bool {
-		return r != '-' && (r < '0' || r > '9') && (r < 'A' || r > 'Z') && (r < 'a' || r > 'z')
-	}) >= 0 {
+	if !validHeaderName(values.ClientIPHeader) {
 		return errors.New("DIFFX_SERVER_AUTH_RATE_LIMIT needs DIFFX_SERVER_CLIENT_IP_HEADER: the request header name, such as X-Real-IP, that your trusted ingress sets to the single client IP")
 	}
 	return nil
 }
 
+func validHeaderName(name string) bool {
+	return name != "" && strings.IndexFunc(name, func(r rune) bool {
+		return r != '-' && (r < '0' || r > '9') && (r < 'A' || r > 'Z') && (r < 'a' || r > 'z')
+	}) < 0
+}
+
 // ListenAddress validates the configured listener when no flag overrides it.
 func (values ServerValues) ListenAddress() (string, error) {
-	if net.ParseIP(values.Host) == nil {
-		return "", errors.New("server host must be an IP address")
+	return listenAddress("server", values.Host, values.Port)
+}
+
+func listenAddress(name, host string, port int) (string, error) {
+	if net.ParseIP(host) == nil {
+		return "", fmt.Errorf("%s host must be an IP address", name)
 	}
-	if values.Port < 0 || values.Port > 65535 {
-		return "", errors.New("server port must be between 0 and 65535")
+	if port < 0 || port > 65535 {
+		return "", fmt.Errorf("%s port must be between 0 and 65535", name)
 	}
-	return net.JoinHostPort(values.Host, strconv.Itoa(values.Port)), nil
+	return net.JoinHostPort(host, strconv.Itoa(port)), nil
 }
 
 // InternalAddress places the internal listener on the public listener's host.

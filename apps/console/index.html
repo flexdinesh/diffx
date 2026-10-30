@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <script>
+      (() => {
+        // The console follows the system theme; it has no theme picker.
+        const root = document.documentElement;
+        const dark = matchMedia("(prefers-color-scheme: dark)");
+        const apply = () => {
+          root.dataset.theme = dark.matches ? "dark" : "light";
+        };
+        apply();
+        dark.addEventListener("change", apply);
+      })();
+    </script>
+    <title>diffx · Console</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

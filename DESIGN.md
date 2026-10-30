@@ -693,6 +693,27 @@ at `/design.html` (see `docs/development.md`).
 - Pages for a method the server turned off render sign-in, like unknown paths.
   Link secrets come from the fragment and leave history before any request.
 
+### Console
+
+- The admin console (`apps/console`) is an Operate surface in this system's
+  world: the same tokens, type and primitives, light or dark by the system
+  theme, no palette picker. It is a document, not a workspace: the page
+  scrolls under a sticky `--panel` header with the brand (“diffx Console”),
+  the section links Accounts, Invites and Admin as `rail` link buttons
+  (`aria-current="page"` marks the section), and the admin's username,
+  hidden on narrow screens.
+- Each section is one reading column (48rem) with an `h1`, short
+  `--text-secondary` prose, then its form and list. Lists use separated rows:
+  the name with status badges (You, Admin in accent, Disabled in warning,
+  invite status), a muted detail line, and trailing actions. Account actions
+  sit in one ghost `…` menu per row; the signed-in admin's row has none.
+  Disable, delete and revoke confirm with `ConfirmDialog`; role changes,
+  enabling and reset links act at once and report through an always-mounted
+  `role="status"` paragraph.
+- Invite and reset links appear once, in a `--panel` status panel with the
+  link in monospace, outline “Copy link” and ghost “Dismiss link”.
+- Signed-out pages (sign-in, setup, reset) follow the sign-in pages above.
+
 ## App icons
 
 `apps/web/public/icons` holds the remote server's app icons: a “dx” monogram
