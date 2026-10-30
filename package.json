@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "prepare": "husky",
-    "build": "pnpm generate:api && pnpm --filter @diffx/web build",
+    "build": "pnpm generate:api && pnpm --filter @diffx/web build && pnpm --filter @diffx/console build",
     "dev:web": "pnpm --filter @diffx/web dev",
-    "generate:api": "pnpm --filter @diffx/api generate",
+    "dev:console": "pnpm --filter @diffx/console dev",
+    "generate:api": "pnpm --filter @diffx/api generate && pnpm --filter @diffx/console-api generate",
     "typecheck": "pnpm --recursive --if-present typecheck && tsc --noEmit -p test/tsconfig.json",
     "test": "pnpm --recursive --if-present test",
     "test:web": "pnpm --filter @diffx/web test",

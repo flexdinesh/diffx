@@ -8,6 +8,8 @@ export function createConsoleClient({ baseUrl }: { baseUrl?: string } = {}) {
   });
 }
 
+export const api = createConsoleClient();
+
 export type ConsoleBootstrap = components["schemas"]["Bootstrap"];
 export type ConsoleAdmin = components["schemas"]["Admin"];
 export type ConsoleAccount = components["schemas"]["Account"];

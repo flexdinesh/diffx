@@ -1,0 +1,81 @@
+@import "@diffx/ui/styles.css";
+
+/* The console is a document: the page scrolls under a fixed header. */
+.console-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+.console-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: var(--topbar-height);
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-1) var(--page-gutter);
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.console-nav {
+  display: flex;
+  gap: var(--space-1);
+}
+.console-identity {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+.brand {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+  text-decoration: none;
+  letter-spacing: var(--tracking-heading);
+  white-space: nowrap;
+}
+.brand-product {
+  color: var(--fg);
+}
+.console-page {
+  width: 100%;
+  max-width: 48rem;
+  margin-inline: auto;
+  padding: var(--space-8) var(--page-gutter);
+}
+.auth-page {
+  max-width: 28rem;
+  padding-top: var(--space-16);
+}
+.auth-page .brand {
+  display: inline-block;
+  margin-bottom: var(--space-8);
+}
+.console-form {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 28rem;
+}
+.console-form > label:not(:first-child) {
+  margin-top: var(--space-2);
+}
+.console-check {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+@media (max-width: 640px), (pointer: coarse) {
+  .console-topbar {
+    padding-inline: var(--space-4);
+  }
+  .console-identity {
+    display: none;
+  }
+  .console-page {
+    padding: var(--space-6) var(--space-4);
+  }
+}

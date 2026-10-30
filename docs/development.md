@@ -137,11 +137,14 @@ not by mise. PR evidence records full local validation.
 `$GOBIN`, or `$GOPATH/bin` when `GOBIN` is unset. Ensure that directory is on
 `PATH`.
 
-The production web build is staged into `internal/webui/dist`, which is ignored
-on `main`. Go builds, tests and vet embed that directory, so run
-`mise run web:stage` after a fresh checkout or frontend change; without it Go
-fails with `pattern all:dist: no matching files found`. CI commits the assets
-only on release tags and the `edge` branch; see [release.md](release.md).
+The production web build is staged into `internal/webui/dist` and the console
+build into `internal/consoleui/dist`; both are ignored on `main`. Go builds,
+tests and vet embed them, so run `mise run web:stage` and
+`mise run console:stage` (or `mise run build`) after a fresh checkout or
+frontend change; without them Go fails with
+`pattern all:dist: no matching files found`. CI commits the web assets only on
+release tags and the `edge` branch; see [release.md](release.md). The console
+ships only as a container, built by the deploy pipeline.
 
 ## Development data
 
@@ -408,6 +411,16 @@ diffx-console user reset-password --username alice
 
 Admins' links open the console, other accounts' open the app. Completing a
 link revokes browser sessions, not API tokens.
+
+The console app (`apps/console`) is a document-style React app on
+`packages/ui` and the `packages/console-api` client. Signed out, `/setup`
+(while no admin exists) and `/reset-password` render their pages and every
+other path renders sign-in. Signed in, `/accounts`, `/invites` and `/admin`
+render under the console header and other paths redirect to `/accounts`. Its
+Playwright specs (`apps/console/test/browser`) run the built `diffx-server` and
+`diffx-console` on one fresh database per worker. `mise run dev:console` serves
+it with Vite HMR at `localhost:5174`, beside `mise run dev:remote` at
+`localhost:5173`.
 
 ## Build pipeline
 
