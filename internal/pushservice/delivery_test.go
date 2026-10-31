@@ -35,6 +35,11 @@ func newEndpoint(t *testing.T, respond func(call int, w http.ResponseWriter, r *
 	t.Helper()
 	endpoint := &pushEndpoint{respond: respond}
 	endpoint.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Deliveries are POSTs; local tools that probe new ports are not.
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
 		body, _ := io.ReadAll(r.Body)
 		endpoint.mu.Lock()
 		call := endpoint.calls
