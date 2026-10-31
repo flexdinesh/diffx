@@ -14,12 +14,18 @@ import {
   usePath,
   useSession,
 } from "./session.tsx";
+import { Settings } from "./settings.tsx";
 import { Shell, sections } from "./shell.tsx";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing React root");
 
-const pages = { accounts: Accounts, invites: Invites, admin: Admin };
+const pages = {
+  accounts: Accounts,
+  invites: Invites,
+  settings: Settings,
+  admin: Admin,
+};
 
 function Routes() {
   const { state } = useSession();

@@ -17,7 +17,6 @@ type AccountInvite struct {
 	UsedAt    *time.Time
 	UsedBy    *string
 	RevokedAt *time.Time
-	Admin     bool
 }
 
 type AdminAccount struct {
@@ -37,6 +36,14 @@ type AgentSession struct {
 	SessionID string
 	Name      string
 	NamedAt   int64
+}
+
+type AppSetting struct {
+	Singleton      bool
+	SignupOpen     bool
+	PasswordSignup bool
+	UpdatedAt      time.Time
+	UpdatedBy      *string
 }
 
 type AuthAttempt struct {
@@ -177,6 +184,7 @@ type GoogleAuthState struct {
 	PkceVerifier string
 	InviteID     *string
 	ExpiresAt    time.Time
+	SetupHash    *string
 }
 
 type GoogleIdentity struct {

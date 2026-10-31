@@ -30,8 +30,25 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Create the first admin, a password account, from the one-time secret diffx-console logged at startup (the setup link's `#t=` fragment) and sign it in. Works regardless of the app's sign-in settings. The secret expires after 24 hours and is replaced on each start until an admin exists; then every secret is 404. */
+    /** @description Create the first admin, a password account, from the one-time secret diffx-console logged at startup (the setup link's `#t=` fragment) and sign it in. Works regardless of the app's settings. The secret expires after 24 hours and is replaced on each start until an admin exists; then every secret is 404. */
     post: operations["completeSetup"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/setup/google": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description When the console has its own Google configuration (otherwise 404). Start Google sign-in that creates the first admin from the setup link's secret. The callback requires an email Google verified and names the account after it; a Google account that already has an app account becomes the admin instead. The secret is consumed once. Sets an HttpOnly flow cookie binding the authorization to this browser; navigate to `authorizeUrl` within 10 minutes. */
+    post: operations["startGoogleSetup"];
     delete?: never;
     options?: never;
     head?: never;
@@ -79,7 +96,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Google redirects the browser here; the state and the flow cookie authenticate it, so it accepts cross-site navigation. Every outcome redirects to the console; failures add `?signin=` with `cancelled`, `no-account` or `failed`. Only existing, enabled admins sign in; the console never creates accounts. */
+    /** @description Google redirects the browser here; the state and the flow cookie authenticate it, so it accepts cross-site navigation. Every outcome redirects to the console; failures add `?signin=` with `cancelled`, `no-account` or `failed`. Only existing, enabled admins sign in; the console creates no account except the first admin, from a setup flow. */
     get: operations["completeGoogleSignIn"];
     put?: never;
     post?: never;
@@ -261,7 +278,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Issue a one-time reset link for a password account, replacing its pending one. Admins' links open the console; other accounts' open the app, which accepts them only while its password sign-in is on. The link is returned only here and expires after 24 hours. Google accounts are 404. */
+    /** @description Issue a one-time reset link for a password account, replacing its pending one. Admins' links open the console; other accounts' open the app. The link is returned only here and expires after 24 hours. Google accounts are 404. */
     post: operations["createPasswordReset"];
     delete?: never;
     options?: never;
@@ -279,7 +296,7 @@ export interface paths {
     /** @description Every invite, newest first. Never exposes invite secrets. */
     get: operations["listInvites"];
     put?: never;
-    /** @description Invite an email to the app, as a member or an admin. Replaces the email's pending invite. The link opens the app, is returned only here and expires after 48 hours; it is accepted with Google (matching verified email) or, while the app allows it, a password. 409 when an account already uses the email. */
+    /** @description Invite an email to the app as a member; admins come only from setup or promotion. Replaces the email's pending invite. The link opens the app, is returned only here and expires after 48 hours; it is accepted with Google (matching verified email) or, while password signup is on, a password. Invites work whether or not signup is open. 409 when an account already uses the email. */
     post: operations["createInvite"];
     delete?: never;
     options?: never;
@@ -301,6 +318,24 @@ export interface paths {
     post?: never;
     /** @description Revoke a pending invite. Used or revoked invites are 404. */
     delete: operations["revokeInvite"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description The app's admission settings, read from the database. */
+    get: operations["getSettings"];
+    /** @description Replace the app's admission settings. Every diffx-server replica applies them within moments; signup checks re-read them as they create an account, so a closed setting takes effect immediately. */
+    put: operations["putSettings"];
+    post?: never;
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -378,8 +413,6 @@ export interface components {
     Invite: {
       id: string;
       email: string;
-      /** @description Whether accepting makes the account an admin. */
-      admin: boolean;
       /** @enum {string} */
       status: "pending" | "used" | "expired" | "revoked";
       /** Format: int64 */
@@ -388,6 +421,16 @@ export interface components {
       expiresAt: number;
       /** @description Username of the account the invite created; null until used or after that account is deleted. */
       usedBy: string | null;
+    };
+    Settings: {
+      /** @description Whether people can create app accounts without an invite. Invites work either way. */
+      signup: boolean;
+      /** @description Whether new app accounts can choose a password, by signup or invite. Existing password accounts always sign in. */
+      passwordSignup: boolean;
+    };
+    SetupToken: {
+      /** @description The secret from the setup link's `#t=` fragment. */
+      token: string;
     };
     PasswordCredentials: {
       username: string;
@@ -502,6 +545,27 @@ export interface operations {
       403: components["responses"]["Problem"];
       404: components["responses"]["Problem"];
       409: components["responses"]["Problem"];
+      429: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  startGoogleSetup: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetupToken"];
+      };
+    };
+    responses: {
+      200: components["responses"]["GoogleAuthorization"];
+      400: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
       429: components["responses"]["Problem"];
       default: components["responses"]["Problem"];
     };
@@ -911,7 +975,6 @@ export interface operations {
       content: {
         "application/json": {
           email: string;
-          admin: boolean;
         };
       };
     };
@@ -959,6 +1022,59 @@ export interface operations {
       401: components["responses"]["Problem"];
       403: components["responses"]["Problem"];
       404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  getSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Current settings. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Settings"];
+        };
+      };
+      401: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  putSettings: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a browser session; attached by the console's identity transport. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Settings"];
+      };
+    };
+    responses: {
+      /** @description Saved settings. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Settings"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
       default: components["responses"]["Problem"];
     };
   };

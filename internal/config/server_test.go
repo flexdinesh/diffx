@@ -172,11 +172,32 @@ func TestGoogleSignInNeedsBothCredentialsAndPublicURL(t *testing.T) {
 	if _, err := LoadServerFile(path); err == nil || !strings.Contains(err.Error(), "clientSecret") {
 		t.Fatalf("secret accepted from config file: %v", err)
 	}
-	if (Google{}).Enabled() || (ServerValues{PasswordSignIn: true}).ValidateIdentity() != nil {
-		t.Fatal("absent Google sign-in must be valid and disabled while passwords sign in")
+	// How people join is a console setting, so no Google configuration is valid.
+	if (Google{}).Enabled() || (ServerValues{}).ValidateIdentity() != nil {
+		t.Fatal("absent Google sign-in must be valid and disabled")
 	}
-	if err := (ServerValues{}).ValidateIdentity(); err == nil || !strings.Contains(err.Error(), "no sign-in method") {
-		t.Fatalf("no sign-in method accepted: %v", err)
+}
+
+func TestRemovedSignInSettingsNameTheirReplacement(t *testing.T) {
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	for _, variable := range []string{"DIFFX_SERVER_SIGNUP", "DIFFX_SERVER_PASSWORD_SIGNIN"} {
+		t.Run(variable, func(t *testing.T) {
+			t.Setenv(variable, "false")
+			if _, err := LoadServerFile(""); err == nil || !strings.Contains(err.Error(), variable+" was removed") || !strings.Contains(err.Error(), "console's Settings") {
+				t.Fatalf("removed %s accepted: %v", variable, err)
+			}
+		})
+	}
+	for _, key := range []string{"signup", "passwordSignIn"} {
+		t.Run(key, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "server.json")
+			if err := os.WriteFile(path, []byte(`{"`+key+`":false}`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadServerFile(path); err == nil || !strings.Contains(err.Error(), `"`+key+`" was removed`) || !strings.Contains(err.Error(), "console's Settings") {
+				t.Fatalf("removed key %s accepted: %v", key, err)
+			}
+		})
 	}
 }
 

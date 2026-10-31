@@ -122,7 +122,7 @@ function server({ enabled = true, github = "absent", handle }: Server = {}) {
         mode: "remote",
         googleEnabled: false,
         signupEnabled: false,
-        passwordEnabled: false,
+        passwordSignupEnabled: false,
         user: {
           id: "account-a",
           username: "alice",

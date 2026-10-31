@@ -231,7 +231,7 @@ startup. In-memory state does not survive restart. Local `local.retentionDays` d
 submissions apply the current setting, while exact retries preserve expiry.
 
 For isolated production-user tests, start `diffx-server` with a temporary
-persistent database and sign up in the app (signup and password sign-in default
+persistent database and sign up in the app (signup and password signup default
 on). Create API tokens through Settings, which works before any upload. New
 accounts activate without a restart. Operator commands require stopping the
 database owner.
@@ -273,8 +273,6 @@ building the image.
 | `DIFFX_SERVER_PUBLIC_URL`       | Unset          | Unset             | `--public-url URL`      |
 | `DIFFX_SERVER_INSECURE_COOKIES` | `false`        | Compose: `true`   | `--insecure-cookies`    |
 | `DIFFX_SERVER_GOOGLE_CLIENT_ID` | Unset          | Unset             | None                    |
-| `DIFFX_SERVER_SIGNUP`           | `true`         | `true`            | None (env only)         |
-| `DIFFX_SERVER_PASSWORD_SIGNIN`  | `true`         | `true`            | None (env only)         |
 | `DIFFX_SERVER_AUTH_RATE_LIMIT`  | `false`        | `false`           | None (env only)         |
 | `DIFFX_SERVER_CLIENT_IP_HEADER` | Unset          | Unset             | None (env only)         |
 
@@ -289,14 +287,20 @@ public URL, or loopback http for development, also enables Web Push
 notifications; the server generates its VAPID keys once and keeps them in the
 database.
 
-`DIFFX_SERVER_SIGNUP` lets anyone create an account from the app without an
-invite; `DIFFX_SERVER_PASSWORD_SIGNIN` allows username and password accounts.
-Both default to true for development, tests and self-hosting; production sets
-both false so accounts come only from invites and sign in with Google. With
-password sign-in off, password accounts cannot use the app at all, tokens
-included. The server refuses to start with neither Google nor password. Admins
-use the app like any user; first-admin setup, invites and account
-administration live in the console (`diffx-console`).
+Who may join is set in the console's Settings page, not server configuration:
+Signup lets anyone create an account from the app without an invite; Password
+signup lets new accounts choose a username and password. Both default on for
+development, tests and self-hosting, upgraded databases included; production
+admins turn both off after deploy so accounts come only from invites and sign
+in with Google. Existing password accounts keep signing in, using tokens and
+resetting passwords. Replicas apply changes within moments; closing takes
+effect at once for new accounts. `DIFFX_SERVER_SIGNUP`,
+`DIFFX_SERVER_PASSWORD_SIGNIN` and the config keys `signup` and
+`passwordSignIn` are removed; the server refuses to start while any is set.
+Without Google and with password signup off, each replica logs a warning that
+no one new can join. Admins use the app like any user; first-admin setup,
+invites, admission settings and account administration live in the console
+(`diffx-console`).
 
 Google sign-in needs `DIFFX_SERVER_GOOGLE_CLIENT_ID`,
 `DIFFX_SERVER_GOOGLE_CLIENT_SECRET` (environment only, never the config file)
@@ -397,15 +401,17 @@ invite and member reset links. `DIFFX_CONSOLE_PUBLIC_URL` is the console's
 origin, used in the setup link, admin reset links and the Google callback;
 unset, links use the listen address. While no admin exists, each start logs a
 one-time setup link, `<console URL>/setup#t=…`, valid for 24 hours; a restart
-replaces it. It creates the first admin with a username and password,
-whatever the app's sign-in settings.
+replaces it. It creates the first admin with a username and password or, when
+the console has its own Google client, with a Google account whose email Google
+verified (username derived from the email), whatever the app's settings. If
+that Google account already has an app account, setup makes it the admin.
 
 Admins sign in to the console with their password, or with Google when the
 console has its own OAuth client: set both Google variables and register
 `<console URL>/api/v1/auth/google/callback`. The console admits only enabled
-admins and never creates accounts. Admins invite members or admins, promote and
-demote, disable, enable and delete other accounts, and issue password reset
-links; no change may leave zero enabled admins, and admins never act on
+admins and never creates accounts. Admins invite members (invites never grant
+admin), set signup and password signup in Settings, promote and demote,
+disable, enable and delete other accounts, and issue password reset links; no change may leave zero enabled admins, and admins never act on
 themselves. Disabling or deleting stops the account on every server replica.
 Rate limiting works as on the server, with the console's own variables.
 
@@ -422,8 +428,8 @@ link revokes browser sessions, not API tokens.
 The console app (`apps/console`) is a document-style React app on
 `packages/ui` and the `packages/console-api` client. Signed out, `/setup`
 (while no admin exists) and `/reset-password` render their pages and every
-other path renders sign-in. Signed in, `/accounts`, `/invites` and `/admin`
-render under the console header and other paths redirect to `/accounts`. Its
+other path renders sign-in. Signed in, `/accounts`, `/invites`, `/settings`
+and `/admin` render under the console header and other paths redirect to `/accounts`. Its
 Playwright specs (`apps/console/test/browser`) run the built `diffx-server` and
 `diffx-console` on one fresh database per worker. `mise run dev:console` serves
 it with Vite HMR at `localhost:5174`, beside `mise run dev:remote` at
@@ -497,8 +503,9 @@ keys workspace owners by context. Lint rejects import cycles, Hook-rule
 violations and type assertions. The identity owner loads server mode and the current
 account before mounting review state; distributed login and `/settings` work with
 zero observations. Signed out, `/invite`, `/signup` (while signup is on) and
-`/reset-password` (while password sign-in is on) render their pages and every
-other path renders sign-in with the enabled methods. The app has no admin
+`/reset-password` render their pages and every other path renders sign-in:
+Google first, and the password form while password signup is on, otherwise
+behind a "Sign in with password" link (bootstrap `passwordSignupEnabled`). The app has no admin
 pages; admins use the console. Invite and reset pages read their secret from the
 fragment and drop it from history before any request. Account changes dispose workspace requests and event streams.
 Local mode bypasses account flows. Consumers subscribe through domain hooks for diff source,

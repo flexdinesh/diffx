@@ -22,7 +22,7 @@ paths:
   /api/v1/setup:
     post:
       operationId: completeSetup
-      description: Create the first admin, a password account, from the one-time secret diffx-console logged at startup (the setup link's `#t=` fragment) and sign it in. Works regardless of the app's sign-in settings. The secret expires after 24 hours and is replaced on each start until an admin exists; then every secret is 404.
+      description: Create the first admin, a password account, from the one-time secret diffx-console logged at startup (the setup link's `#t=` fragment) and sign it in. Works regardless of the app's settings. The secret expires after 24 hours and is replaced on each start until an admin exists; then every secret is 404.
       requestBody:
         required: true
         content:
@@ -52,6 +52,29 @@ paths:
         "404":
           $ref: "#/components/responses/Problem"
         "409":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/setup/google:
+    post:
+      operationId: startGoogleSetup
+      description: When the console has its own Google configuration (otherwise 404). Start Google sign-in that creates the first admin from the setup link's secret. The callback requires an email Google verified and names the account after it; a Google account that already has an app account becomes the admin instead. The secret is consumed once. Sets an HttpOnly flow cookie binding the authorization to this browser; navigate to `authorizeUrl` within 10 minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetupToken"
+      responses:
+        "200":
+          $ref: "#/components/responses/GoogleAuthorization"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
           $ref: "#/components/responses/Problem"
         "429":
           $ref: "#/components/responses/Problem"
@@ -111,7 +134,7 @@ paths:
   /api/v1/auth/google/callback:
     get:
       operationId: completeGoogleSignIn
-      description: Google redirects the browser here; the state and the flow cookie authenticate it, so it accepts cross-site navigation. Every outcome redirects to the console; failures add `?signin=` with `cancelled`, `no-account` or `failed`. Only existing, enabled admins sign in; the console never creates accounts.
+      description: Google redirects the browser here; the state and the flow cookie authenticate it, so it accepts cross-site navigation. Every outcome redirects to the console; failures add `?signin=` with `cancelled`, `no-account` or `failed`. Only existing, enabled admins sign in; the console creates no account except the first admin, from a setup flow.
       parameters:
         - { in: query, name: state, required: false, schema: { type: string } }
         - { in: query, name: code, required: false, schema: { type: string } }
@@ -373,7 +396,7 @@ paths:
       security:
         - browserSession: []
       operationId: createPasswordReset
-      description: Issue a one-time reset link for a password account, replacing its pending one. Admins' links open the console; other accounts' open the app, which accepts them only while its password sign-in is on. The link is returned only here and expires after 24 hours. Google accounts are 404.
+      description: Issue a one-time reset link for a password account, replacing its pending one. Admins' links open the console; other accounts' open the app. The link is returned only here and expires after 24 hours. Google accounts are 404.
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
       responses:
@@ -427,7 +450,7 @@ paths:
       security:
         - browserSession: []
       operationId: createInvite
-      description: Invite an email to the app, as a member or an admin. Replaces the email's pending invite. The link opens the app, is returned only here and expires after 48 hours; it is accepted with Google (matching verified email) or, while the app allows it, a password. 409 when an account already uses the email.
+      description: Invite an email to the app as a member; admins come only from setup or promotion. Replaces the email's pending invite. The link opens the app, is returned only here and expires after 48 hours; it is accepted with Google (matching verified email) or, while password signup is on, a password. Invites work whether or not signup is open. 409 when an account already uses the email.
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
       requestBody:
@@ -437,12 +460,10 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [email, admin]
+              required: [email]
               properties:
                 email:
                   type: string
-                admin:
-                  type: boolean
       responses:
         "201":
           description: Created invite and its one-time link.
@@ -489,6 +510,51 @@ paths:
         "403":
           $ref: "#/components/responses/Problem"
         "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/settings:
+    get:
+      security:
+        - browserSession: []
+      operationId: getSettings
+      description: The app's admission settings, read from the database.
+      responses:
+        "200":
+          description: Current settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    put:
+      security:
+        - browserSession: []
+      operationId: putSettings
+      description: Replace the app's admission settings. Every diffx-server replica applies them within moments; signup checks re-read them as they create an account, so a closed setting takes effect immediately.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Settings"
+      responses:
+        "200":
+          description: Saved settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
@@ -622,15 +688,12 @@ components:
     Invite:
       type: object
       additionalProperties: false
-      required: [id, email, admin, status, createdAt, expiresAt, usedBy]
+      required: [id, email, status, createdAt, expiresAt, usedBy]
       properties:
         id:
           type: string
         email:
           type: string
-        admin:
-          type: boolean
-          description: Whether accepting makes the account an admin.
         status:
           type: string
           enum: [pending, used, expired, revoked]
@@ -643,6 +706,25 @@ components:
         usedBy:
           type: [string, "null"]
           description: Username of the account the invite created; null until used or after that account is deleted.
+    Settings:
+      type: object
+      additionalProperties: false
+      required: [signup, passwordSignup]
+      properties:
+        signup:
+          type: boolean
+          description: Whether people can create app accounts without an invite. Invites work either way.
+        passwordSignup:
+          type: boolean
+          description: Whether new app accounts can choose a password, by signup or invite. Existing password accounts always sign in.
+    SetupToken:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: The secret from the setup link's `#t=` fragment.
     PasswordCredentials:
       type: object
       additionalProperties: false

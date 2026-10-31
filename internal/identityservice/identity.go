@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -56,15 +57,19 @@ const (
 	AudienceConsole Audience = "console"
 )
 
-// MemberPolicy is a deployment's choice of how people join and sign in to the
-// web app. The console ignores it: admins always sign in there by password.
-type MemberPolicy struct {
-	// Signup lets people create accounts from the web app without an invite.
+// Settings decide how people join the web app; admins change them in the
+// console. They never affect existing accounts or the console.
+type Settings struct {
+	// Signup lets people create accounts without an invite.
 	Signup bool
-	// Password admits password accounts to the web app: sign-up, sign-in,
-	// browser sessions, API tokens, password changes and resets. Off, those
-	// accounts, admins included, cannot authenticate there.
-	Password bool
+	// PasswordSignup lets new accounts choose a password, by signup or invite.
+	// Existing password accounts always sign in, whatever its value.
+	PasswordSignup bool
+}
+
+// allows reports whether every setting required is on.
+func (settings Settings) allows(required Settings) bool {
+	return (settings.Signup || !required.Signup) && (settings.PasswordSignup || !required.PasswordSignup)
 }
 
 // Account is an authenticated owner. Admin marks accounts that may also sign
@@ -127,8 +132,15 @@ type Store interface {
 	// CreateAdmin consumes the unexpired setup secret and creates the admin in
 	// one transaction; a missing, expired or used secret is ErrNotFound.
 	CreateAdmin(ctx context.Context, account Account, passwordHash, setupHash string, now time.Time) error
-	// CreateAccount commits a member and its password hash; a taken username is ErrConflict.
-	CreateAccount(ctx context.Context, account Account, passwordHash string, created time.Time) error
+	// PendingAdminSetup reports whether the setup secret is unexpired while no admin exists.
+	PendingAdminSetup(ctx context.Context, setupHash string, now time.Time) (bool, error)
+	// CreateAccount commits a member and its password hash; a taken username
+	// is ErrConflict. It reads the settings in its transaction and refuses with
+	// ErrDisabled unless every setting required is on.
+	CreateAccount(ctx context.Context, account Account, passwordHash string, created time.Time, required Settings) error
+	AppSettings(context.Context) (Settings, error)
+	// PutAppSettings replaces the settings and notifies every replica at commit.
+	PutAppSettings(ctx context.Context, settings Settings, actorID string, at time.Time) error
 	AccountSummaries(context.Context) ([]AccountSummary, error)
 	// SetAccountDisabled revokes sessions and tokens when disabling. It,
 	// DeleteAccount and SetAdmin refuse with ErrLastAdmin when the change would
@@ -161,28 +173,43 @@ type Store interface {
 type Service struct {
 	store     Store
 	google    GoogleClient
-	members   MemberPolicy
+	settings  atomic.Pointer[Settings]
 	now       func() time.Time
 	dummyHash string
 }
 
-// WithMembers sets how members join and sign in; the zero policy admits only
-// invited Google accounts.
-func WithMembers(policy MemberPolicy) Option {
-	return func(service *Service) { service.members = policy }
+// LoadSettings reads the settings and keeps them as this process's snapshot.
+func (service *Service) LoadSettings(ctx context.Context) (Settings, error) {
+	settings, err := service.store.AppSettings(ctx)
+	if err != nil {
+		return Settings{}, err
+	}
+	service.settings.Store(&settings)
+	return settings, nil
 }
 
-// Members is the deployment's member policy, which the web app presents.
-func (service *Service) Members() MemberPolicy { return service.members }
+// Settings is the latest loaded snapshot; before the first load every
+// setting is off. Account creation re-checks the stored settings.
+func (service *Service) Settings() Settings {
+	if settings := service.settings.Load(); settings != nil {
+		return *settings
+	}
+	return Settings{}
+}
+
+// PutSettings is an admin's change to the settings.
+func (service *Service) PutSettings(ctx context.Context, actorID string, settings Settings) error {
+	if err := service.store.PutAppSettings(ctx, settings, actorID, service.now()); err != nil {
+		return err
+	}
+	service.settings.Store(&settings)
+	return nil
+}
 
 // admits reports whether an account may authenticate to an audience: the
-// console admits admins by any method; the web app admits every account, and
-// password accounts only while the deployment allows passwords.
+// console admits admins by any method; the web app admits every account.
 func (service *Service) admits(audience Audience, account Account) bool {
-	if audience == AudienceConsole {
-		return account.Admin
-	}
-	return account.Method == MethodGoogle || service.members.Password
+	return audience != AudienceConsole || account.Admin
 }
 
 func New(store Store, options ...Option) *Service {
@@ -298,17 +325,18 @@ func (service *Service) Login(ctx context.Context, audience Audience, username, 
 	return service.issueSession(ctx, credential.Account, credential.Hash)
 }
 
-// SignUp creates a password member and signs it in, when the deployment allows
-// both sign-up and passwords.
+// SignUp creates a password member and signs it in, while both signup and
+// password signup are on.
 func (service *Service) SignUp(ctx context.Context, username, password string) (Session, error) {
-	if !service.members.Signup || !service.members.Password {
+	required := Settings{Signup: true, PasswordSignup: true}
+	if !service.Settings().allows(required) {
 		return Session{}, ErrDisabled
 	}
 	account, hash, err := service.newPasswordAccount(username, password)
 	if err != nil {
 		return Session{}, err
 	}
-	if err := service.store.CreateAccount(ctx, account, hash, service.now()); err != nil {
+	if err := service.store.CreateAccount(ctx, account, hash, service.now(), required); err != nil {
 		return Session{}, err
 	}
 	return service.issueSession(ctx, account, hash)
@@ -505,33 +533,17 @@ func (service *Service) RevokeToken(ctx context.Context, accountID, tokenID stri
 	return service.store.DeleteIdentityToken(ctx, accountID, tokenID)
 }
 
-// AuthenticateToken resolves an API token. Tokens are member credentials, so
-// accounts members do not admit fail like unknown tokens.
+// AuthenticateToken resolves an API token, a member credential.
 func (service *Service) AuthenticateToken(ctx context.Context, secret string) (TokenIdentity, error) {
 	if len(secret) != 43 {
 		return TokenIdentity{}, ErrAuthentication
 	}
-	token, err := service.store.ResolveIdentityToken(ctx, credentialHash(secret), service.now())
-	if err == nil && !service.admits(AudienceMembers, token.Account) {
-		return TokenIdentity{}, ErrAuthentication
-	}
-	return token, err
+	return service.store.ResolveIdentityToken(ctx, credentialHash(secret), service.now())
 }
 
-// Accounts lists enabled members the deployment admits, the owners the
-// ingestion worker may serve.
+// Accounts lists enabled members, the owners the ingestion worker may serve.
 func (service *Service) Accounts(ctx context.Context) ([]Account, error) {
-	accounts, err := service.store.IdentityAccounts(ctx)
-	if err != nil {
-		return nil, err
-	}
-	admitted := accounts[:0]
-	for _, account := range accounts {
-		if service.admits(AudienceMembers, account) {
-			admitted = append(admitted, account)
-		}
-	}
-	return admitted, nil
+	return service.store.IdentityAccounts(ctx)
 }
 
 func (service *Service) AccountSummaries(ctx context.Context) ([]AccountSummary, error) {

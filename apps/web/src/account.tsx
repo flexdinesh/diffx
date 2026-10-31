@@ -57,7 +57,25 @@ function takeSignInOutcome() {
   return outcome;
 }
 
-/** The deployment's sign-in methods, from the bootstrap. */
+/**
+ * Whether open signup offers a method: Google, or a password while new
+ * accounts may choose one.
+ */
+export function signupOpen(remote: {
+  googleEnabled: boolean;
+  signupEnabled: boolean;
+  passwordSignupEnabled: boolean;
+}) {
+  return (
+    remote.signupEnabled &&
+    (remote.googleEnabled || remote.passwordSignupEnabled)
+  );
+}
+
+/**
+ * The deployment's methods, from the bootstrap. Existing password accounts
+ * always sign in; `password` is whether new accounts may choose one.
+ */
 function useMethods() {
   const { state } = useIdentity();
   const remote =
@@ -66,8 +84,8 @@ function useMethods() {
       : null;
   return {
     google: remote?.googleEnabled === true,
-    password: remote?.passwordEnabled === true,
-    signup: remote?.signupEnabled === true,
+    password: remote?.passwordSignupEnabled === true,
+    signup: remote !== null && signupOpen(remote),
   };
 }
 
@@ -105,11 +123,17 @@ function MethodSeparator() {
   return <Separator className="my-6" />;
 }
 
-/** Signs in with each enabled method; signup links appear when open. */
+/**
+ * Signs in with Google first. The password form shows beside it while new
+ * accounts may choose a password, and otherwise behind a quiet link for
+ * existing password accounts; without Google it is the only way in.
+ */
 export function SignIn() {
   const { google, password, signup } = useMethods();
   const [outcome] = useState(takeSignInOutcome);
+  const [revealed, setRevealed] = useState(false);
   const failure = signInFailures[outcome];
+  const form = !google || password || revealed;
   return (
     <AuthPage title="Sign in">
       {outcome === "cancelled" && (
@@ -118,17 +142,26 @@ export function SignIn() {
         </p>
       )}
       {failure && <ErrorState message={failure} className="mb-4" />}
-      {!google && !password && (
-        <p className={prose}>Sign-in is not available on this server.</p>
-      )}
-      {google && <ContinueWithGoogle secondary={password} />}
-      {google && password && <MethodSeparator />}
-      {password && (
+      {google && <ContinueWithGoogle secondary={form} />}
+      {google && form && <MethodSeparator />}
+      {form ? (
         <CredentialForm
           path="/api/v2/auth/login"
           submitLabel="Sign in"
           failure="Unable to sign in. Check your username and password."
+          autoFocus={revealed}
         />
+      ) : (
+        <p className="mt-4 text-sm leading-copy text-secondary">
+          <Button
+            variant="link"
+            size="inline"
+            touch
+            onClick={() => setRevealed(true)}
+          >
+            Sign in with password
+          </Button>
+        </p>
       )}
       <p className="mt-6 leading-copy text-secondary">
         {signup ? (
@@ -330,10 +363,8 @@ export function InviteSignUp() {
       {link.status === "ready" && (
         <>
           <p className={prose}>
-            You are invited as <strong>{link.value.email}</strong>
-            {link.value.admin && " and as an admin of this server's console"}.
-            The invite expires {new Date(link.value.expiresAt).toLocaleString()}
-            .
+            You are invited as <strong>{link.value.email}</strong>. The invite
+            expires {new Date(link.value.expiresAt).toLocaleString()}.
           </p>
           {google && (
             <>
@@ -486,6 +517,7 @@ function CredentialForm({
   token = "",
   submitLabel,
   failure,
+  autoFocus = false,
 }: {
   path:
     | "/api/v2/auth/login"
@@ -494,6 +526,8 @@ function CredentialForm({
   token?: string;
   submitLabel: string;
   failure: string;
+  /** Focuses the username when the form appears on request. */
+  autoFocus?: boolean;
 }) {
   const { establish } = useIdentity();
   const [username, setUsername] = useState("");
@@ -539,6 +573,7 @@ function CredentialForm({
         touch
         value={username}
         onChange={(event) => setUsername(event.target.value)}
+        autoFocus={autoFocus}
         required
         minLength={3}
         maxLength={32}

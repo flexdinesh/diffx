@@ -19,7 +19,7 @@ test("the service worker shows pushed pull requests and a fallback for unreadabl
         mode: "remote",
         googleEnabled: false,
         signupEnabled: false,
-        passwordEnabled: false,
+        passwordSignupEnabled: false,
         user: null,
         csrfToken: null,
       },

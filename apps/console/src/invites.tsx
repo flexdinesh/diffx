@@ -4,7 +4,6 @@ import { ConfirmDialog } from "@diffx/ui/components/confirm-dialog";
 import { ErrorState } from "@diffx/ui/components/error-state";
 import { Badge } from "@diffx/ui/components/ui/badge";
 import { Button } from "@diffx/ui/components/ui/button";
-import { Checkbox } from "@diffx/ui/components/ui/checkbox";
 import { Input } from "@diffx/ui/components/ui/input";
 import { OneTimeLink, Page, date, prose, row, useList } from "./page.tsx";
 
@@ -40,11 +39,10 @@ function inviteDetail(invite: ConsoleInvite) {
   }
 }
 
-/** Invite people to the diffx app, as members or admins. */
+/** Invite people to the diffx app as members. */
 export function Invites() {
   const invites = useList(loadInvites, "Unable to load invites. Try again.");
   const [email, setEmail] = useState("");
-  const [asAdmin, setAsAdmin] = useState(false);
   const [created, setCreated] = useState<{
     invite: ConsoleInvite;
     url: string;
@@ -61,7 +59,7 @@ export function Invites() {
     setCreated(null);
     try {
       const { data, error } = await api.POST("/api/v1/invites", {
-        body: { email, admin: asAdmin },
+        body: { email },
       });
       if (!data)
         throw new Error(
@@ -69,7 +67,6 @@ export function Invites() {
         );
       setCreated(data);
       setEmail("");
-      setAsAdmin(false);
       invites.reload();
     } catch (failure: unknown) {
       setError(errorDetail(failure, "Unable to create invite. Try again."));
@@ -103,7 +100,7 @@ export function Invites() {
   return (
     <Page
       title="Invites"
-      description="An invite lets one person join the diffx app with the Google account for that email or, where the app allows it, a password. Links work once and expire after 48 hours; inviting an email again replaces its pending link."
+      description="An invite lets one person join the diffx app as a member, with the Google account for that email or, while password signup is on, a password. Invites work whether or not signup is open. Links work once and expire after 48 hours; inviting an email again replaces its pending link. To make someone an admin, promote their account on Accounts."
     >
       <form className="console-form mb-8" onSubmit={create}>
         <label htmlFor="invite-email">Email</label>
@@ -119,20 +116,6 @@ export function Invites() {
           onChange={(event) => setEmail(event.target.value)}
           disabled={busy}
         />
-        <div className="console-check">
-          <Checkbox
-            id="invite-admin"
-            checked={asAdmin}
-            onCheckedChange={setAsAdmin}
-            disabled={busy}
-          />
-          <label
-            htmlFor="invite-admin"
-            className="flex min-h-control-small flex-1 items-center max-md:min-h-touch pointer-coarse:min-h-touch"
-          >
-            Make them an admin of this console
-          </label>
-        </div>
         {error && <ErrorState message={error} />}
         <Button
           type="submit"
@@ -150,8 +133,7 @@ export function Invites() {
           url={created.url}
           onDismiss={() => setCreated(null)}
         >
-          It works once, for {created.invite.email}
-          {created.invite.admin && " as an admin"}, until{" "}
+          It works once, for {created.invite.email}, until{" "}
           {new Date(created.invite.expiresAt).toLocaleString()}.
         </OneTimeLink>
       )}
@@ -179,11 +161,6 @@ export function Invites() {
               <div className="min-w-0 wrap-anywhere">
                 <strong className="flex min-h-control-compact flex-wrap items-center gap-2 font-medium">
                   {invite.email}
-                  {invite.admin && (
-                    <Badge variant="status" tone="accent">
-                      Admin
-                    </Badge>
-                  )}
                 </strong>
                 <span className="mt-1 flex items-center gap-2 text-sm text-muted">
                   <Badge

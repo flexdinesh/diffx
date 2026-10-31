@@ -4,7 +4,7 @@ import { expect, test } from "./fixtures.ts";
 interface RemoteOptions {
   googleEnabled?: boolean;
   signupEnabled?: boolean;
-  passwordEnabled?: boolean;
+  passwordSignupEnabled?: boolean;
   email?: string | null;
   method?: "google" | "password";
 }
@@ -13,7 +13,7 @@ function bootstrap(
   {
     googleEnabled = false,
     signupEnabled = false,
-    passwordEnabled = false,
+    passwordSignupEnabled = false,
     email = null,
     method = "google",
   }: RemoteOptions = {},
@@ -22,7 +22,7 @@ function bootstrap(
     mode: "remote",
     googleEnabled,
     signupEnabled,
-    passwordEnabled,
+    passwordSignupEnabled,
     user: signedIn
       ? { id: "account-a", username: "alice", email, method }
       : null,
@@ -64,7 +64,7 @@ test("local mode has no account UI and settings resolves to reviews", async ({
 test("open signup creates a password account with a password section", async ({
   page,
 }) => {
-  const open = { signupEnabled: true, passwordEnabled: true };
+  const open = { signupEnabled: true, passwordSignupEnabled: true };
   await remote(page, false, open);
   await page.route("**/api/v2/auth/signup", (route) => {
     expect(route.request().headers()["x-csrf-token"]).toBeUndefined();
@@ -99,11 +99,9 @@ test("open signup creates a password account with a password section", async ({
   ).toBeVisible();
 });
 
-test("closed signup renders sign-in at the signup and reset pages", async ({
-  page,
-}) => {
+test("closed signup renders sign-in at the signup page", async ({ page }) => {
   await remote(page, false, { googleEnabled: true });
-  for (const path of ["/signup", "/reset-password#t=secret", "/setup"]) {
+  for (const path of ["/signup", "/setup"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
     await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
@@ -447,7 +445,6 @@ test("an invite link shows its email, hides its secret and starts Google sign-in
     return route.fulfill({
       json: {
         email: "bob@example.com",
-        admin: false,
         expiresAt: Date.now() + 86_400_000,
       },
     });
@@ -488,15 +485,17 @@ test("members see their Google email and no admin pages", async ({ page }) => {
   }
 });
 
-test("an admin invite accepted with a password signs the account in", async ({
+test("an invite accepted with a password signs the account in", async ({
   page,
 }) => {
-  await remote(page, false, { googleEnabled: true, passwordEnabled: true });
+  await remote(page, false, {
+    googleEnabled: true,
+    passwordSignupEnabled: true,
+  });
   await page.route("**/api/v2/invites/lookup", (route) =>
     route.fulfill({
       json: {
         email: "bob@example.com",
-        admin: true,
         expiresAt: Date.now() + 86_400_000,
       },
     }),
@@ -508,15 +507,14 @@ test("an admin invite accepted with a password signs the account in", async ({
       password: "a-secure-password",
     });
     return route.fulfill({
-      json: bootstrap(true, { passwordEnabled: true, method: "password" }),
+      json: bootstrap(true, {
+        passwordSignupEnabled: true,
+        method: "password",
+      }),
     });
   });
   await page.goto("/invite#t=invite-secret");
-  await expect(
-    page.getByText("and as an admin of this server's console", {
-      exact: false,
-    }),
-  ).toBeVisible();
+  await expect(page.getByText("bob@example.com")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Continue with Google" }),
   ).toBeVisible();
@@ -531,7 +529,7 @@ test("an admin invite accepted with a password signs the account in", async ({
 });
 
 test("a reset link sets a password and hides its secret", async ({ page }) => {
-  await remote(page, false, { passwordEnabled: true });
+  await remote(page, false, { passwordSignupEnabled: true });
   await page.route("**/api/v2/password-reset/lookup", (route) =>
     route.fulfill({ json: { username: "alice" } }),
   );
@@ -565,7 +563,6 @@ test("another invite link opened in the same tab loads that invite", async ({
     return route.fulfill({
       json: {
         email: token === "second" ? "carol@example.com" : "bob@example.com",
-        admin: false,
         expiresAt: Date.now() + 86_400_000,
       },
     });

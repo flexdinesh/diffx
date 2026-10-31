@@ -37,6 +37,11 @@ type adminJSON struct {
 	Method   identityservice.Method `json:"method"`
 }
 
+type settingsJSON struct {
+	Signup         bool `json:"signup"`
+	PasswordSignup bool `json:"passwordSignup"`
+}
+
 type bootstrapJSON struct {
 	SetupRequired bool       `json:"setupRequired"`
 	GoogleEnabled bool       `json:"googleEnabled"`
@@ -57,7 +62,6 @@ type accountJSON struct {
 type inviteJSON struct {
 	ID        string                       `json:"id"`
 	Email     string                       `json:"email"`
-	Admin     bool                         `json:"admin"`
 	Status    identityservice.InviteStatus `json:"status"`
 	CreatedAt int64                        `json:"createdAt"`
 	ExpiresAt int64                        `json:"expiresAt"`
@@ -72,13 +76,13 @@ func optional(value string) *string {
 }
 
 func projectInvite(invite identityservice.Invite, now time.Time) inviteJSON {
-	return inviteJSON{ID: invite.ID, Email: invite.Email, Admin: invite.Admin, Status: invite.Status(now), CreatedAt: invite.CreatedAt.UnixMilli(),
+	return inviteJSON{ID: invite.ID, Email: invite.Email, Status: invite.Status(now), CreatedAt: invite.CreatedAt.UnixMilli(),
 		ExpiresAt: invite.ExpiresAt.UnixMilli(), UsedBy: optional(invite.UsedBy)}
 }
 
 // authForms verify a secret or start a sign-in, so admission bounds them.
 var authForms = map[string]bool{
-	"/api/v1/setup": true, "/api/v1/auth/login": true, "/api/v1/auth/google": true,
+	"/api/v1/setup": true, "/api/v1/setup/google": true, "/api/v1/auth/login": true, "/api/v1/auth/google": true,
 	"/api/v1/password-reset/lookup": true, "/api/v1/password-reset": true,
 }
 
@@ -137,6 +141,8 @@ func (console *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		console.accounts(w, r, session.Account)
 	case r.URL.Path == "/api/v1/invites" || strings.HasPrefix(r.URL.Path, "/api/v1/invites/"):
 		console.invites(w, r)
+	case r.URL.Path == "/api/v1/settings":
+		console.appSettings(w, r, session.Account)
 	default:
 		http.NotFound(w, r)
 	}
@@ -177,7 +183,7 @@ func (console *transport) auth(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 	switch r.URL.Path {
-	case "/api/v1/auth/google":
+	case "/api/v1/auth/google", "/api/v1/setup/google":
 		console.googleStart(w, r)
 		return
 	case "/api/v1/password-reset/lookup", "/api/v1/password-reset":
@@ -247,12 +253,29 @@ func resetError(w http.ResponseWriter, err error) {
 	authhttp.IdentityError(w, err)
 }
 
-// googleStart begins Google sign-in for an existing admin.
+// googleStart begins Google sign-in for an existing admin, or Google setup of
+// the first admin from the setup link's secret.
 func (console *transport) googleStart(w http.ResponseWriter, r *http.Request) {
-	if !authhttp.DecodeJSON(w, r, &struct{}{}) {
-		return
+	var authorize, binding string
+	var err error
+	if r.URL.Path == "/api/v1/setup/google" {
+		var input struct {
+			Token string `json:"token"`
+		}
+		if !authhttp.DecodeJSON(w, r, &input) {
+			return
+		}
+		authorize, binding, err = console.identity.StartGoogleSetup(r.Context(), input.Token)
+		if errors.Is(err, identityservice.ErrNotFound) {
+			authhttp.Problem(w, 404, "Setup link is invalid, expired or already used")
+			return
+		}
+	} else {
+		if !authhttp.DecodeJSON(w, r, &struct{}{}) {
+			return
+		}
+		authorize, binding, err = console.identity.StartGoogle(r.Context(), "")
 	}
-	authorize, binding, err := console.identity.StartGoogle(r.Context(), "")
 	if errors.Is(err, identityservice.ErrGoogleDisabled) {
 		http.NotFound(w, r)
 		return
@@ -298,7 +321,8 @@ func (console *transport) googleCallbackRoute(w http.ResponseWriter, r *http.Req
 	case errors.Is(err, identityservice.ErrNoAccount):
 		target = "/?signin=no-account"
 	default:
-		if !errors.Is(err, identityservice.ErrAuthentication) {
+		// A used or expired setup secret, or a taken name, fails like a refusal.
+		if !errors.Is(err, identityservice.ErrAuthentication) && !errors.Is(err, identityservice.ErrNotFound) && !errors.Is(err, identityservice.ErrConflict) {
 			log.Printf("console Google sign-in: %v", err)
 		}
 		target = "/?signin=failed"
@@ -446,8 +470,42 @@ func ResetPassword(ctx context.Context, store *pgstore.Store, settings Settings,
 	return resetURL(settings, origin(settings, settings.Listen), account, secret), nil
 }
 
-// invites lists, creates and revokes invites. The link opens the app, carries
-// its secret in the fragment and is returned only at creation.
+// appSettings reads the stored settings and applies an admin's change, which
+// every server replica reloads from its notification.
+func (console *transport) appSettings(w http.ResponseWriter, r *http.Request, actor identityservice.Account) {
+	switch r.Method {
+	case http.MethodGet:
+		settings, err := console.identity.LoadSettings(r.Context())
+		if err != nil {
+			authhttp.IdentityError(w, err)
+			return
+		}
+		authhttp.WriteJSON(w, 200, settingsJSON{Signup: settings.Signup, PasswordSignup: settings.PasswordSignup})
+	case http.MethodPut:
+		var input struct {
+			Signup         *bool `json:"signup"`
+			PasswordSignup *bool `json:"passwordSignup"`
+		}
+		if !authhttp.DecodeJSON(w, r, &input) {
+			return
+		}
+		if input.Signup == nil || input.PasswordSignup == nil {
+			authhttp.Problem(w, 400, "Malformed request")
+			return
+		}
+		settings := identityservice.Settings{Signup: *input.Signup, PasswordSignup: *input.PasswordSignup}
+		if err := console.identity.PutSettings(r.Context(), actor.ID, settings); err != nil {
+			authhttp.IdentityError(w, err)
+			return
+		}
+		authhttp.WriteJSON(w, 200, settingsJSON{Signup: settings.Signup, PasswordSignup: settings.PasswordSignup})
+	default:
+		authhttp.Problem(w, 405, "Method not allowed")
+	}
+}
+
+// invites lists, creates and revokes member invites. The link opens the app,
+// carries its secret in the fragment and is returned only at creation.
 func (console *transport) invites(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/api/v1/invites" {
 		switch r.Method {
@@ -468,16 +526,11 @@ func (console *transport) invites(w http.ResponseWriter, r *http.Request) {
 		case http.MethodPost:
 			var input struct {
 				Email string `json:"email"`
-				Admin *bool  `json:"admin"`
 			}
 			if !authhttp.DecodeJSON(w, r, &input) {
 				return
 			}
-			if input.Admin == nil {
-				authhttp.Problem(w, 400, "Malformed request")
-				return
-			}
-			invite, secret, err := console.identity.CreateInvite(r.Context(), input.Email, *input.Admin)
+			invite, secret, err := console.identity.CreateInvite(r.Context(), input.Email)
 			if errors.Is(err, identityservice.ErrConflict) {
 				authhttp.Problem(w, 409, "An account already uses this email")
 				return

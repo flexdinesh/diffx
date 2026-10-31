@@ -2,7 +2,9 @@ package remoteserver
 
 import (
 	"context"
+	"log"
 
+	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/pgstore"
 	"github.com/flexdinesh/diffx/internal/serverapp"
 )
@@ -15,12 +17,13 @@ type changeFeed interface {
 
 // replicate applies committed changes to this replica: owners' subscribers
 // hear about their contexts, removed accounts lose their services and streams,
-// and the worker wakes for queued jobs. A resync makes every active owner's
-// clients reload their catalog and lets the worker look for missed jobs.
-func replicate(feed changeFeed, applications *registry, wake chan<- struct{}) serverapp.Task {
-	signal := func() {
+// the worker wakes for queued jobs and settings reload. A resync makes every
+// active owner's clients reload their catalog, lets the worker look for missed
+// jobs and reloads settings.
+func replicate(feed changeFeed, applications *registry, wake, reload chan<- struct{}) serverapp.Task {
+	signal := func(channel chan<- struct{}) {
 		select {
-		case wake <- struct{}{}:
+		case channel <- struct{}{}:
 		default:
 		}
 	}
@@ -32,13 +35,45 @@ func replicate(feed changeFeed, applications *registry, wake chan<- struct{}) se
 			case pgstore.AccountRemoved:
 				_ = applications.remove(change.OwnerID)
 			case pgstore.JobQueued:
-				signal()
+				signal(wake)
+			case pgstore.SettingsChanged:
+				signal(reload)
 			case pgstore.Resync:
 				applications.resync()
-				signal()
+				signal(wake)
+				signal(reload)
 			}
 		})
 	}
+}
+
+// reloadSettings refreshes the settings snapshot on each signal. A failed
+// reload keeps the last snapshot; the next change or resync retries.
+func reloadSettings(identity *identityservice.Service, reload <-chan struct{}) serverapp.Task {
+	return func(ctx context.Context) error {
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-reload:
+				if err := loadSettings(ctx, identity); err != nil && ctx.Err() == nil {
+					log.Printf("reload settings: %v", err)
+				}
+			}
+		}
+	}
+}
+
+// loadSettings replaces the snapshot and warns when no one new can join.
+func loadSettings(ctx context.Context, identity *identityservice.Service) error {
+	settings, err := identity.LoadSettings(ctx)
+	if err != nil {
+		return err
+	}
+	if !identity.GoogleEnabled() && !settings.PasswordSignup {
+		log.Printf("diffx-server: no one new can join: Google sign-in is not configured and password signup is off in the console's Settings")
+	}
+	return nil
 }
 
 // notify reaches only owners with services here; others have no subscribers.

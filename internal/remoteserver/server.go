@@ -37,9 +37,6 @@ type Settings struct {
 	GitHub          *GitHubSettings
 	// Google enables Google sign-in; it requires PublicURL.
 	Google *GoogleSettings
-	// Members chooses whether people sign up without an invite and whether
-	// password accounts may use the web app.
-	Members identityservice.MemberPolicy
 	// ClientIPHeader names the header a trusted ingress sets to the client IP.
 	// Non-empty enables authentication rate limiting shared by every replica.
 	ClientIPHeader string
@@ -55,14 +52,14 @@ type GoogleSettings struct {
 // composeIdentity composes account rules with Google sign-in when configured.
 func composeIdentity(store *pgstore.Store, settings Settings) *identityservice.Service {
 	if settings.Google == nil {
-		return identityservice.New(store, identityservice.WithMembers(settings.Members))
+		return identityservice.New(store)
 	}
 	var options []google.Option
 	if settings.Google.tokenURL != "" {
 		options = append(options, google.WithEndpoints(settings.Google.authorizeURL, settings.Google.tokenURL))
 	}
 	redirect := strings.TrimSuffix(settings.PublicURL, "/") + googleCallback
-	return identityservice.New(store, identityservice.WithMembers(settings.Members), identityservice.WithGoogle(google.New(settings.Google.ClientID, settings.Google.ClientSecret, redirect, options...)))
+	return identityservice.New(store, identityservice.WithGoogle(google.New(settings.Google.ClientID, settings.Google.ClientSecret, redirect, options...)))
 }
 
 type application struct {
@@ -171,7 +168,12 @@ func compose(ctx context.Context, store *pgstore.Store, assets fs.FS, settings S
 		return nil, nil, nil, nil, err
 	}
 	closeServices := func() error { return errors.Join(applications.close(), feed.Close()) }
-	wake := make(chan struct{}, 1)
+	// Settings load after listening starts, so no change after this read is missed.
+	if err := loadSettings(ctx, identity); err != nil {
+		_ = closeServices()
+		return nil, nil, nil, nil, err
+	}
+	wake, reload := make(chan struct{}, 1), make(chan struct{}, 1)
 	worker := func(ctx context.Context) error {
 		return ingestionqueue.Run(ctx, store.Queue(), func(ctx context.Context, owner string, input ingestion.Request) (string, error) {
 			accounts, err := identity.Accounts(ctx)
@@ -191,7 +193,7 @@ func compose(ctx context.Context, store *pgstore.Store, assets fs.FS, settings S
 			return "", review.Error(403, "Account unavailable")
 		}, ingestionqueue.Wake(wake))
 	}
-	tasks := []serverapp.Task{worker, push.Run, replicate(feed, applications, wake)}
+	tasks := []serverapp.Task{worker, push.Run, replicate(feed, applications, wake, reload), reloadSettings(identity, reload)}
 	var internal http.Handler
 	if github != nil {
 		tasks = append(tasks, reconcileAtStartup(github.Reconcile, store.GitHub()))

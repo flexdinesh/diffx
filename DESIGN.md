@@ -690,6 +690,9 @@ at `/design.html` (see `docs/development.md`).
   server enables. Google comes first; beside a password form it is an outline
   button so the form's submit stays the one primary action, and a separator
   divides the two. Links between these pages are inline accent links.
+- Password sign-in always serves existing password accounts. While password
+  signup is off, a quiet "Sign in with password" link button reveals the form
+  and Google stays the primary action until it does.
 - Pages for a method the server turned off render sign-in, like unknown paths.
   Link secrets come from the fragment and leave history before any request.
 
@@ -699,7 +702,7 @@ at `/design.html` (see `docs/development.md`).
   world: the same tokens, type and primitives, light or dark by the system
   theme, no palette picker. It is a document, not a workspace: the page
   scrolls under a sticky `--panel` header with the brand (“diffx Console”),
-  the section links Accounts, Invites and Admin as `rail` link buttons
+  the section links Accounts, Invites, Settings and Admin as `rail` link buttons
   (`aria-current="page"` marks the section), and the admin's username,
   hidden on narrow screens.
 - Each section is one reading column (48rem) with an `h1`, short

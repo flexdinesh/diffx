@@ -33,7 +33,7 @@ func TestRunSignupPersistsAcrossRestart(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		ready, done := make(chan string, 1), make(chan error, 1)
 		go func() {
-			done <- Run(ctx, Settings{DatabaseURL: databaseURL, Listen: "127.0.0.1:0", PublicURL: "https://diffx.example.com", InsecureCookies: true, Members: openMembers}, func(address string) { ready <- address })
+			done <- Run(ctx, Settings{DatabaseURL: databaseURL, Listen: "127.0.0.1:0", PublicURL: "https://diffx.example.com", InsecureCookies: true}, func(address string) { ready <- address })
 		}()
 		var address string
 		select {

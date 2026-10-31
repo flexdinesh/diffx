@@ -12,7 +12,6 @@ import (
 	"syscall"
 
 	"github.com/flexdinesh/diffx/internal/config"
-	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/remoteserver"
 	"github.com/flexdinesh/diffx/internal/version"
 )
@@ -68,7 +67,6 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 	if err := values.ValidateIdentity(); err != nil {
 		return settings, false, err
 	}
-	settings.Members = identityservice.MemberPolicy{Signup: values.Signup, Password: values.PasswordSignIn}
 	if values.Google.Enabled() {
 		settings.Google = &remoteserver.GoogleSettings{ClientID: values.Google.ClientID, ClientSecret: values.Google.ClientSecret}
 	}

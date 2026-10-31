@@ -18,9 +18,11 @@ const (
 	accountChannel = "diffx_account"
 	// jobChannel announces an ingestion job ready to claim. Payload: empty.
 	jobChannel = "diffx_job"
+	// settingsChannel announces changed app settings. Payload: empty.
+	settingsChannel = "diffx_settings"
 )
 
-var channels = []string{contextChannel, accountChannel, jobChannel}
+var channels = []string{contextChannel, accountChannel, jobChannel, settingsChannel}
 
 func notifyContext(ctx context.Context, queries *pgdb.Queries, ownerID, contextID string) error {
 	return queries.Notify(ctx, pgdb.NotifyParams{Channel: contextChannel, Payload: ownerID + " " + contextID})
@@ -32,4 +34,8 @@ func notifyAccount(ctx context.Context, queries *pgdb.Queries, accountID string)
 
 func notifyJob(ctx context.Context, queries *pgdb.Queries) error {
 	return queries.Notify(ctx, pgdb.NotifyParams{Channel: jobChannel})
+}
+
+func notifySettings(ctx context.Context, queries *pgdb.Queries) error {
+	return queries.Notify(ctx, pgdb.NotifyParams{Channel: settingsChannel})
 }

@@ -1664,7 +1664,7 @@ for (const mode of ["local", "remote"]) {
           googleEnabled: false,
           ...(mode === "remote" && {
             signupEnabled: false,
-            passwordEnabled: true,
+            passwordSignupEnabled: true,
           }),
           user:
             mode === "remote"
@@ -2249,7 +2249,7 @@ test("each remote account baselines its own seen heads", async ({ page }) => {
         mode: "remote",
         googleEnabled: false,
         signupEnabled: false,
-        passwordEnabled: false,
+        passwordSignupEnabled: false,
         user: {
           id: "account-b",
           username: "bob",
@@ -2373,7 +2373,7 @@ test("a remote server shows the review column for a single review", async ({
         mode: "remote",
         googleEnabled: false,
         signupEnabled: false,
-        passwordEnabled: false,
+        passwordSignupEnabled: false,
         user: {
           id: "account-a",
           username: "alice",
@@ -2945,7 +2945,7 @@ test("saved comparison preferences belong to the active account", async ({
         mode: "remote",
         googleEnabled: false,
         signupEnabled: false,
-        passwordEnabled: false,
+        passwordSignupEnabled: false,
         user: { id: account, username: account, email: null, method: "google" },
         csrfToken: "test",
         collect: false,
@@ -2974,7 +2974,7 @@ test("pull request reviews show GitHub identity and a sanitized description; clo
         mode: "remote",
         googleEnabled: false,
         signupEnabled: false,
-        passwordEnabled: false,
+        passwordSignupEnabled: false,
         user: {
           id: "account-a",
           username: "alice",

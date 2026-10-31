@@ -31,6 +31,7 @@ const SessionContext = createContext<Session | null>(null);
 const anonymous = new Set([
   "/api/v1/bootstrap",
   "/api/v1/setup",
+  "/api/v1/setup/google",
   "/api/v1/auth/login",
   "/api/v1/auth/google",
   "/api/v1/password-reset/lookup",

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/flexdinesh/diffx/internal/google"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/pgstore/pgdb"
 	"github.com/jackc/pgx/v5"
@@ -45,10 +46,17 @@ func insertAccount(ctx context.Context, queries *pgdb.Queries, account identitys
 
 // CreateAccount commits a member and its credential together. An empty hash
 // never verifies, so such an account has no password sign-in.
-func (store *Store) CreateAccount(ctx context.Context, account identityservice.Account, passwordHash string, created time.Time) error {
+func (store *Store) CreateAccount(ctx context.Context, account identityservice.Account, passwordHash string, created time.Time, required identityservice.Settings) error {
 	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
+		if err := requireSettings(ctx, queries, required); err != nil {
+			return err
+		}
 		return insertAccount(ctx, queries, account, passwordHash, created)
 	})
+}
+
+func (store *Store) PendingAdminSetup(ctx context.Context, setupHash string, now time.Time) (bool, error) {
+	return store.queries.PendingAdminSetup(ctx, pgdb.PendingAdminSetupParams{TokenHash: setupHash, Now: millisecond(now)})
 }
 
 func (store *Store) PutAdminSetup(ctx context.Context, tokenHash string, expires time.Time) (bool, error) {
@@ -71,21 +79,60 @@ func (store *Store) AdminExists(ctx context.Context) (bool, error) {
 // CreateAdmin consumes the setup secret, so concurrent setups create one admin.
 func (store *Store) CreateAdmin(ctx context.Context, account identityservice.Account, passwordHash, setupHash string, now time.Time) error {
 	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
-		if err := queries.IdentityLock(ctx, adminLock); err != nil {
+		if err := consumeAdminSetup(ctx, queries, setupHash, now); err != nil {
 			return err
-		}
-		count, err := queries.ConsumeAdminSetup(ctx, pgdb.ConsumeAdminSetupParams{TokenHash: setupHash, Now: millisecond(now)})
-		if err != nil {
-			return err
-		}
-		if count != 1 {
-			return identityservice.ErrNotFound
 		}
 		if err := insertAccount(ctx, queries, account, passwordHash, now); err != nil {
 			return err
 		}
 		return queries.InsertAdmin(ctx, account.ID)
 	})
+}
+
+// CreateGoogleAdmin is CreateAdmin for a new account with a Google identity.
+func (store *Store) CreateGoogleAdmin(ctx context.Context, account identityservice.Account, identity google.Identity, setupHash string, now time.Time) error {
+	now = millisecond(now)
+	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
+		if err := consumeAdminSetup(ctx, queries, setupHash, now); err != nil {
+			return err
+		}
+		if err := insertGoogleAccount(ctx, queries, account, identity, now); err != nil {
+			return err
+		}
+		return queries.InsertAdmin(ctx, account.ID)
+	})
+}
+
+// PromoteSetupAdmin consumes the setup secret for an existing enabled account.
+func (store *Store) PromoteSetupAdmin(ctx context.Context, accountID, setupHash string, now time.Time) error {
+	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
+		if err := consumeAdminSetup(ctx, queries, setupHash, now); err != nil {
+			return err
+		}
+		target, err := queries.LockTargetAccount(ctx, accountID)
+		if errors.Is(err, pgx.ErrNoRows) || err == nil && target.Disabled {
+			return identityservice.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		return queries.InsertAdmin(ctx, accountID)
+	})
+}
+
+// consumeAdminSetup takes the admin lock and the unexpired setup secret.
+func consumeAdminSetup(ctx context.Context, queries *pgdb.Queries, setupHash string, now time.Time) error {
+	if err := queries.IdentityLock(ctx, adminLock); err != nil {
+		return err
+	}
+	count, err := queries.ConsumeAdminSetup(ctx, pgdb.ConsumeAdminSetupParams{TokenHash: setupHash, Now: millisecond(now)})
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return identityservice.ErrNotFound
+	}
+	return nil
 }
 
 func (store *Store) AccountSummaries(ctx context.Context) ([]identityservice.AccountSummary, error) {

@@ -45,7 +45,9 @@ Stop running binaries before upgrading. Local schema 11 through 15 state upgrade
 schema 16 and survives subsequent starts; older, future or unrecognized schemas are refused without
 resetting data. Local `diffx` offers to back up older state beside it and start
 fresh, or does so with `--reset-state`. Servers migrate their Postgres database
-at startup and never reset it. Upgrade server and collectors
+at startup and never reset it. Server schema 10 refuses older binaries, so stop
+every older `diffx-server` and `diffx-console` before upgrading; it is not a
+rolling upgrade. Upgrade server and collectors
 together for ingestion protocol 4, deploying the server first: new producers send
 optional activity metadata that older servers reject. Existing protocol 4
 submissions without that metadata still replay unchanged and need no reset. In-memory state lasts only for one process.
@@ -153,4 +155,7 @@ GitHub integration is enabled. Images are published even before the k8s-cluster
 manifests are provisioned. Woodpecker must trust the repository for the Docker
 socket and hold a `KUBECONFIG` secret with deployment access to both namespaces.
 Pushes to `main` deploy staging without waiting for GitHub Actions; verification
-stays in GitHub Actions and the local pre-push hook.
+stays in GitHub Actions and the local pre-push hook. Staging and prod must drop
+`DIFFX_SERVER_SIGNUP` and `DIFFX_SERVER_PASSWORD_SIGNIN` before deploying a
+build without them, since the server refuses to start while either is set; set
+admission in the console's Settings page after deploy.

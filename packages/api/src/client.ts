@@ -72,13 +72,13 @@ export function readBootstrap(value: unknown): ApiBootstrap {
     value.mode !== "remote" ||
     typeof value.googleEnabled !== "boolean" ||
     typeof value.signupEnabled !== "boolean" ||
-    typeof value.passwordEnabled !== "boolean"
+    typeof value.passwordSignupEnabled !== "boolean"
   )
     throw new Error("Invalid server identity response");
   const methods = {
     googleEnabled: value.googleEnabled,
     signupEnabled: value.signupEnabled,
-    passwordEnabled: value.passwordEnabled,
+    passwordSignupEnabled: value.passwordSignupEnabled,
   };
   if (value.user === null && value.csrfToken === null)
     return {

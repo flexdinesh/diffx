@@ -20,7 +20,7 @@ const remote: ApiBootstrap = {
   mode: "remote",
   googleEnabled: false,
   signupEnabled: false,
-  passwordEnabled: false,
+  passwordSignupEnabled: false,
   user: null,
   csrfToken: null,
 };

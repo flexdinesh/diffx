@@ -151,7 +151,7 @@ test("The console administers the server's accounts over one database", async (t
   // Invite and reset links open the app, which resolves them.
   const invite = await console.POST("/api/v1/invites", {
     headers: admin,
-    body: { email: "new@example.com", admin: true },
+    body: { email: "new@example.com" },
   });
   assert.equal(invite.response.status, 201);
   consoleConforms("Invite", invite.data?.invite);
@@ -162,10 +162,32 @@ test("The console administers the server's accounts over one database", async (t
   });
   assert.equal(lookup.response.status, 200);
   assert.equal(lookup.data?.email, "new@example.com");
-  assert.equal(lookup.data?.admin, true);
   const invites = await console.GET("/api/v1/invites", { headers: admin });
   for (const value of invites.data?.invites ?? [])
     consoleConforms("Invite", value);
+
+  // Settings the console stores reach the server through the database.
+  const stored = await console.GET("/api/v1/settings", { headers: admin });
+  consoleConforms("Settings", stored.data);
+  assert.deepEqual(stored.data, { signup: true, passwordSignup: true });
+  const closed = await console.PUT("/api/v1/settings", {
+    headers: admin,
+    body: { signup: false, passwordSignup: true },
+  });
+  assert.equal(closed.response.status, 200);
+  consoleConforms("Settings", closed.data);
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const bootstrap = await app.GET("/api/v2/bootstrap");
+    if (bootstrap.data?.mode === "remote" && !bootstrap.data.signupEnabled)
+      break;
+    assert.ok(Date.now() < deadline, "server kept open signup");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  const refusedSignup = await app.POST("/api/v2/auth/signup", {
+    body: { username: "latecomer", password },
+  });
+  assert.equal(refusedSignup.response.status, 404);
   const reset = await console.POST(
     "/api/v1/accounts/{accountId}/password-reset",
     { headers: admin, params: { path: { accountId: memberId } } },

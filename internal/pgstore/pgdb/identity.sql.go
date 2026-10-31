@@ -541,6 +541,25 @@ func (q *Queries) PasswordReset(ctx context.Context, arg PasswordResetParams) (P
 	return i, err
 }
 
+const pendingAdminSetup = `-- name: PendingAdminSetup :one
+SELECT EXISTS (
+  SELECT 1 FROM admin_setup
+  WHERE token_hash = $1 AND expires_at > $2 AND NOT EXISTS (SELECT 1 FROM admin_account)
+)
+`
+
+type PendingAdminSetupParams struct {
+	TokenHash string
+	Now       time.Time
+}
+
+func (q *Queries) PendingAdminSetup(ctx context.Context, arg PendingAdminSetupParams) (bool, error) {
+	row := q.db.QueryRow(ctx, pendingAdminSetup, arg.TokenHash, arg.Now)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const pruneBrowserSessions = `-- name: PruneBrowserSessions :exec
 DELETE FROM browser_sessions WHERE secret_hash IN (
   SELECT e.secret_hash FROM browser_sessions e WHERE e.expires_at <= $1 FOR UPDATE SKIP LOCKED

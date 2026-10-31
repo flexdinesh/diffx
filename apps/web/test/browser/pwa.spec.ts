@@ -11,7 +11,7 @@ async function remote(page: Page) {
         mode: "remote",
         googleEnabled: false,
         signupEnabled: false,
-        passwordEnabled: false,
+        passwordSignupEnabled: false,
         user: {
           id: "account-a",
           username: "alice",

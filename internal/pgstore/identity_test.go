@@ -14,6 +14,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/google"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/pgstore"
+	"github.com/flexdinesh/diffx/internal/testsupport"
 	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 	"github.com/jackc/pgx/v5"
 )
@@ -35,11 +36,8 @@ func identityStore(t *testing.T) (*pgstore.Store, *identityservice.Service, *pgx
 	t.Helper()
 	url := pgtest.URL(t)
 	store := openIdentityStore(t, url)
-	return store, identityservice.New(store, openMembers), identityConn(t, url)
+	return store, testsupport.Identity(t, store), identityConn(t, url)
 }
-
-// openMembers admits sign-up and password accounts, the development default.
-var openMembers = identityservice.WithMembers(identityservice.MemberPolicy{Signup: true, Password: true})
 
 func identityConn(t *testing.T, url string) *pgx.Conn {
 	t.Helper()
@@ -69,7 +67,7 @@ func tableRows(t *testing.T, conn *pgx.Conn, table string) int {
 func member(t *testing.T, store *pgstore.Store, username string) (identityservice.Account, identityservice.Session) {
 	t.Helper()
 	account := identityservice.Account{ID: "id-" + username, Username: username, Method: identityservice.MethodGoogle}
-	if err := store.CreateGoogleAccount(t.Context(), account, google.Identity{Subject: "sub-" + username, Email: username + "@example.com", EmailVerified: true}, time.Now()); err != nil {
+	if err := store.CreateGoogleAccount(t.Context(), account, google.Identity{Subject: "sub-" + username, Email: username + "@example.com", EmailVerified: true}, time.Now(), identityservice.Settings{}); err != nil {
 		t.Fatal(err)
 	}
 	session := identityservice.Session{Account: account, Secret: strings.Repeat("s", 40) + username[:3], CSRFToken: "csrf-" + username, ExpiresAt: time.Now().Add(time.Hour)}
@@ -101,7 +99,7 @@ func TestAdminSetupPersistsAndRunsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := identityservice.New(store, openMembers)
+	service := testsupport.Identity(t, store)
 	if required, err := service.SetupRequired(ctx); err != nil || !required {
 		t.Fatalf("fresh state requires setup: %v %v", required, err)
 	}
@@ -155,7 +153,7 @@ func TestAdminSetupPersistsAndRunsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A restarted replica opens the same database.
-	service = identityservice.New(openIdentityStore(t, url), openMembers)
+	service = testsupport.Identity(t, openIdentityStore(t, url))
 	if again, err := service.PrepareSetup(ctx); err != nil || again != "" {
 		t.Fatalf("setup issued after admin exists: %q %v", again, err)
 	}
@@ -400,7 +398,7 @@ func TestAccountsOrderByUsernameBytes(t *testing.T) {
 	store, service, _ := identityStore(t)
 	ctx := context.Background()
 	for _, username := range []string{"ab", "a.c", "a-b", "a_d"} {
-		if err := store.CreateAccount(ctx, identityservice.Account{ID: "id-" + username, Username: username}, "", time.Now()); err != nil {
+		if err := store.CreateAccount(ctx, identityservice.Account{ID: "id-" + username, Username: username}, "", time.Now(), identityservice.Settings{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -418,7 +416,7 @@ func TestAccountsOrderByUsernameBytes(t *testing.T) {
 			t.Fatalf("order at %d: %q %q, want %q", index, accounts[index].Username, summaries[index].Username, username)
 		}
 	}
-	if err := store.CreateAccount(ctx, identityservice.Account{ID: "id-other", Username: "ab"}, "", time.Now()); !errors.Is(err, identityservice.ErrConflict) {
+	if err := store.CreateAccount(ctx, identityservice.Account{ID: "id-other", Username: "ab"}, "", time.Now(), identityservice.Settings{}); !errors.Is(err, identityservice.ErrConflict) {
 		t.Fatalf("duplicate username: %v", err)
 	}
 }
@@ -495,10 +493,6 @@ func TestPasswordResetLinksExpireAndStayInTheirAudience(t *testing.T) {
 	if _, err := service.PendingPasswordReset(ctx, identityservice.AudienceConsole, secret); !errors.Is(err, identityservice.ErrNotFound) {
 		t.Fatalf("member reset accepted by the console: %v", err)
 	}
-	closed := identityservice.New(store)
-	if err := closed.CompletePasswordReset(ctx, identityservice.AudienceMembers, secret, "reset password is valid"); !errors.Is(err, identityservice.ErrNotFound) {
-		t.Fatalf("reset completed while passwords are off: %v", err)
-	}
 	if _, err := conn.Exec(ctx, `UPDATE diffx.password_resets SET expires_at=$1`, time.UnixMilli(time.Now().UnixMilli())); err != nil {
 		t.Fatal(err)
 	}
@@ -511,20 +505,23 @@ func TestPasswordResetLinksExpireAndStayInTheirAudience(t *testing.T) {
 	if rows := tableRows(t, conn, "password_resets"); rows != 0 {
 		t.Fatalf("expired resets kept: %d", rows)
 	}
+	// Existing password accounts keep their reset links with password signup off.
+	testsupport.PutSettings(t, store, identityservice.Settings{})
+	closed := testsupport.Identity(t, store)
+	_, secret, err = closed.ResetPasswordByUsername(ctx, "member")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := closed.CompletePasswordReset(ctx, identityservice.AudienceMembers, secret, "reset password is valid"); err != nil {
+		t.Fatalf("reset refused with password signup off: %v", err)
+	}
 }
 
-func TestMemberPolicyGatesSignupAndPasswordAccounts(t *testing.T) {
+func TestSettingsGateNewAccountsOnly(t *testing.T) {
 	t.Parallel()
 	store, open, _ := identityStore(t)
 	ctx := context.Background()
 	admin := setupAdmin(t, open, "admin")
-	inviteOnly := identityservice.New(store, identityservice.WithMembers(identityservice.MemberPolicy{Password: true}))
-	googleOnly := identityservice.New(store, identityservice.WithMembers(identityservice.MemberPolicy{Signup: true}))
-	for _, service := range []*identityservice.Service{inviteOnly, googleOnly} {
-		if _, err := service.SignUp(ctx, "someone", adminPassword); !errors.Is(err, identityservice.ErrDisabled) {
-			t.Fatalf("closed sign-up created an account: %v", err)
-		}
-	}
 	if _, err := open.SignUp(ctx, "ab", adminPassword); !errors.Is(err, identityservice.ErrInvalidInput) {
 		t.Fatalf("invalid username accepted: %v", err)
 	}
@@ -539,37 +536,131 @@ func TestMemberPolicyGatesSignupAndPasswordAccounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := open.Login(ctx, identityservice.AudienceMembers, "member", adminPassword); err != nil {
-		t.Fatalf("member password login: %v", err)
-	}
 	if _, err := open.Login(ctx, identityservice.AudienceConsole, "member", adminPassword); !errors.Is(err, identityservice.ErrAuthentication) {
 		t.Fatalf("member signed in to the console: %v", err)
 	}
 	if _, err := open.AuthenticateSession(ctx, identityservice.AudienceConsole, session.Secret); !errors.Is(err, identityservice.ErrAuthentication) {
 		t.Fatalf("member session admitted by the console: %v", err)
 	}
-	// Without passwords, every password account is shut out of the web app,
-	// admins included, while admins keep the console.
-	if _, err := googleOnly.Login(ctx, identityservice.AudienceMembers, "member", adminPassword); !errors.Is(err, identityservice.ErrAuthentication) {
-		t.Fatalf("password login while passwords are off: %v", err)
+	for _, settings := range []identityservice.Settings{{PasswordSignup: true}, {Signup: true}} {
+		testsupport.PutSettings(t, store, settings)
+		closed := testsupport.Identity(t, store)
+		if _, err := closed.SignUp(ctx, "someone", adminPassword); !errors.Is(err, identityservice.ErrDisabled) {
+			t.Fatalf("password sign-up with %+v: %v", settings, err)
+		}
 	}
-	if _, err := googleOnly.AuthenticateSession(ctx, identityservice.AudienceMembers, session.Secret); !errors.Is(err, identityservice.ErrAuthentication) {
-		t.Fatalf("password session while passwords are off: %v", err)
+	// Password accounts made before password signup closed keep every way in.
+	closed := testsupport.Identity(t, store)
+	if closed.Settings().PasswordSignup {
+		t.Fatal("password signup still on")
 	}
-	if _, err := googleOnly.AuthenticateToken(ctx, token.Secret); !errors.Is(err, identityservice.ErrAuthentication) {
-		t.Fatalf("password account token while passwords are off: %v", err)
+	if _, err := closed.Login(ctx, identityservice.AudienceMembers, "member", adminPassword); err != nil {
+		t.Fatalf("existing password login: %v", err)
 	}
-	if _, err := googleOnly.AuthenticateSession(ctx, identityservice.AudienceMembers, admin.Secret); !errors.Is(err, identityservice.ErrAuthentication) {
-		t.Fatalf("password admin used the web app while passwords are off: %v", err)
+	if _, err := closed.AuthenticateSession(ctx, identityservice.AudienceMembers, session.Secret); err != nil {
+		t.Fatalf("existing password session: %v", err)
 	}
-	if _, err := googleOnly.Login(ctx, identityservice.AudienceConsole, "admin", adminPassword); err != nil {
-		t.Fatalf("admin console password login while passwords are off: %v", err)
+	if _, err := closed.AuthenticateToken(ctx, token.Secret); err != nil {
+		t.Fatalf("existing password account token: %v", err)
 	}
-	if accounts, err := googleOnly.Accounts(ctx); err != nil || len(accounts) != 0 {
-		t.Fatalf("worker serves password accounts while passwords are off: %+v %v", accounts, err)
+	if err := closed.ChangePassword(ctx, session.Account.ID, adminPassword, "a changed password for test"); err != nil {
+		t.Fatalf("existing password change: %v", err)
 	}
-	if _, err := open.AuthenticateSession(ctx, identityservice.AudienceMembers, admin.Secret); err != nil {
-		t.Fatalf("admin cannot use the web app: %v", err)
+	if _, err := closed.AuthenticateSession(ctx, identityservice.AudienceMembers, admin.Secret); err != nil {
+		t.Fatalf("password admin refused by the web app: %v", err)
+	}
+	if accounts, err := closed.Accounts(ctx); err != nil || len(accounts) != 2 {
+		t.Fatalf("worker accounts with password signup off: %+v %v", accounts, err)
+	}
+}
+
+func TestSignupRechecksStoredSettings(t *testing.T) {
+	t.Parallel()
+	store, open, _ := identityStore(t)
+	ctx := context.Background()
+	// This replica's snapshot is stale: an admin closed signup elsewhere.
+	testsupport.PutSettings(t, store, identityservice.Settings{PasswordSignup: true})
+	if !open.Settings().Signup {
+		t.Fatal("snapshot reloaded")
+	}
+	if _, err := open.SignUp(ctx, "late", adminPassword); !errors.Is(err, identityservice.ErrDisabled) {
+		t.Fatalf("stale snapshot created a password account: %v", err)
+	}
+	account := identityservice.Account{ID: "id-late", Username: "late", Method: identityservice.MethodGoogle}
+	identity := google.Identity{Subject: "sub-late", Email: "late@example.com", EmailVerified: true}
+	if err := store.CreateGoogleAccount(ctx, account, identity, time.Now(), identityservice.Settings{Signup: true}); !errors.Is(err, identityservice.ErrDisabled) {
+		t.Fatalf("closed signup created a Google account: %v", err)
+	}
+	testsupport.PutSettings(t, store, identityservice.Settings{Signup: true})
+	invite := invite(t, store, "late-invite", "late@example.com", time.Now())
+	password := identityservice.Account{ID: "id-invited", Username: "invited", Method: identityservice.MethodPassword}
+	if err := store.AcceptPasswordInvite(ctx, invite.ID, password, "hash", time.Now(), identityservice.Settings{PasswordSignup: true}); !errors.Is(err, identityservice.ErrDisabled) {
+		t.Fatalf("closed password signup accepted an invite: %v", err)
+	}
+	if err := store.AcceptInvite(ctx, invite.ID, account, identity, time.Now()); err != nil {
+		t.Fatalf("Google invite with password signup off: %v", err)
+	}
+	if accounts, err := open.AccountSummaries(ctx); err != nil || len(accounts) != 1 {
+		t.Fatalf("accounts: %+v %v", accounts, err)
+	}
+}
+
+func TestSettingsDefaultOnAndAnnounceChanges(t *testing.T) {
+	t.Parallel()
+	store, service, _ := identityStore(t)
+	ctx := context.Background()
+	if got := service.Settings(); got != (identityservice.Settings{Signup: true, PasswordSignup: true}) {
+		t.Fatalf("default settings: %+v", got)
+	}
+	if got := identityservice.New(store).Settings(); got != (identityservice.Settings{}) {
+		t.Fatalf("unloaded snapshot: %+v", got)
+	}
+	listener, err := store.Listen(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Run closes the listener when its context ends; Close must not race it.
+	listening, stop := context.WithCancel(context.Background())
+	stopped := make(chan struct{})
+	t.Cleanup(func() {
+		stop()
+		<-stopped
+	})
+	changes := make(chan pgstore.Notification, 8)
+	go func() {
+		defer close(stopped)
+		_ = listener.Run(listening, func(change pgstore.Notification) { changes <- change })
+	}()
+	admin := setupAdmin(t, service, "admin")
+	want := identityservice.Settings{PasswordSignup: true}
+	if err := service.PutSettings(ctx, admin.Account.ID, want); err != nil {
+		t.Fatal(err)
+	}
+	if got := service.Settings(); got != want {
+		t.Fatalf("snapshot after put: %+v", got)
+	}
+	timeout := time.After(10 * time.Second)
+	for announced := false; !announced; {
+		select {
+		case change := <-changes:
+			announced = change.Kind == pgstore.SettingsChanged
+		case <-timeout:
+			t.Fatal("settings change not announced")
+		}
+	}
+	if got, err := identityservice.New(store).LoadSettings(ctx); err != nil || got != want {
+		t.Fatalf("stored settings: %+v %v", got, err)
+	}
+	// Deleting the admin who changed them keeps the settings.
+	other, _ := member(t, store, "other")
+	if err := service.SetAdmin(ctx, admin.Account.ID, other.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.DeleteAccount(ctx, other.ID, admin.Account.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.AppSettings(ctx); err != nil || got != want {
+		t.Fatalf("settings after deleting their author: %+v %v", got, err)
 	}
 }
 
@@ -643,7 +734,7 @@ func TestConcurrentAccountCreationHasOneOwner(t *testing.T) {
 	results := make(chan error, 6)
 	for index := range 6 {
 		workers.Go(func() {
-			results <- store.CreateAccount(ctx, identityservice.Account{ID: fmt.Sprintf("id-%d", index), Username: "owner"}, "", time.Now())
+			results <- store.CreateAccount(ctx, identityservice.Account{ID: fmt.Sprintf("id-%d", index), Username: "owner"}, "", time.Now(), identityservice.Settings{})
 		})
 	}
 	workers.Wait()

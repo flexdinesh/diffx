@@ -86,7 +86,7 @@ owner. See [development.md](development.md) for isolated checkout commands.
 - `reviewsession`: a resolved review and its source/policy capabilities.
 - `identityservice`: account, sign-in method and audience (app members or
   console admins), password, reset link, session, API-token, admin role,
-  account administration, invite and Google sign-in policies.
+  account administration, invite, app admission and Google sign-in policies.
 - `google`: Google OpenID Connect wire adapter: authorization URL with PKCE and
   nonce, code exchange and ID token claim checks. No storage or diffx policy.
 - `github`: GitHub wire adapter: app JWT, installation tokens, OAuth web flow,
@@ -150,18 +150,25 @@ for accounts created after startup; requests, events and workers share that owne
 registry and its shutdown lifetime; disabling or deleting an account stops its
 services and event streams. Replicas share no memory, so `pgstore` sends a
 `NOTIFY` in the transaction that ingests or deletes a context, disables or
-deletes an account, or queues an ingestion job; a rollback sends none. Each
-replica's dedicated listening session relays every commit, its own included,
-to that owner's subscribers, removes the account's services or wakes the worker.
+deletes an account, changes app settings, or queues an ingestion job; a
+rollback sends none. Each replica's dedicated listening session relays every
+commit, its own included, to that owner's subscribers, removes the account's
+services, reloads the admission settings snapshot or wakes the worker.
 Remote services therefore skip in-process publication
 (`contextservice.ExternalEvents`); local composition keeps it. Notifications
-are hints: after a lost session the listener reconnects with backoff and asks
-every active owner's clients to reload, and the worker keeps polling.
-Identity service owns credential and administration rules, including sign-in
-policy, admin roles and the last-admin guard; each entry point composes its
-audience (members for `diffx-server`, admins for the console) and the member
-sign-in policy from configuration, and transports own cookies, CSRF and route
-permissions. `diffx-server` serves no admin routes.
+are hints: after a lost session the listener reconnects with backoff, asks
+every active owner's clients to reload and reloads settings, and the worker
+keeps polling.
+Identity service owns credential, administration and admission rules,
+including sign-in policy, admin roles and the last-admin guard; each entry
+point composes its audience (members for `diffx-server`, admins for the
+console), and transports own cookies, CSRF and route permissions. Admission
+settings are database state, not configuration: `pgstore` owns the settings
+row, its notification and the in-transaction check (`FOR SHARE`) that account
+creation through open signup, password signup and password invite acceptance
+repeats; `remoteserver` loads a snapshot before serving and composes its
+reload task, keeping the last snapshot when a reload fails; the console reads
+and writes the row directly, uncached. `diffx-server` serves no admin routes.
 
 The frontend identity owner loads the explicit server mode before mounting review
 state. Distributed login and settings work without any observations. Account
@@ -275,7 +282,9 @@ expand/contract: each release must keep the previous release working against
 its schema, because replicas upgrade one at a time. A destructive change is
 split across two releases. A migration that cannot keep the previous release
 working raises `schema_compatibility.floor` to its own version, so older
-binaries refuse the database instead of corrupting it. The server requires
+binaries refuse the database instead of corrupting it; migration 10 raises it
+to 10 because it drops `account_invites.admin`, which the previous release
+reads, so that upgrade is not rolling. The server requires
 PostgreSQL 18, never resets its database, and keeps its tables in the `diffx`
 schema. Server state from earlier SQLite volumes is not imported; an upgraded
 server starts with an empty database.
@@ -337,7 +346,10 @@ personal CLI config. The binary defaults to loopback port 7980; the container
 supplies overridable env defaults for its listener. `DIFFX_SERVER_DATABASE_URL`
 selects the Postgres database holding all server state, credentials and the
 durable queue. It holds credentials, so it is read only from the environment,
-never a file or flag, and diagnostics never echo it.
+never a file or flag, and diagnostics never echo it. App admission lives in the
+database, not configuration: startup refuses the removed `DIFFX_SERVER_SIGNUP`
+and `DIFFX_SERVER_PASSWORD_SIGNIN` and file keys `signup` and
+`passwordSignIn`, naming the console setting that replaces each.
 `DIFFX_SERVER_AUTH_RATE_LIMIT` (default off) and `DIFFX_SERVER_CLIENT_IP_HEADER`
 are also environment only, because trusting a client IP header is a property of
 the deployment's ingress, not of a portable config file. `authhttp` owns the
@@ -351,8 +363,9 @@ environment only: its own listener (loopback 7970), the server's database URL,
 its origin, the app's origin for invite and member reset links, and its own
 Google client whose callback is on the console origin. It migrates through
 `pgstore` under the same advisory lock as the server, so either binary may start
-first. Account changes reach server replicas through the store's
-`diffx_account` notifications, not through any call between the binaries. The
+first. Account and admission settings changes reach server replicas through
+the store's `diffx_account` and `diffx_settings` notifications, not through any
+call between the binaries. The
 console has its own OpenAPI contract (`packages/console-api`, `/api/v1/*`) and
 app (`apps/console`); it shares UI primitives through `packages/ui`, never app
 code or the server contract.

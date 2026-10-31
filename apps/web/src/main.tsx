@@ -26,6 +26,7 @@ import {
   ResetPassword,
   SignIn,
   SignUp,
+  signupOpen,
 } from "./account.tsx";
 import { startPwa } from "./pwa.ts";
 import { syncPushDevice } from "./push.ts";
@@ -68,10 +69,9 @@ function ApplicationRoutes() {
   if (state.status !== "ready") return <IdentityStatus />;
   if (state.bootstrap.mode === "remote" && !state.bootstrap.user) {
     // Pages for a method the server turned off render sign-in.
-    if (path === "/signup" && state.bootstrap.signupEnabled) return <SignUp />;
+    if (path === "/signup" && signupOpen(state.bootstrap)) return <SignUp />;
     if (path === "/invite") return <InviteSignUp />;
-    if (path === "/reset-password" && state.bootstrap.passwordEnabled)
-      return <ResetPassword />;
+    if (path === "/reset-password") return <ResetPassword />;
     return <SignIn />;
   }
   if (path === "/settings" && state.bootstrap.mode === "remote")

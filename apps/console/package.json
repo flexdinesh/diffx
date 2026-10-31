@@ -6,7 +6,9 @@
   "scripts": {
     "build": "vite build --logLevel warn",
     "dev": "vite",
-    "test": "playwright test",
+    "test": "pnpm test:dom && pnpm test:browser",
+    "test:dom": "node --import tsx --import ./test/dom/setup.ts --test --test-reporter=dot test/dom/*.test.ts",
+    "test:browser": "playwright test",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
@@ -20,13 +22,17 @@
     "@playwright/test": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "@testcontainers/postgresql": "^12.2.1",
+    "@testing-library/react": "catalog:",
+    "@types/jsdom": "catalog:",
     "@types/node": "catalog:",
     "@types/pg": "^8.23.1",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "jsdom": "catalog:",
     "pg": "^8.23.1",
     "tailwindcss": "catalog:",
+    "tsx": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:"
   }

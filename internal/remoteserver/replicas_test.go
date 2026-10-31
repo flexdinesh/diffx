@@ -13,6 +13,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/collector"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/pgstore"
+	"github.com/flexdinesh/diffx/internal/serverapp"
 	"github.com/flexdinesh/diffx/internal/testsupport"
 	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 )
@@ -125,5 +126,73 @@ func TestReplicasShareEventsAndAccountRemoval(t *testing.T) {
 	replicaB.applications.mu.Unlock()
 	if cached {
 		t.Fatal("replica B still caches the disabled account")
+	}
+}
+
+// An admin's settings change reaches every replica's bootstrap through the
+// change feed, without a request touching the database.
+func TestReplicasReloadChangedSettings(t *testing.T) {
+	store := pgtest.Store(t)
+	handler, closeServices, err := Handler(t.Context(), store, Settings{}, fstest.MapFS{"index.html": {Data: []byte("app shell")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = closeServices() })
+	bootstrap := func() string {
+		return identityRequest(handler, "GET", "/api/v2/bootstrap", "", nil, "", "").Body.String()
+	}
+	if body := bootstrap(); !strings.Contains(body, `"signupEnabled":true,"passwordSignupEnabled":true`) {
+		t.Fatalf("default bootstrap: %s", body)
+	}
+	// Another process, the console, changes the stored settings.
+	if err := identityservice.New(store).PutSettings(t.Context(), "", identityservice.Settings{PasswordSignup: true}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for body := bootstrap(); !strings.Contains(body, `"signupEnabled":false,"passwordSignupEnabled":true`); body = bootstrap() {
+		if time.Now().After(deadline) {
+			t.Fatalf("settings not reloaded: %s", body)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// resyncFeed delivers one resync, as a reconnected listener does.
+type resyncFeed struct{}
+
+func (resyncFeed) Run(ctx context.Context, deliver func(pgstore.Notification)) error {
+	deliver(pgstore.Notification{Kind: pgstore.Resync})
+	<-ctx.Done()
+	return nil
+}
+
+// Changes committed while the listener was away arrive by the resync reload.
+func TestResyncReloadsMissedSettings(t *testing.T) {
+	store := pgtest.Store(t)
+	identity := testsupport.Identity(t, store)
+	testsupport.PutSettings(t, store, identityservice.Settings{})
+	ctx, cancel := context.WithCancel(t.Context())
+	applications := &registry{ctx: ctx, store: store, applications: make(map[string]application)}
+	wake, reload := make(chan struct{}, 1), make(chan struct{}, 1)
+	done := make(chan error, 2)
+	for _, task := range []serverapp.Task{replicate(resyncFeed{}, applications, wake, reload), reloadSettings(identity, reload)} {
+		go func() { done <- task(ctx) }()
+	}
+	t.Cleanup(func() {
+		cancel()
+		<-done
+		<-done
+	})
+	deadline := time.Now().Add(10 * time.Second)
+	for identity.Settings() != (identityservice.Settings{}) {
+		if time.Now().After(deadline) {
+			t.Fatalf("missed settings not reloaded: %+v", identity.Settings())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	select {
+	case <-wake:
+	default:
+		t.Fatal("resync did not wake the worker")
 	}
 }

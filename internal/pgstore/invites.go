@@ -29,7 +29,7 @@ func (store *Store) CreateInvite(ctx context.Context, invite identityservice.Inv
 		if err := queries.RevokePendingInvites(ctx, pgdb.RevokePendingInvitesParams{At: millisecond(invite.CreatedAt), Email: invite.Email}); err != nil {
 			return err
 		}
-		return queries.InsertInvite(ctx, pgdb.InsertInviteParams{ID: invite.ID, TokenHash: tokenHash, Email: invite.Email, Admin: invite.Admin, CreatedAt: millisecond(invite.CreatedAt), ExpiresAt: millisecond(invite.ExpiresAt)})
+		return queries.InsertInvite(ctx, pgdb.InsertInviteParams{ID: invite.ID, TokenHash: tokenHash, Email: invite.Email, CreatedAt: millisecond(invite.CreatedAt), ExpiresAt: millisecond(invite.ExpiresAt)})
 	})
 }
 
@@ -43,7 +43,7 @@ func optionalMillisecond(at *time.Time) *time.Time {
 
 func inviteFromRow(row pgdb.InviteRow) identityservice.Invite {
 	return identityservice.Invite{
-		ID: row.ID, Email: row.Email, Admin: row.Admin, CreatedAt: millisecond(row.CreatedAt), ExpiresAt: millisecond(row.ExpiresAt),
+		ID: row.ID, Email: row.Email, CreatedAt: millisecond(row.CreatedAt), ExpiresAt: millisecond(row.ExpiresAt),
 		UsedAt: optionalMillisecond(row.UsedAt), UsedBy: row.UsedBy, RevokedAt: optionalMillisecond(row.RevokedAt),
 	}
 }
@@ -105,17 +105,12 @@ func (store *Store) AcceptInvite(ctx context.Context, inviteID string, account i
 		if err := insertAccount(ctx, queries, account, "", now); err != nil {
 			return err
 		}
-		admin, err := queries.UseInvite(ctx, pgdb.UseInviteParams{Now: now, UserID: account.ID, ID: inviteID, Sub: identity.Subject})
-		if errors.Is(err, pgx.ErrNoRows) {
-			return identityservice.ErrNotFound
-		}
+		used, err := queries.UseInvite(ctx, pgdb.UseInviteParams{Now: now, UserID: account.ID, ID: inviteID, Sub: identity.Subject})
 		if err != nil {
 			return err
 		}
-		if admin {
-			if err := queries.GrantAdmin(ctx, account.ID); err != nil {
-				return err
-			}
+		if used != 1 {
+			return identityservice.ErrNotFound
 		}
 		// A concurrent acceptance linked the subject first.
 		count, err := queries.InsertGoogleIdentity(ctx, pgdb.InsertGoogleIdentityParams{Sub: identity.Subject, UserID: account.ID, Email: identity.Email, UpdatedAt: now})
@@ -131,21 +126,21 @@ func (store *Store) AcceptInvite(ctx context.Context, inviteID string, account i
 
 // AcceptPasswordInvite uses the pending invite in the password account's
 // transaction, so two acceptances create one account.
-func (store *Store) AcceptPasswordInvite(ctx context.Context, inviteID string, account identityservice.Account, passwordHash string, now time.Time) error {
+func (store *Store) AcceptPasswordInvite(ctx context.Context, inviteID string, account identityservice.Account, passwordHash string, now time.Time, required identityservice.Settings) error {
 	now = millisecond(now)
 	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
+		if err := requireSettings(ctx, queries, required); err != nil {
+			return err
+		}
 		if err := insertAccount(ctx, queries, account, passwordHash, now); err != nil {
 			return err
 		}
-		admin, err := queries.UsePasswordInvite(ctx, pgdb.UsePasswordInviteParams{Now: now, UserID: account.ID, ID: inviteID})
-		if errors.Is(err, pgx.ErrNoRows) {
-			return identityservice.ErrNotFound
-		}
+		used, err := queries.UsePasswordInvite(ctx, pgdb.UsePasswordInviteParams{Now: now, UserID: account.ID, ID: inviteID})
 		if err != nil {
 			return err
 		}
-		if admin {
-			return queries.GrantAdmin(ctx, account.ID)
+		if used != 1 {
+			return identityservice.ErrNotFound
 		}
 		return nil
 	})
@@ -153,21 +148,28 @@ func (store *Store) AcceptPasswordInvite(ctx context.Context, inviteID string, a
 
 // CreateGoogleAccount commits an account and its Google identity without an
 // invite; a subject linked concurrently is ErrNotFound.
-func (store *Store) CreateGoogleAccount(ctx context.Context, account identityservice.Account, identity google.Identity, now time.Time) error {
+func (store *Store) CreateGoogleAccount(ctx context.Context, account identityservice.Account, identity google.Identity, now time.Time, required identityservice.Settings) error {
 	now = millisecond(now)
 	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
-		if err := insertAccount(ctx, queries, account, "", now); err != nil {
+		if err := requireSettings(ctx, queries, required); err != nil {
 			return err
 		}
-		count, err := queries.InsertGoogleIdentity(ctx, pgdb.InsertGoogleIdentityParams{Sub: identity.Subject, UserID: account.ID, Email: identity.Email, UpdatedAt: now})
-		if err != nil {
-			return err
-		}
-		if count != 1 {
-			return identityservice.ErrNotFound
-		}
-		return nil
+		return insertGoogleAccount(ctx, queries, account, identity, now)
 	})
+}
+
+func insertGoogleAccount(ctx context.Context, queries *pgdb.Queries, account identityservice.Account, identity google.Identity, now time.Time) error {
+	if err := insertAccount(ctx, queries, account, "", now); err != nil {
+		return err
+	}
+	count, err := queries.InsertGoogleIdentity(ctx, pgdb.InsertGoogleIdentityParams{Sub: identity.Subject, UserID: account.ID, Email: identity.Email, UpdatedAt: now})
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return identityservice.ErrNotFound
+	}
+	return nil
 }
 
 func (store *Store) GoogleAccount(ctx context.Context, identity google.Identity, now time.Time) (identityservice.Account, bool, error) {
@@ -196,13 +198,16 @@ func (store *Store) PutGoogleFlow(ctx context.Context, stateHash string, flow id
 	if err := store.queries.PruneGoogleFlows(ctx, millisecond(time.Now())); err != nil {
 		return err
 	}
-	var invite *string
+	var invite, setup *string
 	if flow.InviteID != "" {
 		invite = &flow.InviteID
 	}
+	if flow.SetupHash != "" {
+		setup = &flow.SetupHash
+	}
 	return store.queries.InsertGoogleFlow(ctx, pgdb.InsertGoogleFlowParams{
 		StateHash: stateHash, BindingHash: flow.BindingHash, Nonce: flow.Nonce, PkceVerifier: flow.Verifier,
-		InviteID: invite, ExpiresAt: millisecond(flow.ExpiresAt),
+		InviteID: invite, SetupHash: setup, ExpiresAt: millisecond(flow.ExpiresAt),
 	})
 }
 
@@ -218,6 +223,9 @@ func (store *Store) TakeGoogleFlow(ctx context.Context, stateHash string, now ti
 	flow := identityservice.GoogleFlow{BindingHash: row.BindingHash, Nonce: row.Nonce, Verifier: row.PkceVerifier, ExpiresAt: millisecond(row.ExpiresAt)}
 	if row.InviteID != nil {
 		flow.InviteID = *row.InviteID
+	}
+	if row.SetupHash != nil {
+		flow.SetupHash = *row.SetupHash
 	}
 	return flow, nil
 }
