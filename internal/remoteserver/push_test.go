@@ -34,6 +34,11 @@ func newFakePushService(t *testing.T) *fakePushService {
 	t.Helper()
 	service := &fakePushService{received: make(chan []byte, 16)}
 	service.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Deliveries are POSTs; local tools that probe new ports are not.
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
 		body, _ := io.ReadAll(r.Body)
 		service.mu.Lock()
 		status := http.StatusCreated
