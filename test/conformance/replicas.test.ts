@@ -393,6 +393,11 @@ test("Replicas sharing one database act as one server", async (t) => {
       // A slow push service keeps each delivery in flight across the other
       // replica's polls, so both workers contend for every notification.
       const pushService = createServer((request, response) => {
+        // Deliveries are POSTs; local tools that probe new ports are not.
+        if (request.method !== "POST") {
+          response.writeHead(404).end();
+          return;
+        }
         request.resume();
         request.on("end", () => {
           const path = request.url ?? "";

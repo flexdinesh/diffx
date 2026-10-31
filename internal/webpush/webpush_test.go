@@ -27,6 +27,11 @@ func endpoint(t *testing.T, status int, header map[string]string) (*httptest.Ser
 	t.Helper()
 	requests := make(chan captured, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Deliveries are POSTs; local tools that probe new ports are not.
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
 		body, _ := io.ReadAll(r.Body)
 		requests <- captured{r.Header.Clone(), body}
 		for name, value := range header {
