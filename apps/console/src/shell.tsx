@@ -2,11 +2,12 @@ import type { ReactNode } from "react";
 import { LinkButton } from "@diffx/ui/components/link-button";
 import { navigate, useAdmin } from "./session.tsx";
 
-export type Section = "accounts" | "invites" | "admin";
+export type Section = "accounts" | "invites" | "settings" | "admin";
 
 export const sections: { id: Section; path: string; label: string }[] = [
   { id: "accounts", path: "/accounts", label: "Accounts" },
   { id: "invites", path: "/invites", label: "Invites" },
+  { id: "settings", path: "/settings", label: "Settings" },
   { id: "admin", path: "/admin", label: "Admin" },
 ];
 

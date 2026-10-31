@@ -493,24 +493,43 @@ Google (it has a Google identity) or password. Admin is a role on a regular
 account: admins use the app like any user and also sign in to the console
 (`diffx-console`, a separate binary and origin over the same database), which
 owns first-admin setup and account administration. `diffx-server` serves no
-admin routes or UI.
+admin routes or UI. Admins come only from first-admin setup or promotion in the
+console. Setup creates a password account or, with the console's own Google
+client, a Google account whose email Google verified, deriving the username
+from it; if that Google account already has an app account, setup makes it the
+admin instead. The setup secret is consumed once under the admin lock.
 
-Two settings shape the app's sign-in. `DIFFX_SERVER_SIGNUP` lets anyone create
-an account without an invite, by any enabled method. `DIFFX_SERVER_PASSWORD_SIGNIN`
-makes password an app sign-in method. Both default to true; production sets
-both false (invite-only Google). With password off, the app refuses every flow
-for password accounts, admins included: login, signup, invite acceptance by
-password, reset links, password change, browser sessions and API tokens. The
-server refuses to start without a method: Google configuration or password.
-The console admits admins by password regardless of this setting. A refused
-login is indistinguishable from a wrong password.
+Two admission settings, stored in Postgres (`app_settings`, one row), shape who
+joins the app; only admins change them, in the console's Settings page.
+`signup` lets anyone create an account without an invite; off, the app is
+invite-only. `passwordSignup` lets new accounts choose a password, by signup
+or invite acceptance. Password signup needs both. Both default on, on every
+database including upgraded ones; production admins turn them off after deploy.
+Existing password accounts are grandfathered: whatever `passwordSignup` says,
+they sign in to the app, use sessions and API tokens, change their password and
+complete reset links, so the app's password login and reset routes are always
+present. The removed `DIFFX_SERVER_SIGNUP` and `DIFFX_SERVER_PASSWORD_SIGNIN`
+variables and config keys `signup` and `passwordSignIn` stop startup, naming
+the console setting that replaces each. The app's login offers Google first;
+it shows the password form while `passwordSignup` is on, otherwise behind a
+"Sign in with password" link. The console admits admins by password regardless
+of these settings. A refused login is indistinguishable from a wrong password.
 
-Invites come from the console. An invite names an email and whether it grants
-admin; the link carries a hashed one-time secret in its fragment, is shown
-once, expires after 48 hours and replaces that email's pending invite.
-Accepting with Google requires a verified email equal to the invite's and
-derives the username from it; accepting with a password (when enabled) takes a
-username and password. Either way the invite is used and the account created in
+Each replica loads the settings before serving and reloads them on the
+`diffx_settings` notification, sent in the writing transaction, and on listener
+resync; a failed reload keeps the last snapshot. Bootstrap and the UI read the
+snapshot. Open signup, password signup and password invite acceptance re-check
+the setting under a shared row lock in the transaction that creates the
+account, so closing admission takes effect immediately. A replica that loads
+settings with Google unconfigured and `passwordSignup` off logs a warning: no
+one new can join.
+
+Invites come from the console and always create members. The link carries a
+hashed one-time secret in its fragment, is shown once, expires after 48 hours
+and replaces that email's pending invite. Accepting with Google requires a
+verified email equal to the invite's and derives the username from it;
+accepting with a password (while `passwordSignup` is on) takes a username and
+password. Either way the invite is used and the account created in
 one transaction. Open signup with Google requires a verified email. Google
 accounts are identified by their stable subject, not email: a changed email
 keeps the account and updates its recorded email. Google sign-in uses the
@@ -523,7 +542,7 @@ Password reset links come from the console or `diffx-console user
 reset-password`. A link carries a hashed one-time secret in its fragment,
 expires after 24 hours and replaces the account's pending link. Completing it
 sets the password and revokes browser sessions, not API tokens, in one
-transaction; the app completes member links only while password sign-in is on.
+transaction; the app completes member links.
 
 Admins disable, enable or delete accounts other than their own, and promote or
 demote them. The store refuses, atomically under an advisory lock, any change

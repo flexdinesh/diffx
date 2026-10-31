@@ -1,6 +1,7 @@
 package consoleserver
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -76,7 +77,7 @@ func login(t *testing.T, handler http.Handler, username string) (*http.Cookie, s
 // passwordMember signs up a password member, as the app does.
 func passwordMember(t *testing.T, store *pgstore.Store, username string) identityservice.Account {
 	t.Helper()
-	session, err := identityservice.New(store, identityservice.WithMembers(identityservice.MemberPolicy{Signup: true, Password: true})).SignUp(t.Context(), username, testPassword)
+	session, err := testsupport.Identity(t, store).SignUp(t.Context(), username, testPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,13 +212,14 @@ func TestInvitesLinkToTheApp(t *testing.T) {
 	testsupport.RemoteAdmin(t, store, "root", testPassword)
 	testsupport.RemoteAccount(t, store, "taken")
 	root, csrf := login(t, handler, "root")
-	if w := request(handler, "POST", "/api/v1/invites", `{"email":"new@example.com"}`, root, csrf); w.Code != 400 {
-		t.Fatalf("missing role: %d", w.Code)
+	// Invites are member-only; admins come from setup or promotion.
+	if w := request(handler, "POST", "/api/v1/invites", `{"email":"new@example.com","admin":true}`, root, csrf); w.Code != 400 {
+		t.Fatalf("admin invite: %d", w.Code)
 	}
-	if w := request(handler, "POST", "/api/v1/invites", `{"email":"taken@example.com","admin":false}`, root, csrf); w.Code != 409 {
+	if w := request(handler, "POST", "/api/v1/invites", `{"email":"taken@example.com"}`, root, csrf); w.Code != 409 {
 		t.Fatalf("taken email: %d", w.Code)
 	}
-	w := request(handler, "POST", "/api/v1/invites", `{"email":"new@example.com","admin":true}`, root, csrf)
+	w := request(handler, "POST", "/api/v1/invites", `{"email":"new@example.com"}`, root, csrf)
 	if w.Code != 201 {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
@@ -225,7 +227,7 @@ func TestInvitesLinkToTheApp(t *testing.T) {
 		Invite inviteJSON
 		URL    string
 	}](t, w)
-	if !strings.HasPrefix(created.URL, "https://diffx.example.com/invite#t=") || !created.Invite.Admin || created.Invite.Status != "pending" {
+	if !strings.HasPrefix(created.URL, "https://diffx.example.com/invite#t=") || created.Invite.Status != "pending" || strings.Contains(w.Body.String(), "admin") {
 		t.Fatalf("invite: %+v", created)
 	}
 	listed := decode[struct{ Invites []inviteJSON }](t, request(handler, "GET", "/api/v1/invites", "", root, ""))
@@ -238,6 +240,72 @@ func TestInvitesLinkToTheApp(t *testing.T) {
 	if w := request(handler, "DELETE", "/api/v1/invites/"+created.Invite.ID, "", root, csrf); w.Code != 404 {
 		t.Fatalf("revoke again: %d", w.Code)
 	}
+}
+
+func TestSettingsAreStoredAndAnnounced(t *testing.T) {
+	store, handler := consoleHandler(t, testSettings)
+	testsupport.RemoteAdmin(t, store, "root", testPassword)
+	passwordMember(t, store, "member")
+	if w := request(handler, "GET", "/api/v1/settings", "", nil, ""); w.Code != 401 {
+		t.Fatalf("anonymous settings: %d", w.Code)
+	}
+	root, csrf := login(t, handler, "root")
+	if got := decode[settingsJSON](t, request(handler, "GET", "/api/v1/settings", "", root, "")); got != (settingsJSON{Signup: true, PasswordSignup: true}) {
+		t.Fatalf("default settings: %+v", got)
+	}
+	if w := request(handler, "PUT", "/api/v1/settings", `{"signup":false,"passwordSignup":false}`, root, ""); w.Code != 403 {
+		t.Fatalf("without CSRF: %d", w.Code)
+	}
+	if w := request(handler, "PUT", "/api/v1/settings", `{"signup":false}`, root, csrf); w.Code != 400 {
+		t.Fatalf("partial settings: %d", w.Code)
+	}
+	listener, err := store.Listen(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Run closes the listener when its context ends; Close must not race it.
+	listening, stop := context.WithCancel(context.Background())
+	stopped := make(chan struct{})
+	t.Cleanup(func() {
+		stop()
+		<-stopped
+	})
+	changes := make(chan pgstore.Notification, 8)
+	go func() {
+		defer close(stopped)
+		_ = listener.Run(listening, func(change pgstore.Notification) { changes <- change })
+	}()
+	w := request(handler, "PUT", "/api/v1/settings", `{"signup":false,"passwordSignup":true}`, root, csrf)
+	if got := decode[settingsJSON](t, w); w.Code != 200 || got != (settingsJSON{Signup: false, PasswordSignup: true}) {
+		t.Fatalf("put settings: %d %+v", w.Code, got)
+	}
+	if got := decode[settingsJSON](t, request(handler, "GET", "/api/v1/settings", "", root, "")); got != (settingsJSON{Signup: false, PasswordSignup: true}) {
+		t.Fatalf("stored settings: %+v", got)
+	}
+	timeout := time.After(10 * time.Second)
+	for announced := false; !announced; {
+		select {
+		case change := <-changes:
+			announced = change.Kind == pgstore.SettingsChanged
+		case <-timeout:
+			t.Fatal("settings change not announced")
+		}
+	}
+	// A member cannot change settings: the console admits only admins.
+	member, _ := signedInMember(t, store)
+	if w := request(handler, "GET", "/api/v1/settings", "", member, ""); w.Code != 401 {
+		t.Fatalf("member settings: %d", w.Code)
+	}
+}
+
+// signedInMember signs a password member in to the app and returns its session cookie.
+func signedInMember(t *testing.T, store *pgstore.Store) (*http.Cookie, string) {
+	t.Helper()
+	session, err := testsupport.Identity(t, store).Login(t.Context(), identityservice.AudienceMembers, "member", testPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &http.Cookie{Name: authhttp.SessionCookie, Value: session.Secret}, session.CSRFToken
 }
 
 func TestResetLinksOpenWhereTheAccountSignsIn(t *testing.T) {
@@ -374,7 +442,13 @@ func newFakeGoogle(t *testing.T) *fakeGoogle {
 // signIn runs the console's Google flow for subject and returns the callback response.
 func (fake *fakeGoogle) signIn(t *testing.T, handler http.Handler, code, subject, email string) *httptest.ResponseRecorder {
 	t.Helper()
-	w := request(handler, "POST", "/api/v1/auth/google", "{}", nil, "")
+	return fake.flow(t, handler, "/api/v1/auth/google", "{}", code, subject, email, true)
+}
+
+// flow starts Google at path with body and completes the callback with claims.
+func (fake *fakeGoogle) flow(t *testing.T, handler http.Handler, path, body, code, subject, email string, verified bool) *httptest.ResponseRecorder {
+	t.Helper()
+	w := request(handler, "POST", path, body, nil, "")
 	if w.Code != 200 {
 		t.Fatalf("start: %d %s", w.Code, w.Body.String())
 	}
@@ -388,7 +462,7 @@ func (fake *fakeGoogle) signIn(t *testing.T, handler http.Handler, code, subject
 	}
 	fake.mu.Lock()
 	fake.claims[code] = map[string]any{"iss": "https://accounts.google.com", "aud": "google-client", "exp": time.Now().Add(time.Hour).Unix(),
-		"nonce": query.Get("nonce"), "sub": subject, "email": email, "email_verified": true}
+		"nonce": query.Get("nonce"), "sub": subject, "email": email, "email_verified": verified}
 	fake.mu.Unlock()
 	var flow *http.Cookie
 	for _, cookie := range w.Result().Cookies() {
@@ -446,4 +520,98 @@ func TestGoogleSignsInExistingAdminsOnly(t *testing.T) {
 	if result.Admin == nil || result.Admin.Method != identityservice.MethodGoogle || result.Admin.Email == nil || *result.Admin.Email != "member@example.com" {
 		t.Fatalf("Google admin: %+v", result)
 	}
+}
+
+func TestGoogleSetupCreatesOrPromotesTheFirstAdmin(t *testing.T) {
+	fake := newFakeGoogle(t)
+	settings := testSettings
+	settings.Google = &GoogleSettings{ClientID: "google-client", ClientSecret: "google-secret", authorizeURL: fake.server.URL + "/auth", tokenURL: fake.server.URL + "/token"}
+	setup := func(t *testing.T, store *pgstore.Store) string {
+		t.Helper()
+		secret, err := identityservice.New(store).PrepareSetup(t.Context())
+		if err != nil || secret == "" {
+			t.Fatalf("prepare: %v", err)
+		}
+		return secret
+	}
+	body := func(secret string) string { return `{"token":"` + secret + `"}` }
+	admins := func(t *testing.T, store *pgstore.Store) []string {
+		t.Helper()
+		accounts, err := identityservice.New(store).AccountSummaries(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, account := range accounts {
+			if account.Admin {
+				names = append(names, account.Username+":"+string(account.Method))
+			}
+		}
+		return names
+	}
+
+	t.Run("new account", func(t *testing.T) {
+		store, handler := consoleHandler(t, settings)
+		secret := setup(t, store)
+		if w := request(handler, "POST", "/api/v1/setup/google", body("wrong"), nil, ""); w.Code != 404 {
+			t.Fatalf("wrong secret: %d", w.Code)
+		}
+		// Google must verify the email that names the admin.
+		if w := fake.flow(t, handler, "/api/v1/setup/google", body(secret), "unverified", "subject-root", "root@example.com", false); w.Header().Get("Location") != "/?signin=failed" {
+			t.Fatalf("unverified: %s", w.Header().Get("Location"))
+		}
+		w := fake.flow(t, handler, "/api/v1/setup/google", body(secret), "verified", "subject-root", "Root@Example.com", true)
+		if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/" {
+			t.Fatalf("setup: %d %s", w.Code, w.Header().Get("Location"))
+		}
+		if got := admins(t, store); len(got) != 1 || got[0] != "root:google" {
+			t.Fatalf("admins: %v", got)
+		}
+		if w := request(handler, "POST", "/api/v1/setup/google", body(secret), nil, ""); w.Code != 404 {
+			t.Fatalf("used secret: %d", w.Code)
+		}
+	})
+
+	t.Run("existing account", func(t *testing.T) {
+		store, handler := consoleHandler(t, settings)
+		// Open signup lets a member join before setup; setup promotes them.
+		member := testsupport.RemoteAccount(t, store, "member")
+		secret := setup(t, store)
+		w := fake.flow(t, handler, "/api/v1/setup/google", body(secret), "member", "subject-"+member.ID, "member@example.com", true)
+		if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/" {
+			t.Fatalf("setup: %d %s", w.Code, w.Header().Get("Location"))
+		}
+		if got := admins(t, store); len(got) != 1 || got[0] != "member:google" {
+			t.Fatalf("admins: %v", got)
+		}
+		if again := fake.flow(t, handler, "/api/v1/auth/google", "{}", "again", "subject-"+member.ID, "member@example.com", true); again.Header().Get("Location") != "/" {
+			t.Fatalf("admin sign-in: %s", again.Header().Get("Location"))
+		}
+	})
+
+	t.Run("disabled account", func(t *testing.T) {
+		store, handler := consoleHandler(t, settings)
+		member := testsupport.RemoteAccount(t, store, "member")
+		if err := store.SetAccountDisabled(t.Context(), member.ID, true, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		secret := setup(t, store)
+		if w := fake.flow(t, handler, "/api/v1/setup/google", body(secret), "disabled", "subject-"+member.ID, "member@example.com", true); w.Header().Get("Location") != "/?signin=failed" {
+			t.Fatalf("disabled: %s", w.Header().Get("Location"))
+		}
+		if got := admins(t, store); len(got) != 0 {
+			t.Fatalf("admins: %v", got)
+		}
+		// The refusal leaves the secret for another attempt.
+		if w := request(handler, "POST", "/api/v1/setup/google", body(secret), nil, ""); w.Code != 200 {
+			t.Fatalf("secret after refusal: %d", w.Code)
+		}
+	})
+
+	t.Run("without Google", func(t *testing.T) {
+		store, handler := consoleHandler(t, testSettings)
+		if w := request(handler, "POST", "/api/v1/setup/google", body(setup(t, store)), nil, ""); w.Code != 404 {
+			t.Fatalf("setup Google without configuration: %d", w.Code)
+		}
+	})
 }

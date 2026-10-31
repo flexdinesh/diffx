@@ -40,17 +40,17 @@ type accountJSON struct {
 	Method   identityservice.Method `json:"method"`
 }
 type bootstrapJSON struct {
-	Mode            string       `json:"mode"`
-	GoogleEnabled   bool         `json:"googleEnabled"`
-	SignupEnabled   bool         `json:"signupEnabled"`
-	PasswordEnabled bool         `json:"passwordEnabled"`
-	User            *accountJSON `json:"user"`
-	CSRFToken       *string      `json:"csrfToken"`
+	Mode                  string       `json:"mode"`
+	GoogleEnabled         bool         `json:"googleEnabled"`
+	SignupEnabled         bool         `json:"signupEnabled"`
+	PasswordSignupEnabled bool         `json:"passwordSignupEnabled"`
+	User                  *accountJSON `json:"user"`
+	CSRFToken             *string      `json:"csrfToken"`
 }
 
 func (remote *transport) bootstrap(w http.ResponseWriter, r *http.Request, p principal) {
-	members := remote.identity.Members()
-	result := bootstrapJSON{Mode: "remote", GoogleEnabled: remote.identity.GoogleEnabled(), SignupEnabled: members.Signup, PasswordEnabled: members.Password}
+	settings := remote.identity.Settings()
+	result := bootstrapJSON{Mode: "remote", GoogleEnabled: remote.identity.GoogleEnabled(), SignupEnabled: settings.Signup, PasswordSignupEnabled: settings.PasswordSignup}
 	if p.session != nil {
 		email, err := remote.identity.GoogleEmail(r.Context(), p.account.ID)
 		if err != nil {
@@ -287,8 +287,9 @@ func assetType(extension string) string {
 	return mime.TypeByExtension(extension)
 }
 
-// auth serves the credential forms in authForms. Forms for a method the
-// deployment turned off answer 404, like unknown routes.
+// auth serves the credential forms in authForms. Signup forms the settings
+// turned off answer 404, like unknown routes; password sign-in and reset links
+// always serve existing password accounts.
 func (remote *transport) auth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		authhttp.Problem(w, 405, "Method not allowed")
@@ -330,10 +331,6 @@ func (remote *transport) auth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	default:
-		if !remote.identity.Members().Password {
-			http.NotFound(w, r)
-			return
-		}
 		session, err = remote.identity.Login(r.Context(), identityservice.AudienceMembers, input.Username, input.Password)
 	}
 	if err != nil {
@@ -347,10 +344,6 @@ func (remote *transport) auth(w http.ResponseWriter, r *http.Request) {
 // passwordReset resolves and completes password reset links. Secrets come in
 // the body so they never appear in request logs.
 func (remote *transport) passwordReset(w http.ResponseWriter, r *http.Request) {
-	if !remote.identity.Members().Password {
-		http.NotFound(w, r)
-		return
-	}
 	var input struct {
 		Token    string `json:"token"`
 		Password string `json:"password,omitempty"`

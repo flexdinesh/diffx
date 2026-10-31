@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/pgstore"
 	"github.com/flexdinesh/diffx/internal/testsupport"
 	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
@@ -38,7 +37,7 @@ func TestResetPasswordPrintsALinkForTheAccountsSurface(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	testsupport.RemoteAdmin(t, store, "root", "console-password-000001")
-	if _, err := identityservice.New(store, identityservice.WithMembers(identityservice.MemberPolicy{Signup: true, Password: true})).SignUp(t.Context(), "member", "console-password-000001"); err != nil {
+	if _, err := testsupport.Identity(t, store).SignUp(t.Context(), "member", "console-password-000001"); err != nil {
 		t.Fatal(err)
 	}
 	testsupport.RemoteAccount(t, store, "google")

@@ -37,9 +37,28 @@ func RemoteAdmin(t testing.TB, store identityservice.Store, username, password s
 	return session
 }
 
+// Identity composes the identity service with the stored settings loaded, as
+// a server replica does before serving.
+func Identity(t testing.TB, store identityservice.Store, options ...identityservice.Option) *identityservice.Service {
+	t.Helper()
+	identity := identityservice.New(store, options...)
+	if _, err := identity.LoadSettings(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	return identity
+}
+
+// PutSettings stores app settings, as an admin does in the console.
+func PutSettings(t testing.TB, store identityservice.Store, settings identityservice.Settings) {
+	t.Helper()
+	if err := store.PutAppSettings(t.Context(), settings, "", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // AccountStore creates accounts directly; server storage implements it.
 type AccountStore interface {
-	CreateGoogleAccount(ctx context.Context, account identityservice.Account, identity google.Identity, now time.Time) error
+	CreateGoogleAccount(ctx context.Context, account identityservice.Account, identity google.Identity, now time.Time, required identityservice.Settings) error
 }
 
 // RemoteAccount creates a Google member account, as an accepted invite does.
@@ -47,7 +66,7 @@ func RemoteAccount(t testing.TB, store AccountStore, username string) identityse
 	t.Helper()
 	account := identityservice.Account{ID: secret(t), Username: username, Method: identityservice.MethodGoogle}
 	identity := google.Identity{Subject: "subject-" + account.ID, Email: username + "@example.com", EmailVerified: true}
-	if err := store.CreateGoogleAccount(t.Context(), account, identity, time.Now()); err != nil {
+	if err := store.CreateGoogleAccount(t.Context(), account, identity, time.Now(), identityservice.Settings{}); err != nil {
 		t.Fatal(err)
 	}
 	return account

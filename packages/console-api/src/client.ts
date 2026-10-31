@@ -14,6 +14,7 @@ export type ConsoleBootstrap = components["schemas"]["Bootstrap"];
 export type ConsoleAdmin = components["schemas"]["Admin"];
 export type ConsoleAccount = components["schemas"]["Account"];
 export type ConsoleInvite = components["schemas"]["Invite"];
+export type ConsoleSettings = components["schemas"]["Settings"];
 export type ConsoleMethod = components["schemas"]["Method"];
 
 /** The problem detail of a failed request, or fallback. */

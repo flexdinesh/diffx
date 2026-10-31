@@ -1,0 +1,73 @@
+import assert from "node:assert/strict";
+import { afterEach, test } from "node:test";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import type { ConsoleBootstrap } from "@diffx/console-api";
+import { createElement } from "react";
+import { Setup } from "../../src/auth.tsx";
+import { renderPage, serve } from "./session.ts";
+import { json, takeNavigations } from "./setup.ts";
+
+afterEach(() => {
+  cleanup();
+  window.history.replaceState(null, "", "/");
+  takeNavigations();
+});
+
+const setupRequired: ConsoleBootstrap = {
+  setupRequired: true,
+  googleEnabled: false,
+  admin: null,
+  csrfToken: null,
+};
+
+function openSetupLink() {
+  window.history.replaceState(null, "", "/setup#t=setup-secret");
+}
+
+test("setup offers Google only when the console configures it", async () => {
+  serve(setupRequired, (request) => {
+    throw new Error(`Unexpected request: ${request.url}`);
+  });
+  openSetupLink();
+  renderPage(createElement(Setup));
+  await screen.findByRole("button", { name: "Create admin" });
+  assert.equal(
+    screen.queryByRole("button", { name: "Continue with Google" }),
+    null,
+  );
+});
+
+test("Google setup posts the link's secret and leaves for Google", async () => {
+  const posted: { path: string; body: unknown }[] = [];
+  serve({ ...setupRequired, googleEnabled: true }, async (request) => {
+    posted.push({
+      path: new URL(request.url).pathname,
+      body: await request.json(),
+    });
+    return json({ authorizeUrl: "https://accounts.google.test/authorize" });
+  });
+  openSetupLink();
+  renderPage(createElement(Setup));
+  // The password form stays beside Google.
+  await screen.findByRole("button", { name: "Create admin" });
+  fireEvent.click(screen.getByRole("button", { name: "Continue with Google" }));
+  await waitFor(() => assert.equal(takeNavigations(), 1));
+  assert.deepEqual(posted, [
+    { path: "/api/v1/setup/google", body: { token: "setup-secret" } },
+  ]);
+  // The secret never stays in the address bar.
+  assert.equal(window.location.hash, "");
+});
+
+test("an invalid setup link reports it instead of leaving", async () => {
+  serve({ ...setupRequired, googleEnabled: true }, () =>
+    json({ title: "Not Found", status: 404, detail: "not found" }, 404),
+  );
+  openSetupLink();
+  renderPage(createElement(Setup));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Continue with Google" }),
+  );
+  await screen.findByText(/This setup link is invalid or expired/);
+  assert.equal(takeNavigations(), 0);
+});

@@ -23,6 +23,12 @@ SELECT EXISTS (SELECT 1 FROM admin_account);
 DELETE FROM admin_setup
 WHERE token_hash = @token_hash AND expires_at > @now AND NOT EXISTS (SELECT 1 FROM admin_account);
 
+-- name: PendingAdminSetup :one
+SELECT EXISTS (
+  SELECT 1 FROM admin_setup
+  WHERE token_hash = @token_hash AND expires_at > @now AND NOT EXISTS (SELECT 1 FROM admin_account)
+);
+
 -- name: InsertAdmin :exec
 INSERT INTO admin_account(user_id) VALUES ($1);
 

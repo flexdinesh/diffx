@@ -30,7 +30,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Distributed only, when password sign-in is enabled (otherwise 404). Password account sign-in; same-origin JSON request creating a browser session. Google accounts never sign in with a password, and any refusal is the same 401. */
+    /** @description Distributed only. Password account sign-in; same-origin JSON request creating a browser session. Password accounts sign in whatever the password signup setting. Google accounts never sign in with a password, and any refusal is the same 401. */
     post: operations["login"];
     delete?: never;
     options?: never;
@@ -47,7 +47,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Distributed only, when both sign-up and password sign-in are enabled (otherwise 404). Create a password account without an invite and sign it in. */
+    /** @description Distributed only, when both signup and password signup are on (otherwise 404). Create a password account without an invite and sign it in. */
     post: operations["signUp"];
     delete?: never;
     options?: never;
@@ -132,7 +132,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Distributed only, when password sign-in is enabled (otherwise 404). Accept a pending invite by choosing a username and password, and sign in. Holding the link is the proof; the invited email is not verified. The invite is used once. */
+    /** @description Distributed only, when password signup is on (otherwise 404). Accept a pending invite by choosing a username and password, and sign in. Holding the link is the proof; the invited email is not verified. The invite is used once. */
     post: operations["acceptInviteWithPassword"];
     delete?: never;
     options?: never;
@@ -149,7 +149,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Distributed only, when password sign-in is enabled (otherwise 404). Resolve a pending password reset from its link's `#t=` secret, issued from the console. The secret travels in the body so it stays out of request logs. */
+    /** @description Distributed only. Resolve a pending password reset from its link's `#t=` secret, issued from the console. The secret travels in the body so it stays out of request logs. */
     post: operations["lookupPasswordReset"];
     delete?: never;
     options?: never;
@@ -166,7 +166,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Distributed only, when password sign-in is enabled (otherwise 404). Set a new password from a reset link, which expires 24 hours after it was issued and works once. Revokes the account's browser sessions; API tokens are unaffected. */
+    /** @description Distributed only. Set a new password from a reset link, which expires 24 hours after it was issued and works once. Revokes the account's browser sessions; API tokens are unaffected. */
     post: operations["completePasswordReset"];
     delete?: never;
     options?: never;
@@ -966,10 +966,10 @@ export interface components {
           mode: "remote";
           /** @description Whether people can sign in with Google. */
           googleEnabled: boolean;
-          /** @description Whether people can create accounts without an invite, with any enabled method. */
+          /** @description Whether people can create accounts without an invite. Admins set it in the console; invites work either way. */
           signupEnabled: boolean;
-          /** @description Whether password accounts can sign in, sign up, accept invites and reset passwords. */
-          passwordEnabled: boolean;
+          /** @description Whether new accounts can choose a password, by signup (with signupEnabled) or invite. Admins set it in the console. Existing password accounts always sign in, reset and change their password. */
+          passwordSignupEnabled: boolean;
           user: components["schemas"]["AccountUser"] | null;
           csrfToken: string | null;
         };
@@ -1735,8 +1735,6 @@ export interface operations {
         content: {
           "application/json": {
             email: string;
-            /** @description Whether accepting makes the account an admin, who can also sign in to the console. */
-            admin: boolean;
             /** Format: int64 */
             expiresAt: number;
           };

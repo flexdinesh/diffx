@@ -127,7 +127,7 @@ func sessionFrom(t *testing.T, w *httptest.ResponseRecorder) *http.Cookie {
 // createInvite issues an invite as the console does and returns its secret.
 func createInvite(t *testing.T, store *pgstore.Store, email string) string {
 	t.Helper()
-	_, secret, err := identityservice.New(store).CreateInvite(t.Context(), email, false)
+	_, secret, err := identityservice.New(store).CreateInvite(t.Context(), email)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func createInvite(t *testing.T, store *pgstore.Store, email string) string {
 func TestInviteSignupThenGoogleSignInByStableSubject(t *testing.T) {
 	fake := newFakeGoogle(t)
 	// Sign-up is closed: only invites create accounts.
-	store, handler := identityHandler(t, Settings{PublicURL: "https://diffx.example.com", Google: fake.settings(), Members: identityservice.MemberPolicy{Password: true}})
+	store, handler := identityHandler(t, Settings{PublicURL: "https://diffx.example.com", Google: fake.settings()}, identityservice.Settings{PasswordSignup: true})
 	identity := identityservice.New(store)
 	if w := identityRequest(handler, "GET", "/api/v2/bootstrap", "", nil, "", ""); !strings.Contains(w.Body.String(), `"googleEnabled":true,"signupEnabled":false`) {
 		t.Fatalf("bootstrap: %s", w.Body.String())
@@ -176,7 +176,7 @@ func TestInviteSignupThenGoogleSignInByStableSubject(t *testing.T) {
 	if w := identityRequest(handler, "POST", "/api/v2/invites/lookup", `{"token":"`+secret+`"}`, nil, "", ""); w.Code != 404 {
 		t.Fatalf("used invite still pending: %d", w.Code)
 	}
-	if _, _, err := identity.CreateInvite(t.Context(), "alice.smith@example.com", false); !errors.Is(err, identityservice.ErrConflict) {
+	if _, _, err := identity.CreateInvite(t.Context(), "alice.smith@example.com"); !errors.Is(err, identityservice.ErrConflict) {
 		t.Fatalf("invited an existing account's email: %v", err)
 	}
 
@@ -205,7 +205,7 @@ func TestInviteSignupThenGoogleSignInByStableSubject(t *testing.T) {
 
 func TestOpenSignupCreatesVerifiedGoogleAccounts(t *testing.T) {
 	fake := newFakeGoogle(t)
-	store, handler := identityHandler(t, Settings{PublicURL: "https://diffx.example.com", Google: fake.settings(), Members: identityservice.MemberPolicy{Signup: true}})
+	store, handler := identityHandler(t, Settings{PublicURL: "https://diffx.example.com", Google: fake.settings()}, identityservice.Settings{Signup: true})
 	authorize, flow := startGoogle(t, handler, "/api/v2/auth/google", `{}`)
 	state := fake.authorize(t, authorize, "unverified", "subject-new", "new@example.com", false)
 	if w := callback(handler, state, "unverified", flow); w.Header().Get("Location") != "/?signin=failed" {
@@ -228,10 +228,10 @@ func TestOpenSignupCreatesVerifiedGoogleAccounts(t *testing.T) {
 
 func TestReplacedRevokedInvitesAndDisabledGoogleAccounts(t *testing.T) {
 	fake := newFakeGoogle(t)
-	store, handler := identityHandler(t, Settings{PublicURL: "https://diffx.example.com", Google: fake.settings(), Members: identityservice.MemberPolicy{Password: true}})
+	store, handler := identityHandler(t, Settings{PublicURL: "https://diffx.example.com", Google: fake.settings()}, identityservice.Settings{PasswordSignup: true})
 	identity := identityservice.New(store)
 	first := createInvite(t, store, "bob@example.com")
-	_, second, err := identity.CreateInvite(t.Context(), "bob@example.com", false)
+	_, second, err := identity.CreateInvite(t.Context(), "bob@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}

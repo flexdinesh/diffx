@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/remoteserver"
 	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
 )
@@ -242,34 +241,22 @@ func TestServerNeverResetsState(t *testing.T) {
 	}
 }
 
-func TestRemoteSignInMethodSettings(t *testing.T) {
+func TestRemovedSignInSettingsRefuseStartup(t *testing.T) {
 	t.Setenv("DIFFX_SERVER_CONFIG", "")
 	withDatabaseURL(t)
 	settings, _, err := parseSettings(nil, io.Discard)
-	if err != nil || settings.Members != (identityservice.MemberPolicy{Signup: true, Password: true}) {
-		t.Fatalf("default sign-in methods: %+v %v", settings.Members, err)
+	if err != nil || settings.Google != nil {
+		t.Fatalf("server without Google: %+v %v", settings, err)
 	}
 	path := filepath.Join(t.TempDir(), "server.json")
 	if err := os.WriteFile(path, []byte(`{"signup":false}`), 0o400); err != nil {
 		t.Fatal(err)
 	}
-	settings, _, err = parseSettings([]string{"--config-file", path}, io.Discard)
-	if err != nil || settings.Members != (identityservice.MemberPolicy{Password: true}) {
-		t.Fatalf("file sign-in methods: %+v %v", settings.Members, err)
+	if _, _, err := parseSettings([]string{"--config-file", path}, io.Discard); err == nil || !strings.Contains(err.Error(), "console's Settings") {
+		t.Fatalf("removed config key accepted: %v", err)
 	}
 	t.Setenv("DIFFX_SERVER_PASSWORD_SIGNIN", "false")
-	if _, _, err := parseSettings(nil, io.Discard); err == nil || !strings.Contains(err.Error(), "no sign-in method") {
-		t.Fatalf("server started without a sign-in method: %v", err)
-	}
-	t.Setenv("DIFFX_SERVER_SIGNUP", "false")
-	t.Setenv("DIFFX_SERVER_GOOGLE_CLIENT_ID", "client")
-	t.Setenv("DIFFX_SERVER_GOOGLE_CLIENT_SECRET", "secret")
-	settings, _, err = parseSettings([]string{"--public-url", "https://diffx.example.com"}, io.Discard)
-	if err != nil || settings.Members != (identityservice.MemberPolicy{}) || settings.Google == nil {
-		t.Fatalf("invite-only Google: %+v %v", settings.Members, err)
-	}
-	t.Setenv("DIFFX_SERVER_SIGNUP", "maybe")
-	if _, _, err := parseSettings([]string{"--public-url", "https://diffx.example.com"}, io.Discard); err == nil || !strings.Contains(err.Error(), "DIFFX_SERVER_SIGNUP") {
-		t.Fatalf("invalid sign-up flag: %v", err)
+	if _, _, err := parseSettings(nil, io.Discard); err == nil || !strings.Contains(err.Error(), "DIFFX_SERVER_PASSWORD_SIGNIN was removed") {
+		t.Fatalf("removed variable accepted: %v", err)
 	}
 }

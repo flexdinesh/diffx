@@ -47,7 +47,7 @@ function bootstrap(
     mode: "remote",
     googleEnabled: google,
     signupEnabled: signup,
-    passwordEnabled: password,
+    passwordSignupEnabled: password,
     user: signedIn
       ? { id: "account-a", username: "alice", email: null, method }
       : null,
@@ -106,6 +106,82 @@ test("invite-only Google offers no password form or signup", async () => {
   assert.ok(screen.getByText("Accounts are by invite. Ask us for one."));
 });
 
+test("without password signup a quiet link reveals password sign-in", async () => {
+  let body: unknown;
+  remote(
+    async (request) => {
+      assert.equal(new URL(request.url).pathname, "/api/v2/auth/login");
+      body = await request.json();
+      return json(bootstrap(true, { method: "password", google: true }));
+    },
+    false,
+    { google: true },
+  );
+  mount(SignIn, false);
+  const google = await screen.findByRole("button", {
+    name: "Continue with Google",
+  });
+  assert.equal(google.getAttribute("data-variant"), "default");
+  assert.equal(screen.queryByLabelText("Username", { exact: true }), null);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Sign in with password" }),
+  );
+  const username = screen.getByLabelText("Username", { exact: true });
+  assert.equal(document.activeElement, username);
+  assert.equal(google.getAttribute("data-variant"), "outline");
+  assert.equal(
+    screen.queryByRole("button", { name: "Sign in with password" }),
+    null,
+  );
+  fireEvent.change(username, { target: { value: "alice" } });
+  fireEvent.change(screen.getByLabelText("Password", { exact: true }), {
+    target: { value: "old-password-123" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+  await screen.findByRole("heading", { name: "Signed in" });
+  assert.deepEqual(body, { username: "alice", password: "old-password-123" });
+});
+
+test("with password signup the sign-in form shows without a reveal link", async () => {
+  remote(() => json({ detail: "Unexpected" }, 500), false, {
+    google: true,
+    password: true,
+  });
+  mount(SignIn, false);
+  await screen.findByRole("button", { name: "Continue with Google" });
+  assert.ok(screen.getByLabelText("Password", { exact: true }));
+  assert.equal(
+    screen.queryByRole("button", { name: "Sign in with password" }),
+    null,
+  );
+  assert.equal(screen.queryByRole("link", { name: "Create an account" }), null);
+});
+
+test("password signup is offered only while signup and password signup are on", async () => {
+  remote(() => json({ detail: "Unexpected" }, 500), false, { signup: true });
+  mount(SignIn, false);
+  await screen.findByLabelText("Password", { exact: true });
+  assert.equal(screen.queryByRole("link", { name: "Create an account" }), null);
+  assert.ok(screen.getByText("Accounts are by invite. Ask us for one."));
+  cleanup();
+
+  remote(() => json({ detail: "Unexpected" }, 500), false, {
+    signup: true,
+    password: true,
+  });
+  mount(SignIn, false);
+  assert.ok(await screen.findByRole("link", { name: "Create an account" }));
+  cleanup();
+
+  remote(() => json({ detail: "Unexpected" }, 500), false, {
+    google: true,
+    signup: true,
+  });
+  mount(SignUp, false);
+  await screen.findByRole("button", { name: "Continue with Google" });
+  assert.equal(screen.queryByLabelText("Password", { exact: true }), null);
+});
+
 test("failed password sign-in preserves recovery", async () => {
   remote(() => json({ detail: "Authentication required" }, 401), false, {
     google: true,
@@ -157,7 +233,7 @@ test("password signup signs the new account in", async () => {
   assert.deepEqual(body, { username: "alice", password: "new-password-456" });
 });
 
-test("an admin invite accepts a password with its secret", async () => {
+test("an invite accepts a password with its secret", async () => {
   window.history.replaceState(null, "", "/invite#t=invite-secret");
   const bodies: unknown[] = [];
   remote(
@@ -165,7 +241,7 @@ test("an admin invite accepts a password with its secret", async () => {
       const path = new URL(request.url).pathname;
       bodies.push(await request.json());
       if (path === "/api/v2/invites/lookup")
-        return json({ email: "new@example.com", admin: true, expiresAt: 0 });
+        return json({ email: "new@example.com", expiresAt: 0 });
       assert.equal(path, "/api/v2/invites/password");
       return json(bootstrap(true, { method: "password", password: true }));
     },
@@ -173,9 +249,7 @@ test("an admin invite accepts a password with its secret", async () => {
     { password: true },
   );
   mount(InviteSignUp, false);
-  assert.ok(
-    await screen.findByText(/and as an admin of this server's console/),
-  );
+  assert.ok(await screen.findByText("new@example.com"));
   assert.equal(window.location.hash, "");
   assert.equal(
     screen.queryByRole("button", { name: "Continue with Google" }),
@@ -202,16 +276,12 @@ test("an admin invite accepts a password with its secret", async () => {
 test("a reset link sets a new password once and hides its secret", async () => {
   window.history.replaceState(null, "", "/reset-password#t=reset-secret");
   const bodies: unknown[] = [];
-  remote(
-    async (request) => {
-      bodies.push(await request.json());
-      return new URL(request.url).pathname === "/api/v2/password-reset/lookup"
-        ? json({ username: "alice" })
-        : new Response(null, { status: 204 });
-    },
-    false,
-    { password: true },
-  );
+  remote(async (request) => {
+    bodies.push(await request.json());
+    return new URL(request.url).pathname === "/api/v2/password-reset/lookup"
+      ? json({ username: "alice" })
+      : new Response(null, { status: 204 });
+  }, false);
   mount(ResetPassword, false);
   assert.ok(await screen.findByText("alice"));
   assert.equal(window.location.hash, "");
@@ -228,9 +298,7 @@ test("a reset link sets a new password once and hides its secret", async () => {
 
 test("an unusable reset link says so", async () => {
   window.history.replaceState(null, "", "/reset-password#t=used-secret");
-  remote(() => json({ detail: "Reset link is invalid" }, 404), false, {
-    password: true,
-  });
+  remote(() => json({ detail: "Reset link is invalid" }, 404), false);
   mount(ResetPassword, false);
   await screen.findByText(
     /This reset link is invalid, expired or already used/,
@@ -284,7 +352,7 @@ test("password change sends CSRF and signs out after revoking sessions", async (
       return new Response(null, { status: 204 });
     },
     true,
-    { method: "password", password: true },
+    { method: "password" },
   );
   mount(AccountSettings);
   fireEvent.change(
@@ -324,18 +392,37 @@ test("logout failure stays recoverable and success disposes account UI", async (
   await screen.findByRole("heading", { name: "Sign in" });
 });
 
-test("without any sign-in method sign in offers no action", async () => {
+test("without Google sign in shows the password form directly", async () => {
   window.history.replaceState(null, "", "/?signin=cancelled");
   remote(() => {
     throw new Error("Unexpected account request");
   }, false);
   mount(SignIn, false);
-  await screen.findByText(/Sign-in is not available on this server/);
+  await screen.findByText("Google sign-in was cancelled.");
+  assert.ok(screen.getByLabelText("Password", { exact: true }));
   assert.equal(
     screen.queryByRole("button", { name: "Continue with Google" }),
     null,
   );
+  assert.equal(
+    screen.queryByRole("button", { name: "Sign in with password" }),
+    null,
+  );
   assert.equal(window.location.search, "");
+});
+
+test("an invite without password signup offers only Google", async () => {
+  window.history.replaceState(null, "", "/invite#t=invite-secret");
+  remote(() => json({ email: "new@example.com", expiresAt: 0 }), false, {
+    google: true,
+  });
+  mount(InviteSignUp, false);
+  const google = await screen.findByRole("button", {
+    name: "Continue with Google",
+  });
+  assert.equal(google.getAttribute("data-variant"), "default");
+  assert.equal(screen.queryByLabelText("Password", { exact: true }), null);
+  assert.equal(screen.queryByText(/a username and password/), null);
 });
 
 test("an unusable invite hides its secret and offers no Google action", async () => {

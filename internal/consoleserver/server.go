@@ -1,5 +1,6 @@
 // Package consoleserver serves the admin console: first-admin setup, admin
-// sign-in, and account and invite administration over the server's database.
+// sign-in, account and invite administration and the app's settings over the
+// server's database.
 // It composes the identity service for the console audience; disabling or
 // deleting an account notifies every diffx-server replica through the store.
 package consoleserver
@@ -32,7 +33,8 @@ type Settings struct {
 	// AppURL is the app's origin, used in invite and member reset links.
 	AppURL          string
 	InsecureCookies bool
-	// Google enables console Google sign-in for existing admins; it requires PublicURL.
+	// Google enables console Google sign-in for existing admins and Google
+	// first-admin setup; it requires PublicURL.
 	Google *GoogleSettings
 	// ClientIPHeader names the header a trusted ingress sets to the client IP.
 	// Non-empty enables authentication rate limiting shared by every replica.

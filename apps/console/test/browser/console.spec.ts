@@ -135,7 +135,7 @@ test("admins manage roles, access and recovery", async ({
   await other.close();
 });
 
-test("admins invite members and admins to the app", async ({
+test("admins invite members to the app", async ({
   page,
   request,
   deployment,
@@ -144,29 +144,27 @@ test("admins invite members and admins to the app", async ({
   await page.getByRole("link", { name: "Invites" }).click();
   await expect(page.getByText("No invites yet.")).toBeVisible();
   await page.getByLabel("Email").fill("dana@example.com");
-  await page
-    .getByRole("checkbox", { name: "Make them an admin of this console" })
-    .check();
+  // Admins come from promoting accounts, never from invites.
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
   await page.getByRole("button", { name: "Create invite" }).click();
   const panel = page
     .getByRole("status")
     .filter({ hasText: "Send this invite link" });
-  await expect(panel).toContainText("for dana@example.com as an admin");
+  await expect(panel).toContainText("for dana@example.com, until");
   const link = await panel.locator("pre").innerText();
   const token = link.split(`${deployment.app}/invite#t=`)[1];
   expect(token).toBeTruthy();
-  // The app resolves the console's invite as an admin invite.
+  // The app resolves the console's invite as a member invite.
   const lookup = await request.post(`${deployment.app}/api/v2/invites/lookup`, {
     data: { token },
   });
-  expect(await lookup.json()).toMatchObject({
-    email: "dana@example.com",
-    admin: true,
-  });
+  const invited: unknown = await lookup.json();
+  expect(invited).toMatchObject({ email: "dana@example.com" });
+  expect(invited).not.toHaveProperty("admin");
 
   const invite = page.getByRole("listitem").filter({ hasText: "dana@" });
   await expect(invite.getByText("Pending")).toBeVisible();
-  await expect(invite.getByText("Admin")).toBeVisible();
+  await expect(invite.getByText("Admin")).toHaveCount(0);
   await page
     .getByRole("button", { name: "Revoke invite for dana@example.com" })
     .click();
@@ -176,6 +174,50 @@ test("admins invite members and admins to the app", async ({
     .click();
   await expect(invite.getByText("Revoked")).toBeVisible();
   await expect(panel).toHaveCount(0);
+});
+
+test("admins set who can join the app", async ({
+  page,
+  request,
+  deployment,
+}) => {
+  async function appBootstrap(): Promise<unknown> {
+    const response = await request.get(`${deployment.app}/api/v2/bootstrap`);
+    return response.json();
+  }
+  await signIn(page, root);
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page.getByRole("link", { name: "Settings" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  const signup = page.getByRole("checkbox", { name: "Open signup" });
+  const password = page.getByRole("checkbox", { name: "Password signup" });
+  const status = page.getByText("Settings saved.");
+  const opened = await signup.isChecked();
+  const passwords = await password.isChecked();
+
+  await signup.click();
+  await expect(status).toBeVisible();
+  await expect(signup).toBeChecked({ checked: !opened });
+  // Server replicas apply saved settings within moments.
+  await expect.poll(appBootstrap).toMatchObject({ signupEnabled: !opened });
+
+  await password.click();
+  await expect(password).toBeChecked({ checked: !passwords });
+  await expect.poll(appBootstrap).toMatchObject({
+    signupEnabled: !opened,
+    passwordSignupEnabled: !passwords,
+  });
+
+  // Saved settings survive a reload.
+  await page.reload();
+  await expect(signup).toBeChecked({ checked: !opened });
+  await expect(password).toBeChecked({ checked: !passwords });
+  await signup.click();
+  await expect(signup).toBeChecked({ checked: opened });
+  await password.click();
+  await expect(password).toBeChecked({ checked: passwords });
 });
 
 test("a password change signs the admin out", async ({ page }) => {

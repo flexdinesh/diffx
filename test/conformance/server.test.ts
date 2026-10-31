@@ -400,7 +400,7 @@ test("Go distribution implements the API contract", async (t) => {
     mode: "remote",
     googleEnabled: false,
     signupEnabled: true,
-    passwordEnabled: true,
+    passwordSignupEnabled: true,
     user: null,
     csrfToken: null,
   });

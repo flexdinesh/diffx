@@ -21,6 +21,8 @@ const (
 	AccountRemoved
 	// JobQueued: an ingestion job became claimable.
 	JobQueued
+	// SettingsChanged: an admin changed the app settings.
+	SettingsChanged
 	// Resync: the session was lost and re-established; notifications
 	// committed meanwhile were not delivered, so consumers re-read durable state.
 	Resync
@@ -151,6 +153,8 @@ func parseNotification(notification *pgconn.Notification) (Notification, bool) {
 		return Notification{Kind: AccountRemoved, OwnerID: notification.Payload}, notification.Payload != ""
 	case jobChannel:
 		return Notification{Kind: JobQueued}, true
+	case settingsChannel:
+		return Notification{Kind: SettingsChanged}, true
 	}
 	return Notification{}, false
 }

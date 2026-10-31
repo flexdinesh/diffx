@@ -62,9 +62,8 @@ func (remote *transport) inviteLookup(w http.ResponseWriter, r *http.Request) {
 	}
 	authhttp.WriteJSON(w, 200, struct {
 		Email     string `json:"email"`
-		Admin     bool   `json:"admin"`
 		ExpiresAt int64  `json:"expiresAt"`
-	}{invite.Email, invite.Admin, invite.ExpiresAt.UnixMilli()})
+	}{invite.Email, invite.ExpiresAt.UnixMilli()})
 }
 
 func googleError(w http.ResponseWriter, r *http.Request, err error) {

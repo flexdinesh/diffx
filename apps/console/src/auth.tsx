@@ -62,7 +62,9 @@ export function SignIn() {
       {failure && <ErrorState message={failure} className="mb-4" />}
       {google && (
         <>
-          <ContinueWithGoogle />
+          <ContinueWithGoogle
+            start={() => api.POST("/api/v1/auth/google", { body: {} })}
+          />
           <Separator className="my-6" />
         </>
       )}
@@ -77,17 +79,29 @@ export function SignIn() {
   );
 }
 
-/** Google sits beside the password form, so it is the secondary action. */
-function ContinueWithGoogle() {
+/**
+ * Google sits beside the password form, so it is the secondary action. A 404
+ * reports `notFound` when given.
+ */
+function ContinueWithGoogle({
+  start,
+  notFound,
+}: {
+  start: () => Promise<{
+    data?: { authorizeUrl: string };
+    error?: unknown;
+    response: Response;
+  }>;
+  notFound?: string;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  async function start() {
+  async function begin() {
     setBusy(true);
     setError("");
     try {
-      const { data, error } = await api.POST("/api/v1/auth/google", {
-        body: {},
-      });
+      const { data, error, response } = await start();
+      if (notFound && response.status === 404) throw new Error(notFound);
       if (!data)
         throw new Error(
           errorDetail(error, "Unable to start Google sign-in. Try again."),
@@ -108,7 +122,7 @@ function ContinueWithGoogle() {
         variant="outline"
         disabled={busy}
         aria-busy={busy}
-        onClick={() => void start()}
+        onClick={() => void begin()}
       >
         Continue with Google
       </Button>
@@ -141,14 +155,28 @@ function useFragmentToken(path: string) {
 /** Creates the first admin from the setup link diffx-console logged. */
 export function Setup() {
   const token = useFragmentToken("/setup");
+  const { state } = useSession();
+  const google = state.status === "ready" && state.bootstrap.googleEnabled;
   return (
     <AuthPage title="Set up the console">
       {token ? (
         <>
           <p className={prose}>
-            Create the first admin. It is a password account that also signs in
-            to the diffx app, whatever its sign-in settings.
+            {google
+              ? "Create the first admin with Google or as a password account. It also signs in to the diffx app, whatever its settings."
+              : "Create the first admin. It is a password account that also signs in to the diffx app, whatever its settings."}
           </p>
+          {google && (
+            <>
+              <ContinueWithGoogle
+                start={() =>
+                  api.POST("/api/v1/setup/google", { body: { token } })
+                }
+                notFound="This setup link is invalid or expired, or Google is not configured. Open the setup link diffx-console wrote to its log at startup; a restart writes a new one."
+              />
+              <Separator className="my-6" />
+            </>
+          )}
           <CredentialForm
             creating
             submitLabel="Create admin"

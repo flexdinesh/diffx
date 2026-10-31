@@ -68,7 +68,7 @@ and runs a bundled PostgreSQL 18 whose named volume survives stopping or
 recreating the containers. Set
 `DIFFX_SERVER_PORT=7979` to publish another host port. The project is named
 `diffx`, so its database volume is shared by every checkout. Open the app and
-create an account; signup and password sign-in are on by default. No default
+create an account; signup and password signup are on by default. No default
 account/password is generated. Compose explicitly enables insecure
 cookies for loopback HTTP development; set `DIFFX_SERVER_INSECURE_COOKIES=false`
 and deploy behind HTTPS for remote access.
@@ -104,14 +104,13 @@ DIFFX_SERVER_DATABASE_URL=postgres://diffx:diffx@127.0.0.1:5432/diffx?sslmode=di
   DIFFX_SERVER_INSECURE_COOKIES=true diffx-server
 ```
 
-Open the app and create an account. `DIFFX_SERVER_SIGNUP=false` turns off open
-signup, so accounts come only from invites, and
-`DIFFX_SERVER_PASSWORD_SIGNIN=false` turns off username and password accounts;
-both default to true. Google sign-in needs a Google OAuth web client: set
+Open the app and create an account. Open signup and password signup are on by
+default; admins turn them off in the console's Settings page, so accounts come
+only from invites, or new accounts cannot choose a password. Existing password
+accounts keep working. Google sign-in needs a Google OAuth web client: set
 `DIFFX_SERVER_GOOGLE_CLIENT_ID`, `DIFFX_SERVER_GOOGLE_CLIENT_SECRET` and
 `DIFFX_SERVER_PUBLIC_URL`, and register
-`<public URL>/api/v2/auth/google/callback` as its redirect URI. The server
-refuses to start with neither Google nor password. Then open the top-right account settings to create
+`<public URL>/api/v2/auth/google/callback` as its redirect URI. Then open the top-right account settings to create
 a named API token. `collector` tokens support sync and plugins; `api` tokens also
 support the user's review REST/MCP APIs. Both expire after 90 days by default
 (selectable 1–365 days), can be revoked, and show their secret only once. Browser
@@ -119,12 +118,13 @@ sessions use secure cookies; API/MCP and collectors use bearer tokens. Multiple
 users share one Postgres database with private data per account. Local `diffx`
 automatically supplies its owner and has no login or account settings.
 
-Invites, password reset links and account administration live in the admin
-console, a separate `diffx-console` container on its own origin over the same
+Invites, signup settings, password reset links and account administration live
+in the admin console, a separate `diffx-console` container on its own origin over the same
 database. Admins use the app like any other account. Compose runs it on
 `127.0.0.1:7970`; on first start, find the setup link in
 `docker compose logs console` and open it within 24 hours to create the first
-admin. Admins invite members or other admins, promote and demote accounts,
+admin with a password or Google. Admins invite members, turn signup and
+password signup on or off in Settings, promote and demote accounts,
 disable or delete them, and issue password reset links. Disabling revokes the
 account's sessions and tokens, and deleting removes everything it owns. A
 locked-out admin gets a reset link with the console's environment:
