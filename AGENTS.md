@@ -12,7 +12,16 @@ contract and release tests in `test/`.
 - Preserve TypeScript type safety: no `any`, type assertions, or non-null assertions.
 - Use pnpm. Install dependencies with `pnpm install --frozen-lockfile`.
 - Use mise tasks or pnpm scripts for project commands; toolchain and orchestration live in `mise.toml`.
-- Run relevant checks for changes; `mise run check` runs all checks.
+- While iterating, run only the checks for what changed:
+  - Go package: `go test ./internal/<pkg>/...`
+  - TypeScript, lint, formatting: `mise run check:static`
+  - Web unit/DOM or browser: `pnpm --filter @diffx/web test:unit` or `test:browser`
+  - Console: `pnpm --filter @diffx/console test`
+  - Plugins: `pnpm --filter @diffx/plugin-<name> test`
+  - API contract: `mise run test:conformance`; boundaries and design tokens: `mise run test:contracts:rules`
+  - Docs site: `mise run docs:check`
+- `mise run check` runs every check and prints one line per phase; a failure prints the log tail, log path and rerun command.
+- Run long checks in the background and wait for their completion notification; never poll logs or `sleep`.
 - Keep full suites and architecture/design guards local through the pre-push hook; keep CI/release verification lightweight.
 - `internal/webui/dist` and `internal/consoleui/dist` are ignored on `main`; run `mise run web:stage` and `mise run console:stage` (or `mise run build`) before Go builds/tests. CI commits only the web assets, on release tags and `edge`.
 - See `docs/development.md` and `docs/release.md` for workflows.
@@ -36,4 +45,4 @@ contract and release tests in `test/`.
 
 ## Git etiquette
 
-- Before pushing to any remote, run all CI checks locally with `mise run check`; resolve failures.
+- Pushing runs every check through the pre-push hook (`mise run check:push`); do not run `mise run check` separately before pushing. Resolve failures.

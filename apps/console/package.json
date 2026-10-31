@@ -4,7 +4,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build --logLevel warn",
     "dev": "vite",
     "test": "playwright test",
     "typecheck": "tsc --noEmit -p tsconfig.json"

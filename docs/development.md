@@ -44,8 +44,8 @@ fails until `mise.toml` is updated. `mise run deps` installs pnpm dependencies
 from the lockfile.
 
 Build tasks declare `sources` and `outputs`; mise skips `web:build`,
-`web:stage`, `build` and `plugins:build` when their source contents are
-unchanged. Run `mise run --force <task>` to rebuild anyway. CI checkouts always
+`web:stage`, `build`, `plugins:build` and `docs:check` when their source
+contents are unchanged. Run `mise run --force <task>` to rebuild anyway. CI checkouts always
 build.
 
 ## Commands
@@ -114,7 +114,8 @@ Both CI and release verification run `mise run check:ci`: static checks, web and
 CLI builds, generated-file consistency, and the distribution API smoke test.
 Local `mise run check` adds dependency/design guards, behavioral contracts,
 JavaScript unit/DOM/browser suites, plugin tests, docs-site checks, release-tool
-tests and all Go tests. These critical suites remain mandatory. Full checks and
+tests and all Go tests. These critical suites remain mandatory; the docs-site
+check is skipped when its sources are unchanged since the last build. Full checks and
 pre-push queue the entire pipeline across linked worktrees using a process lock
 under the Git common directory, before the first application build through the
 last check and cleanup. Only compilation of the small check runner precedes the
@@ -125,7 +126,13 @@ another worktree waits instead of competing for CPU and memory. Cancellation
 stops child processes before releasing the lock; failures propagate to the caller.
 The lock coordinates linked worktrees using this runner, not independent clones
 or direct standalone suite commands. Update older branches to include the runner
-before relying on coordination with their hooks. Pre-push runs the Go tests with the race
+before relying on coordination with their hooks. The runner prints one line per
+phase and writes its output to `dist/check-logs/NN-<task>.log`, replaced by
+each run. A failing phase prints its last 100 log lines, the log path and the
+command to rerun it alone. Set `DIFFX_CHECK_VERBOSE=1` to stream all output
+instead. Web builds log warnings only; test reporters print dots outside a
+terminal. Agents rely on the pre-push hook instead of a separate
+`mise run check` before pushing. Pre-push runs the Go tests with the race
 detector instead. Go tests time out after 3 minutes (5 with the race detector) so a
 hang fails fast. Keep these full suites and guards local. Chromium is installed
 by local setup, not CI/release workflows. CI does not run a native OS test matrix.
