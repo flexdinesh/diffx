@@ -478,6 +478,11 @@ func TestCollectorRetryDeliversCaptureAfterHealthOutageAndCheckoutRemoval(t *tes
 			_ = json.NewEncoder(w).Encode(ingestion.Health{StateID: "wrong-database", ProtocolVersion: ingestion.ProtocolVersion, QueuedIngestion: true, IngestionEnabled: true})
 			return
 		}
+		// Captures are POSTs; local tools that probe new ports are not.
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
 		select {
 		case otherRequests <- struct{}{}:
 		default:
