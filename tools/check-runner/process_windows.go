@@ -24,7 +24,7 @@ type jobAccounting struct {
 	TotalTerminatedProcesses  uint32
 }
 
-func runCommand(ctx context.Context, directory string, env, args []string) error {
+func runCommand(ctx context.Context, directory string, env, args []string, stdout, stderr *os.File) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func runCommand(ctx context.Context, directory string, env, args []string) error
 	}
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir, cmd.Env = directory, env
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, stdout, stderr
 	// Assign the suspended child before it can create descendants outside the job.
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_SUSPENDED}
 	if err := cmd.Start(); err != nil {

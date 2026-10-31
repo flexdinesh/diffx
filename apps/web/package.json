@@ -4,11 +4,11 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build --logLevel warn",
     "dev": "vite",
     "test": "pnpm test:unit && pnpm test:browser",
-    "test:unit": "node --test test/*.test.ts && pnpm test:dom",
-    "test:dom": "node --import tsx --import ./test/dom/setup.ts --test test/dom/*.test.ts",
+    "test:unit": "node --test --test-reporter=dot test/*.test.ts && pnpm test:dom",
+    "test:dom": "node --import tsx --import ./test/dom/setup.ts --test --test-reporter=dot test/dom/*.test.ts",
     "test:browser": "playwright test",
     "test:browser:install": "playwright install chromium",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.sw.json"

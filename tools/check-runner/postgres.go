@@ -48,7 +48,7 @@ func startDockerPostgres(ctx context.Context, common string) (string, func() err
 		// interrupt, so it runs in its own process group with a fresh deadline.
 		stopCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		return runCommand(stopCtx, "", os.Environ(), []string{"docker", "rm", "--force", "--volumes", name})
+		return runCommand(stopCtx, "", os.Environ(), []string{"docker", "rm", "--force", "--volumes", name}, os.Stdout, os.Stderr)
 	}
 	url, err := runPostgres(ctx, name, label)
 	if err != nil {

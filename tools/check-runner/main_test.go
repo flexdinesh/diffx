@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -29,7 +31,7 @@ func TestFullPipelineAdmission(t *testing.T) {
 			failure := errors.New("final check failed")
 			go func() {
 				generatedChecks := 0
-				ownerDone <- runChecks(ownerCtx, root, "check:push", func(ctx context.Context, _ string, _, args []string) error {
+				ownerDone <- runChecks(ownerCtx, root, "check:push", quiet, func(ctx context.Context, _ string, _, args []string, _, _ *os.File) error {
 					if args[len(args)-1] != "check:generated" {
 						return nil
 					}
@@ -58,7 +60,7 @@ func TestFullPipelineAdmission(t *testing.T) {
 			waiterDone := make(chan error, 1)
 			var commands []string
 			go func() {
-				waiterDone <- runChecks(ctx, root, "check", func(_ context.Context, _ string, _, args []string) error {
+				waiterDone <- runChecks(ctx, root, "check", quiet, func(_ context.Context, _ string, _, args []string, _, _ *os.File) error {
 					if len(commands) == 0 {
 						close(firstBuild)
 					}
@@ -110,6 +112,9 @@ func TestFullPipelineAdmission(t *testing.T) {
 	}
 }
 
+// quiet reports like a default run, discarding status lines.
+var quiet = reporter{status: io.Discard}
+
 func noDatabase(context.Context, string) (string, func() error, error) {
 	return "postgres://unused", func() error { return nil }, nil
 }
@@ -135,7 +140,7 @@ func TestSharedDatabaseLifecycle(t *testing.T) {
 			failure := errors.New("check failed")
 			var starts, stops int
 			var seen []string
-			err := runChecks(ctx, root, "check", func(ctx context.Context, _ string, env, _ []string) error {
+			err := runChecks(ctx, root, "check", quiet, func(ctx context.Context, _ string, env, _ []string, _, _ *os.File) error {
 				seen = append(seen, lastEnv(env, testDatabaseEnv))
 				switch outcome {
 				case "failure":
@@ -193,7 +198,7 @@ func TestSharedDatabaseLifecycle(t *testing.T) {
 func TestPresetDatabaseIsUsed(t *testing.T) {
 	t.Setenv(testDatabaseEnv, "postgres://preset")
 	steps := 0
-	err := runChecks(context.Background(), repository(t), "check", func(_ context.Context, _ string, env, _ []string) error {
+	err := runChecks(context.Background(), repository(t), "check", quiet, func(_ context.Context, _ string, env, _ []string, _, _ *os.File) error {
 		steps++
 		if url := lastEnv(env, testDatabaseEnv); url != "postgres://preset" {
 			t.Errorf("step saw %q", url)
@@ -214,7 +219,7 @@ func TestPresetDatabaseIsUsed(t *testing.T) {
 func TestDatabaseStartFailureStopsBeforeSteps(t *testing.T) {
 	t.Setenv(testDatabaseEnv, "")
 	unavailable := errors.New("docker unavailable")
-	err := runChecks(context.Background(), repository(t), "check", func(context.Context, string, []string, []string) error {
+	err := runChecks(context.Background(), repository(t), "check", quiet, func(context.Context, string, []string, []string, *os.File, *os.File) error {
 		t.Error("step ran without a database")
 		return nil
 	}, func(context.Context, string) (string, func() error, error) {
@@ -258,7 +263,7 @@ func TestAnotherProcessQueuesUntilOwnerStops(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- runCommand(ctx, root, append(os.Environ(), "DIFFX_CHECK_TEST_LOCK_ROOT="+root), []string{os.Args[0], "-test.run=^TestLockHelper$"})
+		done <- runCommand(ctx, root, append(os.Environ(), "DIFFX_CHECK_TEST_LOCK_ROOT="+root), []string{os.Args[0], "-test.run=^TestLockHelper$"}, os.Stdout, os.Stderr)
 	}()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -371,5 +376,119 @@ func TestFailureReleasesLock(t *testing.T) {
 	defer cancel()
 	if err := withLock(ctx, root, func() error { return nil }); err != nil {
 		t.Fatalf("lock not released: %v", err)
+	}
+}
+
+func TestQuietRunLogsEachPhase(t *testing.T) {
+	root := repository(t)
+	stale := filepath.Join(root, logDirectory, "stale.log")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, stale, "previous run\n")
+	var status strings.Builder
+	phases := 0
+	err := runChecks(context.Background(), root, "check", reporter{status: &status}, func(_ context.Context, _ string, _, args []string, stdout, _ *os.File) error {
+		phases++
+		_, err := fmt.Fprintln(stdout, "output of", args[len(args)-1])
+		return err
+	}, noDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(status.String(), "output of") {
+		t.Errorf("phase output reached the terminal:\n%s", status.String())
+	}
+	if got := strings.Count(status.String(), "check-runner: ok "); got != phases {
+		t.Errorf("%d status lines for %d phases:\n%s", got, phases, status.String())
+	}
+	if !strings.Contains(status.String(), "check-runner: ok mise run test:go (") {
+		t.Errorf("no status line for test:go:\n%s", status.String())
+	}
+	log, err := os.ReadFile(filepath.Join(root, logDirectory, "11-test-go.log"))
+	if err != nil || string(log) != "output of test:go\n" {
+		t.Errorf("test:go log %q (%v)", log, err)
+	}
+	if _, err := os.Stat(stale); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("stale log kept: %v", err)
+	}
+}
+
+func TestFailedPhasePrintsLogTailAndRerun(t *testing.T) {
+	root := repository(t)
+	failure := errors.New("tests failed")
+	var status strings.Builder
+	var commands []string
+	err := runChecks(context.Background(), root, "check", reporter{status: &status}, func(_ context.Context, _ string, _, args []string, stdout, _ *os.File) error {
+		commands = append(commands, args[len(args)-1])
+		if args[len(args)-1] != "test:go" {
+			return nil
+		}
+		for line := 1; line <= failureTail+50; line++ {
+			if _, err := fmt.Fprintf(stdout, "line %d\n", line); err != nil {
+				return err
+			}
+		}
+		return failure
+	}, noDatabase)
+	if !errors.Is(err, failure) {
+		t.Fatalf("failure lost: %v", err)
+	}
+	if commands[len(commands)-1] != "test:go" {
+		t.Errorf("phases ran after the failure: %v", commands)
+	}
+	report := status.String()
+	tail := report[strings.Index(report, "FAIL mise run test:go"):]
+	for line := 51; line <= failureTail+50; line++ {
+		if !strings.Contains(tail, fmt.Sprintf("line %d\n", line)) {
+			t.Fatalf("tail misses line %d:\n%s", line, report)
+		}
+	}
+	if strings.Contains(tail, "line 50\n") {
+		t.Errorf("tail exceeds %d lines:\n%s", failureTail, report)
+	}
+	for _, want := range []string{
+		"check-runner: log " + filepath.Join(logDirectory, "11-test-go.log") + "\n",
+		"check-runner: rerun mise run test:go\n",
+	} {
+		if !strings.Contains(report, want) {
+			t.Errorf("report misses %q:\n%s", want, report)
+		}
+	}
+}
+
+func TestVerboseRunStreamsPhases(t *testing.T) {
+	root := repository(t)
+	var status strings.Builder
+	err := runChecks(context.Background(), root, "check", reporter{status: &status, verbose: true}, func(_ context.Context, _ string, _, _ []string, stdout, stderr *os.File) error {
+		if stdout != os.Stdout || stderr != os.Stderr {
+			t.Error("verbose phase output does not reach the terminal")
+		}
+		return nil
+	}, noDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(status.String(), "check-runner: mise run test:go\n") {
+		t.Errorf("no phase header:\n%s", status.String())
+	}
+	entries, err := os.ReadDir(filepath.Join(root, logDirectory))
+	if err != nil || len(entries) != 0 {
+		t.Errorf("verbose run wrote logs: %v (%v)", entries, err)
+	}
+}
+
+func TestLastLines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "log")
+	for _, test := range []struct{ content, want string }{
+		{"", ""},
+		{"a\nb\nc\n", "b\nc\n"},
+		{"a\nb\nc", "b\nc\n"},
+		{"a\n", "a\n"},
+	} {
+		writeFile(t, path, test.content)
+		if got, err := lastLines(path, 2); err != nil || got != test.want {
+			t.Errorf("lastLines(%q) = %q (%v), want %q", test.content, got, err, test.want)
+		}
 	}
 }

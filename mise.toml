@@ -159,6 +159,14 @@ run = "pnpm --filter @diffx/docs dev"
 [tasks."docs:build"]
 description = "Build and validate the static docs website at docs-website/dist/public"
 alias = "docs:check"
+# Skipped when the docs inputs are unchanged since the last build.
+sources = [
+  "docs-website/src/**/*",
+  "docs-website/vocs.config.ts",
+  "docs-website/package.json",
+  "pnpm-lock.yaml",
+]
+outputs = ["docs-website/dist/public/**/*"]
 run = "pnpm --filter @diffx/docs build"
 
 [tasks."dev:server"]
@@ -301,7 +309,7 @@ run = [
     "check:boundaries",
     "check:design",
   ] },
-  "node --test test/contracts/*.test.ts",
+  "node --test --test-reporter=dot test/contracts/*.test.ts",
 ]
 
 # Race tests run the same Go suite with the detector, replacing test:go.

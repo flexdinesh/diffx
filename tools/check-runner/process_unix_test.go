@@ -37,7 +37,7 @@ const fixture = await startFixtureProcess({ binary: process.env.DIFFX_FIXTURE_BI
 writeFileSync(process.env.DIFFX_FIXTURE_READY, fixture.target);
 await new Promise(() => {});`
 	go func() {
-		done <- runCommand(ctx, root, append(os.Environ(), "DIFFX_CHECK_RUNNER=1", "DIFFX_FIXTURE_READY="+ready), []string{"node", "--input-type=module", "--eval", script})
+		done <- runCommand(ctx, root, append(os.Environ(), "DIFFX_CHECK_RUNNER=1", "DIFFX_FIXTURE_READY="+ready), []string{"node", "--input-type=module", "--eval", script}, os.Stdout, os.Stderr)
 	}()
 	var target string
 	deadline := time.Now().Add(10 * time.Second)
@@ -96,7 +96,7 @@ func TestCommandHelper(t *testing.T) {
 }
 
 func TestCommandExitCode(t *testing.T) {
-	err := runCommand(context.Background(), t.TempDir(), append(os.Environ(), "DIFFX_CHECK_TEST_HELPER=failure"), []string{os.Args[0], "-test.run=^TestCommandHelper$"})
+	err := runCommand(context.Background(), t.TempDir(), append(os.Environ(), "DIFFX_CHECK_TEST_HELPER=failure"), []string{os.Args[0], "-test.run=^TestCommandHelper$"}, os.Stdout, os.Stderr)
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || exit.ExitCode() != 23 {
 		t.Fatalf("want exit 23, got %v", err)
@@ -111,7 +111,7 @@ func TestCancellationStopsDescendantsBeforeUnlock(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		done <- withLock(ctx, root, func() error {
-			return runCommand(ctx, root, append(os.Environ(), "DIFFX_CHECK_TEST_HELPER=parent", "DIFFX_CHECK_TEST_HEARTBEAT="+heartbeat), []string{os.Args[0], "-test.run=^TestCommandHelper$"})
+			return runCommand(ctx, root, append(os.Environ(), "DIFFX_CHECK_TEST_HELPER=parent", "DIFFX_CHECK_TEST_HEARTBEAT="+heartbeat), []string{os.Args[0], "-test.run=^TestCommandHelper$"}, os.Stdout, os.Stderr)
 		})
 	}()
 	deadline := time.Now().Add(5 * time.Second)
