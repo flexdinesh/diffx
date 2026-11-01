@@ -90,14 +90,15 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		remote.googleCallbackRoute(w, r)
 		return
 	}
-	if !serverapp.SameOrigin(r) {
+	page := !strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/mcp") && !strings.HasPrefix(r.URL.Path, "/control/")
+	if !serverapp.SameOrigin(r) && !(page && serverapp.PageNavigation(r)) {
 		authhttp.Problem(w, 403, "Cross-origin access denied")
 		return
 	}
 	// Login remains available with an expired browser cookie. Explicit bearer
 	// credentials are always validated; never silently fall back to cookies.
 	authForm := authForms[r.URL.Path]
-	public := r.URL.Path == "/api/v2/bootstrap" || (!strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/mcp") && !strings.HasPrefix(r.URL.Path, "/control/"))
+	public := r.URL.Path == "/api/v2/bootstrap" || page
 	p, err := remote.authenticate(r)
 	if errors.Is(err, identityservice.ErrAuthentication) && r.Header.Get("Authorization") == "" && (public || authForm) {
 		remote.cookie(w, "", time.Time{})
@@ -120,7 +121,7 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		remote.bootstrap(w, r, p)
 		return
 	}
-	if !strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/mcp") && !strings.HasPrefix(r.URL.Path, "/control/") {
+	if page {
 		remote.static(w, r)
 		return
 	}

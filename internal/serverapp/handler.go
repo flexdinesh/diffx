@@ -118,6 +118,13 @@ func SameOrigin(r *http.Request) bool {
 	return r.Header.Get("Sec-Fetch-Site") != "cross-site" && (origin == "" || origin == "http://"+r.Host || origin == "https://"+r.Host)
 }
 
+// PageNavigation reports a safe top-level document navigation, such as opening
+// an emailed or shared link. Browsers send these cross-site with SameSite=Lax
+// cookies; callers admit them only for page routes, never APIs.
+func PageNavigation(r *http.Request) bool {
+	return (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.Header.Get("Sec-Fetch-Mode") == "navigate" && r.Header.Get("Sec-Fetch-Dest") == "document"
+}
+
 func decodeIngestion(service *contextservice.Service, w http.ResponseWriter, r *http.Request) (ingestion.Request, bool) {
 	if r.Method != http.MethodPost {
 		problem(w, 405, "Method not allowed")
