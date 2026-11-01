@@ -60,6 +60,10 @@ func (p *pipeline) prepared(group string) (*dagger.Container, error) {
 		WithEnvVariable("GIT_COMMITTER_NAME", "Validation").WithEnvVariable("GIT_COMMITTER_EMAIL", "validation@localhost").
 		WithEnvVariable("GIT_AUTHOR_DATE", "2000-01-01T00:00:00Z").WithEnvVariable("GIT_COMMITTER_DATE", "2000-01-01T00:00:00Z").
 		WithExec([]string{"sh", "-ec", "git init -q && git add --all --force . ':!node_modules' ':!**/node_modules' && git -c core.hooksPath=/dev/null commit -qm baseline"})
+	// Synthetic baseline identity must not override repositories made by tests.
+	for _, variable := range []string{"GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE"} {
+		base = base.WithoutEnvVariable(variable)
+	}
 	return base, nil
 }
 
