@@ -263,8 +263,8 @@ Groups run sequentially; Chromium uses one worker and Go parallelism is bounded.
 Two participating invocations may run concurrently through user-level admission.
 The runner owns cancellation and session cleanup before releasing admission;
 failed groups fail the invocation. Immutable preparation and build outputs are
-reusable. Public mise and pnpm test commands use Dagger; internal `exec` commands
-remain available for container execution.
+reusable. Public mise test tasks use Dagger; package.json test scripts and hidden
+`exec` mise tasks are the raw commands groups run inside containers.
 `test:contracts:rules` holds only the non-Go guards, because aggregate checks run every Go
 package; no hand-maintained package list can miss a new boundary test. All static
 checks, generated-file verification and test suites stay local. Publishing retains

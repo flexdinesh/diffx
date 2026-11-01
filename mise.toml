@@ -231,7 +231,7 @@ run = [{ task = "check:conformance" }]
 [tasks."check:exec:static"]
 description = "Check TypeScript, JavaScript lint, and formatting"
 hide = true
-run = ["mise tasks validate", "pnpm check:exec:static"]
+run = ["mise tasks validate", "pnpm check:static"]
 
 [tasks."check:format:go"]
 description = "Verify Go formatting on the host"

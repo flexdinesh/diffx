@@ -19,7 +19,7 @@ contract and release tests in `test/`.
   - Web/console browser: `mise run check:browser`
   - API contract: `mise run check:conformance`; boundaries and design tokens: `mise run check:contracts`
   - Docs site: `mise run check:docs`
-- `mise run check` validates working-file snapshots: static checks run on the host; tests and their services run in isolated Linux containers. Public mise and pnpm test tasks route through Dagger. `*:exec:*` tasks/scripts are internal execution commands, not public test entry points.
+- `mise run check` validates working-file snapshots: static checks run on the host; tests and their services run in isolated Linux containers. Public mise test tasks route through Dagger. package.json scripts only wrap JS tooling and never call mise; they and hidden `*:exec:*` mise tasks are raw execution commands, not public test entry points.
 - Development, formatting, format verification, lint, type checking and read-only architecture guards stay on the host. Static aggregate checks use a private temporary snapshot and dependencies, without Docker. Go vet stays with Go tests because it requires embedded build assets.
 - Before creating or updating a PR, commit changes and run `mise run check:pr` on clean HEAD. Matching successful group results are reused; use `mise run check:pr --force` to execute checks again.
 - Run long checks in the background and wait for their completion notification; never poll logs or `sleep`.
