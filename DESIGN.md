@@ -694,6 +694,13 @@ at `/design.html` (see `docs/development.md`).
   after share a row where they fit; Cancel closes it and returns focus. A
   created secret shows once in a `--panel` status panel above the action, with
   focus on its Copy button.
+- GitHub setup is a numbered list of two steps, each an `h3` with one line of
+  prose: “Connect your GitHub account” (the connection row and `…` menu, or the
+  filled “Connect GitHub” / “Connect GitHub again”) and “Choose repositories
+  for the diffx app” (how many repositories are available once connected, and
+  an outline external “Choose repositories on GitHub” link, always shown).
+  Following that link reloads the Repositories list once, when the page is
+  visible again; no check marks or progress indicators.
 - Followed GitHub repositories carry a notification bell when the server sends
   push: a ghost `ui/toggle` (`icon-sm`, `touch`) named “Notify for
   owner/repo”, Bell when pressed (accent toggle state) and BellOff when muted.
