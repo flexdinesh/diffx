@@ -87,7 +87,8 @@ func (p *pipeline) execute(ctx context.Context, group checkGroup, invocation, ar
 		database := p.client.Container().From(postgresImage).
 			WithEnvVariable("POSTGRES_USER", "diffx").WithEnvVariable("POSTGRES_PASSWORD", "diffx").
 			WithEnvVariable("POSTGRES_DB", "postgres").WithEnvVariable("DIFFX_VALIDATION_EXECUTION", identity).
-			WithExposedPort(5432).AsService()
+			WithExposedPort(5432).
+			WithDefaultArgs([]string{"postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off", "-c", "max_connections=300"}).AsService()
 		container = container.WithServiceBinding("postgres", database).
 			WithEnvVariable("DIFFX_TEST_DATABASE_URL", "postgres://diffx:diffx@postgres:5432/postgres?sslmode=disable")
 	}
