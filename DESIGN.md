@@ -659,13 +659,36 @@ at `/design.html` (see `docs/development.md`).
 
 ### Account settings
 
-- Settings (`/settings`, remote server only) is one reading-width column of
-  sections in a fixed order: API tokens, GitHub, Notifications, Password
-  (password accounts), Browser session. Each section is an `h2` above a separator, short
-  `--text-secondary` prose, then its controls; subsections use `h3`. Async
-  feedback uses an always-mounted `role="status"` paragraph; failures use
-  `ErrorState`. Removing or revoking something on another device or service
-  confirms with `ConfirmDialog`.
+- Settings (`/settings`, remote server only) is one scrolling document. Below
+  the account header, the full-width pane scrolls so its scrollbar meets the
+  window edge; the header's email keeps the diff gutter and truncates.
+  Content is bounded at 64rem: a sticky 10rem section nav, then the page.
+- The section nav lists only sections that render (GitHub and Notifications
+  stay absent on servers without them) as `rail` link buttons, marking the
+  section at the top of the pane with `aria-current="true"`. A link scrolls
+  its section into view and focuses its `h2` without changing the URL. Below
+  768px the nav is hidden.
+- The page opens with an account summary: the `h1`, “Signed in as” the
+  account email (“with Google” for Google accounts), and an outline “Sign out”
+  at the trailing edge.
+- Sections follow in a fixed order: API tokens, GitHub, Notifications,
+  Password (password accounts). Each sits above a separator in two columns,
+  its `h2` and one short `--text-secondary` description in a 14rem column
+  beside its state and controls; below 1012px they stack. Subsections use
+  `h3`. Async feedback uses an always-mounted `role="status"` paragraph;
+  failures use `ErrorState`.
+- One filled primary action at a time: the open token form's “Create token”,
+  otherwise “Connect GitHub”. Other actions are outline or ghost.
+- Rows that can be removed (tokens, other devices) and the GitHub connection
+  keep their action in one ghost `…` menu (“Actions for {name}”), as in the
+  console; Revoke…, Remove… and Disconnect… confirm with `ConfirmDialog`, the
+  only place they turn red.
+- API tokens list first: name, then muted kind and expiry (expired in
+  `--warning` with text) and created and last-used dates. An outline “New
+  token” opens the form in place and focuses Token name; Access and Expires
+  after share a row where they fit; Cancel closes it and returns focus. A
+  created secret shows once in a `--panel` status panel above the action, with
+  focus on its Copy button.
 - Followed GitHub repositories carry a notification bell when the server sends
   push: a ghost `ui/toggle` (`icon-sm`, `touch`) named “Notify for
   owner/repo”, Bell when pressed (accent toggle state) and BellOff when muted.
@@ -680,7 +703,7 @@ at `/design.html` (see `docs/development.md`).
   “Send notifications to this device” checkbox and an outline “Send test
   notification”. An outline “Install app” appears while the browser offers
   installation; an installed app shows muted “Installed as an app.” Other
-  devices list label, added and last-notified dates and a destructive Remove.
+  devices list label, added and last-notified dates and a `…` menu with Remove….
   No banners or counters advertise notifications elsewhere.
 
 ### Sign-in pages

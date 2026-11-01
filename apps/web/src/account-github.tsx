@@ -22,6 +22,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@diffx/ui/components/ui/tooltip";
+import { RowActions, SettingsSection } from "./settings-layout.tsx";
 
 const prose = "mb-4 leading-copy text-secondary";
 
@@ -61,10 +62,13 @@ type Connection =
  */
 export function AccountGitHub({
   notify = false,
+  primary = true,
   onFollowingChange,
 }: {
   /** Shows each followed repository's notification bell. */
   notify?: boolean;
+  /** Whether Connect is the page's primary action; false while another form is open. */
+  primary?: boolean;
   onFollowingChange?: (following: GitHubFollowing) => void;
 }) {
   const [connection, setConnection] = useState<Connection>({
@@ -151,13 +155,10 @@ export function AccountGitHub({
   const current = connection.status === "ready" ? connection.connection : null;
   const active = current?.connected === true && current.state === "active";
   return (
-    <section
-      className="mt-8 border-t border-separator pt-6"
-      aria-labelledby="github-title"
+    <SettingsSection
+      id="github"
+      description="Review pull requests from repositories you follow. Each appears with your other reviews of its repository."
     >
-      <h2 id="github-title" className="mb-2 text-md font-semibold">
-        GitHub
-      </h2>
       {callback && (
         <p className={prose} role="status">
           {callback}
@@ -171,30 +172,44 @@ export function AccountGitHub({
           onRetry={() => setAttempt((value) => value + 1)}
         />
       )}
-      {current && !current.connected && (
-        <p className={prose}>
-          Connect GitHub to review pull requests from repositories you follow.
-          Each pull request appears with your other reviews of its repository.
-        </p>
-      )}
-      {current?.connected && !active && (
-        <p className={prose} role="status">
-          GitHub authorization for <strong>@{current.login}</strong>{" "}
-          {current.state === "revoked" ? "was revoked" : "expired"}. Connect
-          again to keep receiving pull requests.
-        </p>
-      )}
-      {active && (
-        <p className={prose}>
-          Connected as <strong>@{current.login}</strong>. Pull requests of
-          followed repositories update from GitHub events.
-        </p>
+      {current?.connected && (
+        <div className="mb-4 flex items-start justify-between gap-4">
+          {active ? (
+            <p className="min-w-0 leading-copy text-secondary wrap-anywhere">
+              Connected as <strong>@{current.login}</strong>. Pull requests of
+              followed repositories update from GitHub events.
+            </p>
+          ) : (
+            <p
+              className="min-w-0 leading-copy text-secondary wrap-anywhere"
+              role="status"
+            >
+              GitHub authorization for <strong>@{current.login}</strong>{" "}
+              {current.state === "revoked" ? "was revoked" : "expired"}. Connect
+              again to keep receiving pull requests.
+            </p>
+          )}
+          <RowActions
+            label={`Actions for @${current.login}`}
+            disabled={busy}
+            actions={[
+              {
+                label: "Disconnect…",
+                onSelect: () => {
+                  setError("");
+                  setDisconnecting(true);
+                },
+              },
+            ]}
+          />
+        </div>
       )}
       {error && <ErrorState message={error} className="mb-4" touch />}
       {current && (
         <div className="mb-4 flex flex-wrap gap-2">
           {!active && (
             <Button
+              variant={primary ? "default" : "outline"}
               touch
               disabled={busy}
               aria-busy={busy}
@@ -212,19 +227,6 @@ export function AccountGitHub({
             Install on repositories
             <ExternalLinkIcon className="size-icon-sm" aria-hidden="true" />
           </LinkButton>
-          {current.connected && (
-            <Button
-              variant="destructive"
-              touch
-              disabled={busy}
-              onClick={() => {
-                setError("");
-                setDisconnecting(true);
-              }}
-            >
-              Disconnect
-            </Button>
-          )}
         </div>
       )}
       <ConfirmDialog
@@ -246,7 +248,7 @@ export function AccountGitHub({
           onFollowingChange={onFollowingChange}
         />
       )}
-    </section>
+    </SettingsSection>
   );
 }
 

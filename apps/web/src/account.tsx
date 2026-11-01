@@ -11,6 +11,7 @@ import { AccountGitHub, type GitHubFollowing } from "./account-github.tsx";
 import { AccountNotifications } from "./account-notifications.tsx";
 import { AccountTokens } from "./account-tokens.tsx";
 import { forgetPushDevice } from "./push.ts";
+import { SettingsLayout, SettingsSection } from "./settings-layout.tsx";
 
 /** Rail placement on the panel, or the compact header on the shell canvas. */
 export function AccountButton({ variant }: { variant: "rail" | "shell" }) {
@@ -633,9 +634,9 @@ export function AccountPage({
         <Button variant="shell" onClick={() => navigate("/")}>
           <ArrowLeftIcon aria-hidden="true" /> Reviews
         </Button>
-        <span className="header-actions">{email}</span>
+        <span className="header-actions account-identity">{email}</span>
       </header>
-      <main className="account-page settings-page">{children}</main>
+      {children}
     </div>
   );
 }
@@ -646,6 +647,7 @@ export function AccountSettings() {
   const [busy, setBusy] = useState(false);
   const [github, setGitHub] = useState<GitHubFollowing | null>(null);
   const [pushEnabled, setPushEnabled] = useState(false);
+  const [composing, setComposing] = useState(false);
   if (state.status !== "ready" || !state.bootstrap.user) return null;
   const user = state.bootstrap.user;
   async function logout() {
@@ -666,33 +668,38 @@ export function AccountSettings() {
   }
   return (
     <AccountPage email={user.email}>
-      <h1 className="mb-2 text-xl font-semibold">Account settings</h1>
-      <p className={prose}>
-        Signed in as <strong>{user.email}</strong>
-        {user.method === "google" && " with Google"}.
-      </p>
-      <AccountTokens />
-      <AccountGitHub notify={pushEnabled} onFollowingChange={setGitHub} />
-      <AccountNotifications github={github} onEnabledChange={setPushEnabled} />
-      {user.method === "password" && <PasswordSettings />}
-      <section
-        className="mt-8 border-t border-separator pt-6"
-        aria-labelledby="session-title"
-      >
-        <h2 id="session-title" className="mb-2 text-md font-semibold">
-          Browser session
-        </h2>
+      <SettingsLayout>
+        <header className="settings-summary">
+          <div className="min-w-0 wrap-anywhere">
+            <h1 className="mb-1 text-xl font-semibold">Account settings</h1>
+            <p className="leading-copy text-secondary">
+              Signed in as <strong>{user.email}</strong>
+              {user.method === "google" && " with Google"}.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            touch
+            disabled={busy}
+            aria-busy={busy}
+            onClick={() => void logout()}
+          >
+            Sign out
+          </Button>
+        </header>
         {error && <ErrorState message={error} className="mb-4" />}
-        <Button
-          variant="outline"
-          touch
-          disabled={busy}
-          aria-busy={busy}
-          onClick={() => void logout()}
-        >
-          Sign out
-        </Button>
-      </section>
+        <AccountTokens onComposingChange={setComposing} />
+        <AccountGitHub
+          notify={pushEnabled}
+          primary={!composing}
+          onFollowingChange={setGitHub}
+        />
+        <AccountNotifications
+          github={github}
+          onEnabledChange={setPushEnabled}
+        />
+        {user.method === "password" && <PasswordSettings />}
+      </SettingsLayout>
     </AccountPage>
   );
 }
@@ -724,17 +731,10 @@ function PasswordSettings() {
     }
   }
   return (
-    <section
-      className="mt-8 border-t border-separator pt-6"
-      aria-labelledby="password-title"
+    <SettingsSection
+      id="password"
+      description="Changing it signs out every browser session. API tokens stay active."
     >
-      <h2 id="password-title" className="mb-2 text-md font-semibold">
-        Password
-      </h2>
-      <p className="mb-4 leading-copy text-secondary">
-        Changing your password signs out every browser session. API tokens
-        remain active.
-      </p>
       <form className="account-form" onSubmit={submit}>
         <label htmlFor="current-password">Current password</label>
         <Input
@@ -759,8 +759,12 @@ function PasswordSettings() {
           onChange={(event) => setNew(event.target.value)}
           required
           disabled={busy}
+          aria-describedby="new-password-hint"
         />
-        <p className="text-sm leading-copy text-secondary">
+        <p
+          id="new-password-hint"
+          className="text-sm leading-copy text-secondary"
+        >
           Use at least 8 characters.
         </p>
         {error && <ErrorState message={error} />}
@@ -775,6 +779,6 @@ function PasswordSettings() {
           Change password and sign out
         </Button>
       </form>
-    </section>
+    </SettingsSection>
   );
 }

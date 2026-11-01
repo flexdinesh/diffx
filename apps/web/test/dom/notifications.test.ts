@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { IdentityProvider, useIdentity } from "../../src/identity-context.tsx";
 import { AccountSettings } from "../../src/account.tsx";
@@ -189,7 +190,9 @@ test("a browser without push explains it and still lists other devices", async (
     screen.queryByRole("button", { name: "Turn on notifications" }),
     null,
   );
-  assert.ok(screen.getByRole("button", { name: "Remove Chrome on Linux" }));
+  assert.ok(
+    screen.getByRole("button", { name: "Actions for Chrome on Linux" }),
+  );
 });
 
 test("iPhone Safari explains the Home Screen install before push", async () => {
@@ -238,7 +241,7 @@ test("permission is requested only when turning notifications on", async () => {
   assert.ok(screen.getByRole("button", { name: "Send test notification" }));
   // This device leaves the other devices list.
   assert.equal(
-    screen.queryByRole("button", { name: "Remove Chrome on Linux" }),
+    screen.queryByRole("button", { name: "Actions for Chrome on Linux" }),
     null,
   );
 });
@@ -292,7 +295,9 @@ test("a subscribed device re-registers, tests and turns off", async () => {
     assert.equal(toggle.getAttribute("aria-checked"), "true"),
   );
   assert.deepEqual(calls, ["PUT /api/v2/push/subscriptions"]);
-  assert.ok(screen.getByRole("button", { name: "Remove Chrome on Android" }));
+  assert.ok(
+    screen.getByRole("button", { name: "Actions for Chrome on Android" }),
+  );
 
   fireEvent.click(
     screen.getByRole("button", { name: "Send test notification" }),
@@ -353,8 +358,11 @@ test("other devices are removed after confirmation", async () => {
   const { calls } = server();
   mount();
   fireEvent.click(
-    await screen.findByRole("button", { name: "Remove Chrome on Android" }),
+    await screen.findByRole("button", {
+      name: "Actions for Chrome on Android",
+    }),
   );
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Remove…" }));
   assert.deepEqual(calls, ["PUT /api/v2/push/subscriptions"]);
   fireEvent.click(await screen.findByRole("button", { name: "Remove device" }));
   await screen.findByText("Removed Chrome on Android.");
@@ -366,7 +374,12 @@ test("without followed repositories the section points to GitHub", async () => {
   pushBrowser();
   server({ github: "disconnected" });
   mount();
-  const link = await screen.findByRole("link", { name: "GitHub" });
+  const notifications = await screen.findByRole("region", {
+    name: "Notifications",
+  });
+  const link = await within(notifications).findByRole("link", {
+    name: "GitHub",
+  });
   assert.equal(link.getAttribute("href"), "#github-title");
   assert.ok(screen.getByText(/Choose repositories to follow under/));
 });
