@@ -160,7 +160,9 @@ function server({ enabled = true, github = "absent", handle }: Server = {}) {
 function mount() {
   function Content() {
     const { state } = useIdentity();
-    return state.status === "ready" ? createElement(AccountSettings) : null;
+    return state.status === "ready"
+      ? createElement(AccountSettings, { section: "notifications" })
+      : null;
   }
   return render(createElement(IdentityProvider, null, createElement(Content)));
 }
@@ -380,8 +382,10 @@ test("without followed repositories the section points to GitHub", async () => {
   const link = await within(notifications).findByRole("link", {
     name: "GitHub",
   });
-  assert.equal(link.getAttribute("href"), "#github-title");
+  assert.equal(link.getAttribute("href"), "/settings/github");
   assert.ok(screen.getByText(/Choose repositories to follow under/));
+  fireEvent.click(link);
+  assert.equal(window.location.pathname, "/settings/github");
 });
 
 test("a server without GitHub says nothing can notify yet", async () => {

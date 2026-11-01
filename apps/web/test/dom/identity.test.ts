@@ -21,6 +21,7 @@ import {
   SignIn,
   SignUp,
 } from "../../src/account.tsx";
+import type { SettingsSectionId } from "../../src/settings-layout.tsx";
 import { json, requests } from "./setup.ts";
 
 afterEach(() => {
@@ -67,6 +68,13 @@ function mount(Page: ComponentType, signedIn = true) {
     return createElement(Page);
   }
   return render(createElement(IdentityProvider, null, createElement(Content)));
+}
+
+/** Account settings on the page the route names. */
+function settings(section: SettingsSectionId | null) {
+  return function Settings() {
+    return createElement(AccountSettings, { section });
+  };
 }
 
 function remote(
@@ -315,11 +323,31 @@ test("an unusable reset link says so", async () => {
   assert.equal(screen.queryByLabelText("New password", { exact: true }), null);
 });
 
-test("Google accounts have no password section", async () => {
+test("Google accounts have no password page", async () => {
+  window.history.replaceState(null, "", "/settings/password");
   remote(() => json({ tokens: [] }), true, { password: true });
-  mount(AccountSettings);
-  await screen.findByRole("heading", { name: "API tokens" });
-  assert.equal(screen.queryByRole("heading", { name: "Password" }), null);
+  mount(settings("password"));
+  await waitFor(() =>
+    assert.equal(window.location.pathname, "/settings/tokens"),
+  );
+  const nav = screen.getByRole("navigation", { name: "Settings sections" });
+  await waitFor(() =>
+    assert.deepEqual(
+      within(nav)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+      ["API tokens"],
+    ),
+  );
+});
+
+test("/settings opens the first section", async () => {
+  window.history.replaceState(null, "", "/settings");
+  remote(() => json({ tokens: [] }));
+  mount(settings(null));
+  await waitFor(() =>
+    assert.equal(window.location.pathname, "/settings/tokens"),
+  );
 });
 
 test("token list failure hides its form and retries through the shared action", async () => {
@@ -327,7 +355,7 @@ test("token list failure hides its form and retries through the shared action", 
   remote(() =>
     failed ? json({ detail: "Tokens unavailable" }, 503) : json({ tokens: [] }),
   );
-  mount(AccountSettings);
+  mount(settings("tokens"));
   assert.match(
     (await screen.findByRole("alert")).textContent ?? "",
     /Tokens unavailable/,
@@ -341,7 +369,7 @@ test("token list failure hides its form and retries through the shared action", 
 
 test("the token form opens in place, focuses its name and closes on cancel", async () => {
   remote(() => json({ tokens: [] }));
-  mount(AccountSettings);
+  mount(settings("tokens"));
   assert.equal(screen.queryByLabelText("Token name"), null);
   fireEvent.click(await screen.findByRole("button", { name: "New token" }));
   const name = screen.getByLabelText("Token name");
@@ -357,10 +385,10 @@ test("the token form opens in place, focuses its name and closes on cancel", asy
   );
 });
 
-test("the nav lists only sections the server offers and links to them", async () => {
+test("the nav lists only sections the server offers and shows one page", async () => {
   // GitHub and push answer 404: this server has neither.
   remote(() => json({ tokens: [] }), true, { method: "password" });
-  mount(AccountSettings);
+  mount(settings("password"));
   await screen.findByRole("heading", { name: "Password" });
   const nav = screen.getByRole("navigation", { name: "Settings sections" });
   await waitFor(() =>
@@ -369,17 +397,24 @@ test("the nav lists only sections the server offers and links to them", async ()
         .getAllByRole("link")
         .map((link) => [link.textContent, link.getAttribute("href")]),
       [
-        ["API tokens", "#settings-tokens"],
-        ["Password", "#settings-password"],
+        ["API tokens", "/settings/tokens"],
+        ["Password", "/settings/password"],
       ],
     ),
   );
+  assert.equal(
+    within(nav)
+      .getByRole("link", { name: "Password" })
+      .getAttribute("aria-current"),
+    "page",
+  );
+  assert.equal(screen.queryByRole("heading", { name: "API tokens" }), null);
 });
 
 test("expired account requests dispose account UI and clear the route", async () => {
   window.history.replaceState(null, "", "/settings");
   remote(() => json({ detail: "Session expired" }, 401));
-  mount(AccountSettings);
+  mount(settings("tokens"));
   await screen.findByRole("heading", { name: "Sign in" });
   assert.equal(
     screen.queryByRole("heading", { name: "Account settings" }),
@@ -400,7 +435,7 @@ test("password change sends CSRF and signs out after revoking sessions", async (
     true,
     { method: "password" },
   );
-  mount(AccountSettings);
+  mount(settings("password"));
   fireEvent.change(
     await screen.findByLabelText("Current password", { exact: true }),
     { target: { value: "old-password-123" } },
@@ -427,7 +462,7 @@ test("logout failure stays recoverable and success disposes account UI", async (
       ? json({ detail: "Logout unavailable" }, 503)
       : new Response(null, { status: 204 });
   });
-  mount(AccountSettings);
+  mount(settings("tokens"));
   fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
   assert.equal(
     (await screen.findByRole("alert")).textContent,

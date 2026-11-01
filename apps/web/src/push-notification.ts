@@ -8,7 +8,7 @@ export interface PushPayload {
   kind: "pull_request" | "test";
   title: string;
   body: string;
-  /** Same-origin path, `/streams/<id>` or `/settings`. */
+  /** Same-origin path, `/streams/<id>` or `/settings/notifications`. */
   url: string;
   tag: string;
   timestamp: number;

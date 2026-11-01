@@ -33,7 +33,7 @@ Each needs a real GitHub App, an installation and public HTTPS for webhooks
    `POST /app/installations/{id}/access_tokens` with `contents: read`.
 2. **OAuth web flow.** Authorize redirect, callback, code exchange with
    expiring user tokens, `GET /user`, `GET /user/installations` and its
-   repositories. Confirm the callback lands on `/settings?github=connected`.
+   repositories. Confirm the callback lands on `/settings/github?github=connected`.
 3. **Token refresh.** Let a user token expire (8h) and confirm refresh,
    rotation and storage; revoke the app authorization on GitHub and confirm
    Settings asks to connect again.

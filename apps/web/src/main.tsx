@@ -29,6 +29,7 @@ import {
   signupOpen,
 } from "./account.tsx";
 import { startPwa } from "./pwa.ts";
+import { isSettingsPath, settingsSection } from "./settings-layout.tsx";
 import { syncPushDevice } from "./push.ts";
 import { TooltipProvider } from "@diffx/ui/components/ui/tooltip";
 
@@ -56,7 +57,7 @@ function ApplicationRoutes() {
   // Local mode has no account pages; signed-in users have no sign-in pages.
   const misplaced =
     ready &&
-    ((!remote && path === "/settings") ||
+    ((!remote && isSettingsPath(path)) ||
       (signedIn &&
         (path === "/signup" ||
           path === "/invite" ||
@@ -74,8 +75,8 @@ function ApplicationRoutes() {
     if (path === "/reset-password") return <ResetPassword />;
     return <SignIn />;
   }
-  if (path === "/settings" && state.bootstrap.mode === "remote")
-    return <AccountSettings />;
+  if (isSettingsPath(path) && state.bootstrap.mode === "remote")
+    return <AccountSettings section={settingsSection(path)} />;
   return (
     <SessionProvider key={state.bootstrap.user?.id ?? "local"}>
       <SessionShell>

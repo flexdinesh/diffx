@@ -11,7 +11,12 @@ import { AccountGitHub, type GitHubFollowing } from "./account-github.tsx";
 import { AccountNotifications } from "./account-notifications.tsx";
 import { AccountTokens } from "./account-tokens.tsx";
 import { forgetPushDevice } from "./push.ts";
-import { SettingsLayout, SettingsSection } from "./settings-layout.tsx";
+import {
+  SettingsLayout,
+  SettingsSection,
+  SettingsSectionAbsent,
+  type SettingsSectionId,
+} from "./settings-layout.tsx";
 
 /** Rail placement on the panel, or the compact header on the shell canvas. */
 export function AccountButton({ variant }: { variant: "rail" | "shell" }) {
@@ -641,13 +646,17 @@ export function AccountPage({
   );
 }
 
-export function AccountSettings() {
+export function AccountSettings({
+  section,
+}: {
+  /** The page the route names; null opens the first section. */
+  section: SettingsSectionId | null;
+}) {
   const { state, signedOut } = useIdentity();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [github, setGitHub] = useState<GitHubFollowing | null>(null);
   const [pushEnabled, setPushEnabled] = useState(false);
-  const [composing, setComposing] = useState(false);
   if (state.status !== "ready" || !state.bootstrap.user) return null;
   const user = state.bootstrap.user;
   async function logout() {
@@ -668,37 +677,41 @@ export function AccountSettings() {
   }
   return (
     <AccountPage email={user.email}>
-      <SettingsLayout>
-        <header className="settings-summary">
-          <div className="min-w-0 wrap-anywhere">
-            <h1 className="mb-1 text-xl font-semibold">Account settings</h1>
-            <p className="leading-copy text-secondary">
-              Signed in as <strong>{user.email}</strong>
-              {user.method === "google" && " with Google"}.
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            touch
-            disabled={busy}
-            aria-busy={busy}
-            onClick={() => void logout()}
-          >
-            Sign out
-          </Button>
-        </header>
-        {error && <ErrorState message={error} className="mb-4" />}
-        <AccountTokens onComposingChange={setComposing} />
-        <AccountGitHub
-          notify={pushEnabled}
-          primary={!composing}
-          onFollowingChange={setGitHub}
-        />
+      <SettingsLayout
+        section={section}
+        header={
+          <header className="settings-summary">
+            <div className="min-w-0 wrap-anywhere">
+              <h1 className="mb-1 text-xl font-semibold">Account settings</h1>
+              <p className="leading-copy text-secondary">
+                Signed in as <strong>{user.email}</strong>
+                {user.method === "google" && " with Google"}.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              touch
+              disabled={busy}
+              aria-busy={busy}
+              onClick={() => void logout()}
+            >
+              Sign out
+            </Button>
+            {error && <ErrorState message={error} className="basis-full" />}
+          </header>
+        }
+      >
+        <AccountTokens />
+        <AccountGitHub notify={pushEnabled} onFollowingChange={setGitHub} />
         <AccountNotifications
           github={github}
           onEnabledChange={setPushEnabled}
         />
-        {user.method === "password" && <PasswordSettings />}
+        {user.method === "password" ? (
+          <PasswordSettings />
+        ) : (
+          <SettingsSectionAbsent id="password" />
+        )}
       </SettingsLayout>
     </AccountPage>
   );

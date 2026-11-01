@@ -38,12 +38,7 @@ function date(value: number) {
  * The account's tokens, then a "New token" action that opens the form in
  * place. A created secret shows once, above that action.
  */
-export function AccountTokens({
-  onComposingChange,
-}: {
-  /** Reports whether the new-token form is open. */
-  onComposingChange?: (composing: boolean) => void;
-}) {
+export function AccountTokens() {
   const [tokens, setTokens] = useState<ApiAccountToken[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -63,9 +58,6 @@ export function AccountTokens({
   const newToken = useRef<HTMLButtonElement>(null);
   const copyButton = useRef<HTMLButtonElement>(null);
   const [focusNewToken, setFocusNewToken] = useState(false);
-  useEffect(() => {
-    onComposingChange?.(composing);
-  }, [composing, onComposingChange]);
   useEffect(() => {
     if (composing || !focusNewToken) return;
     newToken.current?.focus();

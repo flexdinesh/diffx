@@ -131,7 +131,7 @@ func TestGitHubConnectFollowAndWebhookBoundaries(t *testing.T) {
 	r.AddCookie(cookie)
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
-	if w.Code != 303 || w.Header().Get("Location") != "/settings?github=connected" {
+	if w.Code != 303 || w.Header().Get("Location") != "/settings/github?github=connected" {
 		t.Fatalf("callback: %d %s", w.Code, w.Header().Get("Location"))
 	}
 	w = identityRequest(handler, "GET", "/api/v2/github/connection", "", cookie, "", "")
@@ -176,7 +176,7 @@ func TestGitHubCallbackRefusesForeignAndMissingSessions(t *testing.T) {
 	for _, tc := range []struct {
 		cookie   *http.Cookie
 		location string
-	}{{nil, "/settings?github=signin"}, {bob, "/settings?github=failed"}} {
+	}{{nil, "/settings/github?github=signin"}, {bob, "/settings/github?github=failed"}} {
 		r := httptest.NewRequest("GET", callback, nil)
 		if tc.cookie != nil {
 			r.AddCookie(tc.cookie)

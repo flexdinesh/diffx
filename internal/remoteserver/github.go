@@ -140,20 +140,20 @@ func (remote *transport) githubCallback(w http.ResponseWriter, r *http.Request) 
 	}
 	p, err := remote.authenticate(r)
 	if err != nil || p.session == nil {
-		http.Redirect(w, r, "/settings?github=signin", http.StatusSeeOther)
+		http.Redirect(w, r, "/settings/github?github=signin", http.StatusSeeOther)
 		return
 	}
 	query := r.URL.Query()
 	if query.Get("error") != "" || query.Get("code") == "" {
-		http.Redirect(w, r, "/settings?github=cancelled", http.StatusSeeOther)
+		http.Redirect(w, r, "/settings/github?github=cancelled", http.StatusSeeOther)
 		return
 	}
 	if err := remote.github.Complete(r.Context(), p.account.ID, query.Get("state"), query.Get("code")); err != nil {
 		log.Printf("GitHub authorization: %v", err)
-		http.Redirect(w, r, "/settings?github=failed", http.StatusSeeOther)
+		http.Redirect(w, r, "/settings/github?github=failed", http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/settings?github=connected", http.StatusSeeOther)
+	http.Redirect(w, r, "/settings/github?github=connected", http.StatusSeeOther)
 }
 
 // githubAccount serves integration management. Like account routes it needs a

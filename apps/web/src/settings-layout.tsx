@@ -17,8 +17,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@diffx/ui/components/ui/dropdown-menu";
+import { navigate } from "./identity-context.tsx";
 
-/** Account settings sections in page order. */
+/** Account settings sections in nav order; each is its own page. */
 const sections = [
   { id: "tokens", title: "API tokens" },
   { id: "github", title: "GitHub" },
@@ -28,110 +29,110 @@ const sections = [
 
 export type SettingsSectionId = (typeof sections)[number]["id"];
 
-const RegistryContext = createContext<
-  ((id: SettingsSectionId) => () => void) | null
->(null);
+/** The path of one settings section's page. */
+export const settingsPath = (id: SettingsSectionId) => `/settings/${id}`;
 
-const sectionElement = (id: SettingsSectionId) =>
-  document.getElementById(`settings-${id}`);
+export const isSettingsPath = (path: string) =>
+  path === "/settings" || path.startsWith("/settings/");
+
+/** The section a settings path names; null for `/settings` and unknown pages. */
+export function settingsSection(path: string): SettingsSectionId | null {
+  const name = path.slice("/settings/".length);
+  return sections.find((section) => section.id === name)?.id ?? null;
+}
+
+type Presence = "present" | "absent";
+
+const SettingsContext = createContext<{
+  current: SettingsSectionId | null;
+  report: (id: SettingsSectionId, presence: Presence) => () => void;
+} | null>(null);
 
 /**
- * The scrolling settings document: a sticky section nav beside the content.
- * Sections register as they render, since GitHub and Notifications stay
- * absent on servers without them; the nav lists only those present and marks
- * the one at the top of the viewport.
+ * Settings pages: the account summary, a section nav marking the current
+ * page, then that page's section. Every section stays mounted so sections can
+ * share state, but only the current one shows. Sections report whether they
+ * exist, since GitHub and Notifications stay absent on servers without them;
+ * the nav lists those present, and `/settings`, unknown pages and absent
+ * sections open the first section.
  */
-export function SettingsLayout({ children }: { children: ReactNode }) {
+export function SettingsLayout({
+  section,
+  header,
+  children,
+}: {
+  section: SettingsSectionId | null;
+  header: ReactNode;
+  children: ReactNode;
+}) {
   const scroller = useRef<HTMLElement>(null);
-  const [mounted, setMounted] = useState<ReadonlySet<SettingsSectionId>>(
-    new Set(),
+  const [known, setKnown] = useState<ReadonlyMap<SettingsSectionId, Presence>>(
+    new Map(),
   );
-  const [current, setCurrent] = useState<SettingsSectionId | null>(null);
-  const register = useCallback((id: SettingsSectionId) => {
-    setMounted((ids) => new Set(ids).add(id));
+  const report = useCallback((id: SettingsSectionId, presence: Presence) => {
+    setKnown((ids) => new Map(ids).set(id, presence));
     return () =>
-      setMounted((ids) => {
-        const next = new Set(ids);
+      setKnown((ids) => {
+        const next = new Map(ids);
         next.delete(id);
         return next;
       });
   }, []);
   const present = useMemo(
-    () => sections.filter((section) => mounted.has(section.id)),
-    [mounted],
+    () => sections.filter((item) => known.get(item.id) === "present"),
+    [known],
   );
+  const missing = section === null || known.get(section) === "absent";
   useEffect(() => {
-    const container = scroller.current;
-    if (!container) return;
-    let frame = 0;
-    const update = () => {
-      frame = 0;
-      const top = container.getBoundingClientRect().top;
-      const atEnd =
-        container.scrollTop + container.clientHeight >=
-        container.scrollHeight - 1;
-      let next = present[0]?.id ?? null;
-      for (const section of present) {
-        const element = sectionElement(section.id);
-        if (element && element.getBoundingClientRect().top - top <= 96)
-          next = section.id;
-      }
-      if (atEnd && container.scrollTop > 0) next = present.at(-1)?.id ?? next;
-      setCurrent(next);
-    };
-    const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(update);
-    };
-    update();
-    container.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", schedule);
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      container.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", schedule);
-    };
-  }, [present]);
+    if (!missing) return;
+    const { search, hash } = window.location;
+    navigate(`${settingsPath(sections[0].id)}${search}${hash}`, {
+      replace: true,
+    });
+  }, [missing]);
+  useEffect(() => {
+    if (scroller.current) scroller.current.scrollTop = 0;
+  }, [section]);
+  const context = useMemo(
+    () => ({ current: section, report }),
+    [section, report],
+  );
   return (
-    <RegistryContext.Provider value={register}>
+    <SettingsContext.Provider value={context}>
       <main ref={scroller} className="settings-scroll">
         <div className="settings-page">
+          <div className="settings-header">{header}</div>
           <nav className="settings-nav" aria-label="Settings sections">
-            <ul className="flex flex-col gap-1">
-              {present.map((section) => (
-                <li key={section.id}>
+            <ul>
+              {present.map((item) => (
+                <li key={item.id}>
                   <LinkButton
                     variant="rail"
                     size="sm"
-                    href={`#settings-${section.id}`}
-                    aria-current={current === section.id ? "true" : undefined}
-                    className="w-full justify-start"
+                    touch
+                    href={settingsPath(item.id)}
+                    aria-current={section === item.id ? "page" : undefined}
                     onClick={(event) => {
                       event.preventDefault();
-                      const element = sectionElement(section.id);
-                      if (!element) return;
-                      element.scrollIntoView({ block: "start" });
-                      element
-                        .querySelector("h2")
-                        ?.focus({ preventScroll: true });
-                      setCurrent(section.id);
+                      if (section !== item.id) navigate(settingsPath(item.id));
                     }}
                   >
-                    {section.title}
+                    {item.title}
                   </LinkButton>
                 </li>
               ))}
             </ul>
           </nav>
-          <div className="min-w-0">{children}</div>
+          <div className="settings-content">{children}</div>
         </div>
       </main>
-    </RegistryContext.Provider>
+    </SettingsContext.Provider>
   );
 }
 
 /**
  * One settings section: its title and what it is for beside its controls on
- * wide screens, stacked on narrow ones.
+ * wide screens, stacked on narrow ones. Shown only on its own page.
  */
 export function SettingsSection({
   id,
@@ -142,21 +143,19 @@ export function SettingsSection({
   description: ReactNode;
   children: ReactNode;
 }) {
-  const register = useContext(RegistryContext);
-  useEffect(() => register?.(id), [register, id]);
+  const context = useContext(SettingsContext);
+  const report = context?.report;
+  useEffect(() => report?.(id, "present"), [report, id]);
   const title = sections.find((section) => section.id === id)?.title;
   return (
     <section
       id={`settings-${id}`}
       className="settings-section"
       aria-labelledby={`${id}-title`}
+      hidden={context !== null && context.current !== id}
     >
       <div>
-        <h2
-          id={`${id}-title`}
-          tabIndex={-1}
-          className="mb-2 text-md font-semibold"
-        >
+        <h2 id={`${id}-title`} className="mb-2 text-md font-semibold">
           {title}
         </h2>
         <p className="leading-copy text-secondary">{description}</p>
@@ -164,6 +163,13 @@ export function SettingsSection({
       <div className="min-w-0">{children}</div>
     </section>
   );
+}
+
+/** Marks a section this server or account does not have, so its page redirects. */
+export function SettingsSectionAbsent({ id }: { id: SettingsSectionId }) {
+  const report = useContext(SettingsContext)?.report;
+  useEffect(() => report?.(id, "absent"), [report, id]);
+  return null;
 }
 
 /**

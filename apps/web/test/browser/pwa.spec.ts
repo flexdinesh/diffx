@@ -112,7 +112,7 @@ test("only the remote server links the manifest and registers the service worker
 
   const remotePage = await page.context().newPage();
   await remote(remotePage);
-  await remotePage.goto("/settings");
+  await remotePage.goto("/settings/notifications");
   await expect(
     remotePage.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
@@ -179,7 +179,7 @@ test("turning on notifications asks permission on click and registers the device
     tested = new URL(route.request().url()).pathname;
     return route.fulfill({ status: 204 });
   });
-  await page.goto("/settings");
+  await page.goto("/settings/notifications");
   await expect(page.getByText("Get a notification when")).toBeVisible();
   expect(registered).toEqual([]);
   await page.getByRole("button", { name: "Turn on notifications" }).click();
@@ -205,7 +205,7 @@ test("the browser install prompt becomes an Install app action", async ({
   page,
 }) => {
   await remote(page);
-  await page.goto("/settings");
+  await page.goto("/settings/notifications");
   await expect(
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
@@ -279,7 +279,7 @@ test("a repository bell mutes notifications and rolls back when refused", async 
       ? route.fulfill({ status: 503, json: { detail: "GitHub unavailable" } })
       : route.fulfill({ status: 204 });
   });
-  await page.goto("/settings");
+  await page.goto("/settings/github");
   const bell = page.getByRole("button", { name: "Notify for octo/app" });
   await expect(bell).toHaveAttribute("aria-pressed", "true");
   await expect(
@@ -321,7 +321,7 @@ test("signing out removes this device before ending the session", async ({
     calls.push("POST /api/v2/auth/logout");
     return route.fulfill({ status: 204 });
   });
-  await page.goto("/settings");
+  await page.goto("/settings/notifications");
   await expect(
     page.getByRole("checkbox", { name: "Send notifications to this device" }),
   ).toBeChecked();
