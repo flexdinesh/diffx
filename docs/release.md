@@ -5,7 +5,8 @@
 Only the manual **Release** workflow creates stable version tags and GitHub
 Releases. It checks out the latest `main` when the run starts and marks the
 release as GitHub's latest stable release. Dispatches from other branches are
-skipped.
+skipped. Releases publish the CLI only; they never deploy servers (see
+[Homelab container images](#homelab-container-images)).
 
 Checks and test suites run locally through explicit `mise run check:pr` before
 creating or updating PRs, including after rebasing onto changed upstream content.
@@ -29,7 +30,8 @@ Required repository secret:
 - `HOMEBREW_TAP_TOKEN`: fine-grained token with contents write and pull request
   write access to `flexdinesh/homebrew-tap`.
 
-1. Merge release-ready code to `main`.
+1. Merge release-ready code to `main`. When the release changes a protocol that
+   servers must accept first, promote that commit to prod before continuing.
 2. Run the **Release** workflow with `main` selected. It requires no inputs.
 3. The workflow builds and commits the embedded web assets on top
    of the `main` tip as `release: vX.Y.Z`, pushes only the tag, and publishes
@@ -50,7 +52,8 @@ fresh, or does so with `--reset-state`. Servers migrate their Postgres database
 at startup and never reset it. Server schema 10 refuses older binaries, so stop
 every older `diffx-server` and `diffx-console` before upgrading; it is not a
 rolling upgrade. Upgrade server and collectors
-together for ingestion protocol 4, deploying the server first: new producers send
+together for ingestion protocol 4, deploying the server first (promote prod
+before running **Release**): new producers send
 optional activity metadata that older servers reject. Existing protocol 4
 submissions without that metadata still replay unchanged and need no reset. In-memory state lasts only for one process.
 
@@ -143,14 +146,23 @@ modules when adding dependencies.
 
 ## Homelab container images
 
-`.woodpecker/deploy.yml` publishes `diffx-server` and `diffx-fetcher` images to
-`registry.local.deebox.xyz/home` for the Kubernetes app in
-`deehomelab/k8s-cluster` (`apps/diffx`). It stages the embedded web assets,
-builds both Dockerfile targets and rolls deployments to the pushed digests:
+Woodpecker publishes `diffx-server`, `diffx-fetcher` and `diffx-console` images
+to `registry.local.deebox.xyz/home` for the Kubernetes app in
+`deehomelab/k8s-cluster` (`apps/diffx`). Server deploys are independent of CLI
+releases and version tags; prod runs images built once for staging:
 
-- Pushes to `main` tag `:<commit>` and `:main` and roll `diffx-staging`. A manual
-  Woodpecker run on `main` does the same without a push.
-- Release tags `vX.Y.Z` tag `:vX.Y.Z` and `:release` and roll `diffx-prod`.
+- `.woodpecker/deploy.yml`: pushes to `main` stage the embedded web assets,
+  build all Dockerfile targets, tag `:<commit>` and `:main`, and roll
+  `diffx-staging` to the pushed digests. A manual Woodpecker run on `main` does
+  the same without a push.
+- `.woodpecker/promote.yml`: deploying a successful `main` pipeline to the
+  `prod` environment (Woodpecker pipeline **Deploy**, or
+  `woodpecker-cli pipeline deploy <repo> <pipeline> prod`) pulls that commit's
+  `:<commit>` images, retags them `:release` (the tag the prod overlay pins) and
+  rolls `diffx-prod` to the same digests staging ran, without rebuilding.
+  Promotion fails when the commit has no staging images. Promoting an earlier
+  commit rolls back only when its server accepts the migrated database schema.
+  The repository must allow deployments in Woodpecker.
 
 Only Deployments that exist in the namespace roll; prod has no fetcher until its
 GitHub integration is enabled. Images are published even before the k8s-cluster
