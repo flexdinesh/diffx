@@ -478,7 +478,7 @@ export function ResetPassword() {
                   type="password"
                   autoComplete="new-password"
                   touch
-                  minLength={12}
+                  minLength={8}
                   maxLength={128}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
@@ -490,7 +490,7 @@ export function ResetPassword() {
                   id="new-password-hint"
                   className="text-sm leading-copy text-secondary"
                 >
-                  Use at least 12 characters.
+                  Use at least 8 characters.
                 </p>
                 {error && <ErrorState message={error} />}
                 <Button
@@ -589,14 +589,14 @@ function CredentialForm({
         value={password}
         onChange={(event) => setPassword(event.target.value)}
         required
-        minLength={creating ? 12 : undefined}
+        minLength={creating ? 8 : undefined}
         maxLength={128}
         disabled={busy}
         aria-describedby={creating ? "password-hint" : undefined}
       />
       {creating && (
         <p id="password-hint" className="text-sm leading-copy text-secondary">
-          Use at least 12 characters.
+          Use at least 8 characters.
         </p>
       )}
       {error && <ErrorState message={error} />}
@@ -747,7 +747,7 @@ function PasswordSettings() {
           type="password"
           autoComplete="new-password"
           touch
-          minLength={12}
+          minLength={8}
           maxLength={128}
           value={newPassword}
           onChange={(event) => setNew(event.target.value)}
@@ -755,7 +755,7 @@ function PasswordSettings() {
           disabled={busy}
         />
         <p className="text-sm leading-copy text-secondary">
-          Use at least 12 characters.
+          Use at least 8 characters.
         </p>
         {error && <ErrorState message={error} />}
         <Button

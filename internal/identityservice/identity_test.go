@@ -23,12 +23,12 @@ func TestUsernamePolicy(t *testing.T) {
 }
 
 func TestPasswordPolicyAndSaltedHash(t *testing.T) {
-	for _, length := range []int{0, 11, 129} {
+	for _, length := range []int{0, 7, 129} {
 		if err := validatePassword(strings.Repeat("a", length)); !errors.Is(err, ErrInvalidInput) {
 			t.Fatalf("accepted %d bytes", length)
 		}
 	}
-	for _, length := range []int{12, 128} {
+	for _, length := range []int{8, 128} {
 		if err := validatePassword(strings.Repeat("a", length)); err != nil {
 			t.Fatalf("rejected %d bytes: %v", length, err)
 		}
