@@ -9,10 +9,10 @@ const memberPassword = "member-password-0001";
 async function signUpMember(
   request: APIRequestContext,
   app: string,
-  username: string,
+  email: string,
 ) {
   const response = await request.post(`${app}/api/v2/auth/signup`, {
-    data: { username, password: memberPassword },
+    data: { email, password: memberPassword },
   });
   expect(response.status()).toBe(200);
 }
@@ -37,8 +37,18 @@ test("the setup link creates the first admin", async ({ page, deployment }) => {
   await expect(
     page.getByRole("heading", { name: "Set up the console" }),
   ).toBeVisible();
-  await page.getByLabel("Username").fill(root.username);
+  const email = page.getByLabel("Email", { exact: true });
+  await email.fill("root");
   await page.getByLabel("Password").fill(root.password);
+  await page.getByRole("button", { name: "Create admin" }).click();
+  await expect(email).toBeVisible();
+  expect(
+    await email.evaluate(
+      (field) =>
+        field instanceof HTMLInputElement && field.validity.typeMismatch,
+    ),
+  ).toBe(true);
+  await email.fill(root.username);
   await page.getByRole("button", { name: "Create admin" }).click();
   await expect(page).toHaveURL(/\/accounts$/);
   const self = accountRow(page, root.username);
@@ -58,8 +68,11 @@ test("the setup link creates the first admin", async ({ page, deployment }) => {
 });
 
 test("only admins sign in", async ({ page, request, deployment }) => {
-  await signUpMember(request, deployment.app, "member");
-  await signIn(page, { username: "member", password: memberPassword });
+  await signUpMember(request, deployment.app, "member@example.com");
+  await signIn(page, {
+    username: "member@example.com",
+    password: memberPassword,
+  });
   await expect(page.getByRole("alert")).toContainText("Unable to sign in");
   await signIn(page, root);
   await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
@@ -73,20 +86,22 @@ test("admins manage roles, access and recovery", async ({
   request,
   deployment,
 }) => {
-  await signUpMember(request, deployment.app, "alice");
+  await signUpMember(request, deployment.app, "alice@example.com");
   await signIn(page, root);
-  const alice = accountRow(page, "alice");
+  const alice = accountRow(page, "alice@example.com");
   await expect(alice).toContainText("Password");
 
-  await accountAction(page, "alice", "Make admin");
-  await expect(page.getByText("alice is now an admin.")).toBeVisible();
+  await accountAction(page, "alice@example.com", "Make admin");
+  await expect(
+    page.getByText("alice@example.com is now an admin."),
+  ).toBeVisible();
   await expect(alice.getByText("Admin")).toBeVisible();
 
   // An admin's reset link opens this console.
-  await accountAction(page, "alice", "Create reset link");
+  await accountAction(page, "alice@example.com", "Create reset link");
   const panel = page
     .getByRole("status")
-    .filter({ hasText: "Send this reset link to alice" });
+    .filter({ hasText: "Send this reset link to alice@example.com" });
   await expect(panel).toContainText("It opens this console");
   const adminLink = await panel.locator("pre").innerText();
   expect(adminLink.startsWith(`${deployment.origin}/reset-password#t=`)).toBe(
@@ -94,27 +109,31 @@ test("admins manage roles, access and recovery", async ({
   );
 
   // A member's reset link opens the app.
-  await accountAction(page, "member", "Create reset link");
+  await accountAction(page, "member@example.com", "Create reset link");
   await expect(
     page
       .getByRole("status")
-      .filter({ hasText: "Send this reset link to member" }),
+      .filter({ hasText: "Send this reset link to member@example.com" }),
   ).toContainText(`${deployment.app}/reset-password#t=`);
 
-  await accountAction(page, "member", "Disable…");
+  await accountAction(page, "member@example.com", "Disable…");
   const disable = page.getByRole("dialog");
-  await expect(disable).toContainText("Disable member?");
+  await expect(disable).toContainText("Disable member@example.com?");
   await disable.getByRole("button", { name: "Disable account" }).click();
-  await expect(accountRow(page, "member").getByText("Disabled")).toBeVisible();
-  await accountAction(page, "member", "Enable");
-  await expect(accountRow(page, "member").getByText("Disabled")).toHaveCount(0);
+  await expect(
+    accountRow(page, "member@example.com").getByText("Disabled"),
+  ).toBeVisible();
+  await accountAction(page, "member@example.com", "Enable");
+  await expect(
+    accountRow(page, "member@example.com").getByText("Disabled"),
+  ).toHaveCount(0);
 
-  await accountAction(page, "member", "Delete…");
+  await accountAction(page, "member@example.com", "Delete…");
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "Delete account" })
     .click();
-  await expect(accountRow(page, "member")).toHaveCount(0);
+  await expect(accountRow(page, "member@example.com")).toHaveCount(0);
 
   // alice sets her password from the console link, then signs in here.
   const other = await page.context().browser()?.newPage();
@@ -122,13 +141,13 @@ test("admins manage roles, access and recovery", async ({
   await other.goto(adminLink);
   await expect(other).toHaveURL(/\/reset-password$/);
   await expect(other.getByText("Choose a new password for")).toContainText(
-    "alice",
+    "alice@example.com",
   );
   await other.getByLabel("New password").fill("alice-console-password-1");
   await other.getByRole("button", { name: "Set password" }).click();
   await expect(other.getByText("Your password is set")).toBeVisible();
   await other.getByRole("link", { name: "Sign in" }).click();
-  await other.getByLabel("Username").fill("alice");
+  await other.getByLabel("Email or username").fill("alice@example.com");
   await other.getByLabel("Password").fill("alice-console-password-1");
   await other.getByRole("button", { name: "Sign in" }).click();
   await expect(other.getByRole("heading", { name: "Accounts" })).toBeVisible();

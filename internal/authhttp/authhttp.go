@@ -72,10 +72,14 @@ func IdentityError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, identityservice.ErrAuthentication):
 		Unauthorized(w)
+	case errors.Is(err, identityservice.ErrInvalidEmail):
+		Problem(w, 400, "Enter a valid email address (up to 254 bytes)")
+	case errors.Is(err, identityservice.ErrInviteMismatch):
+		Problem(w, 400, "Use the email address this invite was sent to")
 	case errors.Is(err, identityservice.ErrInvalidInput):
 		Problem(w, 400, "Invalid account or credential input")
 	case errors.Is(err, identityservice.ErrConflict):
-		Problem(w, 409, "Username unavailable")
+		Problem(w, 409, "Account already exists")
 	case errors.Is(err, identityservice.ErrNotFound), errors.Is(err, identityservice.ErrDisabled):
 		Problem(w, 404, "Not found")
 	case errors.Is(err, identityservice.ErrForbidden):

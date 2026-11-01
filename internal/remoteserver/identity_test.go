@@ -161,11 +161,14 @@ func TestRemoteSessionCSRFAndTokenLifecycle(t *testing.T) {
 }
 func TestSignupActivatesOwnerWithoutRestart(t *testing.T) {
 	_, handler := identityHandler(t, Settings{InsecureCookies: true})
-	w := identityRequest(handler, "POST", "/api/v2/auth/signup", `{"username":"ab","password":"`+testPassword+`"}`, nil, "", "")
-	if w.Code != 400 {
-		t.Fatalf("invalid username: %d %s", w.Code, w.Body.String())
+	if w := identityRequest(handler, "POST", "/api/v2/auth/signup", `{"username":"valid-handle","password":"`+testPassword+`"}`, nil, "", ""); w.Code != 400 || !strings.Contains(w.Body.String(), "valid email address") {
+		t.Fatalf("signup without email: %d %s", w.Code, w.Body.String())
 	}
-	w = identityRequest(handler, "POST", "/api/v2/auth/signup", `{"username":"Newcomer","password":"`+testPassword+`"}`, nil, "", "")
+	w := identityRequest(handler, "POST", "/api/v2/auth/signup", `{"email":"ab","password":"`+testPassword+`"}`, nil, "", "")
+	if w.Code != 400 {
+		t.Fatalf("invalid email: %d %s", w.Code, w.Body.String())
+	}
+	w = identityRequest(handler, "POST", "/api/v2/auth/signup", `{"email":"Newcomer@Example.com","password":"`+testPassword+`"}`, nil, "", "")
 	if w.Code != 200 {
 		t.Fatalf("signup: %d %s", w.Code, w.Body.String())
 	}
@@ -177,10 +180,10 @@ func TestSignupActivatesOwnerWithoutRestart(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.User == nil || result.User.Username != "newcomer" || result.User.Method != identityservice.MethodPassword || result.CSRFToken == nil {
+	if result.User == nil || result.User.Username != "newcomer@example.com" || result.User.Method != identityservice.MethodPassword || result.CSRFToken == nil {
 		t.Fatalf("signup identity: %+v", result.User)
 	}
-	if w = identityRequest(handler, "POST", "/api/v2/auth/signup", `{"username":"newcomer","password":"`+testPassword+`"}`, nil, "", ""); w.Code != 409 {
+	if w = identityRequest(handler, "POST", "/api/v2/auth/signup", `{"email":"newcomer@example.com","password":"`+testPassword+`"}`, nil, "", ""); w.Code != 409 {
 		t.Fatalf("duplicate signup: %d", w.Code)
 	}
 	w = identityRequest(handler, "POST", "/api/v2/account/tokens", `{"name":"collector","purpose":"collector","expiresInDays":1}`, cookies[0], *result.CSRFToken, "")
@@ -239,7 +242,7 @@ func TestPasswordLoginAdmitsPasswordAccounts(t *testing.T) {
 func TestClosedSettingsKeepExistingPasswordAccounts(t *testing.T) {
 	store := pgtest.Store(t)
 	open := testsupport.Identity(t, store)
-	session, err := open.SignUp(t.Context(), "member", testPassword)
+	session, err := open.SignUp(t.Context(), "member@example.com", testPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,8 +266,8 @@ func TestClosedSettingsKeepExistingPasswordAccounts(t *testing.T) {
 	t.Cleanup(func() { closeServices() })
 	// New accounts cannot join; Google is not configured either.
 	for _, test := range []struct{ path, body string }{
-		{"/api/v2/auth/signup", `{"username":"another","password":"` + testPassword + `"}`},
-		{"/api/v2/invites/password", `{"token":"` + inviteSecret + `","username":"invited","password":"` + testPassword + `"}`},
+		{"/api/v2/auth/signup", `{"email":"another@example.com","password":"` + testPassword + `"}`},
+		{"/api/v2/invites/password", `{"token":"` + inviteSecret + `","email":"new@example.com","password":"` + testPassword + `"}`},
 		{"/api/v2/auth/google", `{}`},
 	} {
 		if w := identityRequest(handler, "POST", test.path, test.body, nil, "", ""); w.Code != 404 {
@@ -279,13 +282,13 @@ func TestClosedSettingsKeepExistingPasswordAccounts(t *testing.T) {
 	if w := identityRequest(handler, "GET", "/api/v2/contexts", "", nil, "", "Bearer "+token.Secret); w.Code != 200 {
 		t.Fatalf("password account token with password signup off: %d", w.Code)
 	}
-	if w := identityRequest(handler, "POST", "/api/v2/password-reset/lookup", `{"token":"`+reset+`"}`, nil, "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"username":"member"`) {
+	if w := identityRequest(handler, "POST", "/api/v2/password-reset/lookup", `{"token":"`+reset+`"}`, nil, "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"username":"member@example.com"`) {
 		t.Fatalf("reset lookup with password signup off: %d %s", w.Code, w.Body.String())
 	}
 	if w := identityRequest(handler, "POST", "/api/v2/password-reset", `{"token":"`+reset+`","password":"a new password value"}`, nil, "", ""); w.Code != 204 {
 		t.Fatalf("reset with password signup off: %d %s", w.Code, w.Body.String())
 	}
-	if w := identityRequest(handler, "POST", "/api/v2/auth/login", `{"username":"member","password":"a new password value"}`, nil, "", ""); w.Code != 200 {
+	if w := identityRequest(handler, "POST", "/api/v2/auth/login", `{"username":"member@example.com","password":"a new password value"}`, nil, "", ""); w.Code != 200 {
 		t.Fatalf("password login with password signup off: %d %s", w.Code, w.Body.String())
 	}
 	w := identityRequest(handler, "POST", "/api/v2/invites/lookup", `{"token":"`+inviteSecret+`"}`, nil, "", "")
@@ -309,21 +312,21 @@ func TestPasswordInviteAndResetLinks(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"email":"lead@example.com"`) {
 		t.Fatalf("invite lookup: %d %s", w.Code, w.Body.String())
 	}
-	w = identityRequest(handler, "POST", "/api/v2/invites/password", `{"token":"`+inviteSecret+`","username":"lead","password":"`+testPassword+`"}`, nil, "", "")
+	w = identityRequest(handler, "POST", "/api/v2/invites/password", `{"token":"`+inviteSecret+`","email":"lead@example.com","password":"`+testPassword+`"}`, nil, "", "")
 	if w.Code != 200 || len(w.Result().Cookies()) != 1 {
 		t.Fatalf("password invite: %d %s", w.Code, w.Body.String())
 	}
 	cookie := w.Result().Cookies()[0]
-	w = identityRequest(handler, "POST", "/api/v2/invites/password", `{"token":"`+inviteSecret+`","username":"again","password":"`+testPassword+`"}`, nil, "", "")
+	w = identityRequest(handler, "POST", "/api/v2/invites/password", `{"token":"`+inviteSecret+`","email":"lead@example.com","password":"`+testPassword+`"}`, nil, "", "")
 	if w.Code != 404 || !strings.Contains(w.Body.String(), "Invite link is invalid") {
 		t.Fatalf("invite reused: %d %s", w.Code, w.Body.String())
 	}
-	account, reset, err := identity.ResetPasswordByUsername(t.Context(), "lead")
+	account, reset, err := identity.ResetPasswordByUsername(t.Context(), "lead@example.com")
 	if err != nil || account.Admin {
 		t.Fatalf("reset: %+v %v", account, err)
 	}
 	w = identityRequest(handler, "POST", "/api/v2/password-reset/lookup", `{"token":"`+reset+`"}`, nil, "", "")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"username":"lead"`) {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"username":"lead@example.com"`) {
 		t.Fatalf("reset lookup: %d %s", w.Code, w.Body.String())
 	}
 	w = identityRequest(handler, "POST", "/api/v2/password-reset", `{"token":"`+reset+`","password":"a new password value"}`, nil, "", "")
@@ -336,7 +339,7 @@ func TestPasswordInviteAndResetLinks(t *testing.T) {
 	if w = identityRequest(handler, "GET", "/api/v2/contexts", "", cookie, "", ""); w.Code != 401 {
 		t.Fatalf("reset kept the session: %d", w.Code)
 	}
-	if w = identityRequest(handler, "POST", "/api/v2/auth/login", `{"username":"lead","password":"a new password value"}`, nil, "", ""); w.Code != 200 {
+	if w = identityRequest(handler, "POST", "/api/v2/auth/login", `{"username":"lead@example.com","password":"a new password value"}`, nil, "", ""); w.Code != 200 {
 		t.Fatalf("login with reset password: %d %s", w.Code, w.Body.String())
 	}
 }

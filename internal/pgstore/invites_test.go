@@ -123,13 +123,14 @@ func TestGoogleAccountFollowsEmailChangesAndDisable(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
 	value := invite(t, store, "invite", "old@example.com", now)
-	account := identityservice.Account{ID: "account", Username: "old", Method: identityservice.MethodGoogle}
+	account := identityservice.Account{ID: "account", Username: "old", Email: "old@example.com", Method: identityservice.MethodGoogle}
 	if err := store.AcceptInvite(ctx, value.ID, account, google.Identity{Subject: "subject", Email: "old@example.com", EmailVerified: true}, now); err != nil {
 		t.Fatal(err)
 	}
-	if email, err := store.GoogleEmail(ctx, account.ID); err != nil || email != "old@example.com" {
-		t.Fatalf("google email: %q %v", email, err)
+	if credential, err := store.AccountPasswordByID(ctx, account.ID); err != nil || credential.Account.Email != "old@example.com" {
+		t.Fatalf("google email: %+v %v", credential.Account, err)
 	}
+	account.Email = "new@example.com"
 	resolved, disabled, err := store.GoogleAccount(ctx, google.Identity{Subject: "subject", Email: "new@example.com"}, now)
 	if err != nil || disabled || resolved != account {
 		t.Fatalf("google account: %+v %v %v", resolved, disabled, err)
@@ -138,11 +139,11 @@ func TestGoogleAccountFollowsEmailChangesAndDisable(t *testing.T) {
 	if err != nil || len(summaries) != 1 || summaries[0].Email != "new@example.com" {
 		t.Fatalf("email change not recorded: %+v %v", summaries, err)
 	}
-	if email, err := store.GoogleEmail(ctx, account.ID); err != nil || email != "new@example.com" {
-		t.Fatalf("google email after change: %q %v", email, err)
+	if credential, err := store.AccountPasswordByID(ctx, account.ID); err != nil || credential.Account.Email != "new@example.com" {
+		t.Fatalf("google email after change: %+v %v", credential.Account, err)
 	}
-	if email, err := store.GoogleEmail(ctx, "missing"); err != nil || email != "" {
-		t.Fatalf("email without Google identity: %q %v", email, err)
+	if _, err := store.AccountPasswordByID(ctx, "missing"); !errors.Is(err, identityservice.ErrNotFound) {
+		t.Fatalf("missing account: %v", err)
 	}
 	if _, _, err := store.GoogleAccount(ctx, google.Identity{Subject: "other", Email: "new@example.com"}, now); !errors.Is(err, identityservice.ErrNotFound) {
 		t.Fatalf("email matched another subject: %v", err)
@@ -390,19 +391,19 @@ func TestInvitesCreateMembersByEitherMethod(t *testing.T) {
 	// Invites admit people whether or not signup is open.
 	testsupport.PutSettings(t, store, identityservice.Settings{})
 	closed := testsupport.Identity(t, store)
-	if _, err := closed.AcceptPasswordInvite(ctx, memberSecret, "member", adminPassword); !errors.Is(err, identityservice.ErrDisabled) {
+	if _, err := closed.AcceptPasswordInvite(ctx, memberSecret, "member@example.com", adminPassword); !errors.Is(err, identityservice.ErrDisabled) {
 		t.Fatalf("password invite accepted while password signup is off: %v", err)
 	}
 	testsupport.PutSettings(t, store, identityservice.Settings{PasswordSignup: true})
 	inviteOnly := testsupport.Identity(t, store)
-	session, err := inviteOnly.AcceptPasswordInvite(ctx, memberSecret, "member", adminPassword)
+	session, err := inviteOnly.AcceptPasswordInvite(ctx, memberSecret, "member@example.com", adminPassword)
 	if err != nil || session.Account.Admin || session.Account.Method != identityservice.MethodPassword {
 		t.Fatalf("member invite: %+v %v", session, err)
 	}
-	if _, err := inviteOnly.AcceptPasswordInvite(ctx, memberSecret, "again", adminPassword); !errors.Is(err, identityservice.ErrNotFound) {
+	if _, err := inviteOnly.AcceptPasswordInvite(ctx, memberSecret, "member@example.com", adminPassword); !errors.Is(err, identityservice.ErrNotFound) {
 		t.Fatalf("invite reused: %v", err)
 	}
-	if used, err := store.Invite(ctx, member.ID); err != nil || used.UsedBy != "member" {
+	if used, err := store.Invite(ctx, member.ID); err != nil || used.UsedBy != "member@example.com" {
 		t.Fatalf("used invite: %+v %v", used, err)
 	}
 	now := time.Now()
@@ -419,5 +420,23 @@ func TestInvitesCreateMembersByEitherMethod(t *testing.T) {
 		if summary.Admin {
 			t.Fatalf("invite made an admin: %+v", summary)
 		}
+	}
+}
+
+func TestPasswordInviteStorageBindsEmail(t *testing.T) {
+	t.Parallel()
+	store, service, conn := identityStore(t)
+	ctx := t.Context()
+	now := time.Now()
+	invited := invite(t, store, "password-invite", "invited@example.com", now)
+	account := identityservice.Account{ID: "other-account", Username: "other@example.com", Email: "other@example.com", Method: identityservice.MethodPassword}
+	if err := store.AcceptPasswordInvite(ctx, invited.ID, account, "hash", now, identityservice.Settings{PasswordSignup: true}); err == nil {
+		t.Fatal("storage accepted an email different from the invite")
+	}
+	if rows := tableRows(t, conn, "users"); rows != 0 {
+		t.Fatalf("mismatched acceptance retained an owner: %d", rows)
+	}
+	if pending, err := service.Invites(ctx); err != nil || len(pending) != 1 || pending[0].Status(now) != identityservice.InvitePending {
+		t.Fatalf("mismatched acceptance consumed invite: %+v %v", pending, err)
 	}
 }

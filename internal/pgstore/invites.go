@@ -132,10 +132,13 @@ func (store *Store) AcceptPasswordInvite(ctx context.Context, inviteID string, a
 		if err := requireSettings(ctx, queries, required); err != nil {
 			return err
 		}
+		if err := queries.InviteEmailLock(ctx, pgdb.InviteEmailLockParams{Namespace: inviteEmailLocks, Email: account.Email}); err != nil {
+			return err
+		}
 		if err := insertAccount(ctx, queries, account, passwordHash, now); err != nil {
 			return err
 		}
-		used, err := queries.UsePasswordInvite(ctx, pgdb.UsePasswordInviteParams{Now: now, UserID: account.ID, ID: inviteID})
+		used, err := queries.UsePasswordInvite(ctx, pgdb.UsePasswordInviteParams{Now: now, UserID: account.ID, ID: inviteID, Email: account.Email})
 		if err != nil {
 			return err
 		}
@@ -180,17 +183,9 @@ func (store *Store) GoogleAccount(ctx context.Context, identity google.Identity,
 	if err != nil {
 		return identityservice.Account{}, false, err
 	}
-	linked := account(row.UserID, row.Username, row.Admin, string(identityservice.MethodGoogle))
+	linked := account(row.UserID, row.Username, identity.Email, row.Admin, string(identityservice.MethodGoogle))
 	err = store.queries.RecordGoogleEmail(ctx, pgdb.RecordGoogleEmailParams{Email: identity.Email, Now: millisecond(now), Sub: identity.Subject})
 	return linked, row.Disabled, err
-}
-
-func (store *Store) GoogleEmail(ctx context.Context, accountID string) (string, error) {
-	email, err := store.queries.GoogleEmail(ctx, accountID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil
-	}
-	return email, err
 }
 
 func (store *Store) PutGoogleFlow(ctx context.Context, stateHash string, flow identityservice.GoogleFlow) error {

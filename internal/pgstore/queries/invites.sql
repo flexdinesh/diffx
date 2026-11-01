@@ -4,7 +4,11 @@
 SELECT pg_advisory_xact_lock(@namespace::int, hashtext(@email::text));
 
 -- name: EmailLinked :one
-SELECT EXISTS (SELECT 1 FROM google_identities WHERE email = $1);
+SELECT EXISTS (
+  SELECT 1 FROM google_identities g WHERE g.email = @email::text
+  UNION ALL
+  SELECT 1 FROM remote_accounts a WHERE a.email = @email::text
+);
 
 -- name: RevokePendingInvites :exec
 UPDATE account_invites SET revoked_at = @at::timestamptz WHERE email = @email AND used_at IS NULL AND revoked_at IS NULL;
@@ -37,7 +41,7 @@ WHERE id = @id AND used_at IS NULL AND revoked_at IS NULL AND expires_at > @now:
 
 -- name: UsePasswordInvite :execrows
 UPDATE account_invites SET used_at = @now::timestamptz, used_by = @user_id::text
-WHERE id = @id AND used_at IS NULL AND revoked_at IS NULL AND expires_at > @now::timestamptz;
+WHERE id = @id AND email = @email AND used_at IS NULL AND revoked_at IS NULL AND expires_at > @now::timestamptz;
 
 -- name: InsertGoogleIdentity :execrows
 INSERT INTO google_identities(sub, user_id, email, updated_at) VALUES ($1, $2, $3, $4)
@@ -52,9 +56,6 @@ WHERE g.sub = $1;
 
 -- name: RecordGoogleEmail :exec
 UPDATE google_identities SET email = @email, updated_at = @now WHERE sub = @sub AND email <> @email;
-
--- name: GoogleEmail :one
-SELECT email FROM google_identities WHERE user_id = $1;
 
 -- name: PruneGoogleFlows :exec
 -- Skips flows being taken, so cleanup never waits on a callback.

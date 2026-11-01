@@ -52,14 +52,9 @@ func (remote *transport) bootstrap(w http.ResponseWriter, r *http.Request, p pri
 	settings := remote.identity.Settings()
 	result := bootstrapJSON{Mode: "remote", GoogleEnabled: remote.identity.GoogleEnabled(), SignupEnabled: settings.Signup, PasswordSignupEnabled: settings.PasswordSignup}
 	if p.session != nil {
-		email, err := remote.identity.GoogleEmail(r.Context(), p.account.ID)
-		if err != nil {
-			authhttp.IdentityError(w, err)
-			return
-		}
 		result.User = &accountJSON{ID: p.account.ID, Username: p.account.Username, Method: p.account.Method}
-		if email != "" {
-			result.User.Email = &email
+		if p.account.Email != "" {
+			result.User.Email = &p.account.Email
 		}
 		result.CSRFToken = &p.session.CSRFToken
 	}
@@ -313,6 +308,7 @@ func (remote *transport) auth(w http.ResponseWriter, r *http.Request) {
 	}
 	var input struct {
 		Token    string `json:"token,omitempty"`
+		Email    string `json:"email"`
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
@@ -323,9 +319,9 @@ func (remote *transport) auth(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch r.URL.Path {
 	case "/api/v2/auth/signup":
-		session, err = remote.identity.SignUp(r.Context(), input.Username, input.Password)
+		session, err = remote.identity.SignUp(r.Context(), input.Email, input.Password)
 	case "/api/v2/invites/password":
-		session, err = remote.identity.AcceptPasswordInvite(r.Context(), input.Token, input.Username, input.Password)
+		session, err = remote.identity.AcceptPasswordInvite(r.Context(), input.Token, input.Email, input.Password)
 		if errors.Is(err, identityservice.ErrNotFound) {
 			authhttp.Problem(w, 404, "Invite link is invalid, expired or already used")
 			return

@@ -37,14 +37,14 @@ func TestResetPasswordPrintsALinkForTheAccountsSurface(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	testsupport.RemoteAdmin(t, store, "root", "console-password-000001")
-	if _, err := testsupport.Identity(t, store).SignUp(t.Context(), "member", "console-password-000001"); err != nil {
+	if _, err := testsupport.Identity(t, store).SignUp(t.Context(), "member@example.com", "console-password-000001"); err != nil {
 		t.Fatal(err)
 	}
 	testsupport.RemoteAccount(t, store, "google")
 	t.Setenv("DIFFX_CONSOLE_DATABASE_URL", url)
 	t.Setenv("DIFFX_CONSOLE_APP_URL", "https://diffx.example.com")
 	t.Setenv("DIFFX_CONSOLE_PUBLIC_URL", "https://console.example.com")
-	for username, prefix := range map[string]string{"root": "https://console.example.com/reset-password#t=", "member": "https://diffx.example.com/reset-password#t="} {
+	for username, prefix := range map[string]string{"root": "https://console.example.com/reset-password#t=", "member@example.com": "https://diffx.example.com/reset-password#t="} {
 		var stdout, stderr bytes.Buffer
 		if err := run(t.Context(), []string{"user", "reset-password", "--username", username}, &stdout, &stderr); err != nil {
 			t.Fatalf("%s: %v", username, err)

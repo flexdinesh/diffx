@@ -289,7 +289,7 @@ database.
 
 Who may join is set in the console's Settings page, not server configuration:
 Signup lets anyone create an account from the app without an invite; Password
-signup lets new accounts choose a username and password. Both default on for
+signup requires an email and password for new accounts. Both default on for
 development, tests and self-hosting, upgraded databases included; production
 admins turn both off after deploy so accounts come only from invites and sign
 in with Google. Existing password accounts keep signing in, using tokens and
@@ -401,7 +401,7 @@ invite and member reset links. `DIFFX_CONSOLE_PUBLIC_URL` is the console's
 origin, used in the setup link, admin reset links and the Google callback;
 unset, links use the listen address. While no admin exists, each start logs a
 one-time setup link, `<console URL>/setup#t=…`, valid for 24 hours; a restart
-replaces it. It creates the first admin with a username and password or, when
+replaces it. It creates the first admin with an email and password or, when
 the console has its own Google client, with a Google account whose email Google
 verified (username derived from the email), whatever the app's settings. If
 that Google account already has an app account, setup makes it the admin.

@@ -14,7 +14,7 @@ func TestUsernamePolicy(t *testing.T) {
 			t.Fatalf("accepted %q: %v", input, err)
 		}
 	}
-	for _, input := range []string{"Owner", "123", "A-b_c.d"} {
+	for _, input := range []string{"Owner", "123", "A-b_c.d", "Owner+diffx@Example.COM", strings.Repeat("long", 12) + "@example.com"} {
 		username, err := canonicalUsername(input)
 		if err != nil || username != strings.ToLower(input) {
 			t.Fatalf("canonical %q: %q %v", input, username, err)
@@ -117,7 +117,7 @@ func TestUsernameFromEmailAlwaysValid(t *testing.T) {
 }
 
 func TestEmailPolicyAndInviteStatus(t *testing.T) {
-	for _, input := range []string{"", "alice", "alice@", "@example.com", "alice@example", "a b@example.com", "a@b@example.com"} {
+	for _, input := range []string{"", "alice", "alice@", "@example.com", "alice@example", "a b@example.com", "a@b@example.com", "a..b@example.com", "alice@example..com", "Alice <alice@example.com>", "alice@example.com (Alice)", strings.Repeat("a", 243) + "@example.com"} {
 		if _, err := canonicalEmail(input); !errors.Is(err, ErrInvalidInput) {
 			t.Fatalf("accepted %q", input)
 		}

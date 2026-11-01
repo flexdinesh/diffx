@@ -405,9 +405,13 @@ test("Go distribution implements the API contract", async (t) => {
     csrfToken: null,
   });
   // Defaults open password signup; admin setup belongs to the console.
+  const handleSignup = await remote.POST("/api/v2/auth/signup", {
+    body: { email: "contract-user", password: "contract-password-000001" },
+  });
+  assert.equal(handleSignup.response.status, 400);
   const signup = await remote.POST("/api/v2/auth/signup", {
     body: {
-      username: "contract-user",
+      email: "contract-user@example.com",
       password: "contract-password-000001",
     },
   });
@@ -417,9 +421,13 @@ test("Go distribution implements the API contract", async (t) => {
     signup.data?.mode === "remote" && signup.data.user?.method,
     "password",
   );
+  assert.equal(
+    signup.data?.mode === "remote" && signup.data.user?.email,
+    "contract-user@example.com",
+  );
   const takenSignup = await remote.POST("/api/v2/auth/signup", {
     body: {
-      username: "contract-user",
+      email: "Contract-User@Example.COM",
       password: "contract-password-000002",
     },
   });
@@ -434,14 +442,14 @@ test("Go distribution implements the API contract", async (t) => {
   }
   const login = await remote.POST("/api/v2/auth/login", {
     body: {
-      username: "contract-user",
+      username: "contract-user@example.com",
       password: "contract-password-000001",
     },
   });
   assert.equal(login.response.status, 200);
   conforms("Bootstrap", login.data);
   assert.ok(login.data?.mode === "remote");
-  assert.equal(login.data?.user?.username, "contract-user");
+  assert.equal(login.data?.user?.username, "contract-user@example.com");
   const csrf = login.data?.csrfToken;
   assert.ok(csrf);
   const cookie = login.response.headers.get("set-cookie")?.split(";")[0];

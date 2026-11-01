@@ -4,7 +4,7 @@ import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { ConsoleBootstrap } from "@diffx/console-api";
 import { createElement } from "react";
 import { Setup } from "../../src/auth.tsx";
-import { renderPage, serve } from "./session.ts";
+import { renderPage, serve, signedIn } from "./session.ts";
 import { json, takeNavigations } from "./setup.ts";
 
 afterEach(() => {
@@ -34,6 +34,34 @@ test("setup offers Google only when the console configures it", async () => {
   assert.equal(
     screen.queryByRole("button", { name: "Continue with Google" }),
     null,
+  );
+});
+
+test("password setup requires email and submits the setup secret", async () => {
+  const email = "admin.with.a.long.email.address@example.com";
+  let body: unknown;
+  serve(setupRequired, async (request) => {
+    assert.equal(new URL(request.url).pathname, "/api/v1/setup");
+    body = await request.json();
+    return json(signedIn);
+  });
+  openSetupLink();
+  renderPage(createElement(Setup));
+  const field = await screen.findByLabelText("Email", { exact: true });
+  assert.equal(field.getAttribute("type"), "email");
+  assert.equal(field.getAttribute("maxlength"), "254");
+  assert.equal(screen.queryByLabelText("Username", { exact: true }), null);
+  fireEvent.change(field, { target: { value: email } });
+  fireEvent.change(screen.getByLabelText("Password", { exact: true }), {
+    target: { value: "admin-password-1234" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Create admin" }));
+  await waitFor(() =>
+    assert.deepEqual(body, {
+      token: "setup-secret",
+      email,
+      password: "admin-password-1234",
+    }),
   );
 });
 

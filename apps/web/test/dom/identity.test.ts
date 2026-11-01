@@ -122,11 +122,14 @@ test("without password signup a quiet link reveals password sign-in", async () =
     name: "Continue with Google",
   });
   assert.equal(google.getAttribute("data-variant"), "default");
-  assert.equal(screen.queryByLabelText("Username", { exact: true }), null);
+  assert.equal(
+    screen.queryByLabelText("Email or username", { exact: true }),
+    null,
+  );
   fireEvent.click(
     screen.getByRole("button", { name: "Sign in with password" }),
   );
-  const username = screen.getByLabelText("Username", { exact: true });
+  const username = screen.getByLabelText("Email or username", { exact: true });
   assert.equal(document.activeElement, username);
   assert.equal(google.getAttribute("data-variant"), "outline");
   assert.equal(
@@ -193,9 +196,12 @@ test("failed password sign-in preserves recovery", async () => {
     await screen.findByRole("button", { name: "Continue with Google" }),
   );
   assert.ok(screen.getByRole("link", { name: "Create an account" }));
-  fireEvent.change(screen.getByLabelText("Username", { exact: true }), {
-    target: { value: "alice" },
-  });
+  fireEvent.change(
+    screen.getByLabelText("Email or username", { exact: true }),
+    {
+      target: { value: "alice" },
+    },
+  );
   fireEvent.change(screen.getByLabelText("Password", { exact: true }), {
     target: { value: "incorrect-password" },
   });
@@ -210,7 +216,8 @@ test("failed password sign-in preserves recovery", async () => {
   );
 });
 
-test("password signup signs the new account in", async () => {
+test("password signup requires email and signs the new account in", async () => {
+  const email = "alice.with.a.long.email.address@example.com";
   let body: unknown;
   remote(
     async (request) => {
@@ -222,15 +229,19 @@ test("password signup signs the new account in", async () => {
     { password: true, signup: true },
   );
   mount(SignUp, false);
-  fireEvent.change(await screen.findByLabelText("Username", { exact: true }), {
-    target: { value: "alice" },
+  const field = await screen.findByLabelText("Email", { exact: true });
+  assert.equal(field.getAttribute("type"), "email");
+  assert.equal(field.getAttribute("maxlength"), "254");
+  assert.equal(screen.queryByLabelText("Username", { exact: true }), null);
+  fireEvent.change(field, {
+    target: { value: email },
   });
   fireEvent.change(screen.getByLabelText("Password", { exact: true }), {
     target: { value: "new-password-456" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Create account" }));
   await screen.findByRole("heading", { name: "Signed in" });
-  assert.deepEqual(body, { username: "alice", password: "new-password-456" });
+  assert.deepEqual(body, { email, password: "new-password-456" });
 });
 
 test("an invite accepts a password with its secret", async () => {
@@ -255,9 +266,8 @@ test("an invite accepts a password with its secret", async () => {
     screen.queryByRole("button", { name: "Continue with Google" }),
     null,
   );
-  fireEvent.change(screen.getByLabelText("Username", { exact: true }), {
-    target: { value: "newbie" },
-  });
+  assert.equal(screen.getByLabelText("Email").getAttribute("readonly"), "");
+  assert.ok(screen.getByDisplayValue("new@example.com"));
   fireEvent.change(screen.getByLabelText("Password", { exact: true }), {
     target: { value: "new-password-456" },
   });
@@ -267,7 +277,7 @@ test("an invite accepts a password with its secret", async () => {
     { token: "invite-secret" },
     {
       token: "invite-secret",
-      username: "newbie",
+      email: "new@example.com",
       password: "new-password-456",
     },
   ]);
@@ -422,7 +432,7 @@ test("an invite without password signup offers only Google", async () => {
   });
   assert.equal(google.getAttribute("data-variant"), "default");
   assert.equal(screen.queryByLabelText("Password", { exact: true }), null);
-  assert.equal(screen.queryByText(/a username and password/), null);
+  assert.equal(screen.queryByText(/a password for this email/), null);
 });
 
 test("an unusable invite hides its secret and offers no Google action", async () => {

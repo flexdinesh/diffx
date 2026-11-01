@@ -160,12 +160,7 @@ func (console *transport) bootstrap(w http.ResponseWriter, r *http.Request, sess
 	}
 	result := bootstrapJSON{SetupRequired: required, GoogleEnabled: console.identity.GoogleEnabled()}
 	if session != nil {
-		email, err := console.identity.GoogleEmail(r.Context(), session.Account.ID)
-		if err != nil {
-			authhttp.IdentityError(w, err)
-			return
-		}
-		result.Admin = &adminJSON{ID: session.Account.ID, Username: session.Account.Username, Email: optional(email), Method: session.Account.Method}
+		result.Admin = &adminJSON{ID: session.Account.ID, Username: session.Account.Username, Email: optional(session.Account.Email), Method: session.Account.Method}
 		result.CSRFToken = &session.CSRFToken
 	}
 	authhttp.WriteJSON(w, 200, result)
@@ -192,6 +187,7 @@ func (console *transport) auth(w http.ResponseWriter, r *http.Request) {
 	}
 	var input struct {
 		Token    string `json:"token,omitempty"`
+		Email    string `json:"email"`
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
@@ -201,7 +197,7 @@ func (console *transport) auth(w http.ResponseWriter, r *http.Request) {
 	var session identityservice.Session
 	var err error
 	if r.URL.Path == "/api/v1/setup" {
-		session, err = console.identity.CompleteSetup(r.Context(), input.Token, input.Username, input.Password)
+		session, err = console.identity.CompleteSetup(r.Context(), input.Token, input.Email, input.Password)
 		if errors.Is(err, identityservice.ErrNotFound) {
 			authhttp.Problem(w, 404, "Setup link is invalid, expired or already used")
 			return

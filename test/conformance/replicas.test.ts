@@ -249,9 +249,9 @@ test("Replicas sharing one database act as one server", async (t) => {
   });
 
   /** Signs a user up through one replica; returns its ID and browser session headers. */
-  async function signUp(client: typeof clientA, username: string) {
+  async function signUp(client: typeof clientA, email: string) {
     const signup = await client.POST("/api/v2/auth/signup", {
-      body: { username, password: "replica-password-000001" },
+      body: { email, password: "replica-password-000001" },
     });
     assert.equal(signup.response.status, 200);
     conforms("Bootstrap", signup.data);
@@ -289,8 +289,8 @@ test("Replicas sharing one database act as one server", async (t) => {
   }
 
   // Sessions started on one replica authenticate on the other.
-  const owner = await signUp(clientA, "replica-owner");
-  const member = await signUp(clientB, "replica-member");
+  const owner = await signUp(clientA, "replica-owner@example.com");
+  const member = await signUp(clientB, "replica-member@example.com");
   const memberToken = await apiToken(clientA, member.headers);
   const memberA = bearer(a.url, memberToken);
   const memberB = bearer(b.url, memberToken);

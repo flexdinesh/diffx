@@ -12,6 +12,7 @@ import (
 
 const accountPassword = `-- name: AccountPassword :one
 SELECT a.user_id, a.username,
+  COALESCE((SELECT g.email FROM google_identities g WHERE g.user_id = a.user_id), a.email, '')::text AS email,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
   a.password_hash
@@ -22,6 +23,7 @@ WHERE a.username = $1 AND NOT EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.
 type AccountPasswordRow struct {
 	UserID       string
 	Username     string
+	Email        string
 	Admin        bool
 	Method       string
 	PasswordHash string
@@ -33,6 +35,7 @@ func (q *Queries) AccountPassword(ctx context.Context, username string) (Account
 	err := row.Scan(
 		&i.UserID,
 		&i.Username,
+		&i.Email,
 		&i.Admin,
 		&i.Method,
 		&i.PasswordHash,
@@ -42,6 +45,7 @@ func (q *Queries) AccountPassword(ctx context.Context, username string) (Account
 
 const accountPasswordByID = `-- name: AccountPasswordByID :one
 SELECT a.user_id, a.username,
+  COALESCE((SELECT g.email FROM google_identities g WHERE g.user_id = a.user_id), a.email, '')::text AS email,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
   a.password_hash
@@ -52,6 +56,7 @@ WHERE a.user_id = $1 AND NOT EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.u
 type AccountPasswordByIDRow struct {
 	UserID       string
 	Username     string
+	Email        string
 	Admin        bool
 	Method       string
 	PasswordHash string
@@ -63,6 +68,7 @@ func (q *Queries) AccountPasswordByID(ctx context.Context, userID string) (Accou
 	err := row.Scan(
 		&i.UserID,
 		&i.Username,
+		&i.Email,
 		&i.Admin,
 		&i.Method,
 		&i.PasswordHash,
@@ -73,7 +79,7 @@ func (q *Queries) AccountPasswordByID(ctx context.Context, userID string) (Accou
 const accountSummaries = `-- name: AccountSummaries :many
 SELECT a.user_id, a.username,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
-  COALESCE(g.email, '')::text AS email,
+  COALESCE(g.email, a.email, '')::text AS email,
   EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.user_id = a.user_id) AS disabled,
   (CASE WHEN g.sub IS NULL THEN 'password' ELSE 'google' END)::text AS method,
   u.created_at
@@ -262,6 +268,7 @@ func (q *Queries) GrantAdmin(ctx context.Context, userID string) error {
 
 const identityAccounts = `-- name: IdentityAccounts :many
 SELECT a.user_id, a.username,
+  COALESCE((SELECT g.email FROM google_identities g WHERE g.user_id = a.user_id), a.email, '')::text AS email,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method
 FROM remote_accounts a
@@ -272,6 +279,7 @@ ORDER BY a.username COLLATE "C"
 type IdentityAccountsRow struct {
 	UserID   string
 	Username string
+	Email    string
 	Admin    bool
 	Method   string
 }
@@ -288,6 +296,7 @@ func (q *Queries) IdentityAccounts(ctx context.Context) ([]IdentityAccountsRow, 
 		if err := rows.Scan(
 			&i.UserID,
 			&i.Username,
+			&i.Email,
 			&i.Admin,
 			&i.Method,
 		); err != nil {
@@ -411,7 +420,7 @@ func (q *Queries) InsertIdentityToken(ctx context.Context, arg InsertIdentityTok
 }
 
 const insertRemoteAccount = `-- name: InsertRemoteAccount :execrows
-INSERT INTO remote_accounts(user_id, username, password_hash) VALUES ($1, $2, $3)
+INSERT INTO remote_accounts(user_id, username, password_hash, email) VALUES ($1, $2, $3, $4)
 ON CONFLICT (username) DO NOTHING
 `
 
@@ -419,10 +428,16 @@ type InsertRemoteAccountParams struct {
 	UserID       string
 	Username     string
 	PasswordHash string
+	Email        *string
 }
 
 func (q *Queries) InsertRemoteAccount(ctx context.Context, arg InsertRemoteAccountParams) (int64, error) {
-	result, err := q.db.Exec(ctx, insertRemoteAccount, arg.UserID, arg.Username, arg.PasswordHash)
+	result, err := q.db.Exec(ctx, insertRemoteAccount,
+		arg.UserID,
+		arg.Username,
+		arg.PasswordHash,
+		arg.Email,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -507,6 +522,7 @@ func (q *Queries) OtherEnabledAdmin(ctx context.Context, userID string) (bool, e
 
 const passwordReset = `-- name: PasswordReset :one
 SELECT a.user_id, a.username,
+  COALESCE((SELECT g.email FROM google_identities g WHERE g.user_id = a.user_id), a.email, '')::text AS email,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
   a.password_hash
@@ -523,6 +539,7 @@ type PasswordResetParams struct {
 type PasswordResetRow struct {
 	UserID       string
 	Username     string
+	Email        string
 	Admin        bool
 	Method       string
 	PasswordHash string
@@ -534,6 +551,7 @@ func (q *Queries) PasswordReset(ctx context.Context, arg PasswordResetParams) (P
 	err := row.Scan(
 		&i.UserID,
 		&i.Username,
+		&i.Email,
 		&i.Admin,
 		&i.Method,
 		&i.PasswordHash,
@@ -640,6 +658,7 @@ FROM remote_accounts a
 WHERE a.user_id = t.user_id AND t.secret_hash = $2 AND t.expires_at > $1::timestamptz
   AND NOT EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.user_id = a.user_id)
 RETURNING a.user_id, a.username,
+  COALESCE((SELECT g.email FROM google_identities g WHERE g.user_id = a.user_id), a.email, '')::text AS email,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
   t.purpose, t.expires_at
@@ -653,6 +672,7 @@ type ResolveIdentityTokenParams struct {
 type ResolveIdentityTokenRow struct {
 	UserID    string
 	Username  string
+	Email     string
 	Admin     bool
 	Method    string
 	Purpose   string
@@ -666,6 +686,7 @@ func (q *Queries) ResolveIdentityToken(ctx context.Context, arg ResolveIdentityT
 	err := row.Scan(
 		&i.UserID,
 		&i.Username,
+		&i.Email,
 		&i.Admin,
 		&i.Method,
 		&i.Purpose,
@@ -676,6 +697,7 @@ func (q *Queries) ResolveIdentityToken(ctx context.Context, arg ResolveIdentityT
 
 const resolveSession = `-- name: ResolveSession :one
 SELECT a.user_id, a.username,
+  COALESCE((SELECT g.email FROM google_identities g WHERE g.user_id = a.user_id), a.email, '')::text AS email,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
   s.csrf_token, s.expires_at
@@ -692,6 +714,7 @@ type ResolveSessionParams struct {
 type ResolveSessionRow struct {
 	UserID    string
 	Username  string
+	Email     string
 	Admin     bool
 	Method    string
 	CsrfToken string
@@ -704,6 +727,7 @@ func (q *Queries) ResolveSession(ctx context.Context, arg ResolveSessionParams) 
 	err := row.Scan(
 		&i.UserID,
 		&i.Username,
+		&i.Email,
 		&i.Admin,
 		&i.Method,
 		&i.CsrfToken,

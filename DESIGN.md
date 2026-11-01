@@ -693,6 +693,10 @@ at `/design.html` (see `docs/development.md`).
 - Password sign-in always serves existing password accounts. While password
   signup is off, a quiet "Sign in with password" link button reveals the form
   and Google stays the primary action until it does.
+- Password signup and first-admin setup require Email and Password, with native
+  email validation and space for addresses up to 254 characters. Invite acceptance
+  fixes Email to the invited address. Sign-in uses Email or username so legacy
+  password accounts retain access.
 - Pages for a method the server turned off render sign-in, like unknown paths.
   Link secrets come from the fragment and leave history before any request.
 

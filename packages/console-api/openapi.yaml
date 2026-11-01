@@ -22,7 +22,7 @@ paths:
   /api/v1/setup:
     post:
       operationId: completeSetup
-      description: Create the first admin, a password account, from the one-time secret diffx-console logged at startup (the setup link's `#t=` fragment) and sign it in. Works regardless of the app's settings. The secret expires after 24 hours and is replaced on each start until an admin exists; then every secret is 404.
+      description: Create the first admin with an email and password, from the one-time secret diffx-console logged at startup (the setup link's `#t=` fragment), and sign it in. The email is required and stored, but is not verified. Works regardless of the app's settings. The secret expires after 24 hours and is replaced on each start until an admin exists; then every secret is 404.
       requestBody:
         required: true
         content:
@@ -30,12 +30,14 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [token, username, password]
+              required: [token, email, password]
               properties:
                 token:
                   type: string
-                username:
+                email:
                   type: string
+                  format: email
+                  maxLength: 254
                 password:
                   type: string
       responses:
@@ -657,7 +659,7 @@ components:
           type: string
         email:
           type: [string, "null"]
-          description: The latest email Google reported for the account; null for password accounts.
+          description: The account email submitted at password signup or last reported by Google. Null for legacy password accounts; a submitted email is not verified.
         method:
           $ref: "#/components/schemas/Method"
     Account:
@@ -671,7 +673,7 @@ components:
           type: string
         email:
           type: [string, "null"]
-          description: The latest email Google reported for the account; null for password accounts.
+          description: The account email submitted at password signup or last reported by Google. Null for legacy password accounts; a submitted email is not verified.
         method:
           $ref: "#/components/schemas/Method"
         admin:
@@ -732,6 +734,7 @@ components:
       properties:
         username:
           type: string
+          description: Account email, or the username of an existing legacy account.
         password:
           type: string
     ResetToken:
