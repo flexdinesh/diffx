@@ -289,8 +289,7 @@ The PR template records ownership, contract/mode implications, validation and
 intentional design changes. Change a boundary policy only for a concrete new
 responsibility, updating its rationale and tests in the same PR. Passing checks
 does not establish cohesive modules, correct DRY abstractions or visual quality;
-those remain review responsibilities. The default-branch ruleset retains deletion
-and force-push protections but requires no hosted validation status.
+those remain review responsibilities. `main` requires no hosted validation status.
 Architecture/design guards and full-suite validation run locally through explicit
 `mise run check:pr` and are recorded in the PR evidence. Pushes do not trigger
 the full suite, and local validation is not remote enforcement.

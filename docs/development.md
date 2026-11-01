@@ -205,8 +205,7 @@ development. Reinstall Chromium after upgrading Playwright.
 
 GitHub Actions does not run PR checks. Run `check:pr` and `check:status` locally
 before creating or updating a PR, including after rebasing onto changed upstream
-content. The default-branch ruleset retains deletion and force-push protections
-but requires no hosted validation status. This workflow relies on developer and
+content. `main` requires no hosted validation status. This workflow relies on developer and
 agent compliance; GitHub does not enforce local validation.
 
 Hosted workflows publish edge builds on pushes to `main` and stable releases on
