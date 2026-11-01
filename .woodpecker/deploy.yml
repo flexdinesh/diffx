@@ -1,11 +1,9 @@
-# Publishes diffx-server, diffx-fetcher and diffx-console images to the homelab registry and
-# rolls deehomelab/k8s-cluster apps/diffx: main updates diffx-staging, a vX.Y.Z
-# release tag updates diffx-prod. Verification stays in GitHub Actions.
+# Publishes diffx-server, diffx-fetcher and diffx-console images for main commits to the
+# homelab registry and rolls deehomelab/k8s-cluster apps/diffx diffx-staging. promote.yml
+# deploys these images to diffx-prod. Verification stays in explicit local PR validation.
 when:
   - event: push
     branch: main
-  - event: tag
-    ref: refs/tags/v*
   # Rebuild staging from the Woodpecker UI without a push.
   - event: manual
     branch: main

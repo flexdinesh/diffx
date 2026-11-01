@@ -1,0 +1,22 @@
+# Promotes a staged main commit to deehomelab/k8s-cluster apps/diffx diffx-prod: deploy a
+# successful deploy.yml pipeline to the "prod" environment. Rolls the images staging ran
+# for that commit without rebuilding; CLI releases and tags never deploy.
+when:
+  - event: deployment
+    environment: prod
+
+steps:
+  promote:
+    image: docker.io/library/docker:29.9.2-cli
+    environment:
+      REGISTRY: registry.local.deebox.xyz/home
+      KUBECONFIG_CONTENT:
+        from_secret: KUBECONFIG
+      KUBECONFIG: /tmp/kubeconfig
+      KUBECTL_VERSION: v1.35.9
+    commands:
+      - sh scripts/ci/promote.sh
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+concurrency: 1
