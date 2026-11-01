@@ -1,8 +1,12 @@
-// check-runner serializes full local checks across a repository's worktrees.
+// check-runner validates immutable sources in explicitly managed Dagger sessions.
 package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,199 +14,248 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/flexdinesh/diffx/internal/processlock"
+	"dagger.io/dagger"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	err := run(ctx, os.Args[1:])
-	if err == nil {
-		return
+	if err := run(ctx, os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, "check-runner:", err)
+		if ctx.Err() != nil {
+			os.Exit(130)
+		}
+		os.Exit(1)
 	}
-	fmt.Fprintln(os.Stderr, "check-runner:", err)
-	if ctx.Err() != nil {
-		os.Exit(130)
-	}
-	var exit *exec.ExitError
-	if errors.As(err, &exit) && exit.ExitCode() > 0 {
-		os.Exit(exit.ExitCode())
-	}
-	os.Exit(1)
 }
 
-func commonDirectory(ctx context.Context, directory string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--path-format=absolute", "--git-common-dir")
-	cmd.Dir = directory
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("resolve Git common directory: %w", err)
-	}
-	return strings.TrimSpace(string(output)), nil
+type invocation struct {
+	Mode, Group string
+	Force       bool
 }
 
-func withLock(ctx context.Context, directory string, action func() error) (result error) {
-	common, err := commonDirectory(ctx, directory)
-	if err != nil {
-		return err
+func parseInvocation(args []string) (invocation, error) {
+	var result invocation
+	for _, arg := range args {
+		if arg == "--force" {
+			result.Force = true
+			continue
+		}
+		if result.Mode == "" {
+			result.Mode = arg
+			continue
+		}
+		if result.Mode == "group" && result.Group == "" {
+			result.Group = arg
+			continue
+		}
+		return result, fmt.Errorf("unexpected argument %q", arg)
 	}
-	path := filepath.Join(common, "diffx-checks.lock")
-	waiting := false
-	for {
-		if err := ctx.Err(); err != nil {
-			return err
+	switch result.Mode {
+	case "check", "pr", "status", "engine-setup":
+	case "group":
+		for _, group := range groups(true) {
+			if group.Name == result.Group {
+				return result, nil
+			}
 		}
-		lock, err := processlock.TryAcquire(path)
-		if err == nil {
-			defer func() { result = errors.Join(result, lock.Close()) }()
-			fmt.Fprintln(os.Stderr, "check-runner: acquired", path)
-			return action()
-		}
-		if !errors.Is(err, processlock.ErrLocked) {
-			return err
-		}
-		if !waiting {
-			fmt.Fprintln(os.Stderr, "check-runner: waiting for", path)
-			waiting = true
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(100 * time.Millisecond):
-		}
+		return result, fmt.Errorf("unknown check group %q", result.Group)
+	default:
+		return result, errors.New("usage: check-runner check|pr|status|engine-setup|group NAME [--force]")
 	}
+	return result, nil
 }
 
 func run(ctx context.Context, args []string) error {
-	if len(args) != 1 || (args[0] != "check" && args[0] != "check:push") {
-		return errors.New("usage: check-runner check|check:push")
+	inv, err := parseInvocation(args)
+	if err != nil {
+		return err
+	}
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		return errors.New("isolated checks currently require Linux x64")
+	}
+	if inv.Mode == "engine-setup" {
+		return setupEngine(ctx)
 	}
 	root, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	report := reporter{status: os.Stderr, verbose: os.Getenv(verboseEnv) == "1"}
-	return runChecks(ctx, root, args[0], report, runCommand, startDockerPostgres)
-}
-
-// verboseEnv streams every phase to the terminal instead of its log file.
-const verboseEnv = "DIFFX_CHECK_VERBOSE"
-
-// failureTail is how many trailing log lines a failed phase prints.
-const failureTail = 100
-
-// logDirectory holds one log per phase of the latest run, relative to the root.
-var logDirectory = filepath.Join("dist", "check-logs")
-
-// command runs one phase. Output goes to files, never pipes: a pipe would keep
-// the phase running until descendants that inherited it exit.
-type command func(ctx context.Context, directory string, env, args []string, stdout, stderr *os.File) error
-
-// reporter decides what the caller sees: a status line per phase with the
-// failing phase's log tail, or every phase's output streamed.
-type reporter struct {
-	status  io.Writer
-	verbose bool
-}
-
-func runChecks(ctx context.Context, root, mode string, report reporter, execute command, database startDatabase) error {
-	return withLock(ctx, root, func() (result error) {
-		if err := os.RemoveAll(filepath.Join(root, logDirectory)); err != nil {
-			return err
-		}
-		if err := os.MkdirAll(filepath.Join(root, logDirectory), 0o755); err != nil {
-			return err
-		}
-		// Bounds apply to Go subprocesses too, including fixture builds in tests.
-		env := append(os.Environ(), "GOMAXPROCS=2", "GOFLAGS="+os.Getenv("GOFLAGS")+" -p=2", "pnpm_config_workspace_concurrency=1", "DIFFX_CHECK_RUNNER=1")
-		// Go, conformance and browser suites share one server instead of each
-		// test process starting a container. A preset server is used as is.
-		if os.Getenv(testDatabaseEnv) == "" {
-			common, err := commonDirectory(ctx, root)
-			if err != nil {
-				return err
-			}
-			fmt.Fprintln(os.Stderr, "check-runner: starting shared test Postgres")
-			url, stop, err := database(ctx, common)
-			if err != nil {
-				return err
-			}
-			defer func() { result = errors.Join(result, stop()) }()
-			env = append(env, testDatabaseEnv+"="+url)
-		}
-		goTest := "test:go"
-		if mode == "check:push" {
-			goTest = "test:race"
-		}
-		phases := [][]string{
-			{"mise", "run", "--force", "build"},
-			{"mise", "run", "plugins:build"},
-			{"mise", "run", "check:static"},
-			{"mise", "run", "check:go:static"},
-			{"mise", "run", "check:generated"},
-			{"pnpm", "test:conformance"},
-			{"mise", "run", "test:contracts:rules"},
-			{"mise", "run", "docs:check"},
-			{"mise", "run", "test:js"},
-			{"mise", "run", "test:release"},
-			{"mise", "run", goTest},
-			{"mise", "run", "check:generated"},
-		}
-		env = append(env, "DIFFX_FIXTURE_BINARY="+filepath.Join(root, "dist", "diffx"), "DIFFX_FIXTURE_SERVER_BINARY="+filepath.Join(root, "dist", "diffx-server"), "DIFFX_FIXTURE_WEB_DIR="+filepath.Join(root, "apps", "web", "dist"))
-		for index, phase := range phases {
-			log := filepath.Join(logDirectory, fmt.Sprintf("%02d-%s.log", index+1, strings.ReplaceAll(phase[len(phase)-1], ":", "-")))
-			if err := report.phase(ctx, root, env, phase, log, execute); err != nil {
-				return fmt.Errorf("%s: %w", strings.Join(phase, " "), err)
-			}
-		}
-		return nil
-	})
-}
-
-func (r reporter) phase(ctx context.Context, root string, env, phase []string, log string, execute command) error {
-	name := strings.Join(phase, " ")
-	if r.verbose {
-		fmt.Fprintln(r.status, "check-runner:", name)
-		return execute(ctx, root, env, phase, os.Stdout, os.Stderr)
-	}
-	file, err := os.Create(filepath.Join(root, log))
+	committed := inv.Mode == "pr" || inv.Mode == "status"
+	snapshot, cleanup, err := captureSnapshot(ctx, root, committed)
 	if err != nil {
 		return err
 	}
-	start := time.Now()
-	err = errors.Join(execute(ctx, root, env, phase, file, file), file.Close())
-	elapsed := time.Since(start).Round(time.Second)
-	if err == nil {
-		fmt.Fprintf(r.status, "check-runner: ok %s (%s)\n", name, elapsed)
-		return nil
+	defer cleanup()
+	records, err := recordDirectory(ctx, root)
+	if err != nil {
+		return err
 	}
-	tail, tailErr := lastLines(filepath.Join(root, log), failureTail)
-	fmt.Fprintf(r.status, "check-runner: FAIL %s (%s), last %d log lines:\n%s", name, elapsed, failureTail, tail)
-	fmt.Fprintln(r.status, "check-runner: log", log)
-	fmt.Fprintln(r.status, "check-runner: rerun", name)
-	return errors.Join(err, tailErr)
+	selected := groups(true)
+	if inv.Mode == "group" {
+		for _, group := range selected {
+			if group.Name == inv.Group {
+				selected = []checkGroup{group}
+				break
+			}
+		}
+	}
+	var pending []checkGroup
+	keys := make(map[string]string)
+	statuses := make(map[string]string)
+	for _, group := range selected {
+		key, err := groupFingerprint(snapshot.Root, group)
+		if err != nil {
+			return err
+		}
+		keys[group.Name] = key
+		if inv.Force {
+			path, err := validationRecordPath(records, group.Name, key)
+			if err != nil {
+				return err
+			}
+			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
+		_, found, err := loadValidationRecord(records, group.Name, key)
+		if err != nil {
+			return err
+		}
+		if found && !inv.Force {
+			statuses[group.Name] = "reused"
+			fmt.Fprintln(os.Stderr, "check-runner: reused", group.Name)
+			continue
+		}
+		fmt.Fprintln(os.Stderr, "check-runner: pending", group.Name)
+		statuses[group.Name] = "pending"
+		pending = append(pending, group)
+	}
+	if inv.Mode == "status" {
+		if len(pending) > 0 {
+			return errors.New("HEAD has incomplete validation; run mise run check:pr")
+		}
+		return checkSnapshotCurrent(ctx, root, snapshot, committed)
+	}
+	if len(pending) == 0 {
+		return checkSnapshotCurrent(ctx, root, snapshot, committed)
+	}
+	release, err := admit(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	env, err := engineEnvironment(ctx)
+	if err != nil {
+		return err
+	}
+	for _, name := range []string{"DAGGER_SESSION_PORT", "DAGGER_SESSION_TOKEN", "DAGGER_ENGINE", "_EXPERIMENTAL_DAGGER_CLI_BIN", "_EXPERIMENTAL_DAGGER_RUNNER_HOST"} {
+		os.Unsetenv(name)
+	}
+	for _, item := range env {
+		key, value, ok := strings.Cut(item, "=")
+		if ok {
+			if err := os.Setenv(key, value); err != nil {
+				return err
+			}
+		}
+	}
+	cli, err := exec.LookPath("dagger")
+	if err != nil {
+		return err
+	}
+	if err := os.Setenv("_EXPERIMENTAL_DAGGER_CLI_BIN", cli); err != nil {
+		return err
+	}
+	idBytes := make([]byte, 12)
+	if _, err := rand.Read(idBytes); err != nil {
+		return err
+	}
+	id := time.Now().UTC().Format("20060102T150405") + "-" + hex.EncodeToString(idBytes)
+	artifacts := filepath.Join(root, "dist", "check-runs", id)
+	if err := os.MkdirAll(artifacts, 0o755); err != nil {
+		return err
+	}
+	log, err := os.Create(filepath.Join(artifacts, "execution.log"))
+	if err != nil {
+		return err
+	}
+	defer log.Close()
+	defer func() {
+		for group, status := range statuses {
+			if status == "running" {
+				statuses[group] = "interrupted"
+			}
+		}
+		report, err := json.MarshalIndent(struct {
+			Commit, Tree, Source, Engine, Platform string
+			Inputs, Results                        map[string]string
+		}{snapshot.Commit, snapshot.Tree, snapshot.Identity, engineImage, "linux/amd64", keys, statuses}, "", "  ")
+		if err == nil {
+			_ = os.WriteFile(filepath.Join(artifacts, "results.json"), report, 0o644)
+		}
+		_ = os.WriteFile(filepath.Join(artifacts, "complete"), []byte(snapshot.Commit+"\n"), 0o644)
+		_ = pruneArtifacts(filepath.Dir(artifacts))
+	}()
+	client, err := dagger.Connect(ctx, dagger.WithRunnerHost("docker-container://"+engineName), dagger.WithLogOutput(io.MultiWriter(os.Stderr, log)))
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	pipeline := newPipeline(client, snapshot.Root)
+	for _, group := range pending {
+		statuses[group.Name] = "running"
+		fmt.Fprintln(os.Stderr, "check-runner: executing", group.Name)
+		started := time.Now()
+		if err := pipeline.execute(ctx, group, id, artifacts); err != nil {
+			if ctx.Err() == nil {
+				statuses[group.Name] = "failed"
+			}
+			return fmt.Errorf("%s: %w (artifacts: %s)", group.Name, err, artifacts)
+		}
+		record := validationRecord{Group: group.Name, Fingerprint: keys[group.Name], Commit: snapshot.Commit, Artifacts: artifacts, CompletedAt: time.Now().UTC()}
+		if err := saveValidationRecord(records, record); err != nil {
+			return err
+		}
+		statuses[group.Name] = "passed"
+		fmt.Fprintf(os.Stderr, "check-runner: ok %s (%s)\n", group.Name, time.Since(started).Round(time.Second))
+	}
+	if err := checkSnapshotCurrent(ctx, root, snapshot, committed); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(artifacts, "complete"), []byte(snapshot.Commit+"\n"), 0o644); err != nil {
+		return err
+	}
+	return pruneArtifacts(filepath.Dir(artifacts))
 }
 
-// lastLines returns up to n trailing lines of a file, newline-terminated.
-func lastLines(path string, n int) (string, error) {
-	data, err := os.ReadFile(path)
+func groupFingerprint(root string, group checkGroup) (string, error) {
+	files, err := fingerprintFiles(root, func(path string) bool { return groupInput(group.Name, path) })
 	if err != nil {
 		return "", err
 	}
-	lines := strings.SplitAfter(string(data), "\n")
-	if lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
+	mise, err := exec.LookPath("mise")
+	if err != nil {
+		return "", err
 	}
-	if len(lines) > n {
-		lines = lines[len(lines)-n:]
+	binary, err := os.ReadFile(mise)
+	if err != nil {
+		return "", err
 	}
-	text := strings.Join(lines, "")
-	if text != "" && !strings.HasSuffix(text, "\n") {
-		text += "\n"
+	miseDigest := sha256.Sum256(binary)
+	files += hex.EncodeToString(miseDigest[:]) + engineImage
+	policy, err := json.Marshal(struct {
+		Group                         checkGroup
+		Files, Platform, Base, Dagger string
+	}{group, files, "linux/amd64", runnerImage, daggerVersion})
+	if err != nil {
+		return "", err
 	}
-	return text, nil
+	hash := sha256.Sum256(policy)
+	return hex.EncodeToString(hash[:]), nil
 }

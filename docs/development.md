@@ -17,6 +17,7 @@ go install github.com/flexdinesh/diffx/cmd/diffx@edge
 - C compiler for Go race tests
 - Git
 - Bash (included with Git for Windows)
+- Docker on Linux x64 for isolated local checks
 
 Mise manages Go 1.27, Node from `.node-version`, and pnpm from `package.json`.
 After cloning, trust the project config, install tools, then install dependencies,
@@ -76,7 +77,9 @@ build.
 | Run JavaScript linting                                     | `pnpm lint`                      |
 | Format supported files                                     | `pnpm format`                    |
 | Run every repository check                                 | `mise run check`                 |
-| Run all pre-push checks, including Go race tests           | `pnpm check:push`                |
+| Validate clean HEAD before creating or updating a PR       | `mise run check:pr`              |
+| Report matching successful validation for HEAD             | `mise run check:status`          |
+| Provision the owned validation engine once                 | `mise run check:engine:setup`    |
 | Run lightweight CI checks                                  | `mise run check:ci`              |
 
 Server-mode Go tests need Docker: `internal/testsupport/pgtest` starts one
@@ -85,15 +88,10 @@ testcontainers' reaper) and gives every test its own database cloned from a
 template migrated once per schema. Set `DIFFX_TEST_DATABASE_URL` to a
 `postgres://` URL whose role may create databases to use a running server
 instead, such as the development Postgres. Local-mode tests stay on SQLite.
-`mise run check` and `mise run check:push` start one shared pinned Postgres
-(`docker run`, loopback ephemeral port, tmpfs data, fsync off) after acquiring
-the check lock and export its superuser URL as `DIFFX_TEST_DATABASE_URL` to every
-step: Go, conformance and browser suites. The runner removes it on success,
-failure and cancellation, and removes containers a killed run left for the same
-Git common directory at the next start. Without Docker the run fails before the
-first step. A preset `DIFFX_TEST_DATABASE_URL` is used instead, and no container
-starts. `mise run check:ci` does not use the runner; its conformance tests start
-their own containers.
+These direct test commands run on the host. Isolated checks instead supply a
+private Postgres service through Dagger and do not inherit a host
+`DIFFX_TEST_DATABASE_URL`. `mise run check:ci` does not use the runner; its
+conformance tests start their own containers.
 
 Browser tests reuse the full check's web, CLI and `diffx-server` builds;
 standalone browser runs build them when needed. Chromium uses one worker with an
@@ -103,42 +101,102 @@ fresh Postgres database, like the Go tests (Docker, or `DIFFX_TEST_DATABASE_URL`
 serves its embedded web build at the server's origin, and syncs with the CLI
 without API mocks.
 
-`mise run setup` enables the Husky `pre-push` hook. Every push runs
-`mise run check:push`: all repository suites, boundary contracts and Go race tests, then rejects
-uncommitted generated API types or built plugins. `mise run setup` installs
-Playwright Chromium and stages embedded web assets; reinstall it after upgrading Playwright.
-The hook needs mise on `PATH`; mise activates project tools. Checks run on your
-local platform.
+### Isolated local validation
 
-Both CI and release verification run `mise run check:ci`: static checks, web and
-CLI builds, generated-file consistency, and the distribution API smoke test.
-Local `mise run check` adds dependency/design guards, behavioral contracts,
-JavaScript unit/DOM/browser suites, plugin tests, docs-site checks, release-tool
-tests and all Go tests. These critical suites remain mandatory; the docs-site
-check is skipped when its sources are unchanged since the last build. Full checks and
-pre-push queue the entire pipeline across linked worktrees using a process lock
-under the Git common directory, before the first application build through the
-last check and cleanup. Only compilation of the small check runner precedes the
-lock, bounded to two Go workers. Every waiting invocation runs its own checks;
-successful results are not shared between worktrees.
-Heavy phases run sequentially, with Go limited to two concurrent packages and `GOMAXPROCS=2`;
-another worktree waits instead of competing for CPU and memory. Cancellation
-stops child processes before releasing the lock; failures propagate to the caller.
-The lock coordinates linked worktrees using this runner, not independent clones
-or direct standalone suite commands. Update older branches to include the runner
-before relying on coordination with their hooks. The runner prints one line per
-phase and writes its output to `dist/check-logs/NN-<task>.log`, replaced by
-each run. A failing phase prints its last 100 log lines, the log path and the
-command to rerun it alone. Set `DIFFX_CHECK_VERBOSE=1` to stream all output
-instead. Web builds log warnings only; test reporters print dots outside a
-terminal. Agents rely on the pre-push hook instead of a separate
-`mise run check` before pushing. Pre-push runs the Go tests with the race
-detector instead. Go tests time out after 3 minutes (5 with the race detector) so a
-hang fails fast. Keep these full suites and guards local. Chromium is installed
-by local setup, not CI/release workflows. CI does not run a native OS test matrix.
-GitHub's `ci-required` ruleset requires the lightweight `checks` status on an
-up-to-date `main` change, including administrators; it is configured in GitHub,
-not by mise. PR evidence records full local validation.
+Provision the repository's engine explicitly, once per machine:
+
+```sh
+mise run check:engine:setup
+```
+
+Dagger CLI, Go SDK and engine are pinned to 0.21.11. The engine is named
+`diffx-validation-engine-v0.21.11` and uses its own named cache volume. Setup
+inspects ownership before creating anything; it never replaces a foreign or
+ambiguously owned engine. Check commands connect directly to this engine and
+fail if it is unavailable, rather than provisioning one automatically.
+`DAGGER_LEAVE_OLD_ENGINE=true` is set before initialization to prevent cleanup of
+other agents' engines. It does not protect this engine from another agent's
+cleanup, which is why its name is outside the `dagger-engine-*` prefix.
+
+Never stop, restart, remove or prune another task's engine or volumes. Engine
+upgrades and cleanup are explicit maintenance operations requiring coordination
+with active worktrees. Do not run broad Docker or Dagger prune commands.
+Cancellation closes only the current validation session; the shared engine and
+its cache persist.
+
+`mise run check` validates an immutable snapshot of working files, including
+non-ignored untracked files. It does not certify committed HEAD. Before creating
+or updating a PR, commit the intended changes and run:
+
+```sh
+mise run check:pr
+mise run check:status
+```
+
+PR validation requires clean tracked files and no non-ignored untracked files.
+It validates captured HEAD and rechecks the checkout before reporting readiness.
+PR creation remains separate. There is no full-suite pre-push hook;
+`mise run check:push` and `pnpm check:push` remain aliases for explicit PR
+validation. Agents must run `check:pr` before creating or updating a PR. Local
+commands and validation records are bypassable and are not remote enforcement.
+
+Use `mise run check:<group>` for isolated targeted checks. Groups are `static`,
+`contracts`, `go`, `unit`, `browser`, `conformance`, `docs`, `release`, and
+`generated`. They cover the existing static checks, architecture guards, Go
+tests, web/console unit and DOM tests, plugins, browser suites, API contracts,
+docs build, release tooling, and generated API/SQL/plugin consistency. PR
+validation uses Go's race detector. Underlying `test:*`, pnpm and direct Go
+commands remain available for native debugging; those commands do not provide
+container isolation.
+
+Each executing group has private writable files, home, temporary directories and
+test services. Browsers and fixture servers run together inside the container;
+localhost refers to that execution, not another worktree or a host service.
+Checks publish no application ports, use no host networking or tunnels, and
+mount no host Docker socket. Existing per-test database isolation still applies.
+Prepared dependencies and application builds are reused as immutable inputs.
+
+Successful group results are recorded atomically in the user cache and reused
+across this repository's worktrees when input contents, paths, modes,
+configuration, toolchain, platform and runner implementation match. Branch names,
+commit IDs, elapsed time and small diffs do not establish equivalence. Unknown
+inputs invalidate conservatively. A history-only rebase may reuse results;
+upstream content changes invalidate affected groups. Failed or cancelled runs
+never produce successful validation records.
+
+To execute checks again while retaining reusable preparation/build work:
+
+```sh
+mise run check:pr --force
+mise run check:browser --force
+```
+
+This bypasses successful validation records and underlying test-result caches.
+It is different from mise's own `mise run --force <task>` freshness override.
+
+Groups run sequentially, with Go limited to two concurrent packages and
+`GOMAXPROCS=2`, one Playwright worker and one pnpm workspace worker. A shared
+user-level admission mechanism permits two participating invocations across
+worktrees and repositories. It does not constrain unrelated tools or impose a
+hard memory limit.
+
+Logs, browser traces and result metadata live in `dist/check-runs/<run-id>/`.
+The latest 20 completed runs are retained; active runs are never pruned.
+Ordinary failures retain artifacts and return nonzero. Cancellation preserves
+streamed logs and completed artifacts; a browser killed mid-trace may not leave
+a usable trace. Results distinguish executed checks from reused validation.
+
+Validation containers currently support Linux x64 only. They do not validate
+native macOS behavior; direct native checks remain optional. `mise run setup`
+still installs host dependencies, Playwright Chromium and staged assets for
+development. Reinstall Chromium after upgrading Playwright.
+
+Both CI and release verification retain `mise run check:ci`: static checks,
+web/CLI builds, generated consistency and the distribution API smoke test. They
+do not require the local Dagger engine or run the full local suite. GitHub's
+`ci-required` ruleset requires the lightweight `checks` status on an up-to-date
+`main` change, including administrators. PR evidence records full local
+validation separately.
 
 `mise run install` embeds the current web build and installs `diffx` into
 `$GOBIN`, or `$GOPATH/bin` when `GOBIN` is unset. Ensure that directory is on

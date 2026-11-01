@@ -23,6 +23,8 @@
     "check:static": "pnpm typecheck && pnpm lint && pnpm format:check",
     "check:js": "pnpm check:static && pnpm build && pnpm test && pnpm test:release",
     "check:ci": "mise run check:ci",
+    "check:pr": "mise run check:pr",
+    "check:status": "mise run check:status",
     "check:push": "mise run check:push",
     "check": "mise run check"
   },

@@ -7,7 +7,7 @@ Releases. It checks out the latest `main` when the run starts and marks the
 release as GitHub's latest stable release. Dispatches from other branches are
 skipped.
 
-Full test suites run locally through the pre-push hook; CI never runs it.
+Full test suites run locally through explicit `mise run check:pr`; CI never runs the full suite.
 Workflows set `HUSKY=0`, and the `release:edge` and `release:tag` pushes pass
 `--no-verify`. Release verification runs static checks, rebuilds generated
 files, rejects drift, and smoke-tests the distribution before publishing, using
@@ -155,7 +155,7 @@ GitHub integration is enabled. Images are published even before the k8s-cluster
 manifests are provisioned. Woodpecker must trust the repository for the Docker
 socket and hold a `KUBECONFIG` secret with deployment access to both namespaces.
 Pushes to `main` deploy staging without waiting for GitHub Actions; verification
-stays in GitHub Actions and the local pre-push hook. Staging and prod must drop
+stays in GitHub Actions and explicit local PR validation. Staging and prod must drop
 `DIFFX_SERVER_SIGNUP` and `DIFFX_SERVER_PASSWORD_SIGNIN` before deploying a
 build without them, since the server refuses to start while either is set; set
 admission in the console's Settings page after deploy.

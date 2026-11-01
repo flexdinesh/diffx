@@ -15,14 +15,15 @@ contract and release tests in `test/`.
 - While iterating, run only the checks for what changed:
   - Go package: `go test ./internal/<pkg>/...`
   - TypeScript, lint, formatting: `mise run check:static`
-  - Web unit/DOM or browser: `pnpm --filter @diffx/web test:unit` or `test:browser`
-  - Console: `pnpm --filter @diffx/console test`
-  - Plugins: `pnpm --filter @diffx/plugin-<name> test`
-  - API contract: `mise run test:conformance`; boundaries and design tokens: `mise run test:contracts:rules`
-  - Docs site: `mise run docs:check`
-- `mise run check` runs every check and prints one line per phase; a failure prints the log tail, log path and rerun command.
+  - Web/console unit, DOM and plugins: `mise run check:unit`
+  - Web/console browser: `mise run check:browser`
+  - API contract: `mise run check:conformance`; boundaries and design tokens: `mise run check:contracts`
+  - Docs site: `mise run check:docs`
+- `mise run check` validates a snapshot of working files in isolated Linux containers; targeted `check:<group>` tasks use the same isolation. Direct Go/pnpm test commands remain host-native.
+- Before creating or updating a PR, commit changes and run `mise run check:pr` on clean HEAD. Matching successful group results are reused; use `mise run check:pr --force` to execute checks again.
 - Run long checks in the background and wait for their completion notification; never poll logs or `sleep`.
-- Keep full suites and architecture/design guards local through the pre-push hook; keep CI/release verification lightweight.
+- Keep full suites and architecture/design guards local through explicit PR validation; keep CI/release verification lightweight.
+- Use only the explicitly managed `diffx-validation-engine-v0.21.11` engine. Run `mise run check:engine:setup` once. Never stop, restart, remove or prune another task's engine or volumes; cancellation closes only this invocation's session. Keep `DAGGER_LEAVE_OLD_ENGINE=true` and never fall back to automatic provisioning.
 - `internal/webui/dist` and `internal/consoleui/dist` are ignored on `main`; run `mise run web:stage` and `mise run console:stage` (or `mise run build`) before Go builds/tests. CI commits only the web assets, on release tags and `edge`.
 - See `docs/development.md` and `docs/release.md` for workflows.
 
@@ -45,4 +46,4 @@ contract and release tests in `test/`.
 
 ## Git etiquette
 
-- Pushing runs every check through the pre-push hook (`mise run check:push`); do not run `mise run check` separately before pushing. Resolve failures.
+- Pushes do not run the full suite. Validate clean committed HEAD with `mise run check:pr` before creating or updating a PR, and report executed/reused results. PR creation remains separate. `check:push` is a compatibility alias for explicit `check:pr`.
