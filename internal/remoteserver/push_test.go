@@ -161,7 +161,7 @@ func TestPushDevicesAreOwnerScopedTestedAndRebound(t *testing.T) {
 	if err := json.Unmarshal(device.Decrypt(t, <-push.received), &message); err != nil {
 		t.Fatal(err)
 	}
-	if message["kind"] != "test" || message["title"] != "diffx" || message["body"] != "Notifications are on for this device." || message["url"] != "/settings" || message["tag"] != "diffx-test" || message["timestamp"] == nil {
+	if message["kind"] != "test" || message["title"] != "diffx" || message["body"] != "Notifications are on for this device." || message["url"] != "/settings/notifications" || message["tag"] != "diffx-test" || message["timestamp"] == nil {
 		t.Fatalf("test payload %v", message)
 	}
 	if settings := pushSettings(t, handler, alice); settings.Devices[0].LastSuccessAt == nil {
@@ -220,7 +220,7 @@ func connectGitHub(t *testing.T, handler http.Handler, cookie *http.Cookie, csrf
 	r.AddCookie(cookie)
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
-	if w.Header().Get("Location") != "/settings?github=connected" {
+	if w.Header().Get("Location") != "/settings/github?github=connected" {
 		t.Fatalf("callback: %d %s", w.Code, w.Header().Get("Location"))
 	}
 }

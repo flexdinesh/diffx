@@ -105,10 +105,14 @@ test("open signup creates a password account with a password section", async ({
   ).toBeVisible();
   expect(new URL(page.url()).pathname).toBe("/");
   await page.getByRole("button", { name: "Account settings" }).click();
-  await expect(page.getByRole("heading", { name: "Password" })).toBeVisible();
   await expect(
     page.getByText("No tokens yet.", { exact: false }),
   ).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("link", { name: "Password" })
+    .click();
+  await expect(page.getByRole("heading", { name: "Password" })).toBeVisible();
 });
 
 test("closed signup renders sign-in at the signup page", async ({ page }) => {
@@ -275,9 +279,15 @@ test("GitHub settings stay absent until the server configures the integration", 
       json: { detail: "GitHub integration is not configured" },
     }),
   );
-  await page.goto("/settings");
+  await page.goto("/settings/github");
   await expect(page.getByRole("heading", { name: "API tokens" })).toBeVisible();
+  await expect(page).toHaveURL(/\/settings\/tokens$/);
   await expect(page.getByRole("heading", { name: "GitHub" })).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("navigation", { name: "Settings sections" })
+      .getByRole("link", { name: "GitHub" }),
+  ).toHaveCount(0);
 });
 
 test("connecting GitHub starts authorization with CSRF and reports the callback once", async ({
@@ -301,7 +311,7 @@ test("connecting GitHub starts authorization with CSRF and reports the callback 
   await page.route("https://github.test/**", (route) =>
     route.fulfill({ contentType: "text/html", body: "<h1>Authorize</h1>" }),
   );
-  await page.goto("/settings?github=cancelled");
+  await page.goto("/settings/github?github=cancelled");
   await expect(
     page.getByText("GitHub authorization was cancelled."),
   ).toBeVisible();
@@ -366,7 +376,7 @@ test("followed repositories toggle with CSRF, resync, and lost access stays list
     resynced = true;
     return route.fulfill({ status: 204 });
   });
-  await page.goto("/settings");
+  await page.goto("/settings/github");
   await expect(page.getByText("Connected as @alice-gh.")).toBeVisible();
   const app = page.getByRole("checkbox", { name: "octo/app" });
   await expect(app).not.toBeChecked();
@@ -415,7 +425,7 @@ test("expired GitHub authorization asks to connect again and disconnect confirms
           },
     });
   });
-  await page.goto("/settings");
+  await page.goto("/settings/github");
   await expect(page.getByText(/expired\. Connect again/)).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Connect GitHub again" }),
@@ -493,7 +503,7 @@ test("an invite link shows its email, hides its secret and starts Google sign-in
   expect(started).toEqual({ token: "invite-secret" });
 });
 
-test("settings scroll at the window edge with a section nav that follows the page", async ({
+test("settings scroll at the window edge with a nav that marks the current page", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
@@ -529,34 +539,38 @@ test("settings scroll at the window edge with a section nav that follows the pag
   await expect(
     page.getByRole("banner").getByText("alice@example.com", { exact: true }),
   ).toBeVisible();
+  await expect(page).toHaveURL(/\/settings\/tokens$/);
   const nav = page.getByRole("navigation", { name: "Settings sections" });
+  const current = nav.locator('[aria-current="page"]');
   await expect(nav.getByRole("link")).toHaveText([
     "API tokens",
     "GitHub",
     "Password",
   ]);
-  await expect(nav.getByRole("link", { name: "API tokens" })).toHaveAttribute(
-    "aria-current",
-    "true",
+  await expect(current).toHaveText("API tokens");
+  const navBox = await nav.boundingBox();
+  await nav.getByRole("link", { name: "GitHub" }).click();
+  await expect(page).toHaveURL(/\/settings\/github$/);
+  await expect(current).toHaveText("GitHub");
+  // Pages keep one width, so the nav does not move under the pointer.
+  expect(await nav.boundingBox()).toEqual(navBox);
+  await expect(page.getByRole("heading", { name: "GitHub" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "API tokens" })).toHaveCount(
+    0,
   );
-  await nav.getByRole("link", { name: "Password" }).click();
-  await expect(page.getByRole("heading", { name: "Password" })).toBeFocused();
-  await expect(
-    page.getByRole("heading", { name: "Password" }),
-  ).toBeInViewport();
-  await expect(nav.getByRole("link", { name: "Password" })).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
+  await scroller.evaluate((element) => element.scrollTo({ top: 400 }));
   await expect(nav).toBeInViewport();
-  expect(new URL(page.url()).hash).toBe("");
-  await scroller.evaluate((element) => element.scrollTo({ top: 0 }));
-  await expect(nav.getByRole("link", { name: "API tokens" })).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
+  await expect(current).toHaveText("GitHub");
+  await nav.getByRole("link", { name: "Password" }).click();
+  await expect(page).toHaveURL(/\/settings\/password$/);
+  await expect(current).toHaveText("Password");
+  await expect(page.getByRole("heading", { name: "Password" })).toBeVisible();
+  expect(await scroller.evaluate((element) => element.scrollTop)).toBe(0);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/settings\/github$/);
+  await expect(current).toHaveText("GitHub");
   await page.setViewportSize({ width: 390, height: 800 });
-  await expect(nav).toBeHidden();
+  await expect(nav.getByRole("link", { name: "Password" })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Sign out", exact: true }),
   ).toBeVisible();

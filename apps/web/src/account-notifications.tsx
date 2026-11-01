@@ -20,7 +20,13 @@ import {
   removeDevice,
   thisDevice,
 } from "./push.ts";
-import { RowActions, SettingsSection } from "./settings-layout.tsx";
+import {
+  RowActions,
+  SettingsSection,
+  SettingsSectionAbsent,
+  settingsPath,
+} from "./settings-layout.tsx";
+import { navigate } from "./identity-context.tsx";
 
 const prose = "mb-4 leading-copy text-secondary";
 
@@ -81,8 +87,9 @@ export function AccountNotifications({
   useEffect(() => {
     onEnabledChange?.(enabled);
   }, [enabled, onEnabledChange]);
-  if (settings.status === "absent" || settings.status === "loading")
-    return null;
+  if (settings.status === "absent")
+    return <SettingsSectionAbsent id="notifications" />;
+  if (settings.status === "loading") return null;
   const ready = settings.status === "ready" ? settings.settings : null;
   return (
     <SettingsSection
@@ -108,7 +115,11 @@ export function AccountNotifications({
             <>
               Choose repositories to follow under{" "}
               <a
-                href="#github-title"
+                href={settingsPath("github")}
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigate(settingsPath("github"));
+                }}
                 className="text-accent underline underline-offset-(--space-1)"
               >
                 GitHub

@@ -52,17 +52,41 @@
 .settings-page {
   display: grid;
   grid-template-columns: 10rem minmax(0, 1fr);
-  gap: var(--space-12);
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "nav header"
+    "nav content";
+  column-gap: var(--space-12);
+  /* Fills the flex pane, so every page keeps one width whatever it holds. */
+  width: 100%;
   max-width: 64rem;
   margin-inline: auto;
   padding: var(--space-8) var(--page-gutter) var(--space-16);
 }
+.settings-header {
+  grid-area: header;
+  min-width: 0;
+}
+.settings-content {
+  grid-area: content;
+  min-width: 0;
+}
 .settings-nav {
+  grid-area: nav;
   position: sticky;
   top: 0;
   align-self: start;
   /* Aligns the first link with the page title. */
   padding-top: var(--space-1);
+}
+.settings-nav ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.settings-nav a {
+  width: 100%;
+  justify-content: flex-start;
 }
 .settings-summary {
   display: flex;
@@ -78,7 +102,6 @@
   gap: var(--space-4) var(--space-8);
   padding-block: var(--space-8);
   border-top: 1px solid var(--border-muted);
-  scroll-margin-top: var(--space-4);
 }
 .settings-field-row {
   display: grid;
@@ -97,12 +120,30 @@
   }
 }
 @media (max-width: 767px) {
+  /* The nav becomes a row of pages between the summary and the section. */
   .settings-page {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas:
+      "header"
+      "nav"
+      "content";
     padding-top: var(--space-6);
   }
+  .settings-summary {
+    padding-bottom: var(--space-6);
+  }
   .settings-nav {
-    display: none;
+    position: static;
+    padding-top: 0;
+    padding-bottom: var(--space-4);
+  }
+  .settings-nav ul {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .settings-nav a {
+    width: auto;
   }
 }
 @media (max-width: 640px), (pointer: coarse) {

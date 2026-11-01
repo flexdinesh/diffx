@@ -659,16 +659,20 @@ at `/design.html` (see `docs/development.md`).
 
 ### Account settings
 
-- Settings (`/settings`, remote server only) is one scrolling document. Below
-  the account header, the full-width pane scrolls so its scrollbar meets the
-  window edge; the header's email keeps the diff gutter and truncates.
-  Content is bounded at 64rem: a sticky 10rem section nav, then the page.
-- The section nav lists only sections that render (GitHub and Notifications
+- Settings (remote server only) is one page per section:
+  `/settings/tokens`, `/settings/github`, `/settings/notifications` and
+  `/settings/password`. `/settings`, unknown pages and sections this server or
+  account lacks open API tokens. Below the account header, the full-width pane
+  scrolls so its scrollbar meets the window edge; the header's email keeps the
+  diff gutter and truncates. Content is bounded at 64rem: a sticky 10rem
+  section nav beside the account summary and the current section.
+- The section nav lists only sections that exist (GitHub and Notifications
   stay absent on servers without them) as `rail` link buttons, marking the
-  section at the top of the pane with `aria-current="true"`. A link scrolls
-  its section into view and focuses its `h2` without changing the URL. Below
-  768px the nav is hidden.
-- The page opens with an account summary: the `h1`, “Signed in as” the
+  current page with `aria-current="page"`, as in the console. A link changes
+  the URL, keeps focus and shows its section from the top; the nav never
+  follows scrolling. Below 768px it becomes a wrapping row between the summary
+  and the section.
+- Every page opens with the account summary: the `h1`, “Signed in as” the
   account email (“with Google” for Google accounts), and an outline “Sign out”
   at the trailing edge.
 - Sections follow in a fixed order: API tokens, GitHub, Notifications,
@@ -677,8 +681,9 @@ at `/design.html` (see `docs/development.md`).
   beside its state and controls; below 1012px they stack. Subsections use
   `h3`. Async feedback uses an always-mounted `role="status"` paragraph;
   failures use `ErrorState`.
-- One filled primary action at a time: the open token form's “Create token”,
-  otherwise “Connect GitHub”. Other actions are outline or ghost.
+- At most one filled primary action per page: the open token form's “Create
+  token”, “Connect GitHub”, or “Turn on notifications”. Other actions are
+  outline or ghost.
 - Rows that can be removed (tokens, other devices) and the GitHub connection
   keep their action in one ghost `…` menu (“Actions for {name}”), as in the
   console; Revoke…, Remove… and Disconnect… confirm with `ConfirmDialog`, the

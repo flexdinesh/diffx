@@ -41,8 +41,9 @@ const anonymous = new Set([
   "/api/v2/password-reset",
 ]);
 
-export function navigate(path: string) {
-  window.history.pushState(null, "", path);
+export function navigate(path: string, { replace = false } = {}) {
+  if (replace) window.history.replaceState(null, "", path);
+  else window.history.pushState(null, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 

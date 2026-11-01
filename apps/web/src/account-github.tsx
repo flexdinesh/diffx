@@ -22,11 +22,15 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@diffx/ui/components/ui/tooltip";
-import { RowActions, SettingsSection } from "./settings-layout.tsx";
+import {
+  RowActions,
+  SettingsSection,
+  SettingsSectionAbsent,
+} from "./settings-layout.tsx";
 
 const prose = "mb-4 leading-copy text-secondary";
 
-/** Outcomes the OAuth callback reports through `/settings?github=`. */
+/** Outcomes the OAuth callback reports through `/settings/github?github=`. */
 const callbackMessages: Record<string, string> = {
   connected: "GitHub connected. Choose repositories to follow.",
   cancelled: "GitHub authorization was cancelled.",
@@ -62,13 +66,10 @@ type Connection =
  */
 export function AccountGitHub({
   notify = false,
-  primary = true,
   onFollowingChange,
 }: {
   /** Shows each followed repository's notification bell. */
   notify?: boolean;
-  /** Whether Connect is the page's primary action; false while another form is open. */
-  primary?: boolean;
   onFollowingChange?: (following: GitHubFollowing) => void;
 }) {
   const [connection, setConnection] = useState<Connection>({
@@ -118,8 +119,9 @@ export function AccountGitHub({
     if (unconfigured) onFollowingChange?.("unavailable");
     else if (inactive) onFollowingChange?.("none");
   }, [unconfigured, inactive, onFollowingChange]);
-  if (connection.status === "unconfigured" || connection.status === "loading")
-    return null;
+  if (connection.status === "unconfigured")
+    return <SettingsSectionAbsent id="github" />;
+  if (connection.status === "loading") return null;
   async function connect() {
     setBusy(true);
     setError("");
@@ -209,7 +211,6 @@ export function AccountGitHub({
         <div className="mb-4 flex flex-wrap gap-2">
           {!active && (
             <Button
-              variant={primary ? "default" : "outline"}
               touch
               disabled={busy}
               aria-busy={busy}

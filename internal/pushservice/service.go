@@ -274,7 +274,7 @@ func (s *Service) Test(ctx context.Context, ownerID, id string) error {
 	if device == nil {
 		return ErrNotFound
 	}
-	payload, err := encode(message{Kind: "test", Title: "diffx", Body: "Notifications are on for this device.", URL: "/settings", Tag: "diffx-test", Timestamp: s.millis()})
+	payload, err := encode(message{Kind: "test", Title: "diffx", Body: "Notifications are on for this device.", URL: "/settings/notifications", Tag: "diffx-test", Timestamp: s.millis()})
 	if err != nil {
 		return err
 	}
