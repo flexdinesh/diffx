@@ -91,7 +91,7 @@ func TestHookInitialCleanSessionsAndMissingAcknowledgement(t *testing.T) {
 	t.Setenv("DIFFX_REMOTE_TOKEN", "test-token")
 	store := pgtest.Store(t)
 	account := testsupport.RemoteAccount(t, store, "test")
-	service := contextservice.NewWithContext(t.Context(), store, reviewdata.User{ID: account.ID, Name: account.Username})
+	service := contextservice.NewWithContext(t.Context(), store, reviewdata.User{ID: account.ID, Name: account.Email})
 	defer service.Close()
 	server := testsupport.Server(t, service, store, store.Queue())
 	defer server.Close()

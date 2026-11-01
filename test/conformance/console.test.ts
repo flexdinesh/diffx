@@ -112,7 +112,6 @@ test("The console administers the server's accounts over one database", async (t
   });
   assert.equal(setup.response.status, 200);
   consoleConforms("Bootstrap", setup.data);
-  assert.equal(setup.data?.admin?.username, "root@example.com");
   assert.equal(setup.data?.admin?.email, "root@example.com");
   const csrf = setup.data?.csrfToken;
   assert.ok(csrf);
@@ -120,7 +119,7 @@ test("The console administers the server's accounts over one database", async (t
 
   // The admin is a regular app account too.
   const adminApp = await app.POST("/api/v2/auth/login", {
-    body: { username: "root@example.com", password },
+    body: { email: "root@example.com", password },
   });
   assert.equal(adminApp.response.status, 200);
   conforms("Bootstrap", adminApp.data);
@@ -140,7 +139,7 @@ test("The console administers the server's accounts over one database", async (t
   });
   assert.equal(refused.response.status, 401);
   const memberLogin = await console.POST("/api/v1/auth/login", {
-    body: { username: "member@example.com", password },
+    body: { email: "member@example.com", password },
   });
   assert.equal(memberLogin.response.status, 401);
 
@@ -149,7 +148,7 @@ test("The console administers the server's accounts over one database", async (t
   for (const account of accounts.data?.accounts ?? [])
     consoleConforms("Account", account);
   const memberId = accounts.data?.accounts.find(
-    (account) => account.username === "member@example.com",
+    (account) => account.email === "member@example.com",
   )?.id;
   assert.ok(memberId);
 
@@ -216,12 +215,12 @@ test("The console administers the server's accounts over one database", async (t
   const resetLookup = await app.POST("/api/v2/password-reset/lookup", {
     body: { token: resetToken },
   });
-  assert.equal(resetLookup.data?.username, "member@example.com");
+  assert.equal(resetLookup.data?.email, "member@example.com");
 
   // Offline recovery prints a link for the account's surface.
   const cli = await run(
     consoleBinary,
-    ["user", "reset-password", "--username", "root@example.com"],
+    ["user", "reset-password", "--email", "root@example.com"],
     { env: consoleEnv },
   );
   assert.match(cli.stdout, new RegExp(`${consoleOrigin}/reset-password#t=`));

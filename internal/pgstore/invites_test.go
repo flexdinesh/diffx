@@ -48,7 +48,7 @@ func TestInviteReplacementAcceptanceAndRevocation(t *testing.T) {
 	results := make(chan error, 4)
 	for index := range 4 {
 		workers.Go(func() {
-			account := identityservice.Account{ID: "account-" + string(rune('a'+index)), Username: "user-" + string(rune('a'+index))}
+			account := identityservice.Account{ID: "account-" + string(rune('a'+index)), Email: identity.Email, Method: identityservice.MethodGoogle}
 			results <- store.AcceptInvite(ctx, second.ID, account, identity, now)
 		})
 	}
@@ -56,9 +56,10 @@ func TestInviteReplacementAcceptanceAndRevocation(t *testing.T) {
 	close(results)
 	var accepted int
 	for err := range results {
+		// Later acceptances find the invite used or its email taken.
 		if err == nil {
 			accepted++
-		} else if !errors.Is(err, identityservice.ErrNotFound) {
+		} else if !errors.Is(err, identityservice.ErrNotFound) && !errors.Is(err, identityservice.ErrConflict) {
 			t.Fatal(err)
 		}
 	}
@@ -67,7 +68,7 @@ func TestInviteReplacementAcceptanceAndRevocation(t *testing.T) {
 		t.Fatalf("concurrent acceptance: %d %+v %v", accepted, accounts, err)
 	}
 	used, err := store.Invite(ctx, second.ID)
-	if err != nil || used.Status(now) != identityservice.InviteUsed || used.UsedBy != accounts[0].Username {
+	if err != nil || used.Status(now) != identityservice.InviteUsed || used.UsedBy != accounts[0].Email {
 		t.Fatalf("used invite: %+v %v", used, err)
 	}
 	if err := store.CreateInvite(ctx, identityservice.Invite{ID: "third", Email: "a@example.com", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, "hash-third"); !errors.Is(err, identityservice.ErrConflict) {
@@ -80,10 +81,10 @@ func TestInviteReplacementAcceptanceAndRevocation(t *testing.T) {
 	if err := store.RevokeInvite(ctx, other.ID, now); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AcceptInvite(ctx, other.ID, identityservice.Account{ID: "account-revoked", Username: "bob"}, google.Identity{Subject: "subject-b", Email: "b@example.com"}, now); !errors.Is(err, identityservice.ErrNotFound) {
+	if err := store.AcceptInvite(ctx, other.ID, identityservice.Account{ID: "account-revoked", Email: "b@example.com"}, google.Identity{Subject: "subject-b", Email: "b@example.com"}, now); !errors.Is(err, identityservice.ErrNotFound) {
 		t.Fatalf("revoked invite accepted: %v", err)
 	}
-	if again := invite(t, store, "again", "c@example.com", now); store.AcceptInvite(ctx, again.ID, identityservice.Account{ID: "account-linked", Username: "carol"}, identity, now) == nil {
+	if again := invite(t, store, "again", "c@example.com", now); store.AcceptInvite(ctx, again.ID, identityservice.Account{ID: "account-linked", Email: "c@example.com"}, identity, now) == nil {
 		t.Fatal("a linked Google subject created a second account")
 	}
 }
@@ -123,7 +124,7 @@ func TestGoogleAccountFollowsEmailChangesAndDisable(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
 	value := invite(t, store, "invite", "old@example.com", now)
-	account := identityservice.Account{ID: "account", Username: "old", Email: "old@example.com", Method: identityservice.MethodGoogle}
+	account := identityservice.Account{ID: "account", Email: "old@example.com", Method: identityservice.MethodGoogle}
 	if err := store.AcceptInvite(ctx, value.ID, account, google.Identity{Subject: "subject", Email: "old@example.com", EmailVerified: true}, now); err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +287,7 @@ func TestConcurrentAcceptancesLinkSubjectOnce(t *testing.T) {
 	for index, email := range emails {
 		value := invite(t, store, fmt.Sprintf("invite-%d", index), email, now)
 		workers.Go(func() {
-			account := identityservice.Account{ID: fmt.Sprintf("account-%d", index), Username: fmt.Sprintf("user-%d", index)}
+			account := identityservice.Account{ID: fmt.Sprintf("account-%d", index), Email: email}
 			results <- store.AcceptInvite(ctx, value.ID, account, google.Identity{Subject: "subject", Email: email, EmailVerified: true}, now)
 		})
 	}
@@ -306,46 +307,6 @@ func TestConcurrentAcceptancesLinkSubjectOnce(t *testing.T) {
 	}
 }
 
-func TestConcurrentAcceptancesTakeUsernameOnce(t *testing.T) {
-	t.Parallel()
-	store, _, _ := identityStore(t)
-	ctx := context.Background()
-	now := time.Now()
-	var workers sync.WaitGroup
-	results := make(chan error, 4)
-	for index := range 4 {
-		email := fmt.Sprintf("user%d@example.com", index)
-		value := invite(t, store, fmt.Sprintf("invite-%d", index), email, now)
-		workers.Go(func() {
-			account := identityservice.Account{ID: fmt.Sprintf("account-%d", index), Username: "user"}
-			results <- store.AcceptInvite(ctx, value.ID, account, google.Identity{Subject: fmt.Sprintf("subject-%d", index), Email: email, EmailVerified: true}, now)
-		})
-	}
-	workers.Wait()
-	close(results)
-	var accepted int
-	for err := range results {
-		if err == nil {
-			accepted++
-		} else if !errors.Is(err, identityservice.ErrConflict) {
-			t.Fatal(err)
-		}
-	}
-	invites, err := store.Invites(ctx)
-	if accepted != 1 || err != nil {
-		t.Fatalf("username taken: %d %v", accepted, err)
-	}
-	var used int
-	for _, value := range invites {
-		if value.Status(now) == identityservice.InviteUsed {
-			used++
-		}
-	}
-	if used != 1 {
-		t.Fatalf("invites used by conflicting acceptances: %d", used)
-	}
-}
-
 // Re-inviting an email while its invite is being accepted waits for the
 // acceptance, then conflicts with the account it linked.
 func TestInviteDuringAcceptanceOfEmailConflicts(t *testing.T) {
@@ -357,11 +318,11 @@ func TestInviteDuringAcceptanceOfEmailConflicts(t *testing.T) {
 	now := time.Now()
 	value := invite(t, store, "invite", "a@example.com", now)
 	// Acceptance uses the invite, then waits on the subject.
-	hold := holdAccount(t, blocker, "holder", "subject")
+	hold := holdAccount(t, blocker, "holder@example.com", "subject")
 	var workers sync.WaitGroup
 	var accepted, invited error
 	workers.Go(func() {
-		accepted = store.AcceptInvite(ctx, value.ID, identityservice.Account{ID: "account", Username: "user"}, google.Identity{Subject: "subject", Email: "a@example.com", EmailVerified: true}, now)
+		accepted = store.AcceptInvite(ctx, value.ID, identityservice.Account{ID: "account", Email: "a@example.com"}, google.Identity{Subject: "subject", Email: "a@example.com", EmailVerified: true}, now)
 	})
 	waitForLockWaiters(t, conn, 1)
 	workers.Go(func() {
@@ -408,7 +369,7 @@ func TestInvitesCreateMembersByEitherMethod(t *testing.T) {
 	}
 	now := time.Now()
 	googleInvite := invite(t, store, "google-member", "g@example.com", now)
-	account := identityservice.Account{ID: "google-member", Username: "g", Method: identityservice.MethodGoogle}
+	account := identityservice.Account{ID: "google-member", Email: "g@example.com", Method: identityservice.MethodGoogle}
 	if err := store.AcceptInvite(ctx, googleInvite.ID, account, google.Identity{Subject: "subject-g", Email: "g@example.com", EmailVerified: true}, now); err != nil {
 		t.Fatal(err)
 	}
@@ -429,7 +390,7 @@ func TestPasswordInviteStorageBindsEmail(t *testing.T) {
 	ctx := t.Context()
 	now := time.Now()
 	invited := invite(t, store, "password-invite", "invited@example.com", now)
-	account := identityservice.Account{ID: "other-account", Username: "other@example.com", Email: "other@example.com", Method: identityservice.MethodPassword}
+	account := identityservice.Account{ID: "other-account", Email: "other@example.com", Method: identityservice.MethodPassword}
 	if err := store.AcceptPasswordInvite(ctx, invited.ID, account, "hash", now, identityservice.Settings{PasswordSignup: true}); err == nil {
 		t.Fatal("storage accepted an email different from the invite")
 	}

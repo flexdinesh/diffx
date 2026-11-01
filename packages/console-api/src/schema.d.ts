@@ -132,7 +132,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Resolve an admin's reset link (its `#t=` fragment) to the username it resets. Unknown, expired, used or non-admin links are 404. */
+    /** @description Resolve an admin's reset link (its `#t=` fragment) to the email of the account it resets. Unknown, expired, used or non-admin links are 404. */
     post: operations["lookupPasswordReset"];
     delete?: never;
     options?: never;
@@ -389,16 +389,14 @@ export interface components {
     };
     Admin: {
       id: string;
-      username: string;
-      /** @description The account email submitted at password signup or last reported by Google. Null for legacy password accounts; a submitted email is not verified. */
-      email: string | null;
+      /** @description The email that identifies the account, submitted at password signup or last reported by Google. A submitted email is not verified. */
+      email: string;
       method: components["schemas"]["Method"];
     };
     Account: {
       id: string;
-      username: string;
-      /** @description The account email submitted at password signup or last reported by Google. Null for legacy password accounts; a submitted email is not verified. */
-      email: string | null;
+      /** @description The email that identifies the account, submitted at password signup or last reported by Google. A submitted email is not verified. */
+      email: string;
       method: components["schemas"]["Method"];
       admin: boolean;
       disabled: boolean;
@@ -419,7 +417,7 @@ export interface components {
       createdAt: number;
       /** Format: int64 */
       expiresAt: number;
-      /** @description Username of the account the invite created; null until used or after that account is deleted. */
+      /** @description Email of the account the invite created; null until used or after that account is deleted. */
       usedBy: string | null;
     };
     Settings: {
@@ -433,8 +431,8 @@ export interface components {
       token: string;
     };
     PasswordCredentials: {
-      /** @description Account email, or the username of an existing legacy account. */
-      username: string;
+      /** @description Account email, compared case-insensitively. */
+      email: string;
       password: string;
     };
     ResetToken: {
@@ -691,7 +689,7 @@ export interface operations {
         };
         content: {
           "application/json": {
-            username: string;
+            email: string;
           };
         };
       };

@@ -68,7 +68,7 @@ func start(t *testing.T, state string, remote bool) deployment {
 		account = testsupport.RemoteAccount(t, store, "team")
 	} else {
 		for _, existing := range accounts {
-			if existing.Username == "team" {
+			if existing.Email == "team@example.com" {
 				account = existing
 				break
 			}
@@ -91,7 +91,7 @@ func start(t *testing.T, state string, remote bool) deployment {
 			t.Fatal(err)
 		}
 	} else {
-		service := contextservice.NewWithContext(t.Context(), store, reviewdata.User{ID: account.ID, Name: account.Username})
+		service := contextservice.NewWithContext(t.Context(), store, reviewdata.User{ID: account.ID, Name: account.Email})
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
 		go func() {
@@ -114,7 +114,7 @@ func start(t *testing.T, state string, remote bool) deployment {
 func principal(t *testing.T, d deployment, name string) reviewdata.User {
 	t.Helper()
 	account := testsupport.RemoteAccount(t, d.store, name)
-	return reviewdata.User{ID: account.ID, Name: account.Username}
+	return reviewdata.User{ID: account.ID, Name: account.Email}
 }
 
 func request(t *testing.T, d deployment, method, path string, body io.Reader) *http.Response {

@@ -18,7 +18,7 @@ var (
 	ErrAuthentication = errors.New("invalid credentials")
 	ErrInvalidInput   = errors.New("invalid identity input")
 	ErrInvalidEmail   = fmt.Errorf("%w: invalid email address", ErrInvalidInput)
-	ErrConflict       = errors.New("username already exists")
+	ErrConflict       = errors.New("email already has an account")
 	ErrNotFound       = errors.New("identity not found")
 	// ErrForbidden refuses an administrative action an admin takes on itself.
 	ErrForbidden = errors.New("identity operation not permitted")
@@ -77,11 +77,8 @@ func (settings Settings) allows(required Settings) bool {
 // in to the console and manage other accounts.
 type Account struct {
 	ID string
-	// Username remains the stable sign-in identifier: email for new password
-	// accounts, a handle for legacy passwords and Google accounts.
-	Username string
-	// Email is submitted for password accounts, or last reported by Google.
-	// Legacy password accounts may have no known email.
+	// Email identifies the account: the canonical password sign-in email, or
+	// the latest one Google reported for a Google account.
 	Email  string
 	Admin  bool
 	Method Method
@@ -139,7 +136,7 @@ type Store interface {
 	CreateAdmin(ctx context.Context, account Account, passwordHash, setupHash string, now time.Time) error
 	// PendingAdminSetup reports whether the setup secret is unexpired while no admin exists.
 	PendingAdminSetup(ctx context.Context, setupHash string, now time.Time) (bool, error)
-	// CreateAccount commits a member and its password hash; a taken username
+	// CreateAccount commits a member and its password hash; a taken email
 	// is ErrConflict. It reads the settings in its transaction and refuses with
 	// ErrDisabled unless every setting required is on.
 	CreateAccount(ctx context.Context, account Account, passwordHash string, created time.Time, required Settings) error
@@ -153,6 +150,7 @@ type Store interface {
 	SetAccountDisabled(ctx context.Context, accountID string, disabled bool, at time.Time) error
 	DeleteAccount(context.Context, string) error
 	SetAdmin(ctx context.Context, accountID string, admin bool) error
+	// AccountPassword resolves an enabled account by its canonical email.
 	AccountPassword(context.Context, string) (PasswordCredential, error)
 	AccountPasswordByID(context.Context, string) (PasswordCredential, error)
 	ReplacePassword(context.Context, string, string, string) error
@@ -227,23 +225,6 @@ func New(store Store, options ...Option) *Service {
 	return service
 }
 
-func canonicalUsername(username string) (string, error) {
-	if strings.Contains(username, "@") {
-		return canonicalEmail(username)
-	}
-	username = strings.ToLower(username)
-	if len(username) < 3 || len(username) > 32 {
-		return "", fmt.Errorf("%w: username must be 3–32 characters", ErrInvalidInput)
-	}
-	for index, character := range username {
-		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || index > 0 && (character == '_' || character == '-' || character == '.') {
-			continue
-		}
-		return "", fmt.Errorf("%w: username must start with a letter or digit and contain letters, digits, dot, dash or underscore", ErrInvalidInput)
-	}
-	return username, nil
-}
-
 func validatePassword(password string) error {
 	if len(password) < 8 || len(password) > 128 {
 		return fmt.Errorf("%w: password must be 8–128 bytes", ErrInvalidInput)
@@ -303,12 +284,12 @@ func (service *Service) CompleteSetup(ctx context.Context, secret, email, passwo
 // Login signs a password account in to an audience it is admitted to. Every
 // failure is the same ErrAuthentication, so it never reveals which accounts
 // exist, use Google or belong to another audience.
-func (service *Service) Login(ctx context.Context, audience Audience, username, password string) (Session, error) {
-	username, invalid := canonicalUsername(username)
+func (service *Service) Login(ctx context.Context, audience Audience, email, password string) (Session, error) {
+	email, invalid := canonicalEmail(email)
 	if len(password) > 128 {
 		return Session{}, ErrAuthentication
 	}
-	credential, err := service.store.AccountPassword(ctx, username)
+	credential, err := service.store.AccountPassword(ctx, email)
 	if invalid != nil || errors.Is(err, ErrNotFound) {
 		verifyPassword(service.dummyHash, password)
 		return Session{}, ErrAuthentication
@@ -339,7 +320,7 @@ func (service *Service) SignUp(ctx context.Context, email, password string) (Ses
 	return service.issueSession(ctx, account, hash)
 }
 
-// newPasswordAccount requires an email, used as the password sign-in identifier.
+// newPasswordAccount requires an email, which identifies the account.
 // Collecting an email does not verify ownership of its mailbox.
 func (service *Service) newPasswordAccount(email, password string) (Account, string, error) {
 	email, err := canonicalEmail(email)
@@ -357,7 +338,7 @@ func (service *Service) newPasswordAccount(email, password string) (Account, str
 	if err != nil {
 		return Account{}, "", err
 	}
-	return Account{ID: id, Username: email, Email: email, Method: MethodPassword}, hash, nil
+	return Account{ID: id, Email: email, Method: MethodPassword}, hash, nil
 }
 
 // issueSession fences on the credential the caller verified: a concurrent
@@ -427,13 +408,13 @@ func (service *Service) ResetPassword(ctx context.Context, accountID string) (Ac
 	return service.issuePasswordReset(ctx, credential.Account)
 }
 
-// ResetPasswordByUsername is ResetPassword for offline recovery by username.
-func (service *Service) ResetPasswordByUsername(ctx context.Context, username string) (Account, string, error) {
-	username, err := canonicalUsername(username)
+// ResetPasswordByEmail is ResetPassword for offline recovery by email.
+func (service *Service) ResetPasswordByEmail(ctx context.Context, email string) (Account, string, error) {
+	email, err := canonicalEmail(email)
 	if err != nil {
 		return Account{}, "", err
 	}
-	credential, err := service.store.AccountPassword(ctx, username)
+	credential, err := service.store.AccountPassword(ctx, email)
 	if err != nil {
 		return Account{}, "", err
 	}

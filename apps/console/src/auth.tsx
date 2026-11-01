@@ -70,13 +70,10 @@ export function SignIn() {
       )}
       <CredentialForm
         submitLabel="Sign in"
-        failure="Unable to sign in. Check your email or username and password."
+        failure="Unable to sign in. Check your email and password."
         submit={(credentials) =>
           api.POST("/api/v1/auth/login", {
-            body: {
-              username: credentials.identifier,
-              password: credentials.password,
-            },
+            body: credentials,
           })
         }
       />
@@ -188,11 +185,7 @@ export function Setup() {
             failure="Unable to create the admin. Try again."
             submit={(credentials) =>
               api.POST("/api/v1/setup", {
-                body: {
-                  email: credentials.identifier,
-                  password: credentials.password,
-                  token,
-                },
+                body: { ...credentials, token },
               })
             }
           />
@@ -211,7 +204,7 @@ type ResetLink =
   | { status: "loading" }
   | { status: "invalid" }
   | { status: "error"; message: string }
-  | { status: "ready"; username: string };
+  | { status: "ready"; email: string };
 
 /** Resolves a reset link; 404 means invalid, expired or used. */
 function useResetLink(token: string) {
@@ -237,7 +230,7 @@ function useResetLink(token: string) {
           return;
         }
         if (!data) throw new Error(errorDetail(error, failure));
-        setLink({ status: "ready", username: data.username });
+        setLink({ status: "ready", email: data.email });
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted)
@@ -318,7 +311,7 @@ export function ResetPassword() {
           {link.status === "ready" && (
             <>
               <p className={prose}>
-                Choose a new password for <strong>{link.username}</strong>. This
+                Choose a new password for <strong>{link.email}</strong>. This
                 signs out your browser sessions in the console and the app; API
                 tokens remain active.
               </p>
@@ -326,9 +319,9 @@ export function ResetPassword() {
                 {/* Lets password managers save the new password for this account. */}
                 <Input
                   type="text"
-                  name="username"
+                  name="email"
                   autoComplete="username"
-                  value={link.username}
+                  value={link.email}
                   readOnly
                   hidden
                 />
@@ -371,9 +364,9 @@ export function ResetPassword() {
   );
 }
 
-type Credentials = { identifier: string; password: string };
+type Credentials = { email: string; password: string };
 
-/** Email-based admin creation, with legacy username sign-in. */
+/** Email and password sign-in or admin creation. */
 function CredentialForm({
   creating = false,
   submitLabel,
@@ -390,7 +383,7 @@ function CredentialForm({
   }>;
 }) {
   const { establish } = useSession();
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -400,10 +393,7 @@ function CredentialForm({
     setBusy(true);
     setError("");
     try {
-      const { data, error, response } = await submit({
-        identifier: username,
-        password,
-      });
+      const { data, error, response } = await submit({ email, password });
       // Refused credentials share one generic 401; name the form's failure.
       if (response.status === 401) throw new Error(failure);
       if (!data) throw new Error(errorDetail(error, failure));
@@ -422,17 +412,15 @@ function CredentialForm({
   }
   return (
     <form className="console-form" onSubmit={send}>
-      <label htmlFor="username">
-        {creating ? "Email" : "Email or username"}
-      </label>
+      <label htmlFor="email">Email</label>
       <Input
-        id="username"
-        name={creating ? "email" : "username"}
-        type={creating ? "email" : "text"}
+        id="email"
+        name="email"
+        type="email"
         autoComplete="username"
         touch
-        value={username}
-        onChange={(event) => setUsername(event.target.value)}
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
         required
         minLength={3}
         maxLength={254}

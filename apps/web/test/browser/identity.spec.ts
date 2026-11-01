@@ -5,7 +5,7 @@ interface RemoteOptions {
   googleEnabled?: boolean;
   signupEnabled?: boolean;
   passwordSignupEnabled?: boolean;
-  email?: string | null;
+  email?: string;
   method?: "google" | "password";
 }
 function bootstrap(
@@ -14,7 +14,7 @@ function bootstrap(
     googleEnabled = false,
     signupEnabled = false,
     passwordSignupEnabled = false,
-    email = null,
+    email = "alice@example.com",
     method = "google",
   }: RemoteOptions = {},
 ) {
@@ -23,9 +23,7 @@ function bootstrap(
     googleEnabled,
     signupEnabled,
     passwordSignupEnabled,
-    user: signedIn
-      ? { id: "account-a", username: "alice", email, method }
-      : null,
+    user: signedIn ? { id: "account-a", email, method } : null,
     csrfToken: signedIn ? "session-csrf" : null,
   };
 }
@@ -487,7 +485,7 @@ test("members see their Google email and no admin pages", async ({ page }) => {
   await remote(page, true, { email: "alice@example.com" });
   await page.goto("/settings");
   await expect(
-    page.getByText("with Google as alice@example.com", { exact: false }),
+    page.getByText("Signed in as alice@example.com with Google"),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Password" })).toHaveCount(0);
   await expect(page.getByText(/manage/i)).toHaveCount(0);
@@ -551,7 +549,7 @@ test("an invite accepted with a password signs the account in", async ({
 test("a reset link sets a password and hides its secret", async ({ page }) => {
   await remote(page, false, { passwordSignupEnabled: true });
   await page.route("**/api/v2/password-reset/lookup", (route) =>
-    route.fulfill({ json: { username: "alice" } }),
+    route.fulfill({ json: { email: "alice@example.com" } }),
   );
   let completed: unknown;
   await page.route("**/api/v2/password-reset", (route) => {

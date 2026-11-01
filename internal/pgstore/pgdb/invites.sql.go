@@ -26,7 +26,7 @@ func (q *Queries) EmailLinked(ctx context.Context, email string) (bool, error) {
 }
 
 const googleAccount = `-- name: GoogleAccount :one
-SELECT a.user_id, a.username,
+SELECT a.user_id,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.user_id = a.user_id) AS disabled
 FROM google_identities g JOIN remote_accounts a ON a.user_id = g.user_id
@@ -35,7 +35,6 @@ WHERE g.sub = $1
 
 type GoogleAccountRow struct {
 	UserID   string
-	Username string
 	Admin    bool
 	Disabled bool
 }
@@ -43,12 +42,7 @@ type GoogleAccountRow struct {
 func (q *Queries) GoogleAccount(ctx context.Context, sub string) (GoogleAccountRow, error) {
 	row := q.db.QueryRow(ctx, googleAccount, sub)
 	var i GoogleAccountRow
-	err := row.Scan(
-		&i.UserID,
-		&i.Username,
-		&i.Admin,
-		&i.Disabled,
-	)
+	err := row.Scan(&i.UserID, &i.Admin, &i.Disabled)
 	return i, err
 }
 
@@ -129,7 +123,7 @@ func (q *Queries) InsertInvite(ctx context.Context, arg InsertInviteParams) erro
 }
 
 const invite = `-- name: Invite :one
-SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
+SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.email, '')::text AS used_by, i.revoked_at
 FROM account_invites i LEFT JOIN remote_accounts a ON a.user_id = i.used_by
 WHERE i.id = $1
 `
@@ -176,7 +170,7 @@ func (q *Queries) InviteEmailLock(ctx context.Context, arg InviteEmailLockParams
 }
 
 const invites = `-- name: Invites :many
-SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
+SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.email, '')::text AS used_by, i.revoked_at
 FROM account_invites i LEFT JOIN remote_accounts a ON a.user_id = i.used_by
 ORDER BY i.created_at DESC, i.id COLLATE "C"
 `
@@ -220,7 +214,7 @@ func (q *Queries) Invites(ctx context.Context) ([]InvitesRow, error) {
 }
 
 const pendingInvite = `-- name: PendingInvite :one
-SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
+SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.email, '')::text AS used_by, i.revoked_at
 FROM account_invites i LEFT JOIN remote_accounts a ON a.user_id = i.used_by
 WHERE i.token_hash = $1 AND i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > $2
 `

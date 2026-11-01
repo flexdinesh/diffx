@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
-	"fmt"
 	"net/mail"
 	"strings"
 	"time"
@@ -56,7 +55,7 @@ type Invite struct {
 	CreatedAt time.Time
 	ExpiresAt time.Time
 	UsedAt    *time.Time
-	// UsedBy is the username that accepted the invite while that account exists.
+	// UsedBy is the email of the account that accepted the invite while it exists.
 	UsedBy    string
 	RevokedAt *time.Time
 }
@@ -95,19 +94,19 @@ type GoogleStore interface {
 	// PendingInvite resolves an unexpired, unused, unrevoked invite by its secret.
 	PendingInvite(ctx context.Context, tokenHash string, now time.Time) (Invite, error)
 	// AcceptInvite creates the account and its Google identity and uses the
-	// pending invite in one transaction. A taken username is ErrConflict; an
+	// pending invite in one transaction. A taken email is ErrConflict; an
 	// unavailable invite or an already linked subject is ErrNotFound.
 	AcceptInvite(ctx context.Context, inviteID string, account Account, identity google.Identity, now time.Time) error
 	// AcceptPasswordInvite creates a password account and uses the pending
 	// invite in one transaction, refusing with ErrDisabled unless every setting
-	// required is on. A taken username is ErrConflict; an unavailable invite is ErrNotFound.
+	// required is on. A taken email is ErrConflict; an unavailable invite is ErrNotFound.
 	AcceptPasswordInvite(ctx context.Context, inviteID string, account Account, passwordHash string, now time.Time, required Settings) error
 	// CreateGoogleAccount creates an account and its Google identity without an
 	// invite, refusing with ErrDisabled unless every setting required is on. A
-	// taken username is ErrConflict; an already linked subject is ErrNotFound.
+	// taken email is ErrConflict; an already linked subject is ErrNotFound.
 	CreateGoogleAccount(ctx context.Context, account Account, identity google.Identity, now time.Time, required Settings) error
 	// CreateGoogleAdmin consumes the setup secret and creates the first admin
-	// with its Google identity in one transaction. A taken username is
+	// with its Google identity in one transaction. A taken email is
 	// ErrConflict; a missing, expired or used secret or a linked subject is ErrNotFound.
 	CreateGoogleAdmin(ctx context.Context, account Account, identity google.Identity, setupHash string, now time.Time) error
 	// PromoteSetupAdmin consumes the setup secret and makes an existing,
@@ -280,13 +279,13 @@ func (service *Service) CompleteGoogle(ctx context.Context, audience Audience, s
 	if !service.Settings().allows(required) {
 		return Session{}, ErrNoAccount
 	}
-	// Open signup still requires an email Google verified, which names the account.
+	// Open signup still requires an email Google verified, which identifies the account.
 	email, err := canonicalEmail(identity.Email)
 	if err != nil || !identity.EmailVerified {
 		return Session{}, ErrAuthentication
 	}
 	identity.Email = email
-	created, err := service.createNamedAccount(email, Account{Email: email, Method: MethodGoogle}, func(account Account) error {
+	created, err := newAccount(Account{Email: email, Method: MethodGoogle}, func(account Account) error {
 		return service.store.CreateGoogleAccount(ctx, account, identity, service.now(), required)
 	})
 	if errors.Is(err, ErrDisabled) {
@@ -300,7 +299,7 @@ func (service *Service) CompleteGoogle(ctx context.Context, audience Audience, s
 
 // completeGoogleSetup consumes the setup secret for a Google identity. A
 // linked, enabled account becomes the first admin; otherwise a new admin is
-// named after the email Google verified.
+// created with the email Google verified.
 func (service *Service) completeGoogleSetup(ctx context.Context, setupHash string, identity google.Identity, linked Account, disabled bool, lookup error) (Session, error) {
 	if lookup == nil {
 		if disabled {
@@ -320,7 +319,7 @@ func (service *Service) completeGoogleSetup(ctx context.Context, setupHash strin
 		return Session{}, ErrAuthentication
 	}
 	identity.Email = email
-	created, err := service.createNamedAccount(email, Account{Email: email, Admin: true, Method: MethodGoogle}, func(account Account) error {
+	created, err := newAccount(Account{Email: email, Admin: true, Method: MethodGoogle}, func(account Account) error {
 		return service.store.CreateGoogleAdmin(ctx, account, identity, setupHash, service.now())
 	})
 	if err != nil {
@@ -367,7 +366,7 @@ func (service *Service) acceptInvite(ctx context.Context, inviteID string, ident
 		return Session{}, ErrInviteMismatch
 	}
 	identity.Email = email
-	account, err := service.createNamedAccount(email, Account{Email: email, Method: MethodGoogle}, func(account Account) error {
+	account, err := newAccount(Account{Email: email, Method: MethodGoogle}, func(account Account) error {
 		return service.store.AcceptInvite(ctx, inviteID, account, identity, service.now())
 	})
 	if err != nil {
@@ -376,49 +375,17 @@ func (service *Service) acceptInvite(ctx context.Context, inviteID string, ident
 	return service.issueSession(ctx, account, "")
 }
 
-// createNamedAccount creates an account like template, named after the email
-// and numbered until the name is free.
-func (service *Service) createNamedAccount(email string, template Account, create func(Account) error) (Account, error) {
+// newAccount creates an account like template under a new ID. An email that
+// already has an account is ErrConflict.
+func newAccount(template Account, create func(Account) error) (Account, error) {
 	id, err := opaqueSecret()
 	if err != nil {
 		return Account{}, err
 	}
-	base := usernameFromEmail(email)
-	for attempt := 1; attempt <= 100; attempt++ {
-		username := base
-		if attempt > 1 {
-			suffix := fmt.Sprintf("-%d", attempt)
-			username = strings.TrimRight(base[:min(len(base), 32-len(suffix))], "._-") + suffix
-		}
-		account := template
-		account.ID, account.Username = id, username
-		err := create(account)
-		if errors.Is(err, ErrConflict) {
-			continue
-		}
-		if err != nil {
-			return Account{}, err
-		}
-		return account, nil
+	account := template
+	account.ID = id
+	if err := create(account); err != nil {
+		return Account{}, err
 	}
-	return Account{}, ErrConflict
-}
-
-// usernameFromEmail derives a valid username from the email's local part.
-func usernameFromEmail(email string) string {
-	local, _, _ := strings.Cut(email, "@")
-	var name strings.Builder
-	for _, character := range strings.ToLower(local) {
-		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || name.Len() > 0 && (character == '.' || character == '-' || character == '_') {
-			name.WriteRune(character)
-		}
-	}
-	username := strings.TrimRight(name.String()[:min(name.Len(), 32)], "._-")
-	if username == "" {
-		return "user"
-	}
-	if len(username) < 3 {
-		username += "-user"
-	}
-	return username
+	return account, nil
 }

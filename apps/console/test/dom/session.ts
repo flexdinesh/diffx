@@ -9,7 +9,7 @@ export const csrfToken = "csrf-token";
 export const signedIn: ConsoleBootstrap = {
   setupRequired: false,
   googleEnabled: false,
-  admin: { id: "admin-1", username: "root", email: null, method: "password" },
+  admin: { id: "admin-1", email: "root@example.com", method: "password" },
   csrfToken,
 };
 

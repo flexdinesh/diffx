@@ -17,7 +17,7 @@ import (
 func pushAccount(t *testing.T, db *pgxpool.Pool, name string) string {
 	t.Helper()
 	id := queueOwner(t, db, "id-"+name)
-	execSQL(t, db, `INSERT INTO diffx.remote_accounts(user_id, username, password_hash) VALUES ($1, $2, '')`, id, name)
+	execSQL(t, db, `INSERT INTO diffx.remote_accounts(user_id, email, password_hash) VALUES ($1, $2, '')`, id, name+"@example.com")
 	return id
 }
 

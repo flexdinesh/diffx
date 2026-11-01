@@ -315,7 +315,8 @@ split across two releases. A migration that cannot keep the previous release
 working raises `schema_compatibility.floor` to its own version, so older
 binaries refuse the database instead of corrupting it; migration 10 raises it
 to 10 because it drops `account_invites.admin`, which the previous release
-reads, so that upgrade is not rolling. The server requires
+reads, so that upgrade is not rolling; migration 12 raises it to 12 because it
+drops `remote_accounts.username`. The server requires
 PostgreSQL 18, never resets its database, and keeps its tables in the `diffx`
 schema. Server state from earlier SQLite volumes is not imported; an upgraded
 server starts with an empty database.

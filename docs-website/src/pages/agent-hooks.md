@@ -130,7 +130,7 @@ account's sessions and tokens, and deleting removes everything it owns. A
 locked-out admin gets a reset link with the console's environment:
 
 ```sh
-diffx-console user reset-password --username alice
+diffx-console user reset-password --email alice@example.com
 ```
 
 Password reset revokes browser sessions; API token

@@ -26,7 +26,7 @@ export function AccountButton({ variant }: { variant: "rail" | "shell" }) {
       variant={variant}
       touch
       label="Account settings"
-      hint={`Account settings · ${state.bootstrap.user.username}`}
+      hint={`Account settings · ${state.bootstrap.user.email}`}
       onClick={() => navigate("/settings")}
     >
       <UserRoundIcon aria-hidden="true" />
@@ -44,6 +44,8 @@ const signInFailures: Record<string, string> = {
     "That Google account does not match the invited email, or Google has not verified it. Open the invite link again and choose the invited account.",
   "invite-invalid":
     "The invite link is invalid, expired or already used. Ask us for a new one.",
+  "email-taken":
+    "A password account already uses that email. Sign in with your password instead.",
   failed: "Google sign-in failed. Try again.",
 };
 
@@ -148,7 +150,7 @@ export function SignIn() {
         <CredentialForm
           path="/api/v2/auth/login"
           submitLabel="Sign in"
-          failure="Unable to sign in. Check your email or username and password."
+          failure="Unable to sign in. Check your email and password."
           autoFocus={revealed}
         />
       ) : (
@@ -176,7 +178,7 @@ export function SignIn() {
   );
 }
 
-/** Open signup with each enabled method; Google names the account by email. */
+/** Open signup with each enabled method; Google supplies the account email. */
 export function SignUp() {
   const { google, password } = useMethods();
   return (
@@ -184,7 +186,7 @@ export function SignUp() {
       {google && (
         <>
           <p className={prose}>
-            Continue with Google to use your verified email as your username.
+            Continue with Google to sign up with your verified email.
           </p>
           <ContinueWithGoogle secondary={password} />
         </>
@@ -459,17 +461,16 @@ export function ResetPassword() {
           {link.status === "ready" && (
             <>
               <p className={prose}>
-                Choose a new password for <strong>{link.value.username}</strong>
-                . This signs out your browser sessions; API tokens remain
-                active.
+                Choose a new password for <strong>{link.value.email}</strong>.
+                This signs out your browser sessions; API tokens remain active.
               </p>
               <form className="account-form" onSubmit={submit}>
                 {/* Lets password managers save the new password for this account. */}
                 <Input
                   type="text"
-                  name="username"
+                  name="email"
                   autoComplete="username"
-                  value={link.value.username}
+                  value={link.value.email}
                   readOnly
                   hidden
                 />
@@ -512,7 +513,7 @@ export function ResetPassword() {
   );
 }
 
-/** Email-based account creation, with legacy username sign-in. */
+/** Email and password sign-in or account creation. */
 function CredentialForm({
   path,
   token = "",
@@ -529,11 +530,11 @@ function CredentialForm({
   invitedEmail?: string;
   submitLabel: string;
   failure: string;
-  /** Focuses the sign-in identifier when the form appears on request. */
+  /** Focuses the email field when the form appears on request. */
   autoFocus?: boolean;
 }) {
   const { establish } = useIdentity();
-  const [username, setUsername] = useState(invitedEmail ?? "");
+  const [email, setEmail] = useState(invitedEmail ?? "");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -546,10 +547,8 @@ function CredentialForm({
     try {
       const { data, error } =
         path === "/api/v2/invites/password"
-          ? await api.POST(path, { body: { token, email: username, password } })
-          : path === "/api/v2/auth/signup"
-            ? await api.POST(path, { body: { email: username, password } })
-            : await api.POST(path, { body: { username, password } });
+          ? await api.POST(path, { body: { token, email, password } })
+          : await api.POST(path, { body: { email, password } });
       if (!data) throw new Error(errorDetail(error, failure));
       const bootstrap = readBootstrap(data);
       if (
@@ -570,17 +569,15 @@ function CredentialForm({
   }
   return (
     <form className="account-form" onSubmit={submit}>
-      <label htmlFor="username">
-        {creating ? "Email" : "Email or username"}
-      </label>
+      <label htmlFor="email">Email</label>
       <Input
-        id="username"
-        name={creating ? "email" : "username"}
-        type={creating ? "email" : "text"}
+        id="email"
+        name="email"
+        type="email"
         autoComplete="username"
         touch
-        value={username}
-        onChange={(event) => setUsername(event.target.value)}
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
         autoFocus={autoFocus}
         required
         minLength={3}
@@ -624,10 +621,10 @@ function CredentialForm({
 
 /** A signed-in account page: the way back to reviews, then its content. */
 export function AccountPage({
-  username,
+  email,
   children,
 }: {
-  username: string;
+  email: string;
   children: ReactNode;
 }) {
   return (
@@ -636,7 +633,7 @@ export function AccountPage({
         <Button variant="shell" onClick={() => navigate("/")}>
           <ArrowLeftIcon aria-hidden="true" /> Reviews
         </Button>
-        <span className="header-actions">{username}</span>
+        <span className="header-actions">{email}</span>
       </header>
       <main className="account-page settings-page">{children}</main>
     </div>
@@ -668,11 +665,11 @@ export function AccountSettings() {
     }
   }
   return (
-    <AccountPage username={user.username}>
+    <AccountPage email={user.email}>
       <h1 className="mb-2 text-xl font-semibold">Account settings</h1>
       <p className={prose}>
-        Signed in as <strong>{user.username}</strong>
-        {user.email !== null && <> with Google as {user.email}</>}.
+        Signed in as <strong>{user.email}</strong>
+        {user.method === "google" && " with Google"}.
       </p>
       <AccountTokens />
       <AccountGitHub notify={pushEnabled} onFollowingChange={setGitHub} />

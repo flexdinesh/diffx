@@ -476,7 +476,7 @@ unset, links use the listen address. While no admin exists, each start logs a
 one-time setup link, `<console URL>/setup#t=…`, valid for 24 hours; a restart
 replaces it. It creates the first admin with an email and password or, when
 the console has its own Google client, with a Google account whose email Google
-verified (username derived from the email), whatever the app's settings. If
+verified, whatever the app's settings. If
 that Google account already has an app account, setup makes it the admin.
 
 Admins sign in to the console with their password, or with Google when the
@@ -492,7 +492,7 @@ A locked-out admin or user gets a reset link offline, with the console's
 environment; servers may keep running:
 
 ```sh
-diffx-console user reset-password --username alice
+diffx-console user reset-password --email alice@example.com
 ```
 
 Admins' links open the console, other accounts' open the app. Completing a

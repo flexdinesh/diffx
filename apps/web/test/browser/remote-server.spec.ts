@@ -8,7 +8,7 @@ import { reviewedToggle } from "./fixtures.ts";
 import { expect, test } from "./remote-fixtures.ts";
 
 const account = {
-  username: "alice@example.com",
+  email: "alice@example.com",
   password: "browser-password-0001",
 };
 
@@ -93,7 +93,7 @@ test("a signed-up user syncs a checkout and reviews it on a Postgres server", as
     await expect(
       page.getByRole("heading", { name: "Create an account" }),
     ).toBeVisible();
-    await page.getByLabel("Email", { exact: true }).fill(account.username);
+    await page.getByLabel("Email", { exact: true }).fill(account.email);
     await page.getByLabel("Password", { exact: true }).fill(account.password);
     await page
       .getByRole("button", { name: "Create account", exact: true })
@@ -165,9 +165,7 @@ test("a signed-up user syncs a checkout and reviews it on a Postgres server", as
     try {
       const fresh = await context.newPage();
       await fresh.goto("/");
-      await fresh
-        .getByLabel("Email or username", { exact: true })
-        .fill(account.username);
+      await fresh.getByLabel("Email", { exact: true }).fill(account.email);
       await fresh
         .getByLabel("Password", { exact: true })
         .fill(account.password);

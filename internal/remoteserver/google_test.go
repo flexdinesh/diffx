@@ -15,6 +15,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/authhttp"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/pgstore"
+	"github.com/flexdinesh/diffx/internal/testsupport"
 )
 
 // fakeGoogle issues ID tokens for codes; claims per code are set by the test.
@@ -170,7 +171,7 @@ func TestInviteSignupThenGoogleSignInByStableSubject(t *testing.T) {
 		t.Fatalf("state reused: %s", w.Header().Get("Location"))
 	}
 	w = identityRequest(handler, "GET", "/api/v2/bootstrap", "", member, "", "")
-	if !strings.Contains(w.Body.String(), `"username":"alice.smith","email":"alice.smith@example.com","method":"google"`) {
+	if !strings.Contains(w.Body.String(), `"email":"alice.smith@example.com","method":"google"`) {
 		t.Fatalf("member identity: %s", w.Body.String())
 	}
 	if w := identityRequest(handler, "POST", "/api/v2/invites/lookup", `{"token":"`+secret+`"}`, nil, "", ""); w.Code != 404 {
@@ -185,7 +186,7 @@ func TestInviteSignupThenGoogleSignInByStableSubject(t *testing.T) {
 	state = fake.authorize(t, authorize, "renamed", "subject-a", "alice@new.example.com", true)
 	again := sessionFrom(t, callback(handler, state, "renamed", flow))
 	w = identityRequest(handler, "GET", "/api/v2/bootstrap", "", again, "", "")
-	if !strings.Contains(w.Body.String(), `"username":"alice.smith","email":"alice@new.example.com"`) {
+	if !strings.Contains(w.Body.String(), `"email":"alice@new.example.com"`) {
 		t.Fatalf("email change changed account: %s", w.Body.String())
 	}
 	if summaries, err := identity.AccountSummaries(t.Context()); err != nil || len(summaries) != 1 || summaries[0].Email != "alice@new.example.com" {
@@ -198,7 +199,7 @@ func TestInviteSignupThenGoogleSignInByStableSubject(t *testing.T) {
 	if w := callback(handler, state, "stranger", flow); w.Header().Get("Location") != "/?signin=no-account" {
 		t.Fatalf("uninvited Google account: %s", w.Header().Get("Location"))
 	}
-	if w := identityRequest(handler, "POST", "/api/v2/auth/login", `{"username":"alice.smith","password":""}`, nil, "", ""); w.Code != 401 {
+	if w := identityRequest(handler, "POST", "/api/v2/auth/login", `{"email":"alice.smith@example.com","password":""}`, nil, "", ""); w.Code != 401 {
 		t.Fatalf("Google account password login: %d", w.Code)
 	}
 }
@@ -215,7 +216,7 @@ func TestOpenSignupCreatesVerifiedGoogleAccounts(t *testing.T) {
 	state = fake.authorize(t, authorize, "verified", "subject-new", "New.Person@Example.com", true)
 	session := sessionFrom(t, callback(handler, state, "verified", flow))
 	w := identityRequest(handler, "GET", "/api/v2/bootstrap", "", session, "", "")
-	if !strings.Contains(w.Body.String(), `"username":"new.person","email":"new.person@example.com","method":"google"`) {
+	if !strings.Contains(w.Body.String(), `"email":"new.person@example.com","method":"google"`) {
 		t.Fatalf("signed-up identity: %s", w.Body.String())
 	}
 	authorize, flow = startGoogle(t, handler, "/api/v2/auth/google", `{}`)
@@ -223,6 +224,22 @@ func TestOpenSignupCreatesVerifiedGoogleAccounts(t *testing.T) {
 	sessionFrom(t, callback(handler, state, "again", flow))
 	if summaries, err := identityservice.New(store).AccountSummaries(t.Context()); err != nil || len(summaries) != 1 || summaries[0].Admin {
 		t.Fatalf("sign-up accounts: %+v %v", summaries, err)
+	}
+}
+
+// An email identifies one account, so Google never signs up with a password
+// account's email, nor links to it.
+func TestGoogleSignupRefusesTakenEmail(t *testing.T) {
+	fake := newFakeGoogle(t)
+	store, handler := identityHandler(t, Settings{PublicURL: "https://diffx.example.com", Google: fake.settings()}, identityservice.Settings{Signup: true, PasswordSignup: true})
+	testsupport.RemotePasswordAccount(t, store, "taken@example.com", testPassword)
+	authorize, flow := startGoogle(t, handler, "/api/v2/auth/google", `{}`)
+	state := fake.authorize(t, authorize, "taken", "subject-taken", "Taken@Example.com", true)
+	if w := callback(handler, state, "taken", flow); w.Header().Get("Location") != "/?signin=email-taken" {
+		t.Fatalf("taken email: %s", w.Header().Get("Location"))
+	}
+	if summaries, err := identityservice.New(store).AccountSummaries(t.Context()); err != nil || len(summaries) != 1 || summaries[0].Method != identityservice.MethodPassword {
+		t.Fatalf("accounts: %+v %v", summaries, err)
 	}
 }
 

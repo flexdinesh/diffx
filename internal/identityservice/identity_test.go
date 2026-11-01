@@ -8,20 +8,6 @@ import (
 	"time"
 )
 
-func TestUsernamePolicy(t *testing.T) {
-	for _, input := range []string{"", "ab", " owner", "owner ", ".owner", "name:name", "name/name", "name\n", "éname", strings.Repeat("a", 33)} {
-		if _, err := canonicalUsername(input); !errors.Is(err, ErrInvalidInput) {
-			t.Fatalf("accepted %q: %v", input, err)
-		}
-	}
-	for _, input := range []string{"Owner", "123", "A-b_c.d", "Owner+diffx@Example.COM", strings.Repeat("long", 12) + "@example.com"} {
-		username, err := canonicalUsername(input)
-		if err != nil || username != strings.ToLower(input) {
-			t.Fatalf("canonical %q: %q %v", input, username, err)
-		}
-	}
-}
-
 func TestPasswordPolicyAndSaltedHash(t *testing.T) {
 	for _, length := range []int{0, 7, 129} {
 		if err := validatePassword(strings.Repeat("a", length)); !errors.Is(err, ErrInvalidInput) {
@@ -94,25 +80,6 @@ func TestTokenPolicy(t *testing.T) {
 	}
 	if _, err := service.CreateToken(context.Background(), "owner", "api", PurposeAPI, now.Add(MaximumTokenLifetime)); err != nil {
 		t.Fatalf("max expiry rejected: %v", err)
-	}
-}
-
-func TestUsernameFromEmailAlwaysValid(t *testing.T) {
-	for email, want := range map[string]string{
-		"Alice.Smith@example.com":                 "alice.smith",
-		"a@example.com":                           "a-user",
-		"_.@example.com":                          "user",
-		"bob+diffx@example.com":                   "bobdiffx",
-		"x_y-@example.com":                        "x_y",
-		strings.Repeat("long", 12) + "@gmail.com": strings.Repeat("long", 8),
-	} {
-		got := usernameFromEmail(email)
-		if got != want {
-			t.Fatalf("%s: %q want %q", email, got, want)
-		}
-		if _, err := canonicalUsername(got); err != nil {
-			t.Fatalf("%s derived invalid username %q: %v", email, got, err)
-		}
 	}
 }
 

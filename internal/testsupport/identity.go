@@ -24,9 +24,9 @@ func secret(t testing.TB) string {
 	return base64.RawURLEncoding.EncodeToString(bytes)
 }
 
-// RemotePasswordAccount restores a legacy handle account for compatibility
-// fixtures. New accounts must go through email-only setup, signup or invites.
-func RemotePasswordAccount(t testing.TB, store identityservice.Store, username, password string) identityservice.Account {
+// RemotePasswordAccount stores a password account with a canonical email,
+// bypassing admission settings, for tests unrelated to signup.
+func RemotePasswordAccount(t testing.TB, store identityservice.Store, email, password string) identityservice.Account {
 	t.Helper()
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {
@@ -34,21 +34,21 @@ func RemotePasswordAccount(t testing.TB, store identityservice.Store, username, 
 	}
 	hash := argon2.IDKey([]byte(password), salt, 2, 19*1024, 1, 32)
 	encoded := fmt.Sprintf("$argon2id$v=19$m=19456,t=2,p=1$%s$%s", base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(hash))
-	account := identityservice.Account{ID: secret(t), Username: username, Method: identityservice.MethodPassword}
+	account := identityservice.Account{ID: secret(t), Email: email, Method: identityservice.MethodPassword}
 	if err := store.CreateAccount(t.Context(), account, encoded, time.Now(), identityservice.Settings{}); err != nil {
 		t.Fatal(err)
 	}
 	return account
 }
 
-// RemoteAdmin restores a legacy admin for tests unrelated to first-admin setup.
-func RemoteAdmin(t testing.TB, store identityservice.Store, username, password string) identityservice.Session {
+// RemoteAdmin stores a password admin for tests unrelated to first-admin setup.
+func RemoteAdmin(t testing.TB, store identityservice.Store, email, password string) identityservice.Session {
 	t.Helper()
-	account := RemotePasswordAccount(t, store, username, password)
+	account := RemotePasswordAccount(t, store, email, password)
 	if err := store.SetAdmin(t.Context(), account.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	session, err := identityservice.New(store).Login(t.Context(), identityservice.AudienceConsole, username, password)
+	session, err := identityservice.New(store).Login(t.Context(), identityservice.AudienceConsole, email, password)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,11 +79,12 @@ type AccountStore interface {
 	CreateGoogleAccount(ctx context.Context, account identityservice.Account, identity google.Identity, now time.Time, required identityservice.Settings) error
 }
 
-// RemoteAccount creates a Google member account, as an accepted invite does.
-func RemoteAccount(t testing.TB, store AccountStore, username string) identityservice.Account {
+// RemoteAccount creates a Google member account with email name@example.com,
+// as an accepted invite does.
+func RemoteAccount(t testing.TB, store AccountStore, name string) identityservice.Account {
 	t.Helper()
-	account := identityservice.Account{ID: secret(t), Username: username, Email: username + "@example.com", Method: identityservice.MethodGoogle}
-	identity := google.Identity{Subject: "subject-" + account.ID, Email: username + "@example.com", EmailVerified: true}
+	account := identityservice.Account{ID: secret(t), Email: name + "@example.com", Method: identityservice.MethodGoogle}
+	identity := google.Identity{Subject: "subject-" + account.ID, Email: account.Email, EmailVerified: true}
 	if err := store.CreateGoogleAccount(t.Context(), account, identity, time.Now(), identityservice.Settings{}); err != nil {
 		t.Fatal(err)
 	}

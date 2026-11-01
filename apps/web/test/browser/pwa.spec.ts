@@ -14,8 +14,7 @@ async function remote(page: Page) {
         passwordSignupEnabled: false,
         user: {
           id: "account-a",
-          username: "alice",
-          email: null,
+          email: "alice@example.com",
           method: "google",
         },
         csrfToken: "session-csrf",

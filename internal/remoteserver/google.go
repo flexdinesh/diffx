@@ -108,6 +108,8 @@ func (remote *transport) googleCallbackRoute(w http.ResponseWriter, r *http.Requ
 		outcome = "no-account"
 	case errors.Is(err, identityservice.ErrInviteMismatch):
 		outcome = "invite-mismatch"
+	case errors.Is(err, identityservice.ErrConflict):
+		outcome = "email-taken"
 	case errors.Is(err, identityservice.ErrNotFound):
 		outcome = "invite-invalid"
 	default:

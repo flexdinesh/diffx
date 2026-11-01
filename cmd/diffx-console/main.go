@@ -43,16 +43,16 @@ func settings() (consoleserver.Settings, error) {
 // admin or user recovers without the console.
 func manageUser(ctx context.Context, arguments []string, stdout, stderr io.Writer) error {
 	if len(arguments) == 0 || arguments[0] != "reset-password" {
-		return errors.New("usage: diffx-console user reset-password --username NAME")
+		return errors.New("usage: diffx-console user reset-password --email EMAIL")
 	}
 	flags := flag.NewFlagSet("diffx-console user reset-password", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	username := flags.String("username", "", "password account username")
+	email := flags.String("email", "", "password account email")
 	if err := flags.Parse(arguments[1:]); err != nil {
 		return err
 	}
-	if flags.NArg() != 0 || *username == "" {
-		return errors.New("provide --username")
+	if flags.NArg() != 0 || *email == "" {
+		return errors.New("provide --email")
 	}
 	console, err := settings()
 	if err != nil {
@@ -63,14 +63,14 @@ func manageUser(ctx context.Context, arguments []string, stdout, stderr io.Write
 		return err
 	}
 	defer store.Close()
-	link, err := consoleserver.ResetPassword(ctx, store, console, *username)
+	link, err := consoleserver.ResetPassword(ctx, store, console, *email)
 	if errors.Is(err, identityservice.ErrNotFound) {
-		return fmt.Errorf("no password account named %s", *username)
+		return fmt.Errorf("no password account with email %s", *email)
 	}
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(stdout, "Reset link for %s, valid for %s and usable once:\n%s\n", *username, identityservice.PasswordResetLifetime, link)
+	_, err = fmt.Fprintf(stdout, "Reset link for %s, valid for %s and usable once:\n%s\n", *email, identityservice.PasswordResetLifetime, link)
 	return err
 }
 
@@ -81,7 +81,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) erro
 	flags := flag.NewFlagSet("diffx-console", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: diffx-console [--version] | diffx-console user reset-password --username NAME")
+		fmt.Fprintln(stderr, "usage: diffx-console [--version] | diffx-console user reset-password --email EMAIL")
 		fmt.Fprintln(stderr, "Configure with DIFFX_CONSOLE_* environment variables.")
 	}
 	showVersion := flags.Bool("version", false, "print version and exit")

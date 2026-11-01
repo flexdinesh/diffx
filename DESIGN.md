@@ -695,8 +695,8 @@ at `/design.html` (see `docs/development.md`).
   and Google stays the primary action until it does.
 - Password signup and first-admin setup require Email and Password, with native
   email validation and space for addresses up to 254 characters. Invite acceptance
-  fixes Email to the invited address. Sign-in uses Email or username so legacy
-  password accounts retain access.
+  fixes Email to the invited address. Sign-in uses Email; accounts have no
+  username.
 - Pages for a method the server turned off render sign-in, like unknown paths.
   Link secrets come from the fragment and leave history before any request.
 
@@ -707,7 +707,7 @@ at `/design.html` (see `docs/development.md`).
   theme, no palette picker. It is a document, not a workspace: the page
   scrolls under a sticky `--panel` header with the brand (“diffx Console”),
   the section links Accounts, Invites, Settings and Admin as `rail` link buttons
-  (`aria-current="page"` marks the section), and the admin's username,
+  (`aria-current="page"` marks the section), and the admin's email,
   hidden on narrow screens.
 - Each section is one reading column (48rem) with an `h1`, short
   `--text-secondary` prose, then its form and list. Lists use separated rows:
