@@ -20,6 +20,7 @@ import {
   removeDevice,
   thisDevice,
 } from "./push.ts";
+import { RowActions, SettingsSection } from "./settings-layout.tsx";
 
 const prose = "mb-4 leading-copy text-secondary";
 
@@ -84,13 +85,10 @@ export function AccountNotifications({
     return null;
   const ready = settings.status === "ready" ? settings.settings : null;
   return (
-    <section
-      className="mt-8 border-t border-separator pt-6"
-      aria-labelledby="notifications-title"
+    <SettingsSection
+      id="notifications"
+      description="Get a notification when a pull request opens or gets new commits in a repository you follow."
     >
-      <h2 id="notifications-title" className="mb-2 text-md font-semibold">
-        Notifications
-      </h2>
       {settings.status === "error" && (
         <ErrorState
           message={settings.message}
@@ -104,13 +102,10 @@ export function AccountNotifications({
           Push notifications are off on this server. Ask us to turn them on.
         </p>
       )}
-      {ready?.enabled && (
+      {ready?.enabled && github !== null && (
         <p className={prose}>
-          Get a notification when a pull request opens or gets new commits in a
-          repository you follow.
           {github === "none" && (
             <>
-              {" "}
               Choose repositories to follow under{" "}
               <a
                 href="#github-title"
@@ -122,14 +117,14 @@ export function AccountNotifications({
             </>
           )}
           {github === "following" &&
-            " Turn off the bell beside a repository under GitHub to mute it."}
-          {github === "unavailable" && " GitHub is not set up on this server."}
+            "Turn off the bell beside a repository under GitHub to mute it."}
+          {github === "unavailable" && "GitHub is not set up on this server."}
         </p>
       )}
       {ready?.enabled && ready.publicKey && (
         <Devices publicKey={ready.publicKey} devices={ready.devices} />
       )}
-    </section>
+    </SettingsSection>
   );
 }
 
@@ -397,18 +392,19 @@ function Devices({
                       : `Last notified ${date(item.lastSuccessAt)}`}
                   </span>
                 </div>
-                <Button
-                  variant="destructive"
-                  touch
-                  aria-label={`Remove ${item.label}`}
-                  onClick={() => {
-                    setRemoveError("");
-                    setListStatus("");
-                    setRemoving(item);
-                  }}
-                >
-                  Remove
-                </Button>
+                <RowActions
+                  label={`Actions for ${item.label}`}
+                  actions={[
+                    {
+                      label: "Remove…",
+                      onSelect: () => {
+                        setRemoveError("");
+                        setListStatus("");
+                        setRemoving(item);
+                      },
+                    },
+                  ]}
+                />
               </li>
             ))}
           </ul>

@@ -158,9 +158,15 @@ test("collector token secret appears once, with owner CSRF and revocation", asyn
     return route.fulfill({ status: 204 });
   });
   await page.goto("/settings");
+  await page.getByRole("button", { name: "New token" }).click();
+  await expect(page.getByLabel("Token name")).toBeFocused();
   await page.getByLabel("Token name").fill("Laptop");
   await page.getByRole("button", { name: "Create token", exact: true }).click();
   const heading = page.getByRole("heading", { name: "Save your token now" });
+  await expect(page.getByLabel("Token name")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Copy configuration" }),
+  ).toBeFocused();
   const secret = page
     .getByRole("status")
     .filter({ has: heading })
@@ -174,13 +180,16 @@ test("collector token secret appears once, with owner CSRF and revocation", asyn
   await page.getByRole("button", { name: "Account settings" }).click();
   await expect(heading).toHaveCount(0);
   await expect(page.getByText("Laptop", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Revoke Laptop" }).click();
+  const actions = page.getByRole("button", { name: "Actions for Laptop" });
+  await actions.click();
+  await page.getByRole("menuitem", { name: "Revoke…" }).click();
   const confirm = page.getByRole("dialog", { name: "Revoke Laptop?" });
   await expect(confirm.getByRole("button", { name: "Cancel" })).toBeFocused();
   await confirm.getByRole("button", { name: "Cancel" }).click();
   await expect(confirm).toBeHidden();
   await expect(page.getByText("Laptop", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Revoke Laptop" }).click();
+  await actions.click();
+  await page.getByRole("menuitem", { name: "Revoke…" }).click();
   await confirm.getByRole("button", { name: "Revoke token" }).click();
   await expect(confirm).toBeHidden();
   await expect(page.getByText("Laptop", { exact: true })).toHaveCount(0);
@@ -205,7 +214,8 @@ test("a failed revoke keeps the confirmation open with the error", async ({
     route.fulfill({ status: 500, json: { detail: "Revocation failed." } }),
   );
   await page.goto("/settings");
-  await page.getByRole("button", { name: "Revoke Desktop" }).click();
+  await page.getByRole("button", { name: "Actions for Desktop" }).click();
+  await page.getByRole("menuitem", { name: "Revoke…" }).click();
   const confirm = page.getByRole("dialog", { name: "Revoke Desktop?" });
   await confirm.getByRole("button", { name: "Revoke token" }).click();
   await expect(confirm.getByRole("alert")).toHaveText(/./);
@@ -238,6 +248,7 @@ test("token form chooses access and expiry from labeled selects", async ({
     });
   });
   await page.goto("/settings");
+  await page.getByRole("button", { name: "New token" }).click();
   await page.getByLabel("Token name").fill("Agent");
   await page.getByLabel("Access", { exact: true }).click();
   await page.getByRole("option", { name: "Review API / MCP" }).click();
@@ -412,7 +423,8 @@ test("expired GitHub authorization asks to connect again and disconnect confirms
   await expect(page.getByRole("heading", { name: "Repositories" })).toHaveCount(
     0,
   );
-  await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+  await page.getByRole("button", { name: "Actions for @alice-gh" }).click();
+  await page.getByRole("menuitem", { name: "Disconnect…" }).click();
   const confirm = page.getByRole("dialog", { name: "Disconnect GitHub?" });
   await confirm.getByRole("button", { name: "Disconnect GitHub" }).click();
   await expect(confirm).toBeHidden();
@@ -479,6 +491,75 @@ test("an invite link shows its email, hides its secret and starts Google sign-in
   await page.getByRole("button", { name: "Continue with Google" }).click();
   await expect(page.getByRole("heading", { name: "Google" })).toBeVisible();
   expect(started).toEqual({ token: "invite-secret" });
+});
+
+test("settings scroll at the window edge with a section nav that follows the page", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await remote(page, true, { method: "password" });
+  await page.route("**/api/v2/github/connection", (route) =>
+    route.fulfill({
+      json: {
+        connected: true,
+        login: "alice-gh",
+        state: "active",
+        installUrl: "https://github.com/apps/diffx/installations/new",
+      },
+    }),
+  );
+  await page.route("**/api/v2/github/repositories", (route) =>
+    route.fulfill({
+      json: {
+        repositories: Array.from({ length: 12 }, (_, index) => ({
+          id: index,
+          fullName: `octo/repo-${index}`,
+          private: false,
+          followed: false,
+          lost: false,
+        })),
+      },
+    }),
+  );
+  await page.goto("/settings");
+  const scroller = page.getByRole("main");
+  const box = await scroller.boundingBox();
+  expect(box?.x).toBe(0);
+  expect(box?.width).toBe(1280);
+  await expect(
+    page.getByRole("banner").getByText("alice@example.com", { exact: true }),
+  ).toBeVisible();
+  const nav = page.getByRole("navigation", { name: "Settings sections" });
+  await expect(nav.getByRole("link")).toHaveText([
+    "API tokens",
+    "GitHub",
+    "Password",
+  ]);
+  await expect(nav.getByRole("link", { name: "API tokens" })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await nav.getByRole("link", { name: "Password" }).click();
+  await expect(page.getByRole("heading", { name: "Password" })).toBeFocused();
+  await expect(
+    page.getByRole("heading", { name: "Password" }),
+  ).toBeInViewport();
+  await expect(nav.getByRole("link", { name: "Password" })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await expect(nav).toBeInViewport();
+  expect(new URL(page.url()).hash).toBe("");
+  await scroller.evaluate((element) => element.scrollTo({ top: 0 }));
+  await expect(nav.getByRole("link", { name: "API tokens" })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await page.setViewportSize({ width: 390, height: 800 });
+  await expect(nav).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Sign out", exact: true }),
+  ).toBeVisible();
 });
 
 test("members see their Google email and no admin pages", async ({ page }) => {

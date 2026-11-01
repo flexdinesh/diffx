@@ -39,6 +39,7 @@ async function changedCheckout(home: string) {
 
 async function createCollectorToken(page: Page) {
   await page.getByRole("button", { name: "Account settings" }).click();
+  await page.getByRole("button", { name: "New token" }).click();
   await page.getByLabel("Token name").fill("Browser sync");
   await page.getByRole("button", { name: "Create token", exact: true }).click();
   const secret = page

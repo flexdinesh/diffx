@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import {
   IdentityProvider,
@@ -331,11 +332,48 @@ test("token list failure hides its form and retries through the shared action", 
     (await screen.findByRole("alert")).textContent ?? "",
     /Tokens unavailable/,
   );
-  assert.equal(screen.queryByLabelText("Token name"), null);
+  assert.equal(screen.queryByRole("button", { name: "New token" }), null);
   failed = false;
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-  await screen.findByLabelText("Token name");
+  await screen.findByRole("button", { name: "New token" });
   assert.equal(screen.queryByRole("alert"), null);
+});
+
+test("the token form opens in place, focuses its name and closes on cancel", async () => {
+  remote(() => json({ tokens: [] }));
+  mount(AccountSettings);
+  assert.equal(screen.queryByLabelText("Token name"), null);
+  fireEvent.click(await screen.findByRole("button", { name: "New token" }));
+  const name = screen.getByLabelText("Token name");
+  assert.equal(document.activeElement, name);
+  assert.equal(screen.queryByRole("button", { name: "New token" }), null);
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  assert.equal(screen.queryByLabelText("Token name"), null);
+  await waitFor(() =>
+    assert.equal(
+      document.activeElement,
+      screen.getByRole("button", { name: "New token" }),
+    ),
+  );
+});
+
+test("the nav lists only sections the server offers and links to them", async () => {
+  // GitHub and push answer 404: this server has neither.
+  remote(() => json({ tokens: [] }), true, { method: "password" });
+  mount(AccountSettings);
+  await screen.findByRole("heading", { name: "Password" });
+  const nav = screen.getByRole("navigation", { name: "Settings sections" });
+  await waitFor(() =>
+    assert.deepEqual(
+      within(nav)
+        .getAllByRole("link")
+        .map((link) => [link.textContent, link.getAttribute("href")]),
+      [
+        ["API tokens", "#settings-tokens"],
+        ["Password", "#settings-password"],
+      ],
+    ),
+  );
 });
 
 test("expired account requests dispose account UI and clear the route", async () => {

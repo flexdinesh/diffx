@@ -118,8 +118,9 @@ fetcher needs Git 2.44 or later and HTTPS access to github.com.
 repository, including pull requests that closed without an event. Resync also
 extends retention of pull requests that have not changed recently. If GitHub
 access expires or is revoked, Settings asks you to connect again; followed
-repositories receive nothing until then. **Disconnect** removes the
-authorization and every follow; existing reviews stay until they expire.
+repositories receive nothing until then. **Disconnect**, in the menu beside
+your GitHub login, removes the authorization and every follow; existing reviews
+stay until they expire.
 
 ## Push notifications
 

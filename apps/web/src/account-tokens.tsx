@@ -5,7 +5,7 @@ import {
   readCreatedToken,
   type ApiAccountToken,
 } from "@diffx/api";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ConfirmDialog } from "@diffx/ui/components/confirm-dialog";
 import { ErrorState } from "@diffx/ui/components/error-state";
 import { Button } from "@diffx/ui/components/ui/button";
@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@diffx/ui/components/ui/select";
+import { RowActions, SettingsSection } from "./settings-layout.tsx";
 
 const purposes: { value: "collector" | "api"; label: string }[] = [
   { value: "collector", label: "Collector" },
@@ -33,10 +34,20 @@ function date(value: number) {
   return new Date(value).toLocaleDateString();
 }
 
-export function AccountTokens() {
+/**
+ * The account's tokens, then a "New token" action that opens the form in
+ * place. A created secret shows once, above that action.
+ */
+export function AccountTokens({
+  onComposingChange,
+}: {
+  /** Reports whether the new-token form is open. */
+  onComposingChange?: (composing: boolean) => void;
+}) {
   const [tokens, setTokens] = useState<ApiAccountToken[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [composing, setComposing] = useState(false);
   const [name, setName] = useState("");
   const [purpose, setPurpose] = useState<"collector" | "api">("collector");
   const [expiresInDays, setExpiry] = useState<30 | 90 | 365>(90);
@@ -49,6 +60,20 @@ export function AccountTokens() {
   const [copyStatus, setCopyStatus] = useState("");
   const [revoking, setRevoking] = useState<ApiAccountToken | null>(null);
   const [revokeError, setRevokeError] = useState("");
+  const newToken = useRef<HTMLButtonElement>(null);
+  const copyButton = useRef<HTMLButtonElement>(null);
+  const [focusNewToken, setFocusNewToken] = useState(false);
+  useEffect(() => {
+    onComposingChange?.(composing);
+  }, [composing, onComposingChange]);
+  useEffect(() => {
+    if (composing || !focusNewToken) return;
+    newToken.current?.focus();
+    setFocusNewToken(false);
+  }, [composing, focusNewToken]);
+  useEffect(() => {
+    if (created) copyButton.current?.focus();
+  }, [created]);
   useEffect(() => {
     const controller = new AbortController();
     setError("");
@@ -71,6 +96,14 @@ export function AccountTokens() {
       });
     return () => controller.abort();
   }, [attempt]);
+  function close() {
+    setComposing(false);
+    setName("");
+    setPurpose("collector");
+    setExpiry(90);
+    setError("");
+    setFocusNewToken(true);
+  }
   async function create(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
@@ -89,7 +122,10 @@ export function AccountTokens() {
       const created = readCreatedToken(data);
       setCreated(created);
       setTokens((value) => [...value, created.token]);
+      setComposing(false);
       setName("");
+      setPurpose("collector");
+      setExpiry(90);
     } catch (failure: unknown) {
       setError(errorDetail(failure, "Unable to create token. Try again."));
     } finally {
@@ -139,25 +175,16 @@ export function AccountTokens() {
     }
   }
   return (
-    <section
-      className="mt-8 border-t border-separator pt-6"
-      aria-labelledby="tokens-title"
+    <SettingsSection
+      id="tokens"
+      description="Connect collectors and review API clients to your account. Each secret is shown once."
     >
-      <h2 id="tokens-title" className="mb-2 text-md font-semibold">
-        API tokens
-      </h2>
-      <p className={prose}>
-        Connect collectors or review API clients to your account. Secrets appear
-        once.
-      </p>
-      {error && (
+      {error && !loaded && (
         <ErrorState
           message={error}
           className="mb-4"
           touch
-          {...(!loaded && {
-            onRetry: () => setAttempt((value) => value + 1),
-          })}
+          onRetry={() => setAttempt((value) => value + 1)}
         />
       )}
       {!loaded && !error && (
@@ -173,42 +200,51 @@ export function AccountTokens() {
               review.
             </p>
           ) : (
-            <ul className="mb-6">
-              {tokens.map((token) => (
-                <li
-                  key={token.id}
-                  className="flex items-center justify-between gap-4 border-b border-separator py-3"
-                >
-                  <div className="min-w-0 wrap-anywhere">
-                    <strong className="block font-medium">{token.name}</strong>
-                    <span className="mt-1 block text-sm text-muted">
-                      {token.purpose === "collector"
-                        ? "Collector"
-                        : "Review API"}{" "}
-                      · Created {date(token.createdAt)} ·{" "}
-                      {token.expiresAt <= Date.now() ? "Expired" : "Expires"}{" "}
-                      {date(token.expiresAt)}
-                    </span>
-                    <span className="mt-1 block text-sm text-muted">
-                      {token.lastUsedAt === null
-                        ? "Never used"
-                        : `Last used ${date(token.lastUsedAt)}`}
-                    </span>
-                  </div>
-                  <Button
-                    variant="destructive"
-                    touch
-                    disabled={busy}
-                    aria-label={`Revoke ${token.name}`}
-                    onClick={() => {
-                      setRevokeError("");
-                      setRevoking(token);
-                    }}
+            <ul className="mb-4" aria-label="API tokens">
+              {tokens.map((token) => {
+                const expired = token.expiresAt <= Date.now();
+                return (
+                  <li
+                    key={token.id}
+                    className="flex items-center justify-between gap-4 border-b border-separator py-3 first:pt-0"
                   >
-                    Revoke
-                  </Button>
-                </li>
-              ))}
+                    <div className="min-w-0 wrap-anywhere">
+                      <strong className="block font-medium">
+                        {token.name}
+                      </strong>
+                      <span className="mt-1 block text-sm text-muted">
+                        {token.purpose === "collector"
+                          ? "Collector"
+                          : "Review API"}{" "}
+                        ·{" "}
+                        <span className={expired ? "text-warning" : undefined}>
+                          {expired ? "Expired" : "Expires"}{" "}
+                          {date(token.expiresAt)}
+                        </span>
+                      </span>
+                      <span className="mt-1 block text-sm text-muted">
+                        Created {date(token.createdAt)} ·{" "}
+                        {token.lastUsedAt === null
+                          ? "Never used"
+                          : `Last used ${date(token.lastUsedAt)}`}
+                      </span>
+                    </div>
+                    <RowActions
+                      label={`Actions for ${token.name}`}
+                      disabled={busy}
+                      actions={[
+                        {
+                          label: "Revoke…",
+                          onSelect: () => {
+                            setRevokeError("");
+                            setRevoking(token);
+                          },
+                        },
+                      ]}
+                    />
+                  </li>
+                );
+              })}
             </ul>
           )}
           <ConfirmDialog
@@ -226,83 +262,16 @@ export function AccountTokens() {
               if (revoking) void revoke(revoking.id);
             }}
           />
-          <form className="account-form" onSubmit={create}>
-            <label htmlFor="token-name">Token name</label>
-            <Input
-              id="token-name"
-              required
-              maxLength={64}
-              placeholder="My laptop"
-              touch
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              disabled={busy}
-            />
-            <label htmlFor="token-purpose">Access</label>
-            <Select
-              items={purposes}
-              value={purpose}
-              disabled={busy}
-              onValueChange={(value) =>
-                setPurpose(value === "api" ? "api" : "collector")
-              }
-            >
-              <SelectTrigger id="token-purpose" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {purposes.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-sm leading-copy text-secondary">
-              {purpose === "collector"
-                ? "Upload changes and check their ingestion status."
-                : "Read and update your reviews through the API or MCP."}
-            </p>
-            <label htmlFor="token-expiry">Expires after</label>
-            <Select
-              items={expiries}
-              value={expiresInDays}
-              disabled={busy}
-              onValueChange={(value) =>
-                setExpiry(value === 30 ? 30 : value === 365 ? 365 : 90)
-              }
-            >
-              <SelectTrigger id="token-expiry" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {expiries.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              type="submit"
-              touch
-              className="mt-2 justify-self-start"
-              disabled={busy}
-              aria-busy={busy}
-            >
-              Create token
-            </Button>
-          </form>
         </>
       )}
       {created && (
         <div
-          className="mt-6 rounded-control border border-separator bg-panel p-4"
+          className="mb-4 rounded-control border border-separator bg-panel p-4"
           role="status"
         >
           <h3 className="mb-2 text-md font-semibold">Save your token now</h3>
           <p className={prose}>
-            This secret will disappear when you leave this page.
+            This secret disappears when you leave this page.
           </p>
           {created.token.purpose === "collector" && (
             <p className={prose}>
@@ -319,7 +288,12 @@ export function AccountTokens() {
               : created.secret}
           </pre>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" touch onClick={() => void copy()}>
+            <Button
+              ref={copyButton}
+              variant="outline"
+              touch
+              onClick={() => void copy()}
+            >
               {created.token.purpose === "collector"
                 ? "Copy configuration"
                 : "Copy token"}
@@ -328,9 +302,118 @@ export function AccountTokens() {
               Dismiss secret
             </Button>
           </div>
-          {copyStatus && <p className={prose}>{copyStatus}</p>}
+          {copyStatus && <p className="mt-4 text-secondary">{copyStatus}</p>}
         </div>
       )}
-    </section>
+      {loaded &&
+        (composing ? (
+          <form
+            className="account-form"
+            aria-labelledby="new-token-title"
+            onSubmit={create}
+          >
+            <h3 id="new-token-title" className="text-base font-semibold">
+              New token
+            </h3>
+            <label htmlFor="token-name">Token name</label>
+            <Input
+              id="token-name"
+              required
+              maxLength={64}
+              placeholder="My laptop"
+              touch
+              autoFocus
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              disabled={busy}
+            />
+            <div className="settings-field-row">
+              <div className="settings-field">
+                <label htmlFor="token-purpose">Access</label>
+                <Select
+                  items={purposes}
+                  value={purpose}
+                  disabled={busy}
+                  onValueChange={(value) =>
+                    setPurpose(value === "api" ? "api" : "collector")
+                  }
+                >
+                  <SelectTrigger
+                    id="token-purpose"
+                    className="w-full"
+                    aria-describedby="token-purpose-hint"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {purposes.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="settings-field">
+                <label htmlFor="token-expiry">Expires after</label>
+                <Select
+                  items={expiries}
+                  value={expiresInDays}
+                  disabled={busy}
+                  onValueChange={(value) =>
+                    setExpiry(value === 30 ? 30 : value === 365 ? 365 : 90)
+                  }
+                >
+                  <SelectTrigger id="token-expiry" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {expiries.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <p
+              id="token-purpose-hint"
+              className="text-sm leading-copy text-secondary"
+            >
+              {purpose === "collector"
+                ? "Upload changes and check their ingestion status."
+                : "Read and update your reviews through the API or MCP."}
+            </p>
+            {error && <ErrorState message={error} />}
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button type="submit" touch disabled={busy} aria-busy={busy}>
+                Create token
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                touch
+                disabled={busy}
+                onClick={close}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        ) : (
+          <Button
+            ref={newToken}
+            variant="outline"
+            touch
+            onClick={() => {
+              setError("");
+              setComposing(true);
+            }}
+          >
+            New token
+          </Button>
+        ))}
+    </SettingsSection>
   );
 }
