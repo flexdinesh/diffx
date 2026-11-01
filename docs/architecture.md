@@ -11,7 +11,8 @@ canonical record of package boundaries and architectural decisions.
 validation records, reporting and Dagger orchestration. Mise owns the underlying
 commands. Tests and stateful checks run in private Linux x64 containers. Static
 checks run on the host against a private temporary source/dependency snapshot,
-without requiring Docker. CI retains its lightweight host execution path.
+without requiring Docker. Hosted workflows publish releases and edge builds;
+they do not run PR validation.
 A PR gate validates clean committed HEAD,
 whereas interactive checks snapshot working files without certifying HEAD.
 
@@ -263,11 +264,11 @@ Two participating invocations may run concurrently through user-level admission.
 The runner owns cancellation and session cleanup before releasing admission;
 failed groups fail the invocation. Immutable preparation and build outputs are
 reusable. Public mise and pnpm test commands use Dagger; internal `exec` commands
-remain available for container execution and lightweight CI.
+remain available for container execution.
 `test:contracts:rules` holds only the non-Go guards, because aggregate checks run every Go
-package; no hand-maintained package list can miss a new boundary test. CI and
-release verification retain static checks, builds, generated-file consistency
-and the distribution API smoke test; full suites and guards stay local.
+package; no hand-maintained package list can miss a new boundary test. All static
+checks, generated-file verification and test suites stay local. Publishing retains
+the builds, checksums and formula validation needed to produce release artifacts.
 
 `mise run check:boundaries` classifies every package under `cmd/` and `internal/`
 using `tools/check-boundaries`. Unclassified packages, forbidden dependencies and
@@ -288,9 +289,9 @@ The PR template records ownership, contract/mode implications, validation and
 intentional design changes. Change a boundary policy only for a concrete new
 responsibility, updating its rationale and tests in the same PR. Passing checks
 does not establish cohesive modules, correct DRY abstractions or visual quality;
-those remain review responsibilities. `main` requires the GitHub Actions `checks`
-status through the `ci-required` ruleset. That status covers lightweight CI;
-architecture/design guards and full-suite validation run locally through explicit
+those remain review responsibilities. The default-branch ruleset retains deletion
+and force-push protections but requires no hosted validation status.
+Architecture/design guards and full-suite validation run locally through explicit
 `mise run check:pr` and are recorded in the PR evidence. Pushes do not trigger
 the full suite, and local validation is not remote enforcement.
 

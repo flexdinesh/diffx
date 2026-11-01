@@ -5,7 +5,7 @@ release binary. Node and pnpm are build and test dependencies only.
 
 ## Install development version
 
-Install the latest `main` changes that passed CI with Go 1.27.3 or later:
+Install the latest `main` changes published to edge with Go 1.27.3 or later:
 
 ```sh
 go install github.com/flexdinesh/diffx/cmd/diffx@edge
@@ -80,7 +80,6 @@ build.
 | Validate clean HEAD before creating or updating a PR       | `mise run check:pr`              |
 | Report matching successful validation for HEAD             | `mise run check:status`          |
 | Provision the owned validation engine once                 | `mise run check:engine:setup`    |
-| Run lightweight CI checks                                  | `mise run check:ci`              |
 
 Server-mode Go tests need Docker: `internal/testsupport/pgtest` starts one
 pinned `postgres:18-alpine` container per test process (removed by
@@ -90,8 +89,7 @@ template migrated once per schema. Set `DIFFX_TEST_DATABASE_URL` to a
 instead, such as the development Postgres. Local-mode tests stay on SQLite.
 Direct `go test` commands run on the host. Public mise and pnpm test tasks supply a
 private Postgres service through Dagger and do not inherit a host
-`DIFFX_TEST_DATABASE_URL`. `mise run check:ci` does not use the runner; its
-conformance tests start their own containers.
+`DIFFX_TEST_DATABASE_URL`.
 
 Browser tests reuse the full check's web, CLI and `diffx-server` builds;
 standalone browser runs build them when needed. Chromium uses one worker with an
@@ -150,7 +148,7 @@ validation uses Go's race detector. Public mise `test:*` and pnpm test scripts,
 including workspace package scripts, route through these isolated groups.
 Package-specific test aliases currently run the containing unit/browser group.
 Commands containing `exec` are internal implementation details used inside
-containers and by lightweight CI; they must not call public test wrappers.
+containers; they must not call public test wrappers.
 Direct `go test` remains possible for native debugging but bypasses isolation.
 
 The `static` group runs on the host: type checking, lint, format verification,
@@ -205,12 +203,16 @@ native macOS behavior; direct native checks remain optional. `mise run setup`
 still installs host dependencies, Playwright Chromium and staged assets for
 development. Reinstall Chromium after upgrading Playwright.
 
-Both CI and release verification retain `mise run check:ci`: static checks,
-web/CLI builds, generated consistency and the distribution API smoke test. They
-do not require the local Dagger engine or run the full local suite. GitHub's
-`ci-required` ruleset requires the lightweight `checks` status on an up-to-date
-`main` change, including administrators. PR evidence records full local
-validation separately.
+GitHub Actions does not run PR checks. Run `check:pr` and `check:status` locally
+before creating or updating a PR, including after rebasing onto changed upstream
+content. The default-branch ruleset retains deletion and force-push protections
+but requires no hosted validation status. This workflow relies on developer and
+agent compliance; GitHub does not enforce local validation.
+
+Hosted workflows publish edge builds on pushes to `main` and stable releases on
+manual dispatch. They stage embedded assets and retain release compilation,
+checksums and Homebrew formula syntax validation without repeating the general
+check suite. Deployment workflows remain separate.
 
 `mise run install` embeds the current web build and installs `diffx` into
 `$GOBIN`, or `$GOPATH/bin` when `GOBIN` is unset. Ensure that directory is on
@@ -713,7 +715,7 @@ diff/patch retrieval with explicit context IDs.
 
 See [plugin setup](../docs-website/src/pages/plugins.md) for native harness installation, asynchronous
 checkout sync, configuration precedence and hook diagnostics. `mise run generate`
-and CI checks compile the adapters; web and CLI builds leave them unchanged; host SDK dependencies are development types only.
+checks compile the adapters; web and CLI builds leave them unchanged; host SDK dependencies are development types only.
 Pi and OpenCode's self-contained `dist/index.js` artifacts are committed so a
 clone is ready to install without a build. After changing adapter source, run
 `mise run plugins:build` and commit the regenerated artifacts. Codex and Claude

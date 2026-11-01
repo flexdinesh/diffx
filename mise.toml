@@ -233,11 +233,6 @@ description = "Check TypeScript, JavaScript lint, and formatting"
 hide = true
 run = ["mise tasks validate", "pnpm check:exec:static"]
 
-[tasks."check:exec:go:static"]
-description = "Check Go formatting and vet"
-hide = true
-run = [{ task = "check:format:go" }, "go vet ./..."]
-
 [tasks."check:format:go"]
 description = "Verify Go formatting on the host"
 shell = "bash -e -o pipefail -c"
@@ -274,19 +269,6 @@ if [ -n "$generated_changes" ]; then
   exit 1
 fi
 '''
-
-[tasks."check:ci"]
-description = "Lightweight CI: build, static checks, generated drift, API smoke test"
-run = [
-  { task = "build" },
-  { task = "plugins:build" },
-  { tasks = [
-    "check:exec:static",
-    "check:exec:go:static",
-  ] },
-  { task = "check:exec:generated" },
-  "pnpm test:exec:conformance",
-]
 
 [tasks."test:js"]
 description = "Run JavaScript unit and browser suites"

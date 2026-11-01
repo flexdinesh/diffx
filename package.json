@@ -25,7 +25,6 @@
     "check:static": "mise run check:static",
     "check:exec:static": "pnpm typecheck && pnpm lint && pnpm format:check",
     "check:js": "mise run check:js",
-    "check:ci": "mise run check:ci",
     "check:pr": "mise run check:pr",
     "check:status": "mise run check:status",
     "check:push": "mise run check:push",

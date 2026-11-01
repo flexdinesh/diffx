@@ -52,8 +52,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: mise run release:select-version
 
-      - name: Verify release
-        run: mise run check:ci
+      - name: Stage embedded web assets
+        run: mise run web:stage
 
       - name: Create release tag
         if: steps.version.outputs.tag_exists != 'true'
