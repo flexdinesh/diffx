@@ -398,6 +398,21 @@ func TestTransportBoundaries(t *testing.T) {
 			t.Fatalf("%s: %d %q", path, w.Code, w.Body.String())
 		}
 	}
+	// Emailed links are cross-site top-level navigations; they open pages only.
+	for _, test := range []struct {
+		method, path, dest string
+		want               int
+	}{{"GET", "/", "document", 200}, {"GET", "/api/v1/bootstrap", "document", 403}, {"GET", "/", "iframe", 403}, {"POST", "/", "document", 403}} {
+		r := httptest.NewRequest(test.method, test.path, nil)
+		r.Header.Set("Sec-Fetch-Site", "cross-site")
+		r.Header.Set("Sec-Fetch-Mode", "navigate")
+		r.Header.Set("Sec-Fetch-Dest", test.dest)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != test.want {
+			t.Fatalf("cross-site %s %s dest=%s: %d, want %d", test.method, test.path, test.dest, w.Code, test.want)
+		}
+	}
 	for path, want := range map[string]int{"/assets/missing.js": 404, "/api/v1/missing": 401, "/api/v1/auth/google": 404, "/api/v1/auth/google/callback": 404, "/readyz": 200} {
 		method := "GET"
 		if path == "/api/v1/auth/google" {

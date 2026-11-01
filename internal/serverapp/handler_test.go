@@ -398,6 +398,24 @@ func TestSameOrigin(t *testing.T) {
 	}
 }
 
+func TestPageNavigation(t *testing.T) {
+	for _, tc := range []struct {
+		method, mode, dest string
+		allow              bool
+	}{
+		{"GET", "navigate", "document", true}, {"HEAD", "navigate", "document", true},
+		{"POST", "navigate", "document", false}, {"GET", "navigate", "iframe", false}, {"GET", "cors", "empty", false}, {"GET", "", "", false},
+	} {
+		r := httptest.NewRequest(tc.method, "http://reviews.example/", nil)
+		r.Header.Set("Sec-Fetch-Site", "cross-site")
+		r.Header.Set("Sec-Fetch-Mode", tc.mode)
+		r.Header.Set("Sec-Fetch-Dest", tc.dest)
+		if got := serverapp.PageNavigation(r); got != tc.allow {
+			t.Errorf("%s mode=%q dest=%q: %v", tc.method, tc.mode, tc.dest, got)
+		}
+	}
+}
+
 func TestIngestionNotificationReferencesCommittedObservation(t *testing.T) {
 	d := start(t, "", false)
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)

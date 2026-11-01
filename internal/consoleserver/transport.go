@@ -95,11 +95,11 @@ func (console *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		console.googleCallbackRoute(w, r)
 		return
 	}
-	if !serverapp.SameOrigin(r) {
+	api := strings.HasPrefix(r.URL.Path, "/api/")
+	if !serverapp.SameOrigin(r) && !(!api && serverapp.PageNavigation(r)) {
 		authhttp.Problem(w, 403, "Cross-origin access denied")
 		return
 	}
-	api := strings.HasPrefix(r.URL.Path, "/api/")
 	authForm := authForms[r.URL.Path]
 	var session *identityservice.Session
 	if cookie, err := r.Cookie(authhttp.SessionCookie); err == nil {

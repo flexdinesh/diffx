@@ -343,6 +343,31 @@ func TestPasswordInviteAndResetLinks(t *testing.T) {
 		t.Fatalf("login with reset password: %d %s", w.Code, w.Body.String())
 	}
 }
+
+// Links opened from email or other sites are cross-site top-level navigations;
+// they load pages, never APIs, embedded frames or unsafe methods.
+func TestCrossSiteNavigationOpensPagesOnly(t *testing.T) {
+	_, handler := identityHandler(t, Settings{})
+	for _, test := range []struct {
+		method, path, dest string
+		want               int
+	}{
+		{"GET", "/", "document", 200}, {"GET", "/reset-password", "document", 200},
+		{"GET", "/api/v2/bootstrap", "document", 403}, {"GET", "/mcp", "document", 403}, {"GET", "/control/x", "document", 403},
+		{"GET", "/", "iframe", 403}, {"POST", "/", "document", 403},
+	} {
+		r := httptest.NewRequest(test.method, test.path, nil)
+		r.Header.Set("Sec-Fetch-Site", "cross-site")
+		r.Header.Set("Sec-Fetch-Mode", "navigate")
+		r.Header.Set("Sec-Fetch-Dest", test.dest)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != test.want {
+			t.Errorf("%s %s dest=%s: %d, want %d", test.method, test.path, test.dest, w.Code, test.want)
+		}
+	}
+}
+
 func TestAuthFormsGuardAndRateLimit(t *testing.T) {
 	store, handler := identityHandler(t, Settings{})
 	testsupport.RemoteAdmin(t, store, "alice", testPassword)

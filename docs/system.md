@@ -562,6 +562,9 @@ unavailable accounts.
 Passwords use salted Argon2id hashes. Browser login creates a revocable opaque
 seven-day server-side session in an HttpOnly, Secure, SameSite=Lax cookie. Unsafe
 browser requests require a session CSRF token, including account management.
+Server and console reject cross-origin and cross-site requests, except OAuth
+callbacks and safe top-level document navigations to page routes, so links
+opened from email or other sites load; APIs, MCP and control stay same-origin.
 Password changes revoke existing sessions. Each process admits at most four
 concurrent sign-in, signup, invite and reset attempts, and login failures do not
 disclose whether a username exists. Per-client limiting is off by default
