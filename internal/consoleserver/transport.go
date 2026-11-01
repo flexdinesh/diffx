@@ -31,10 +31,9 @@ type transport struct {
 }
 
 type adminJSON struct {
-	ID       string                 `json:"id"`
-	Username string                 `json:"username"`
-	Email    *string                `json:"email"`
-	Method   identityservice.Method `json:"method"`
+	ID     string                 `json:"id"`
+	Email  string                 `json:"email"`
+	Method identityservice.Method `json:"method"`
 }
 
 type settingsJSON struct {
@@ -51,8 +50,7 @@ type bootstrapJSON struct {
 
 type accountJSON struct {
 	ID        string                 `json:"id"`
-	Username  string                 `json:"username"`
-	Email     *string                `json:"email"`
+	Email     string                 `json:"email"`
 	Method    identityservice.Method `json:"method"`
 	Admin     bool                   `json:"admin"`
 	Disabled  bool                   `json:"disabled"`
@@ -160,7 +158,7 @@ func (console *transport) bootstrap(w http.ResponseWriter, r *http.Request, sess
 	}
 	result := bootstrapJSON{SetupRequired: required, GoogleEnabled: console.identity.GoogleEnabled()}
 	if session != nil {
-		result.Admin = &adminJSON{ID: session.Account.ID, Username: session.Account.Username, Email: optional(session.Account.Email), Method: session.Account.Method}
+		result.Admin = &adminJSON{ID: session.Account.ID, Email: session.Account.Email, Method: session.Account.Method}
 		result.CSRFToken = &session.CSRFToken
 	}
 	authhttp.WriteJSON(w, 200, result)
@@ -188,7 +186,6 @@ func (console *transport) auth(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Token    string `json:"token,omitempty"`
 		Email    string `json:"email"`
-		Username string `json:"username"`
 		Password string `json:"password"`
 	}
 	if !authhttp.DecodeJSON(w, r, &input) {
@@ -203,7 +200,7 @@ func (console *transport) auth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		session, err = console.identity.Login(r.Context(), identityservice.AudienceConsole, input.Username, input.Password)
+		session, err = console.identity.Login(r.Context(), identityservice.AudienceConsole, input.Email, input.Password)
 	}
 	if err != nil {
 		authhttp.IdentityError(w, err)
@@ -230,8 +227,8 @@ func (console *transport) passwordReset(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		authhttp.WriteJSON(w, 200, struct {
-			Username string `json:"username"`
-		}{account.Username})
+			Email string `json:"email"`
+		}{account.Email})
 		return
 	}
 	if err := console.identity.CompletePasswordReset(r.Context(), identityservice.AudienceConsole, input.Token, input.Password); err != nil {
@@ -377,7 +374,7 @@ func (console *transport) accounts(w http.ResponseWriter, r *http.Request, actor
 		}
 		accounts := make([]accountJSON, 0, len(summaries))
 		for _, account := range summaries {
-			accounts = append(accounts, accountJSON{ID: account.ID, Username: account.Username, Email: optional(account.Email), Method: account.Method,
+			accounts = append(accounts, accountJSON{ID: account.ID, Email: account.Email, Method: account.Method,
 				Admin: account.Admin, Disabled: account.Disabled, CreatedAt: account.CreatedAt.UnixMilli()})
 		}
 		authhttp.WriteJSON(w, 200, struct {
@@ -457,9 +454,9 @@ func resetURL(settings Settings, consoleOrigin string, account identityservice.A
 	return base + "/reset-password#t=" + secret
 }
 
-// ResetPassword issues a reset link for username, for offline recovery.
-func ResetPassword(ctx context.Context, store *pgstore.Store, settings Settings, username string) (string, error) {
-	account, secret, err := identityservice.New(store).ResetPasswordByUsername(ctx, username)
+// ResetPassword issues a reset link for an account email, for offline recovery.
+func ResetPassword(ctx context.Context, store *pgstore.Store, settings Settings, email string) (string, error) {
+	account, secret, err := identityservice.New(store).ResetPasswordByEmail(ctx, email)
 	if err != nil {
 		return "", err
 	}

@@ -34,10 +34,9 @@ type principal struct {
 	purpose identityservice.Purpose
 }
 type accountJSON struct {
-	ID       string                 `json:"id"`
-	Username string                 `json:"username"`
-	Email    *string                `json:"email"`
-	Method   identityservice.Method `json:"method"`
+	ID     string                 `json:"id"`
+	Email  string                 `json:"email"`
+	Method identityservice.Method `json:"method"`
 }
 type bootstrapJSON struct {
 	Mode                  string       `json:"mode"`
@@ -52,10 +51,7 @@ func (remote *transport) bootstrap(w http.ResponseWriter, r *http.Request, p pri
 	settings := remote.identity.Settings()
 	result := bootstrapJSON{Mode: "remote", GoogleEnabled: remote.identity.GoogleEnabled(), SignupEnabled: settings.Signup, PasswordSignupEnabled: settings.PasswordSignup}
 	if p.session != nil {
-		result.User = &accountJSON{ID: p.account.ID, Username: p.account.Username, Method: p.account.Method}
-		if p.account.Email != "" {
-			result.User.Email = &p.account.Email
-		}
+		result.User = &accountJSON{ID: p.account.ID, Email: p.account.Email, Method: p.account.Method}
 		result.CSRFToken = &p.session.CSRFToken
 	}
 	authhttp.WriteJSON(w, 200, result)
@@ -310,7 +306,6 @@ func (remote *transport) auth(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Token    string `json:"token,omitempty"`
 		Email    string `json:"email"`
-		Username string `json:"username"`
 		Password string `json:"password"`
 	}
 	if !authhttp.DecodeJSON(w, r, &input) {
@@ -328,7 +323,7 @@ func (remote *transport) auth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	default:
-		session, err = remote.identity.Login(r.Context(), identityservice.AudienceMembers, input.Username, input.Password)
+		session, err = remote.identity.Login(r.Context(), identityservice.AudienceMembers, input.Email, input.Password)
 	}
 	if err != nil {
 		authhttp.IdentityError(w, err)
@@ -355,8 +350,8 @@ func (remote *transport) passwordReset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		authhttp.WriteJSON(w, 200, struct {
-			Username string `json:"username"`
-		}{account.Username})
+			Email string `json:"email"`
+		}{account.Email})
 		return
 	}
 	if err := remote.identity.CompletePasswordReset(r.Context(), identityservice.AudienceMembers, input.Token, input.Password); err != nil {

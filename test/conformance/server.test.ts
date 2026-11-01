@@ -442,14 +442,14 @@ test("Go distribution implements the API contract", async (t) => {
   }
   const login = await remote.POST("/api/v2/auth/login", {
     body: {
-      username: "contract-user@example.com",
+      email: "contract-user@example.com",
       password: "contract-password-000001",
     },
   });
   assert.equal(login.response.status, 200);
   conforms("Bootstrap", login.data);
   assert.ok(login.data?.mode === "remote");
-  assert.equal(login.data?.user?.username, "contract-user@example.com");
+  assert.equal(login.data?.user?.email, "contract-user@example.com");
   const csrf = login.data?.csrfToken;
   assert.ok(csrf);
   const cookie = login.response.headers.get("set-cookie")?.split(";")[0];

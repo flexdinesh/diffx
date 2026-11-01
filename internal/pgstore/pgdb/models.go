@@ -360,9 +360,8 @@ type PushSubscription struct {
 
 type RemoteAccount struct {
 	UserID       string
-	Username     string
 	PasswordHash string
-	Email        *string
+	Email        string
 }
 
 type Review struct {

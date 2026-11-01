@@ -91,9 +91,8 @@ export function readBootstrap(value: unknown): ApiBootstrap {
     object(value.user) &&
     typeof value.user.id === "string" &&
     value.user.id.length > 0 &&
-    typeof value.user.username === "string" &&
-    value.user.username.length > 0 &&
-    (typeof value.user.email === "string" || value.user.email === null) &&
+    typeof value.user.email === "string" &&
+    value.user.email.length > 0 &&
     (value.user.method === "google" || value.user.method === "password") &&
     typeof value.csrfToken === "string" &&
     value.csrfToken.length > 0
@@ -103,7 +102,6 @@ export function readBootstrap(value: unknown): ApiBootstrap {
       ...methods,
       user: {
         id: value.user.id,
-        username: value.user.username,
         email: value.user.email,
         method: value.user.method,
       },

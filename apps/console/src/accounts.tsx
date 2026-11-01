@@ -26,12 +26,12 @@ type Action = "promote" | "demote" | "enable" | "disable" | "delete" | "reset";
 type Confirming = { kind: "disable" | "delete"; account: ConsoleAccount };
 type ResetLink = { account: ConsoleAccount; url: string; expiresAt: number };
 
-const done: Record<Exclude<Action, "reset">, (username: string) => string> = {
-  promote: (username) => `${username} is now an admin.`,
-  demote: (username) => `${username} is no longer an admin.`,
-  enable: (username) => `${username} can sign in again.`,
-  disable: (username) => `${username} is disabled.`,
-  delete: (username) => `${username} is deleted.`,
+const done: Record<Exclude<Action, "reset">, (email: string) => string> = {
+  promote: (email) => `${email} is now an admin.`,
+  demote: (email) => `${email} is no longer an admin.`,
+  enable: (email) => `${email} can sign in again.`,
+  disable: (email) => `${email} is disabled.`,
+  delete: (email) => `${email} is deleted.`,
 };
 
 function request(action: Action, accountId: string) {
@@ -69,7 +69,7 @@ export function Accounts() {
     setError("");
     setStatus("");
     setConfirmError("");
-    const failure = `Unable to ${action === "reset" ? "create a reset link for" : action} ${account.username}. Try again.`;
+    const failure = `Unable to ${action === "reset" ? "create a reset link for" : action} ${account.email}. Try again.`;
     try {
       const { data, error, response } = await request(action, account.id);
       if (!response.ok) throw new Error(errorDetail(error, failure));
@@ -77,7 +77,7 @@ export function Accounts() {
         if (!data) throw new Error(failure);
         setReset({ account, ...data });
       } else {
-        setStatus(done[action](account.username));
+        setStatus(done[action](account.email));
         if (reset?.account.id === account.id) setReset(null);
       }
       setConfirming(null);
@@ -96,7 +96,7 @@ export function Accounts() {
     >
       {reset && (
         <OneTimeLink
-          title={`Send this reset link to ${reset.account.username}`}
+          title={`Send this reset link to ${reset.account.email}`}
           url={reset.url}
           onDismiss={() => setReset(null)}
         >
@@ -126,7 +126,7 @@ export function Accounts() {
             <li key={account.id} className={row}>
               <div className="min-w-0 wrap-anywhere">
                 <strong className="flex min-h-control-compact flex-wrap items-center gap-2 font-medium">
-                  <span>{account.username}</span>
+                  <span>{account.email}</span>
                   {account.id === admin.id && (
                     <Badge variant="status">You</Badge>
                   )}
@@ -142,10 +142,8 @@ export function Accounts() {
                   )}
                 </strong>
                 <span className="mt-1 block text-sm text-muted">
-                  {account.method === "google"
-                    ? `Google · ${account.email ?? "no email"}`
-                    : "Password"}{" "}
-                  · Joined {date(account.createdAt)}
+                  {account.method === "google" ? "Google" : "Password"} · Joined{" "}
+                  {date(account.createdAt)}
                 </span>
               </div>
               {account.id !== admin.id && (
@@ -174,8 +172,8 @@ export function Accounts() {
         }}
         title={
           confirming?.kind === "delete"
-            ? `Delete ${confirming.account.username}?`
-            : `Disable ${confirming?.account.username ?? "account"}?`
+            ? `Delete ${confirming.account.email}?`
+            : `Disable ${confirming?.account.email ?? "account"}?`
         }
         description={
           confirming?.kind === "delete"
@@ -214,7 +212,7 @@ function AccountActions({
             size="icon"
             touch
             disabled={busy}
-            aria-label={`Actions for ${account.username}`}
+            aria-label={`Actions for ${account.email}`}
           />
         }
       >

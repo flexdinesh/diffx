@@ -484,13 +484,15 @@ records; producer paths do not identify server files.
 | Provenance           | Repository name, remote URL, path, worktree name, branch, HEAD, resolved comparison, hostname, harness/session, triggering directory, trigger, collection time and collector version.           |
 | Stored time          | Server timestamp used for catalog ordering; separate from the producer's collection timestamp.                                                                                                  |
 
-Accounts have stable opaque IDs independent of username, passwords, browser
-sessions and API tokens. Password setup, signup and invite acceptance require an
-email and password; new password accounts use the canonical, case-insensitive
-email as their sign-in identifier and retain it as account email. Submitted
-emails are not ownership-verified. Legacy password accounts keep their handle
-sign-in and recovery; upgrades leave their unknown email empty. Identifiers are
-fixed in this version. Local mode automatically resolves one stable OS-backed
+Accounts have stable opaque IDs independent of email, passwords, browser
+sessions and API tokens. Every account is identified by one canonical,
+case-insensitive email, unique across accounts; there are no usernames.
+Password setup, signup and invite acceptance require an email and password,
+and password sign-in and offline recovery take the email. Submitted emails are
+not ownership-verified. Google accounts take the email Google verified at
+creation. Migration 12 dropped usernames: Google accounts took Google's email,
+email-named password accounts kept theirs, and the sole legacy handle account
+(the operator's admin) took the operator's email; it is not rolling. Local mode automatically resolves one stable OS-backed
 owner; users never manage local identity. A remote server has no default
 credential. Each account has one sign-in method, fixed when it is created:
 Google (it has a Google identity) or password. Admin is a role on a regular
@@ -499,9 +501,8 @@ account: admins use the app like any user and also sign in to the console
 owns first-admin setup and account administration. `diffx-server` serves no
 admin routes or UI. Admins come only from first-admin setup or promotion in the
 console. Setup creates an email-and-password account or, with the console's own Google
-client, a Google account whose email Google verified, deriving the username
-from it; if that Google account already has an app account, setup makes it the
-admin instead. The setup secret is consumed once under the admin lock.
+client, a Google account whose email Google verified; if that Google account
+already has an app account, setup makes it the admin instead. The setup secret is consumed once under the admin lock.
 
 Two admission settings, stored in Postgres (`app_settings`, one row), shape who
 joins the app; only admins change them, in the console's Settings page.
@@ -531,14 +532,15 @@ one new can join.
 Invites come from the console and always create members. The link carries a
 hashed one-time secret in its fragment, is shown once, expires after 48 hours
 and replaces that email's pending invite. Accepting with Google requires a
-verified email equal to the invite's and derives the username from it;
+verified email equal to the invite's;
 accepting with a password (while `passwordSignup` is on) requires the invited
 email and a password. Storage rechecks the email match when consuming the invite.
 Either way the invite is used and the account created in
 one transaction. Open signup with Google requires a verified email. Google
 accounts are identified by their stable subject, not email: a changed email
 keeps the account and updates its recorded email. Matching a password account's
-submitted email never links it to a Google identity. Google sign-in uses the
+submitted email never links it to a Google identity: Google signup with an
+email another account has is refused (`email-taken`). Google sign-in uses the
 authorization code flow with PKCE, state and nonce; a short-lived HttpOnly
 cookie binds the flow to the starting browser and each state is consumed once.
 Without signup or an invite, a Google account cannot create an account. Without
@@ -567,7 +569,7 @@ callbacks and safe top-level document navigations to page routes, so links
 opened from email or other sites load; APIs, MCP and control stay same-origin.
 Password changes revoke existing sessions. Each process admits at most four
 concurrent sign-in, signup, invite and reset attempts, and login failures do not
-disclose whether a username exists. Per-client limiting is off by default
+disclose whether an email has an account. Per-client limiting is off by default
 because the listener's peer is the ingress, not the client. With
 `DIFFX_SERVER_AUTH_RATE_LIMIT` it allows 20 attempts per client IP per minute,
 a window starting at the first attempt, counted in Postgres so replicas share

@@ -85,7 +85,7 @@ func (registry *registry) get(account identityservice.Account) (application, err
 		return app, nil
 	}
 	// Events come from the store's change feed, so every replica hears every commit.
-	service := contextservice.NewWithContext(registry.ctx, registry.store, reviewdata.User{ID: account.ID, Name: account.Username}, contextservice.ExternalEvents())
+	service := contextservice.NewWithContext(registry.ctx, registry.store, reviewdata.User{ID: account.ID, Name: account.Email}, contextservice.ExternalEvents())
 	app := application{service, serverapp.Handler(registry.ctx, service, registry.store, registry.assets, "", serverapp.Options{Queue: registry.store.Queue()})}
 	registry.applications[account.ID] = app
 	return app, nil

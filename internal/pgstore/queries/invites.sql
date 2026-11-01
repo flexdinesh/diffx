@@ -17,17 +17,17 @@ UPDATE account_invites SET revoked_at = @at::timestamptz WHERE email = @email AN
 INSERT INTO account_invites(id, token_hash, email, created_at, expires_at) VALUES ($1, $2, $3, $4, $5);
 
 -- name: Invites :many
-SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
+SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.email, '')::text AS used_by, i.revoked_at
 FROM account_invites i LEFT JOIN remote_accounts a ON a.user_id = i.used_by
 ORDER BY i.created_at DESC, i.id COLLATE "C";
 
 -- name: Invite :one
-SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
+SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.email, '')::text AS used_by, i.revoked_at
 FROM account_invites i LEFT JOIN remote_accounts a ON a.user_id = i.used_by
 WHERE i.id = $1;
 
 -- name: PendingInvite :one
-SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.username, '')::text AS used_by, i.revoked_at
+SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, COALESCE(a.email, '')::text AS used_by, i.revoked_at
 FROM account_invites i LEFT JOIN remote_accounts a ON a.user_id = i.used_by
 WHERE i.token_hash = @token_hash AND i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > @now;
 
@@ -48,7 +48,7 @@ INSERT INTO google_identities(sub, user_id, email, updated_at) VALUES ($1, $2, $
 ON CONFLICT (sub) DO NOTHING;
 
 -- name: GoogleAccount :one
-SELECT a.user_id, a.username,
+SELECT a.user_id,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.user_id = a.user_id) AS disabled
 FROM google_identities g JOIN remote_accounts a ON a.user_id = g.user_id

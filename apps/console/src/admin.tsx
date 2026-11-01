@@ -32,10 +32,9 @@ export function Admin() {
       title="Admin"
       description={
         <>
-          Signed in as <strong>{admin.username}</strong>
-          {admin.email !== null && <> with Google as {admin.email}</>}. Other
-          admins manage your role and access; your app settings live in the
-          diffx app.
+          Signed in as <strong>{admin.email}</strong>
+          {admin.method === "google" && " with Google"}. Other admins manage
+          your role and access; your app settings live in the diffx app.
         </>
       }
     >

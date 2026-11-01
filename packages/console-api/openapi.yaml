@@ -173,7 +173,7 @@ paths:
   /api/v1/password-reset/lookup:
     post:
       operationId: lookupPasswordReset
-      description: Resolve an admin's reset link (its `#t=` fragment) to the username it resets. Unknown, expired, used or non-admin links are 404.
+      description: Resolve an admin's reset link (its `#t=` fragment) to the email of the account it resets. Unknown, expired, used or non-admin links are 404.
       requestBody:
         required: true
         content:
@@ -188,9 +188,9 @@ paths:
               schema:
                 type: object
                 additionalProperties: false
-                required: [username]
+                required: [email]
                 properties:
-                  username:
+                  email:
                     type: string
         "400":
           $ref: "#/components/responses/Problem"
@@ -651,29 +651,25 @@ components:
     Admin:
       type: object
       additionalProperties: false
-      required: [id, username, email, method]
+      required: [id, email, method]
       properties:
         id:
           type: string
-        username:
-          type: string
         email:
-          type: [string, "null"]
-          description: The account email submitted at password signup or last reported by Google. Null for legacy password accounts; a submitted email is not verified.
+          type: string
+          description: The email that identifies the account, submitted at password signup or last reported by Google. A submitted email is not verified.
         method:
           $ref: "#/components/schemas/Method"
     Account:
       type: object
       additionalProperties: false
-      required: [id, username, email, method, admin, disabled, createdAt]
+      required: [id, email, method, admin, disabled, createdAt]
       properties:
         id:
           type: string
-        username:
-          type: string
         email:
-          type: [string, "null"]
-          description: The account email submitted at password signup or last reported by Google. Null for legacy password accounts; a submitted email is not verified.
+          type: string
+          description: The email that identifies the account, submitted at password signup or last reported by Google. A submitted email is not verified.
         method:
           $ref: "#/components/schemas/Method"
         admin:
@@ -707,7 +703,7 @@ components:
           format: int64
         usedBy:
           type: [string, "null"]
-          description: Username of the account the invite created; null until used or after that account is deleted.
+          description: Email of the account the invite created; null until used or after that account is deleted.
     Settings:
       type: object
       additionalProperties: false
@@ -730,11 +726,11 @@ components:
     PasswordCredentials:
       type: object
       additionalProperties: false
-      required: [username, password]
+      required: [email, password]
       properties:
-        username:
+        email:
           type: string
-          description: Account email, or the username of an existing legacy account.
+          description: Account email, compared case-insensitively.
         password:
           type: string
     ResetToken:

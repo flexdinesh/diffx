@@ -60,7 +60,7 @@ func TestAdmissionCapabilitiesMatchHealthAndRoutes(t *testing.T) {
 				// Only server state has a durable ingestion queue.
 				remote := pgtest.Store(t)
 				account := testsupport.RemoteAccount(t, remote, "local")
-				store, user, options.Queue = remote, reviewdata.User{ID: account.ID, Name: account.Username}, remote.Queue()
+				store, user, options.Queue = remote, reviewdata.User{ID: account.ID, Name: account.Email}, remote.Queue()
 			} else {
 				local, err := reviewstore.Open(":memory:")
 				if err != nil {

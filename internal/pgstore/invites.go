@@ -183,7 +183,7 @@ func (store *Store) GoogleAccount(ctx context.Context, identity google.Identity,
 	if err != nil {
 		return identityservice.Account{}, false, err
 	}
-	linked := account(row.UserID, row.Username, identity.Email, row.Admin, string(identityservice.MethodGoogle))
+	linked := account(row.UserID, identity.Email, row.Admin, string(identityservice.MethodGoogle))
 	err = store.queries.RecordGoogleEmail(ctx, pgdb.RecordGoogleEmailParams{Email: identity.Email, Now: millisecond(now), Sub: identity.Subject})
 	return linked, row.Disabled, err
 }

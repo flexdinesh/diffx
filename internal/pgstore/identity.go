@@ -21,8 +21,8 @@ var (
 func millisecond(at time.Time) time.Time { return time.UnixMilli(at.UnixMilli()) }
 
 // account builds an identity account from a row's columns.
-func account(id, username, email string, admin bool, method string) identityservice.Account {
-	return identityservice.Account{ID: id, Username: username, Email: email, Admin: admin, Method: identityservice.Method(method)}
+func account(id, email string, admin bool, method string) identityservice.Account {
+	return identityservice.Account{ID: id, Email: email, Admin: admin, Method: identityservice.Method(method)}
 }
 
 func foreignKeyViolation(err error) bool {
@@ -31,14 +31,10 @@ func foreignKeyViolation(err error) bool {
 }
 
 func insertAccount(ctx context.Context, queries *pgdb.Queries, account identityservice.Account, passwordHash string, created time.Time) error {
-	if err := queries.InsertAccountUser(ctx, pgdb.InsertAccountUserParams{ID: account.ID, Name: account.Username, CreatedAt: millisecond(created)}); err != nil {
+	if err := queries.InsertAccountUser(ctx, pgdb.InsertAccountUserParams{ID: account.ID, Name: account.Email, CreatedAt: millisecond(created)}); err != nil {
 		return err
 	}
-	var email *string
-	if account.Method == identityservice.MethodPassword && account.Email != "" {
-		email = &account.Email
-	}
-	count, err := queries.InsertRemoteAccount(ctx, pgdb.InsertRemoteAccountParams{UserID: account.ID, Username: account.Username, PasswordHash: passwordHash, Email: email})
+	count, err := queries.InsertRemoteAccount(ctx, pgdb.InsertRemoteAccountParams{UserID: account.ID, Email: account.Email, PasswordHash: passwordHash})
 	if err != nil {
 		return err
 	}
@@ -147,7 +143,7 @@ func (store *Store) AccountSummaries(ctx context.Context) ([]identityservice.Acc
 	accounts := make([]identityservice.AccountSummary, 0, len(rows))
 	for _, row := range rows {
 		accounts = append(accounts, identityservice.AccountSummary{
-			Account:  account(row.UserID, row.Username, row.Email, row.Admin, row.Method),
+			Account:  account(row.UserID, row.Email, row.Admin, row.Method),
 			Disabled: row.Disabled, CreatedAt: millisecond(row.CreatedAt),
 		})
 	}
@@ -236,15 +232,15 @@ func (store *Store) SetAdmin(ctx context.Context, accountID string, admin bool) 
 	})
 }
 
-func (store *Store) AccountPassword(ctx context.Context, username string) (identityservice.PasswordCredential, error) {
-	row, err := store.queries.AccountPassword(ctx, username)
+func (store *Store) AccountPassword(ctx context.Context, email string) (identityservice.PasswordCredential, error) {
+	row, err := store.queries.AccountPassword(ctx, email)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return identityservice.PasswordCredential{}, identityservice.ErrNotFound
 	}
 	if err != nil {
 		return identityservice.PasswordCredential{}, err
 	}
-	return identityservice.PasswordCredential{Account: account(row.UserID, row.Username, row.Email, row.Admin, row.Method), Hash: row.PasswordHash}, nil
+	return identityservice.PasswordCredential{Account: account(row.UserID, row.Email, row.Admin, row.Method), Hash: row.PasswordHash}, nil
 }
 
 func (store *Store) AccountPasswordByID(ctx context.Context, accountID string) (identityservice.PasswordCredential, error) {
@@ -255,7 +251,7 @@ func (store *Store) AccountPasswordByID(ctx context.Context, accountID string) (
 	if err != nil {
 		return identityservice.PasswordCredential{}, err
 	}
-	return identityservice.PasswordCredential{Account: account(row.UserID, row.Username, row.Email, row.Admin, row.Method), Hash: row.PasswordHash}, nil
+	return identityservice.PasswordCredential{Account: account(row.UserID, row.Email, row.Admin, row.Method), Hash: row.PasswordHash}, nil
 }
 
 // ReplacePassword fences authentication against password changes/reset, and
@@ -305,7 +301,7 @@ func (store *Store) ResolveSession(ctx context.Context, secretHash string, now t
 	if err != nil {
 		return identityservice.Session{}, err
 	}
-	return identityservice.Session{Account: account(row.UserID, row.Username, row.Email, row.Admin, row.Method), CSRFToken: row.CsrfToken, ExpiresAt: millisecond(row.ExpiresAt)}, nil
+	return identityservice.Session{Account: account(row.UserID, row.Email, row.Admin, row.Method), CSRFToken: row.CsrfToken, ExpiresAt: millisecond(row.ExpiresAt)}, nil
 }
 
 func (store *Store) DeleteSession(ctx context.Context, secretHash string) error {
@@ -367,7 +363,7 @@ func (store *Store) ResolveIdentityToken(ctx context.Context, secretHash string,
 	if err != nil {
 		return identityservice.TokenIdentity{}, err
 	}
-	return identityservice.TokenIdentity{Account: account(row.UserID, row.Username, row.Email, row.Admin, row.Method), Purpose: identityservice.Purpose(row.Purpose), ExpiresAt: millisecond(row.ExpiresAt)}, nil
+	return identityservice.TokenIdentity{Account: account(row.UserID, row.Email, row.Admin, row.Method), Purpose: identityservice.Purpose(row.Purpose), ExpiresAt: millisecond(row.ExpiresAt)}, nil
 }
 
 func (store *Store) IdentityAccounts(ctx context.Context) ([]identityservice.Account, error) {
@@ -377,7 +373,7 @@ func (store *Store) IdentityAccounts(ctx context.Context) ([]identityservice.Acc
 	}
 	accounts := make([]identityservice.Account, 0, len(rows))
 	for _, row := range rows {
-		accounts = append(accounts, account(row.UserID, row.Username, row.Email, row.Admin, row.Method))
+		accounts = append(accounts, account(row.UserID, row.Email, row.Admin, row.Method))
 	}
 	return accounts, nil
 }
@@ -400,7 +396,7 @@ func (store *Store) PasswordReset(ctx context.Context, tokenHash string, now tim
 	if err != nil {
 		return identityservice.PasswordCredential{}, err
 	}
-	return identityservice.PasswordCredential{Account: account(row.UserID, row.Username, row.Email, row.Admin, row.Method), Hash: row.PasswordHash}, nil
+	return identityservice.PasswordCredential{Account: account(row.UserID, row.Email, row.Admin, row.Method), Hash: row.PasswordHash}, nil
 }
 
 // CompletePasswordReset consumes the reset, replaces the password fenced on

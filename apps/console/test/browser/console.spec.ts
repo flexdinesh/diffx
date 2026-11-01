@@ -17,14 +17,14 @@ async function signUpMember(
   expect(response.status()).toBe(200);
 }
 
-function accountRow(page: Page, username: string) {
+function accountRow(page: Page, email: string) {
   return page
     .getByRole("listitem")
-    .filter({ has: page.getByText(username, { exact: true }) });
+    .filter({ has: page.getByText(email, { exact: true }) });
 }
 
-async function accountAction(page: Page, username: string, action: string) {
-  await page.getByRole("button", { name: `Actions for ${username}` }).click();
+async function accountAction(page: Page, email: string, action: string) {
+  await page.getByRole("button", { name: `Actions for ${email}` }).click();
   await page.getByRole("menuitem", { name: action }).click();
 }
 
@@ -48,15 +48,15 @@ test("the setup link creates the first admin", async ({ page, deployment }) => {
         field instanceof HTMLInputElement && field.validity.typeMismatch,
     ),
   ).toBe(true);
-  await email.fill(root.username);
+  await email.fill(root.email);
   await page.getByRole("button", { name: "Create admin" }).click();
   await expect(page).toHaveURL(/\/accounts$/);
-  const self = accountRow(page, root.username);
+  const self = accountRow(page, root.email);
   await expect(self.getByText("You")).toBeVisible();
   await expect(self.getByText("Admin")).toBeVisible();
   // Admins take no actions on themselves.
   await expect(
-    page.getByRole("button", { name: `Actions for ${root.username}` }),
+    page.getByRole("button", { name: `Actions for ${root.email}` }),
   ).toHaveCount(0);
 
   // The link works once.
@@ -70,7 +70,7 @@ test("the setup link creates the first admin", async ({ page, deployment }) => {
 test("only admins sign in", async ({ page, request, deployment }) => {
   await signUpMember(request, deployment.app, "member@example.com");
   await signIn(page, {
-    username: "member@example.com",
+    email: "member@example.com",
     password: memberPassword,
   });
   await expect(page.getByRole("alert")).toContainText("Unable to sign in");
@@ -147,7 +147,7 @@ test("admins manage roles, access and recovery", async ({
   await other.getByRole("button", { name: "Set password" }).click();
   await expect(other.getByText("Your password is set")).toBeVisible();
   await other.getByRole("link", { name: "Sign in" }).click();
-  await other.getByLabel("Email or username").fill("alice@example.com");
+  await other.getByLabel("Email").fill("alice@example.com");
   await other.getByLabel("Password").fill("alice-console-password-1");
   await other.getByRole("button", { name: "Sign in" }).click();
   await expect(other.getByRole("heading", { name: "Accounts" })).toBeVisible();
@@ -260,7 +260,7 @@ test("a password change signs the admin out", async ({ page }) => {
     .click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   await signIn(page, {
-    username: root.username,
+    email: root.email,
     password: "root-console-password-2",
   });
   await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();

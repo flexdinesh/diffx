@@ -53,7 +53,7 @@ func identityRequest(handler http.Handler, method, path, body string, cookie *ht
 }
 func loginIdentity(t *testing.T, handler http.Handler, name string) (*http.Cookie, string) {
 	t.Helper()
-	w := identityRequest(handler, "POST", "/api/v2/auth/login", `{"username":"`+name+`","password":"`+testPassword+`"}`, nil, "", "")
+	w := identityRequest(handler, "POST", "/api/v2/auth/login", `{"email":"`+name+`@example.com","password":"`+testPassword+`"}`, nil, "", "")
 	if w.Code != 200 {
 		t.Fatalf("login: %d %s", w.Code, w.Body.String())
 	}
@@ -76,7 +76,7 @@ func memberSession(t *testing.T, store *pgstore.Store, name string) (*http.Cooki
 }
 func TestRemoteSessionCSRFAndTokenLifecycle(t *testing.T) {
 	store, handler := identityHandler(t, Settings{})
-	testsupport.RemoteAdmin(t, store, "alice", testPassword)
+	testsupport.RemoteAdmin(t, store, "alice@example.com", testPassword)
 	cookie, csrf := loginIdentity(t, handler, "alice")
 	if !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode || cookie.Path != "/" {
 		t.Fatalf("session cookie: %+v", cookie)
@@ -161,7 +161,7 @@ func TestRemoteSessionCSRFAndTokenLifecycle(t *testing.T) {
 }
 func TestSignupActivatesOwnerWithoutRestart(t *testing.T) {
 	_, handler := identityHandler(t, Settings{InsecureCookies: true})
-	if w := identityRequest(handler, "POST", "/api/v2/auth/signup", `{"username":"valid-handle","password":"`+testPassword+`"}`, nil, "", ""); w.Code != 400 || !strings.Contains(w.Body.String(), "valid email address") {
+	if w := identityRequest(handler, "POST", "/api/v2/auth/signup", `{"email":"valid-handle","password":"`+testPassword+`"}`, nil, "", ""); w.Code != 400 || !strings.Contains(w.Body.String(), "valid email address") {
 		t.Fatalf("signup without email: %d %s", w.Code, w.Body.String())
 	}
 	w := identityRequest(handler, "POST", "/api/v2/auth/signup", `{"email":"ab","password":"`+testPassword+`"}`, nil, "", "")
@@ -180,7 +180,7 @@ func TestSignupActivatesOwnerWithoutRestart(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.User == nil || result.User.Username != "newcomer@example.com" || result.User.Method != identityservice.MethodPassword || result.CSRFToken == nil {
+	if result.User == nil || result.User.Email != "newcomer@example.com" || result.User.Method != identityservice.MethodPassword || result.CSRFToken == nil {
 		t.Fatalf("signup identity: %+v", result.User)
 	}
 	if w = identityRequest(handler, "POST", "/api/v2/auth/signup", `{"email":"newcomer@example.com","password":"`+testPassword+`"}`, nil, "", ""); w.Code != 409 {
@@ -219,9 +219,9 @@ func TestSignupActivatesOwnerWithoutRestart(t *testing.T) {
 }
 func TestPasswordLoginAdmitsPasswordAccounts(t *testing.T) {
 	store, handler := identityHandler(t, Settings{})
-	testsupport.RemoteAdmin(t, store, "alice", testPassword)
+	testsupport.RemoteAdmin(t, store, "alice@example.com", testPassword)
 	testsupport.RemoteAccount(t, store, "member")
-	for _, body := range []string{`{"username":"member","password":""}`, `{"username":"member","password":"` + testPassword + `"}`, `{"username":"nobody","password":"` + testPassword + `"}`, `{"username":"alice","password":"wrong-password-value"}`} {
+	for _, body := range []string{`{"email":"member@example.com","password":""}`, `{"email":"member@example.com","password":"` + testPassword + `"}`, `{"email":"nobody@example.com","password":"` + testPassword + `"}`, `{"email":"alice@example.com","password":"wrong-password-value"}`, `{"email":"alice","password":"` + testPassword + `"}`} {
 		w := identityRequest(handler, "POST", "/api/v2/auth/login", body, nil, "", "")
 		if w.Code != 401 || !strings.Contains(w.Body.String(), "Authentication required") {
 			t.Fatalf("login %s: %d %s", body, w.Code, w.Body.String())
@@ -230,7 +230,7 @@ func TestPasswordLoginAdmitsPasswordAccounts(t *testing.T) {
 	// Admins use the web app like every other account.
 	cookie, _ := loginIdentity(t, handler, "alice")
 	w := identityRequest(handler, "GET", "/api/v2/bootstrap", "", cookie, "", "")
-	if strings.Contains(w.Body.String(), "admin") || !strings.Contains(w.Body.String(), `"googleEnabled":false,"signupEnabled":true,"passwordSignupEnabled":true`) || !strings.Contains(w.Body.String(), `"email":null,"method":"password"`) {
+	if strings.Contains(w.Body.String(), "admin") || !strings.Contains(w.Body.String(), `"googleEnabled":false,"signupEnabled":true,"passwordSignupEnabled":true`) || !strings.Contains(w.Body.String(), `"email":"alice@example.com","method":"password"`) {
 		t.Fatalf("bootstrap: %s", w.Body.String())
 	}
 	for _, path := range []string{"/api/v2/setup", "/api/v2/manage/users", "/api/v2/manage/invites"} {
@@ -282,13 +282,13 @@ func TestClosedSettingsKeepExistingPasswordAccounts(t *testing.T) {
 	if w := identityRequest(handler, "GET", "/api/v2/contexts", "", nil, "", "Bearer "+token.Secret); w.Code != 200 {
 		t.Fatalf("password account token with password signup off: %d", w.Code)
 	}
-	if w := identityRequest(handler, "POST", "/api/v2/password-reset/lookup", `{"token":"`+reset+`"}`, nil, "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"username":"member@example.com"`) {
+	if w := identityRequest(handler, "POST", "/api/v2/password-reset/lookup", `{"token":"`+reset+`"}`, nil, "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"email":"member@example.com"`) {
 		t.Fatalf("reset lookup with password signup off: %d %s", w.Code, w.Body.String())
 	}
 	if w := identityRequest(handler, "POST", "/api/v2/password-reset", `{"token":"`+reset+`","password":"a new password value"}`, nil, "", ""); w.Code != 204 {
 		t.Fatalf("reset with password signup off: %d %s", w.Code, w.Body.String())
 	}
-	if w := identityRequest(handler, "POST", "/api/v2/auth/login", `{"username":"member@example.com","password":"a new password value"}`, nil, "", ""); w.Code != 200 {
+	if w := identityRequest(handler, "POST", "/api/v2/auth/login", `{"email":"member@example.com","password":"a new password value"}`, nil, "", ""); w.Code != 200 {
 		t.Fatalf("password login with password signup off: %d %s", w.Code, w.Body.String())
 	}
 	w := identityRequest(handler, "POST", "/api/v2/invites/lookup", `{"token":"`+inviteSecret+`"}`, nil, "", "")
@@ -321,12 +321,12 @@ func TestPasswordInviteAndResetLinks(t *testing.T) {
 	if w.Code != 404 || !strings.Contains(w.Body.String(), "Invite link is invalid") {
 		t.Fatalf("invite reused: %d %s", w.Code, w.Body.String())
 	}
-	account, reset, err := identity.ResetPasswordByUsername(t.Context(), "lead@example.com")
+	account, reset, err := identity.ResetPasswordByEmail(t.Context(), "lead@example.com")
 	if err != nil || account.Admin {
 		t.Fatalf("reset: %+v %v", account, err)
 	}
 	w = identityRequest(handler, "POST", "/api/v2/password-reset/lookup", `{"token":"`+reset+`"}`, nil, "", "")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"username":"lead@example.com"`) {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"email":"lead@example.com"`) {
 		t.Fatalf("reset lookup: %d %s", w.Code, w.Body.String())
 	}
 	w = identityRequest(handler, "POST", "/api/v2/password-reset", `{"token":"`+reset+`","password":"a new password value"}`, nil, "", "")
@@ -339,7 +339,7 @@ func TestPasswordInviteAndResetLinks(t *testing.T) {
 	if w = identityRequest(handler, "GET", "/api/v2/contexts", "", cookie, "", ""); w.Code != 401 {
 		t.Fatalf("reset kept the session: %d", w.Code)
 	}
-	if w = identityRequest(handler, "POST", "/api/v2/auth/login", `{"username":"lead@example.com","password":"a new password value"}`, nil, "", ""); w.Code != 200 {
+	if w = identityRequest(handler, "POST", "/api/v2/auth/login", `{"email":"lead@example.com","password":"a new password value"}`, nil, "", ""); w.Code != 200 {
 		t.Fatalf("login with reset password: %d %s", w.Code, w.Body.String())
 	}
 }
@@ -370,7 +370,7 @@ func TestCrossSiteNavigationOpensPagesOnly(t *testing.T) {
 
 func TestAuthFormsGuardAndRateLimit(t *testing.T) {
 	store, handler := identityHandler(t, Settings{})
-	testsupport.RemoteAdmin(t, store, "alice", testPassword)
+	testsupport.RemoteAdmin(t, store, "alice@example.com", testPassword)
 	var w *httptest.ResponseRecorder
 	for _, test := range []struct {
 		header, value string
@@ -388,7 +388,7 @@ func TestAuthFormsGuardAndRateLimit(t *testing.T) {
 	// Without a trusted client IP header the server cannot tell clients apart,
 	// so it never limits attempts.
 	for i := 0; i < 25; i++ {
-		if w = identityRequest(handler, "POST", "/api/v2/auth/login", `{"username":"alice","password":"wrong"}`, nil, "", ""); w.Code != 401 {
+		if w = identityRequest(handler, "POST", "/api/v2/auth/login", `{"email":"alice@example.com","password":"wrong"}`, nil, "", ""); w.Code != 401 {
 			t.Fatalf("unlimited attempt %d: %d %s", i+1, w.Code, w.Body.String())
 		}
 	}
@@ -412,9 +412,9 @@ func TestAuthRateLimitIsSharedAndNeedsClientIP(t *testing.T) {
 		t.Cleanup(func() { closeServices() })
 		handlers[i], store = handler, replica
 	}
-	testsupport.RemoteAdmin(t, store, "alice", testPassword)
+	testsupport.RemoteAdmin(t, store, "alice@example.com", testPassword)
 	login := func(handler http.Handler, clientIP ...string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest("POST", "/api/v2/auth/login", strings.NewReader(`{"username":"alice","password":"wrong"}`))
+		r := httptest.NewRequest("POST", "/api/v2/auth/login", strings.NewReader(`{"email":"alice@example.com","password":"wrong"}`))
 		r.Header.Set("Content-Type", "application/json")
 		for _, value := range clientIP {
 			r.Header.Add("X-Real-IP", value)
@@ -453,9 +453,9 @@ func TestRevocationAndExpiryCloseActiveStreams(t *testing.T) {
 	for _, action := range []string{"logout", "reset", "revoke", "expire"} {
 		t.Run(action, func(t *testing.T) {
 			store, handler := identityHandler(t, Settings{InsecureCookies: true})
-			testsupport.RemoteAdmin(t, store, "alice", testPassword)
+			testsupport.RemoteAdmin(t, store, "alice@example.com", testPassword)
 			identity := testsupport.Identity(t, store)
-			session, err := identity.Login(t.Context(), identityservice.AudienceMembers, "alice", testPassword)
+			session, err := identity.Login(t.Context(), identityservice.AudienceMembers, "alice@example.com", testPassword)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -492,7 +492,7 @@ func TestRevocationAndExpiryCloseActiveStreams(t *testing.T) {
 				err = identity.Logout(t.Context(), session.Secret)
 			case "reset":
 				var secret string
-				if _, secret, err = identity.ResetPasswordByUsername(t.Context(), "alice"); err == nil {
+				if _, secret, err = identity.ResetPasswordByEmail(t.Context(), "alice@example.com"); err == nil {
 					err = identity.CompletePasswordReset(t.Context(), identityservice.AudienceMembers, secret, "reset-password-123")
 				}
 			case "revoke":

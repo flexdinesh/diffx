@@ -49,7 +49,7 @@ function bootstrap(
     signupEnabled: signup,
     passwordSignupEnabled: password,
     user: signedIn
-      ? { id: "account-a", username: "alice", email: null, method }
+      ? { id: "account-a", email: "alice@example.com", method }
       : null,
     csrfToken: signedIn ? "session-csrf" : null,
   };
@@ -122,27 +122,28 @@ test("without password signup a quiet link reveals password sign-in", async () =
     name: "Continue with Google",
   });
   assert.equal(google.getAttribute("data-variant"), "default");
-  assert.equal(
-    screen.queryByLabelText("Email or username", { exact: true }),
-    null,
-  );
+  assert.equal(screen.queryByLabelText("Email", { exact: true }), null);
   fireEvent.click(
     screen.getByRole("button", { name: "Sign in with password" }),
   );
-  const username = screen.getByLabelText("Email or username", { exact: true });
-  assert.equal(document.activeElement, username);
+  const email = screen.getByLabelText("Email", { exact: true });
+  assert.equal(email.getAttribute("type"), "email");
+  assert.equal(document.activeElement, email);
   assert.equal(google.getAttribute("data-variant"), "outline");
   assert.equal(
     screen.queryByRole("button", { name: "Sign in with password" }),
     null,
   );
-  fireEvent.change(username, { target: { value: "alice" } });
+  fireEvent.change(email, { target: { value: "alice@example.com" } });
   fireEvent.change(screen.getByLabelText("Password", { exact: true }), {
     target: { value: "old-password-123" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
   await screen.findByRole("heading", { name: "Signed in" });
-  assert.deepEqual(body, { username: "alice", password: "old-password-123" });
+  assert.deepEqual(body, {
+    email: "alice@example.com",
+    password: "old-password-123",
+  });
 });
 
 test("with password signup the sign-in form shows without a reveal link", async () => {
@@ -196,12 +197,9 @@ test("failed password sign-in preserves recovery", async () => {
     await screen.findByRole("button", { name: "Continue with Google" }),
   );
   assert.ok(screen.getByRole("link", { name: "Create an account" }));
-  fireEvent.change(
-    screen.getByLabelText("Email or username", { exact: true }),
-    {
-      target: { value: "alice" },
-    },
-  );
+  fireEvent.change(screen.getByLabelText("Email", { exact: true }), {
+    target: { value: "alice@example.com" },
+  });
   fireEvent.change(screen.getByLabelText("Password", { exact: true }), {
     target: { value: "incorrect-password" },
   });
@@ -211,8 +209,8 @@ test("failed password sign-in preserves recovery", async () => {
     "Authentication required",
   );
   assert.equal(
-    screen.getByDisplayValue("alice").getAttribute("id"),
-    "username",
+    screen.getByDisplayValue("alice@example.com").getAttribute("id"),
+    "email",
   );
 });
 
@@ -289,11 +287,11 @@ test("a reset link sets a new password once and hides its secret", async () => {
   remote(async (request) => {
     bodies.push(await request.json());
     return new URL(request.url).pathname === "/api/v2/password-reset/lookup"
-      ? json({ username: "alice" })
+      ? json({ email: "alice@example.com" })
       : new Response(null, { status: 204 });
   }, false);
   mount(ResetPassword, false);
-  assert.ok(await screen.findByText("alice"));
+  assert.ok(await screen.findByText("alice@example.com"));
   assert.equal(window.location.hash, "");
   fireEvent.change(screen.getByLabelText("New password", { exact: true }), {
     target: { value: "new-password-456" },
@@ -417,6 +415,19 @@ test("without Google sign in shows the password form directly", async () => {
   assert.equal(
     screen.queryByRole("button", { name: "Sign in with password" }),
     null,
+  );
+  assert.equal(window.location.search, "");
+});
+
+test("Google sign-up with a password account's email points to password sign-in", async () => {
+  window.history.replaceState(null, "", "/?signin=email-taken");
+  remote(() => {
+    throw new Error("Unexpected account request");
+  }, false);
+  mount(SignIn, false);
+  assert.equal(
+    (await screen.findByRole("alert")).textContent,
+    "A password account already uses that email. Sign in with your password instead.",
   );
   assert.equal(window.location.search, "");
 });

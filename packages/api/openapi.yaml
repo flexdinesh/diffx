@@ -102,7 +102,7 @@ paths:
   /api/v2/auth/google/callback:
     get:
       operationId: completeGoogleSignIn
-      description: Distributed only. Google redirects the browser here; the state and the flow cookie authenticate it, so it accepts cross-site navigation. Every outcome redirects to the app; failures add `?signin=` with `cancelled`, `no-account`, `invite-mismatch`, `invite-invalid` or `failed`. A Google account is identified by its subject, so a changed email keeps the account.
+      description: Distributed only. Google redirects the browser here; the state and the flow cookie authenticate it, so it accepts cross-site navigation. Every outcome redirects to the app; failures add `?signin=` with `cancelled`, `no-account`, `invite-mismatch`, `invite-invalid`, `email-taken` (another account has the email) or `failed`. A Google account is identified by its subject, so a changed email keeps the account.
       parameters:
         - { in: query, name: state, required: false, schema: { type: string } }
         - { in: query, name: code, required: false, schema: { type: string } }
@@ -236,9 +236,9 @@ paths:
               schema:
                 type: object
                 additionalProperties: false
-                required: [username]
+                required: [email]
                 properties:
-                  username:
+                  email:
                     type: string
         "400":
           $ref: "#/components/responses/Problem"
@@ -1606,15 +1606,13 @@ components:
     AccountUser:
       type: object
       additionalProperties: false
-      required: [id, username, email, method]
+      required: [id, email, method]
       properties:
         id:
           type: string
-        username:
-          type: string
         email:
-          type: [string, "null"]
-          description: The account email submitted at password signup or last reported by Google. Null for legacy password accounts; a submitted email is not verified.
+          type: string
+          description: The email that identifies the account, submitted at password signup or last reported by Google. A submitted email is not verified.
         method:
           type: string
           enum: [google, password]
@@ -1686,11 +1684,11 @@ components:
     PasswordCredentials:
       type: object
       additionalProperties: false
-      required: [username, password]
+      required: [email, password]
       properties:
-        username:
+        email:
           type: string
-          description: Account email, or the username of an existing legacy account.
+          description: Account email, compared case-insensitively.
         password:
           type: string
     AccountToken:

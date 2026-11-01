@@ -64,22 +64,23 @@ func tableRows(t *testing.T, conn *pgx.Conn, table string) int {
 }
 
 // member creates a Google account and a session for it, as Google sign-in does.
-func member(t *testing.T, store *pgstore.Store, username string) (identityservice.Account, identityservice.Session) {
+func member(t *testing.T, store *pgstore.Store, name string) (identityservice.Account, identityservice.Session) {
 	t.Helper()
-	account := identityservice.Account{ID: "id-" + username, Username: username, Email: username + "@example.com", Method: identityservice.MethodGoogle}
-	if err := store.CreateGoogleAccount(t.Context(), account, google.Identity{Subject: "sub-" + username, Email: username + "@example.com", EmailVerified: true}, time.Now(), identityservice.Settings{}); err != nil {
+	account := identityservice.Account{ID: "id-" + name, Email: name + "@example.com", Method: identityservice.MethodGoogle}
+	if err := store.CreateGoogleAccount(t.Context(), account, google.Identity{Subject: "sub-" + name, Email: account.Email, EmailVerified: true}, time.Now(), identityservice.Settings{}); err != nil {
 		t.Fatal(err)
 	}
-	session := identityservice.Session{Account: account, Secret: strings.Repeat("s", 40) + username[:3], CSRFToken: "csrf-" + username, ExpiresAt: time.Now().Add(time.Hour)}
+	session := identityservice.Session{Account: account, Secret: strings.Repeat("s", 40) + name[:3], CSRFToken: "csrf-" + name, ExpiresAt: time.Now().Add(time.Hour)}
 	if err := store.CreateSession(t.Context(), account.ID, "", secretHash(session.Secret), session.CSRFToken, session.ExpiresAt); err != nil {
 		t.Fatal(err)
 	}
 	return account, session
 }
 
-func setupAdmin(t *testing.T, store *pgstore.Store, username string) identityservice.Session {
+// setupAdmin stores a password admin named name@example.com and signs it in.
+func setupAdmin(t *testing.T, store *pgstore.Store, name string) identityservice.Session {
 	t.Helper()
-	return testsupport.RemoteAdmin(t, store, username, adminPassword)
+	return testsupport.RemoteAdmin(t, store, name+"@example.com", adminPassword)
 }
 
 func TestAdminSetupPersistsAndRunsOnce(t *testing.T) {
@@ -111,7 +112,7 @@ func TestAdminSetupPersistsAndRunsOnce(t *testing.T) {
 		t.Fatalf("replaced setup secret accepted: %v", err)
 	}
 	session, err := service.CompleteSetup(ctx, secret, "Admin@Example.com", adminPassword)
-	if err != nil || !session.Account.Admin || session.Account.Username != "admin@example.com" || session.Account.Email != "admin@example.com" {
+	if err != nil || !session.Account.Admin || session.Account.Email != "admin@example.com" {
 		t.Fatalf("setup: %+v %v", session, err)
 	}
 	if _, err := service.CompleteSetup(ctx, secret, "second@example.com", adminPassword); !errors.Is(err, identityservice.ErrNotFound) {
@@ -122,13 +123,13 @@ func TestAdminSetupPersistsAndRunsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	other, _ := member(t, store, "other")
-	if _, err := service.Login(ctx, identityservice.AudienceMembers, "other", ""); !errors.Is(err, identityservice.ErrAuthentication) {
+	if _, err := service.Login(ctx, identityservice.AudienceMembers, "other@example.com", ""); !errors.Is(err, identityservice.ErrAuthentication) {
 		t.Fatalf("Google account password login: %v", err)
 	}
 	if err := service.ChangePassword(ctx, other.ID, "", "member password is valid"); !errors.Is(err, identityservice.ErrAuthentication) {
 		t.Fatalf("Google account gained a password: %v", err)
 	}
-	if _, _, err := service.ResetPasswordByUsername(ctx, "other"); !errors.Is(err, identityservice.ErrNotFound) {
+	if _, _, err := service.ResetPasswordByEmail(ctx, "other@example.com"); !errors.Is(err, identityservice.ErrNotFound) {
 		t.Fatalf("Google account password reset: %v", err)
 	}
 	if err := service.ChangePassword(ctx, session.Account.ID, adminPassword, "changed password is valid"); err != nil {
@@ -213,7 +214,7 @@ func TestNewPasswordAccountsRequireAndPersistEmail(t *testing.T) {
 				t.Fatalf("new password account accepted a handle: %v", err)
 			}
 			session, err := create(strings.ToUpper(email))
-			if err != nil || session.Account.Username != email || session.Account.Email != email || session.Account.Method != identityservice.MethodPassword {
+			if err != nil || session.Account.Email != email || session.Account.Method != identityservice.MethodPassword {
 				t.Fatalf("email account: %+v %v", session.Account, err)
 			}
 			var persisted string
@@ -261,34 +262,6 @@ func TestPasswordInviteMismatchPreservesPendingInvite(t *testing.T) {
 	session, err := service.AcceptPasswordInvite(ctx, secret, "Invited@Example.COM", adminPassword)
 	if err != nil || session.Account.Email != invited.Email {
 		t.Fatalf("matching email invite: %+v %v", session.Account, err)
-	}
-}
-
-func TestLegacyPasswordHandleKeepsLoginAndReset(t *testing.T) {
-	t.Parallel()
-	store, service, conn := identityStore(t)
-	ctx := t.Context()
-	account := testsupport.RemotePasswordAccount(t, store, "legacy-user", adminPassword)
-	if account.Email != "" {
-		t.Fatalf("legacy fixture has email: %+v", account)
-	}
-	var email *string
-	if err := conn.QueryRow(ctx, `SELECT email FROM diffx.remote_accounts WHERE user_id=$1`, account.ID).Scan(&email); err != nil || email != nil {
-		t.Fatalf("legacy email was invented: %v %v", email, err)
-	}
-	session, err := service.Login(ctx, identityservice.AudienceMembers, "LEGACY-USER", adminPassword)
-	if err != nil || session.Account != account {
-		t.Fatalf("legacy login: %+v %v", session.Account, err)
-	}
-	resetAccount, secret, err := service.ResetPasswordByUsername(ctx, "LEGACY-USER")
-	if err != nil || resetAccount.ID != account.ID {
-		t.Fatalf("legacy recovery: %+v %v", resetAccount, err)
-	}
-	if err := service.CompletePasswordReset(ctx, identityservice.AudienceMembers, secret, "new legacy password"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.Login(ctx, identityservice.AudienceMembers, "legacy-user", "new legacy password"); err != nil {
-		t.Fatalf("legacy reset password: %v", err)
 	}
 }
 
@@ -495,16 +468,16 @@ func TestTokenTimesRoundTripAtMillisecondsAndLastUseNeverRegresses(t *testing.T)
 	}
 }
 
-func TestAccountsOrderByUsernameBytes(t *testing.T) {
+func TestAccountsOrderByEmailBytes(t *testing.T) {
 	t.Parallel()
 	store, service, _ := identityStore(t)
 	ctx := context.Background()
-	for _, username := range []string{"ab", "a.c", "a-b", "a_d"} {
-		if err := store.CreateAccount(ctx, identityservice.Account{ID: "id-" + username, Username: username}, "", time.Now(), identityservice.Settings{}); err != nil {
+	for _, email := range []string{"ab@example.com", "a.c@example.com", "a-b@example.com", "a_d@example.com"} {
+		if err := store.CreateAccount(ctx, identityservice.Account{ID: "id-" + email, Email: email}, "", time.Now(), identityservice.Settings{}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	want := []string{"a-b", "a.c", "a_d", "ab"}
+	want := []string{"a-b@example.com", "a.c@example.com", "a_d@example.com", "ab@example.com"}
 	accounts, err := service.Accounts(ctx)
 	if err != nil || len(accounts) != len(want) {
 		t.Fatalf("accounts: %+v %v", accounts, err)
@@ -513,13 +486,13 @@ func TestAccountsOrderByUsernameBytes(t *testing.T) {
 	if err != nil || len(summaries) != len(want) {
 		t.Fatalf("summaries: %+v %v", summaries, err)
 	}
-	for index, username := range want {
-		if accounts[index].Username != username || summaries[index].Username != username {
-			t.Fatalf("order at %d: %q %q, want %q", index, accounts[index].Username, summaries[index].Username, username)
+	for index, email := range want {
+		if accounts[index].Email != email || summaries[index].Email != email {
+			t.Fatalf("order at %d: %q %q, want %q", index, accounts[index].Email, summaries[index].Email, email)
 		}
 	}
-	if err := store.CreateAccount(ctx, identityservice.Account{ID: "id-other", Username: "ab"}, "", time.Now(), identityservice.Settings{}); !errors.Is(err, identityservice.ErrConflict) {
-		t.Fatalf("duplicate username: %v", err)
+	if err := store.CreateAccount(ctx, identityservice.Account{ID: "id-other", Email: "ab@example.com"}, "", time.Now(), identityservice.Settings{}); !errors.Is(err, identityservice.ErrConflict) {
+		t.Fatalf("duplicate email: %v", err)
 	}
 }
 
@@ -529,7 +502,7 @@ func TestPasswordResetFencesConcurrentCredentialOperations(t *testing.T) {
 	ctx := context.Background()
 	session := setupAdmin(t, store, "owner")
 	account := session.Account
-	stale, err := store.AccountPassword(ctx, "owner")
+	stale, err := store.AccountPassword(ctx, "owner@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -537,11 +510,11 @@ func TestPasswordResetFencesConcurrentCredentialOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reset, secret, err := service.ResetPasswordByUsername(ctx, "OWNER")
+	reset, secret, err := service.ResetPasswordByEmail(ctx, "OWNER@example.com")
 	if err != nil || reset.ID != account.ID || !reset.Admin {
 		t.Fatalf("reset: %+v %v", reset, err)
 	}
-	if pending, err := service.PendingPasswordReset(ctx, identityservice.AudienceConsole, secret); err != nil || pending.Username != "owner" {
+	if pending, err := service.PendingPasswordReset(ctx, identityservice.AudienceConsole, secret); err != nil || pending.Email != "owner@example.com" {
 		t.Fatalf("pending reset: %+v %v", pending, err)
 	}
 	if err := service.CompletePasswordReset(ctx, identityservice.AudienceConsole, secret, "short"); !errors.Is(err, identityservice.ErrInvalidInput) {
@@ -565,7 +538,7 @@ func TestPasswordResetFencesConcurrentCredentialOperations(t *testing.T) {
 	if _, err := service.AuthenticateToken(ctx, token.Secret); err != nil {
 		t.Fatalf("reset revoked an API token: %v", err)
 	}
-	if _, err := service.Login(ctx, identityservice.AudienceConsole, "owner", "reset password is valid"); err != nil {
+	if _, err := service.Login(ctx, identityservice.AudienceConsole, "owner@example.com", "reset password is valid"); err != nil {
 		t.Fatalf("reset password lost: %v", err)
 	}
 }
@@ -581,11 +554,11 @@ func TestPasswordResetLinksExpireAndStayInTheirAudience(t *testing.T) {
 	if _, _, err := service.ResetPassword(ctx, google.ID); !errors.Is(err, identityservice.ErrNotFound) {
 		t.Fatalf("Google account reset: %v", err)
 	}
-	_, replaced, err := service.ResetPasswordByUsername(ctx, "member@example.com")
+	_, replaced, err := service.ResetPasswordByEmail(ctx, "member@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
-	account, secret, err := service.ResetPasswordByUsername(ctx, "member@example.com")
+	account, secret, err := service.ResetPasswordByEmail(ctx, "member@example.com")
 	if err != nil || account.Admin {
 		t.Fatalf("reset: %+v %v", account, err)
 	}
@@ -610,7 +583,7 @@ func TestPasswordResetLinksExpireAndStayInTheirAudience(t *testing.T) {
 	// Existing password accounts keep their reset links with password signup off.
 	testsupport.PutSettings(t, store, identityservice.Settings{})
 	closed := testsupport.Identity(t, store)
-	_, secret, err = closed.ResetPasswordByUsername(ctx, "member@example.com")
+	_, secret, err = closed.ResetPasswordByEmail(ctx, "member@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -625,10 +598,10 @@ func TestSettingsGateNewAccountsOnly(t *testing.T) {
 	ctx := context.Background()
 	admin := setupAdmin(t, store, "admin")
 	if _, err := open.SignUp(ctx, "ab", adminPassword); !errors.Is(err, identityservice.ErrInvalidInput) {
-		t.Fatalf("invalid username accepted: %v", err)
+		t.Fatalf("invalid email accepted: %v", err)
 	}
 	session, err := open.SignUp(ctx, "Member@Example.com", adminPassword)
-	if err != nil || session.Account.Username != "member@example.com" || session.Account.Admin || session.Account.Method != identityservice.MethodPassword {
+	if err != nil || session.Account.Email != "member@example.com" || session.Account.Admin || session.Account.Method != identityservice.MethodPassword {
 		t.Fatalf("sign-up: %+v %v", session, err)
 	}
 	if _, err := open.SignUp(ctx, "member@example.com", adminPassword); !errors.Is(err, identityservice.ErrConflict) {
@@ -688,14 +661,14 @@ func TestSignupRechecksStoredSettings(t *testing.T) {
 	if _, err := open.SignUp(ctx, "late@example.com", adminPassword); !errors.Is(err, identityservice.ErrDisabled) {
 		t.Fatalf("stale snapshot created a password account: %v", err)
 	}
-	account := identityservice.Account{ID: "id-late", Username: "late", Method: identityservice.MethodGoogle}
+	account := identityservice.Account{ID: "id-late", Email: "late@example.com", Method: identityservice.MethodGoogle}
 	identity := google.Identity{Subject: "sub-late", Email: "late@example.com", EmailVerified: true}
 	if err := store.CreateGoogleAccount(ctx, account, identity, time.Now(), identityservice.Settings{Signup: true}); !errors.Is(err, identityservice.ErrDisabled) {
 		t.Fatalf("closed signup created a Google account: %v", err)
 	}
 	testsupport.PutSettings(t, store, identityservice.Settings{Signup: true})
 	invite := invite(t, store, "late-invite", "late@example.com", time.Now())
-	password := identityservice.Account{ID: "id-invited", Username: "invited", Method: identityservice.MethodPassword}
+	password := identityservice.Account{ID: "id-invited", Email: "late@example.com", Method: identityservice.MethodPassword}
 	if err := store.AcceptPasswordInvite(ctx, invite.ID, password, "hash", time.Now(), identityservice.Settings{PasswordSignup: true}); !errors.Is(err, identityservice.ErrDisabled) {
 		t.Fatalf("closed password signup accepted an invite: %v", err)
 	}
@@ -836,7 +809,7 @@ func TestConcurrentAccountCreationHasOneOwner(t *testing.T) {
 	results := make(chan error, 6)
 	for index := range 6 {
 		workers.Go(func() {
-			results <- store.CreateAccount(ctx, identityservice.Account{ID: fmt.Sprintf("id-%d", index), Username: "owner"}, "", time.Now(), identityservice.Settings{})
+			results <- store.CreateAccount(ctx, identityservice.Account{ID: fmt.Sprintf("id-%d", index), Email: "owner@example.com"}, "", time.Now(), identityservice.Settings{})
 		})
 	}
 	workers.Wait()
@@ -867,9 +840,9 @@ func TestConcurrentSetupCreatesOneAdmin(t *testing.T) {
 	}
 	var workers sync.WaitGroup
 	failures := make(chan error, 4)
-	for _, username := range []string{"first@example.com", "second@example.com", "third@example.com", "fourth@example.com"} {
+	for _, email := range []string{"first@example.com", "second@example.com", "third@example.com", "fourth@example.com"} {
 		workers.Go(func() {
-			_, err := service.CompleteSetup(ctx, secret, username, adminPassword)
+			_, err := service.CompleteSetup(ctx, secret, email, adminPassword)
 			failures <- err
 		})
 	}
@@ -908,19 +881,19 @@ func waitForLockWaiters(t *testing.T, conn *pgx.Conn, waiters int) {
 	}
 }
 
-// holdAccount holds an uncommitted account with the username and, unless
+// holdAccount holds an uncommitted account with the email and, unless
 // empty, the Google subject, so transactions claiming either wait until the
 // returned transaction rolls back.
-func holdAccount(t *testing.T, conn *pgx.Conn, username, subject string) pgx.Tx {
+func holdAccount(t *testing.T, conn *pgx.Conn, email, subject string) pgx.Tx {
 	t.Helper()
 	tx, err := conn.Begin(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tx.Exec(t.Context(), `INSERT INTO diffx.users(id, name, created_at) VALUES ('holder', $1, now())`, username); err != nil {
+	if _, err := tx.Exec(t.Context(), `INSERT INTO diffx.users(id, name, created_at) VALUES ('holder', $1, now())`, email); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tx.Exec(t.Context(), `INSERT INTO diffx.remote_accounts(user_id, username, password_hash) VALUES ('holder', $1, '')`, username); err != nil {
+	if _, err := tx.Exec(t.Context(), `INSERT INTO diffx.remote_accounts(user_id, email, password_hash) VALUES ('holder', $1, '')`, email); err != nil {
 		t.Fatal(err)
 	}
 	if subject == "" {
@@ -943,13 +916,13 @@ func TestSetupIssuanceDuringAdminCreationLeavesNoSecret(t *testing.T) {
 	if stored, err := store.PutAdminSetup(ctx, "setup", time.Now().Add(time.Hour)); err != nil || !stored {
 		t.Fatalf("put setup: %v %v", stored, err)
 	}
-	// Admin creation consumes the secret, then waits on the username.
-	hold := holdAccount(t, blocker, "admin", "")
+	// Admin creation consumes the secret, then waits on the email.
+	hold := holdAccount(t, blocker, "admin@example.com", "")
 	var workers sync.WaitGroup
 	var created, issued error
 	var stored bool
 	workers.Go(func() {
-		created = store.CreateAdmin(ctx, identityservice.Account{ID: "admin", Username: "admin", Admin: true}, "hash", "setup", time.Now())
+		created = store.CreateAdmin(ctx, identityservice.Account{ID: "admin", Email: "admin@example.com", Admin: true}, "hash", "setup", time.Now())
 	})
 	waitForLockWaiters(t, conn, 1)
 	workers.Go(func() { stored, issued = store.PutAdminSetup(ctx, "replacement", time.Now().Add(time.Hour)) })
@@ -971,7 +944,7 @@ func TestConcurrentPasswordReplacementOnlyOneWins(t *testing.T) {
 	store, _, _ := identityStore(t)
 	ctx := context.Background()
 	account := setupAdmin(t, store, "owner").Account
-	credential, err := store.AccountPassword(ctx, "owner")
+	credential, err := store.AccountPassword(ctx, "owner@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1002,7 +975,7 @@ func TestConcurrentSessionIssuanceNeverOutlivesPasswordChange(t *testing.T) {
 	ctx := context.Background()
 	account := setupAdmin(t, store, "owner").Account
 	for attempt := range 20 {
-		credential, err := store.AccountPassword(ctx, "owner")
+		credential, err := store.AccountPassword(ctx, "owner@example.com")
 		if err != nil {
 			t.Fatal(err)
 		}

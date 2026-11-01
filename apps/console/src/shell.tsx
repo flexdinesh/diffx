@@ -51,7 +51,7 @@ export function Shell({
             </LinkButton>
           ))}
         </nav>
-        <span className="console-identity">{admin.username}</span>
+        <span className="console-identity">{admin.email}</span>
       </header>
       <main className="console-page">{children}</main>
     </div>

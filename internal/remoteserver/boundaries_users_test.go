@@ -46,12 +46,10 @@ func TestRunSignupPersistsAcrossRestart(t *testing.T) {
 			t.Fatal("startup timeout")
 		}
 		path := "/api/v2/auth/login"
-		field := "username"
 		if attempt == 0 {
 			path = "/api/v2/auth/signup"
-			field = "email"
 		}
-		response, err := client.Post("http://"+address+path, "application/json", strings.NewReader(`{"`+field+`":"owner@example.com","password":"`+testPassword+`"}`))
+		response, err := client.Post("http://"+address+path, "application/json", strings.NewReader(`{"email":"owner@example.com","password":"`+testPassword+`"}`))
 		if err != nil {
 			cancel()
 			t.Fatal(err)

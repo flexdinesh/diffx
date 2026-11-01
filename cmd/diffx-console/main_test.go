@@ -36,7 +36,7 @@ func TestResetPasswordPrintsALinkForTheAccountsSurface(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	testsupport.RemoteAdmin(t, store, "root", "console-password-000001")
+	testsupport.RemoteAdmin(t, store, "root@example.com", "console-password-000001")
 	if _, err := testsupport.Identity(t, store).SignUp(t.Context(), "member@example.com", "console-password-000001"); err != nil {
 		t.Fatal(err)
 	}
@@ -44,23 +44,23 @@ func TestResetPasswordPrintsALinkForTheAccountsSurface(t *testing.T) {
 	t.Setenv("DIFFX_CONSOLE_DATABASE_URL", url)
 	t.Setenv("DIFFX_CONSOLE_APP_URL", "https://diffx.example.com")
 	t.Setenv("DIFFX_CONSOLE_PUBLIC_URL", "https://console.example.com")
-	for username, prefix := range map[string]string{"root": "https://console.example.com/reset-password#t=", "member@example.com": "https://diffx.example.com/reset-password#t="} {
+	for email, prefix := range map[string]string{"root@example.com": "https://console.example.com/reset-password#t=", "member@example.com": "https://diffx.example.com/reset-password#t="} {
 		var stdout, stderr bytes.Buffer
-		if err := run(t.Context(), []string{"user", "reset-password", "--username", username}, &stdout, &stderr); err != nil {
-			t.Fatalf("%s: %v", username, err)
+		if err := run(t.Context(), []string{"user", "reset-password", "--email", email}, &stdout, &stderr); err != nil {
+			t.Fatalf("%s: %v", email, err)
 		}
 		lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
 		if len(lines) != 2 || !strings.HasPrefix(lines[1], prefix) {
-			t.Fatalf("%s: %q", username, stdout.String())
+			t.Fatalf("%s: %q", email, stdout.String())
 		}
 	}
 	var stdout, stderr bytes.Buffer
-	for _, arguments := range [][]string{{"user"}, {"user", "reset-password"}, {"user", "reset-password", "--username", "google"}, {"user", "reset-password", "--username", "nobody"}} {
+	for _, arguments := range [][]string{{"user"}, {"user", "reset-password"}, {"user", "reset-password", "--email", "google@example.com"}, {"user", "reset-password", "--email", "nobody@example.com"}} {
 		if err := run(t.Context(), arguments, &stdout, &stderr); err == nil {
 			t.Fatalf("%v succeeded", arguments)
 		}
 	}
-	if err := run(t.Context(), []string{"user", "reset-password", "--username", "google"}, &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "no password account named google") {
+	if err := run(t.Context(), []string{"user", "reset-password", "--email", "google@example.com"}, &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "no password account with email google@example.com") {
 		t.Fatalf("Google account: %v", err)
 	}
 }

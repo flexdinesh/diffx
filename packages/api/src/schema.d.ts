@@ -79,7 +79,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Distributed only. Google redirects the browser here; the state and the flow cookie authenticate it, so it accepts cross-site navigation. Every outcome redirects to the app; failures add `?signin=` with `cancelled`, `no-account`, `invite-mismatch`, `invite-invalid` or `failed`. A Google account is identified by its subject, so a changed email keeps the account. */
+    /** @description Distributed only. Google redirects the browser here; the state and the flow cookie authenticate it, so it accepts cross-site navigation. Every outcome redirects to the app; failures add `?signin=` with `cancelled`, `no-account`, `invite-mismatch`, `invite-invalid`, `email-taken` (another account has the email) or `failed`. A Google account is identified by its subject, so a changed email keeps the account. */
     get: operations["completeGoogleSignIn"];
     put?: never;
     post?: never;
@@ -936,9 +936,8 @@ export interface components {
     };
     AccountUser: {
       id: string;
-      username: string;
-      /** @description The account email submitted at password signup or last reported by Google. Null for legacy password accounts; a submitted email is not verified. */
-      email: string | null;
+      /** @description The email that identifies the account, submitted at password signup or last reported by Google. A submitted email is not verified. */
+      email: string;
       /**
        * @description How the account signs in, fixed when it was created.
        * @enum {string}
@@ -979,8 +978,8 @@ export interface components {
       password: string;
     };
     PasswordCredentials: {
-      /** @description Account email, or the username of an existing legacy account. */
-      username: string;
+      /** @description Account email, compared case-insensitively. */
+      email: string;
       password: string;
     };
     AccountToken: {
@@ -1830,7 +1829,7 @@ export interface operations {
         };
         content: {
           "application/json": {
-            username: string;
+            email: string;
           };
         };
       };

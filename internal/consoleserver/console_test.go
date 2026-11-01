@@ -69,29 +69,32 @@ func signedIn(t *testing.T, w *httptest.ResponseRecorder) (*http.Cookie, string)
 	return nil, ""
 }
 
-func login(t *testing.T, handler http.Handler, username string) (*http.Cookie, string) {
+// email names a fixture account.
+func email(name string) string { return name + "@example.com" }
+
+func login(t *testing.T, handler http.Handler, name string) (*http.Cookie, string) {
 	t.Helper()
-	return signedIn(t, request(handler, "POST", "/api/v1/auth/login", `{"username":"`+username+`","password":"`+testPassword+`"}`, nil, ""))
+	return signedIn(t, request(handler, "POST", "/api/v1/auth/login", `{"email":"`+email(name)+`","password":"`+testPassword+`"}`, nil, ""))
 }
 
-// passwordMember preserves a legacy password member fixture.
-func passwordMember(t *testing.T, store *pgstore.Store, username string) identityservice.Account {
+// passwordMember stores a password member named name@example.com.
+func passwordMember(t *testing.T, store *pgstore.Store, name string) identityservice.Account {
 	t.Helper()
-	return testsupport.RemotePasswordAccount(t, store, username, testPassword)
+	return testsupport.RemotePasswordAccount(t, store, email(name), testPassword)
 }
 
-func accountID(t *testing.T, handler http.Handler, cookie *http.Cookie, username string) string {
+func accountID(t *testing.T, handler http.Handler, cookie *http.Cookie, name string) string {
 	t.Helper()
 	w := request(handler, "GET", "/api/v1/accounts", "", cookie, "")
 	if w.Code != 200 {
 		t.Fatalf("accounts: %d %s", w.Code, w.Body.String())
 	}
 	for _, account := range decode[struct{ Accounts []accountJSON }](t, w).Accounts {
-		if account.Username == username {
+		if account.Email == email(name) {
 			return account.ID
 		}
 	}
-	t.Fatalf("no account %s", username)
+	t.Fatalf("no account %s", name)
 	return ""
 }
 
@@ -106,7 +109,7 @@ func TestSetupCreatesTheFirstAdminOnce(t *testing.T) {
 	if err != nil || secret == "" {
 		t.Fatalf("prepare: %v", err)
 	}
-	if w := request(handler, "POST", "/api/v1/setup", `{"token":"`+secret+`","username":"root","password":"`+testPassword+`"}`, nil, ""); w.Code != 400 || !strings.Contains(w.Body.String(), "valid email address") {
+	if w := request(handler, "POST", "/api/v1/setup", `{"token":"`+secret+`","password":"`+testPassword+`"}`, nil, ""); w.Code != 400 || !strings.Contains(w.Body.String(), "valid email address") {
 		t.Fatalf("setup without email: %d %s", w.Code, w.Body.String())
 	}
 	if w := request(handler, "POST", "/api/v1/setup", `{"token":"wrong","email":"root@example.com","password":"`+testPassword+`"}`, nil, ""); w.Code != 404 {
@@ -114,7 +117,7 @@ func TestSetupCreatesTheFirstAdminOnce(t *testing.T) {
 	}
 	cookie, _ := signedIn(t, request(handler, "POST", "/api/v1/setup", `{"token":"`+secret+`","email":"root@example.com","password":"`+testPassword+`"}`, nil, ""))
 	result := decode[bootstrapJSON](t, request(handler, "GET", "/api/v1/bootstrap", "", cookie, ""))
-	if result.SetupRequired || result.Admin == nil || result.Admin.Username != "root@example.com" || result.Admin.Method != identityservice.MethodPassword {
+	if result.SetupRequired || result.Admin == nil || result.Admin.Email != "root@example.com" || result.Admin.Method != identityservice.MethodPassword {
 		t.Fatalf("admin bootstrap: %+v", result)
 	}
 	if w := request(handler, "POST", "/api/v1/setup", `{"token":"`+secret+`","email":"second@example.com","password":"`+testPassword+`"}`, nil, ""); w.Code != 404 {
@@ -127,9 +130,9 @@ func TestSetupCreatesTheFirstAdminOnce(t *testing.T) {
 
 func TestConsoleAdmitsOnlyAdmins(t *testing.T) {
 	store, handler := consoleHandler(t, testSettings)
-	testsupport.RemoteAdmin(t, store, "root", testPassword)
+	testsupport.RemoteAdmin(t, store, email("root"), testPassword)
 	passwordMember(t, store, "member")
-	if w := request(handler, "POST", "/api/v1/auth/login", `{"username":"member","password":"`+testPassword+`"}`, nil, ""); w.Code != 401 {
+	if w := request(handler, "POST", "/api/v1/auth/login", `{"email":"member@example.com","password":"`+testPassword+`"}`, nil, ""); w.Code != 401 {
 		t.Fatalf("member login: %d", w.Code)
 	}
 	// A member's app session never authenticates here.
@@ -163,7 +166,7 @@ func TestConsoleAdmitsOnlyAdmins(t *testing.T) {
 
 func TestAdminActionsOnAccounts(t *testing.T) {
 	store, handler := consoleHandler(t, testSettings)
-	testsupport.RemoteAdmin(t, store, "root", testPassword)
+	testsupport.RemoteAdmin(t, store, email("root"), testPassword)
 	passwordMember(t, store, "member")
 	root, csrf := login(t, handler, "root")
 	rootID, memberID := accountID(t, handler, root, "root"), accountID(t, handler, root, "member")
@@ -208,7 +211,7 @@ func TestAdminActionsOnAccounts(t *testing.T) {
 
 func TestInvitesLinkToTheApp(t *testing.T) {
 	store, handler := consoleHandler(t, testSettings)
-	testsupport.RemoteAdmin(t, store, "root", testPassword)
+	testsupport.RemoteAdmin(t, store, email("root"), testPassword)
 	testsupport.RemoteAccount(t, store, "taken")
 	root, csrf := login(t, handler, "root")
 	// Invites are member-only; admins come from setup or promotion.
@@ -243,7 +246,7 @@ func TestInvitesLinkToTheApp(t *testing.T) {
 
 func TestSettingsAreStoredAndAnnounced(t *testing.T) {
 	store, handler := consoleHandler(t, testSettings)
-	testsupport.RemoteAdmin(t, store, "root", testPassword)
+	testsupport.RemoteAdmin(t, store, email("root"), testPassword)
 	passwordMember(t, store, "member")
 	if w := request(handler, "GET", "/api/v1/settings", "", nil, ""); w.Code != 401 {
 		t.Fatalf("anonymous settings: %d", w.Code)
@@ -300,7 +303,7 @@ func TestSettingsAreStoredAndAnnounced(t *testing.T) {
 // signedInMember signs a password member in to the app and returns its session cookie.
 func signedInMember(t *testing.T, store *pgstore.Store) (*http.Cookie, string) {
 	t.Helper()
-	session, err := testsupport.Identity(t, store).Login(t.Context(), identityservice.AudienceMembers, "member", testPassword)
+	session, err := testsupport.Identity(t, store).Login(t.Context(), identityservice.AudienceMembers, email("member"), testPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +312,7 @@ func signedInMember(t *testing.T, store *pgstore.Store) (*http.Cookie, string) {
 
 func TestResetLinksOpenWhereTheAccountSignsIn(t *testing.T) {
 	store, handler := consoleHandler(t, testSettings)
-	testsupport.RemoteAdmin(t, store, "root", testPassword)
+	testsupport.RemoteAdmin(t, store, email("root"), testPassword)
 	passwordMember(t, store, "member")
 	passwordMember(t, store, "deputy")
 	testsupport.RemoteAccount(t, store, "google")
@@ -318,8 +321,8 @@ func TestResetLinksOpenWhereTheAccountSignsIn(t *testing.T) {
 	if w := request(handler, "PUT", "/api/v1/accounts/"+deputyID+"/admin", `{"admin":true}`, root, csrf); w.Code != 204 {
 		t.Fatalf("promote: %d", w.Code)
 	}
-	reset := func(username string) (int, string) {
-		w := request(handler, "POST", "/api/v1/accounts/"+accountID(t, handler, root, username)+"/password-reset", "", root, csrf)
+	reset := func(name string) (int, string) {
+		w := request(handler, "POST", "/api/v1/accounts/"+accountID(t, handler, root, name)+"/password-reset", "", root, csrf)
 		if w.Code != 201 {
 			return w.Code, ""
 		}
@@ -345,7 +348,7 @@ func TestResetLinksOpenWhereTheAccountSignsIn(t *testing.T) {
 	deputy, _ := login(t, handler, "deputy")
 	secret := strings.TrimPrefix(link, "https://console.example.com/reset-password#t=")
 	lookup := request(handler, "POST", "/api/v1/password-reset/lookup", `{"token":"`+secret+`"}`, nil, "")
-	if lookup.Code != 200 || decode[struct{ Username string }](t, lookup).Username != "deputy" {
+	if lookup.Code != 200 || decode[struct{ Email string }](t, lookup).Email != "deputy@example.com" {
 		t.Fatalf("lookup: %d %s", lookup.Code, lookup.Body.String())
 	}
 	if w := request(handler, "POST", "/api/v1/password-reset", `{"token":"`+secret+`","password":"console-password-000002"}`, nil, ""); w.Code != 204 {
@@ -357,12 +360,12 @@ func TestResetLinksOpenWhereTheAccountSignsIn(t *testing.T) {
 	if w := request(handler, "POST", "/api/v1/password-reset", `{"token":"`+secret+`","password":"console-password-000003"}`, nil, ""); w.Code != 404 {
 		t.Fatalf("reused link: %d", w.Code)
 	}
-	signedIn(t, request(handler, "POST", "/api/v1/auth/login", `{"username":"deputy","password":"console-password-000002"}`, nil, ""))
+	signedIn(t, request(handler, "POST", "/api/v1/auth/login", `{"email":"deputy@example.com","password":"console-password-000002"}`, nil, ""))
 }
 
 func TestPasswordChangeAndLogout(t *testing.T) {
 	store, handler := consoleHandler(t, testSettings)
-	testsupport.RemoteAdmin(t, store, "root", testPassword)
+	testsupport.RemoteAdmin(t, store, email("root"), testPassword)
 	root, csrf := login(t, handler, "root")
 	if w := request(handler, "PUT", "/api/v1/account/password", `{"currentPassword":"wrong-password-0001","newPassword":"console-password-000002"}`, root, csrf); w.Code != 403 {
 		t.Fatalf("wrong current: %d", w.Code)
@@ -373,7 +376,7 @@ func TestPasswordChangeAndLogout(t *testing.T) {
 	if w := request(handler, "GET", "/api/v1/accounts", "", root, ""); w.Code != 401 {
 		t.Fatalf("session after change: %d", w.Code)
 	}
-	again, csrf := signedIn(t, request(handler, "POST", "/api/v1/auth/login", `{"username":"root","password":"console-password-000002"}`, nil, ""))
+	again, csrf := signedIn(t, request(handler, "POST", "/api/v1/auth/login", `{"email":"root@example.com","password":"console-password-000002"}`, nil, ""))
 	if w := request(handler, "POST", "/api/v1/auth/logout", "", again, csrf); w.Code != 204 {
 		t.Fatalf("logout: %d", w.Code)
 	}
@@ -384,7 +387,7 @@ func TestPasswordChangeAndLogout(t *testing.T) {
 
 func TestTransportBoundaries(t *testing.T) {
 	_, handler := consoleHandler(t, testSettings)
-	r := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(`{"username":"root","password":"x"}`))
+	r := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(`{"email":"root@example.com","password":"x"}`))
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Origin", "https://evil.example.com")
 	w := httptest.NewRecorder()
@@ -500,7 +503,7 @@ func TestGoogleSignsInExistingAdminsOnly(t *testing.T) {
 	settings := testSettings
 	settings.Google = &GoogleSettings{ClientID: "google-client", ClientSecret: "google-secret", authorizeURL: fake.server.URL + "/auth", tokenURL: fake.server.URL + "/token"}
 	store, handler := consoleHandler(t, settings)
-	testsupport.RemoteAdmin(t, store, "root", testPassword)
+	testsupport.RemoteAdmin(t, store, email("root"), testPassword)
 	member := testsupport.RemoteAccount(t, store, "member")
 	if result := decode[bootstrapJSON](t, request(handler, "GET", "/api/v1/bootstrap", "", nil, "")); !result.GoogleEnabled {
 		t.Fatal("Google not offered")
@@ -531,7 +534,7 @@ func TestGoogleSignsInExistingAdminsOnly(t *testing.T) {
 		}
 	}
 	result := decode[bootstrapJSON](t, request(handler, "GET", "/api/v1/bootstrap", "", session, ""))
-	if result.Admin == nil || result.Admin.Method != identityservice.MethodGoogle || result.Admin.Email == nil || *result.Admin.Email != "member@example.com" {
+	if result.Admin == nil || result.Admin.Method != identityservice.MethodGoogle || result.Admin.Email != "member@example.com" {
 		t.Fatalf("Google admin: %+v", result)
 	}
 }
@@ -558,7 +561,7 @@ func TestGoogleSetupCreatesOrPromotesTheFirstAdmin(t *testing.T) {
 		var names []string
 		for _, account := range accounts {
 			if account.Admin {
-				names = append(names, account.Username+":"+string(account.Method))
+				names = append(names, account.Email+":"+string(account.Method))
 			}
 		}
 		return names
@@ -570,7 +573,7 @@ func TestGoogleSetupCreatesOrPromotesTheFirstAdmin(t *testing.T) {
 		if w := request(handler, "POST", "/api/v1/setup/google", body("wrong"), nil, ""); w.Code != 404 {
 			t.Fatalf("wrong secret: %d", w.Code)
 		}
-		// Google must verify the email that names the admin.
+		// Google must verify the email that identifies the admin.
 		if w := fake.flow(t, handler, "/api/v1/setup/google", body(secret), "unverified", "subject-root", "root@example.com", false); w.Header().Get("Location") != "/?signin=failed" {
 			t.Fatalf("unverified: %s", w.Header().Get("Location"))
 		}
@@ -578,7 +581,7 @@ func TestGoogleSetupCreatesOrPromotesTheFirstAdmin(t *testing.T) {
 		if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/" {
 			t.Fatalf("setup: %d %s", w.Code, w.Header().Get("Location"))
 		}
-		if got := admins(t, store); len(got) != 1 || got[0] != "root:google" {
+		if got := admins(t, store); len(got) != 1 || got[0] != "root@example.com:google" {
 			t.Fatalf("admins: %v", got)
 		}
 		if w := request(handler, "POST", "/api/v1/setup/google", body(secret), nil, ""); w.Code != 404 {
@@ -595,7 +598,7 @@ func TestGoogleSetupCreatesOrPromotesTheFirstAdmin(t *testing.T) {
 		if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/" {
 			t.Fatalf("setup: %d %s", w.Code, w.Header().Get("Location"))
 		}
-		if got := admins(t, store); len(got) != 1 || got[0] != "member:google" {
+		if got := admins(t, store); len(got) != 1 || got[0] != "member@example.com:google" {
 			t.Fatalf("admins: %v", got)
 		}
 		if again := fake.flow(t, handler, "/api/v1/auth/google", "{}", "again", "subject-"+member.ID, "member@example.com", true); again.Header().Get("Location") != "/" {
