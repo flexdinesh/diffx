@@ -11,6 +11,8 @@ task.source_freshness_hash_contents = true
 [env]
 # Use the mise Go pin; never download a toolchain go.mod asks for.
 GOTOOLCHAIN = "local"
+# Never let a Dagger bootstrap remove another repository's engine.
+DAGGER_LEAVE_OLD_ENGINE = "true"
 
 [tools]
 go = "1.27.3"
@@ -205,24 +207,34 @@ DIFFX_API_URL=http://127.0.0.1:7980 pnpm dev:web
 '''
 
 [tasks."test:go"]
-description = "Run Go tests"
-run = "pnpm test:go"
+description = "Run isolated Go tests and vet"
+run = [{ task = "check:go" }]
 
 [tasks."test:race"]
-description = "Run Go race tests (requires a C compiler)"
+description = "Run isolated Go race tests and vet"
+run = [{ task = "check:go" }]
+
+[tasks."test:exec:go"]
+description = "Internal Go tests; use test:go for isolation"
+hide = true
+run = "go test -timeout 3m ./..."
+
+[tasks."test:exec:race"]
+description = "Internal Go race tests; use test:race for isolation"
+hide = true
 run = "go test -race -timeout 5m ./..."
 
 [tasks."test:conformance"]
-description = "Build the CLI and smoke-test its API contract"
-depends = ["build"]
-run = "pnpm test:conformance"
+description = "Run isolated API conformance tests"
+run = [{ task = "check:conformance" }]
 
-[tasks."check:static"]
+[tasks."check:exec:static"]
 description = "Check TypeScript, JavaScript lint, and formatting"
-run = ["mise tasks validate", "pnpm check:static"]
+hide = true
+run = ["mise tasks validate", "pnpm check:exec:static"]
 
-[tasks."check:go:static"]
-description = "Check Go formatting and vet"
+[tasks."check:format:go"]
+description = "Verify Go formatting on the host"
 shell = "bash -e -o pipefail -c"
 run = '''
 unformatted=$(git ls-files -z '*.go' | xargs -0 gofmt -l)
@@ -230,19 +242,20 @@ if [ -n "$unformatted" ]; then
   printf '%s\n' "$unformatted"
   exit 1
 fi
-go vet ./...
 '''
 
-[tasks."check:go"]
-description = "Check Go formatting, vet, and tests"
-run = [{ task = "check:go:static" }, { task = "test:go" }]
-
 [tasks."check:js"]
-description = "Run JavaScript checks, build, and test suites"
-run = "pnpm check:js"
+description = "Run host static checks and isolated JavaScript suites"
+run = [
+  { task = "check:static" },
+  { task = "check:unit" },
+  { task = "check:browser" },
+  { task = "check:release" },
+]
 
-[tasks."check:generated"]
+[tasks."check:exec:generated"]
 description = "Reject uncommitted generated API types, Postgres queries and plugins"
+hide = true
 shell = "bash -e -o pipefail -c"
 run = '''
 if ! sqlc diff -f internal/pgstore/sqlc.yaml; then
@@ -257,41 +270,28 @@ if [ -n "$generated_changes" ]; then
 fi
 '''
 
-[tasks."check:ci"]
-description = "Lightweight CI: build, static checks, generated drift, API smoke test"
-run = [
-  { task = "build" },
-  { task = "plugins:build" },
-  { tasks = [
-    "check:static",
-    "check:go:static",
-  ] },
-  { task = "check:generated" },
-  "pnpm test:conformance",
-]
-
 [tasks."test:js"]
 description = "Run JavaScript unit and browser suites"
-run = "pnpm test"
+run = [{ task = "check:unit" }, { task = "check:browser" }]
 
 [tasks."test:release"]
 description = "Run release-tool tests"
-run = "pnpm test:release"
+run = [{ task = "check:release" }]
 
 [tasks.check]
-description = "Run all repository checks, serialized across linked worktrees"
+description = "Run host static checks and isolated tests against working files"
+tools = { "aqua:dagger/dagger" = "0.21.11" }
 shell = "bash -e -o pipefail -c"
-# Only bounded runner compilation precedes admission. The entire check pipeline
-# runs under the Git-common-directory lock, independently for every invocation.
-run = "GOMAXPROCS=2 go build -p 2 -o dist/check-runner ./tools/check-runner && exec dist/check-runner check"
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner check"
 
 [tasks."test:contracts"]
 description = "Build and run architecture, boundary, shared-rule, Go and real HTTP contracts"
-depends = ["build"]
 run = [
+  { task = "check:boundaries" },
+  { task = "check:design" },
   { task = "test:contracts:rules" },
   { task = "test:go" },
-  "pnpm test:conformance",
+  { task = "check:conformance" },
 ]
 
 [tasks."check:boundaries"]
@@ -303,20 +303,73 @@ description = "Check frontend design-token use"
 run = "node tools/check-design.ts"
 
 [tasks."test:contracts:rules"]
-description = "Run dependency, design-token and shared-rule contracts; Go contract tests run with the Go suite"
-run = [
-  { tasks = [
-    "check:boundaries",
-    "check:design",
-  ] },
-  "node --test --test-reporter=dot test/contracts/*.test.ts",
-]
+description = "Run isolated shared-rule contract tests"
+run = [{ task = "check:contracts" }]
 
-# Race tests run the same Go suite with the detector, replacing test:go.
-[tasks."check:push"]
-description = "Full pre-push checks, race tests, and generated-file consistency"
+[tasks."check:exec:contracts"]
+description = "Internal shared-rule contract tests"
+hide = true
+run = "node --test --test-reporter=dot test/contracts/*.test.ts"
+
+[tasks."check:pr"]
+description = "Validate clean committed HEAD before creating or updating a PR"
+alias = "check:push"
+tools = { "aqua:dagger/dagger" = "0.21.11" }
 shell = "bash -e -o pipefail -c"
-run = "GOMAXPROCS=2 go build -p 2 -o dist/check-runner ./tools/check-runner && exec dist/check-runner check:push"
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner pr"
+
+[tasks."check:status"]
+description = "Report matching validation records for committed HEAD"
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner status"
+
+[tasks."check:engine:setup"]
+description = "Explicitly provision the owned diffx validation engine"
+tools = { "aqua:dagger/dagger" = "0.21.11" }
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner engine-setup"
+
+[tasks."check:static"]
+description = "Run static checks on a private host snapshot; no Docker required"
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group static"
+
+[tasks."check:go"]
+description = "Run Go tests in an isolated snapshot"
+tools = { "aqua:dagger/dagger" = "0.21.11" }
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group go"
+
+[tasks."check:contracts"]
+description = "Run architecture and shared-rule contracts in isolation"
+tools = { "aqua:dagger/dagger" = "0.21.11" }
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group contracts"
+
+[tasks."check:unit"]
+description = "Run JavaScript unit, DOM and plugin tests in isolation"
+tools = { "aqua:dagger/dagger" = "0.21.11" }
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group unit"
+
+[tasks."check:browser"]
+description = "Run web and console browser tests in isolation"
+tools = { "aqua:dagger/dagger" = "0.21.11" }
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group browser"
+
+[tasks."check:conformance"]
+description = "Run API conformance tests in isolation"
+tools = { "aqua:dagger/dagger" = "0.21.11" }
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group conformance"
+
+[tasks."check:docs"]
+description = "Build and check the docs site in isolation"
+tools = { "aqua:dagger/dagger" = "0.21.11" }
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group docs"
+
+[tasks."check:release"]
+description = "Run release-tool tests in isolation"
+tools = { "aqua:dagger/dagger" = "0.21.11" }
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group release"
+
+[tasks."check:generated"]
+description = "Regenerate and check API, SQL and plugin outputs in isolation"
+tools = { "aqua:dagger/dagger" = "0.21.11" }
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group generated"
 
 [tasks."release:publish"]
 description = "Publish the checked-out release tag with GoReleaser"

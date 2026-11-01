@@ -6,10 +6,13 @@
   "scripts": {
     "build": "vite build --logLevel warn",
     "dev": "vite",
-    "test": "pnpm test:unit && pnpm test:browser",
-    "test:unit": "node --test --test-reporter=dot test/*.test.ts && pnpm test:dom",
-    "test:dom": "node --import tsx --import ./test/dom/setup.ts --test --test-reporter=dot test/dom/*.test.ts",
-    "test:browser": "playwright test",
+    "test": "mise -C ../.. run test:js",
+    "test:unit": "mise -C ../.. run check:unit",
+    "test:dom": "mise -C ../.. run check:unit",
+    "test:browser": "mise -C ../.. run check:browser",
+    "test:exec:unit": "node --test --test-reporter=dot test/*.test.ts && pnpm test:exec:dom",
+    "test:exec:dom": "node --import tsx --import ./test/dom/setup.ts --test --test-reporter=dot test/dom/*.test.ts",
+    "test:exec:browser": "playwright test",
     "test:browser:install": "playwright install chromium",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.sw.json"
   },

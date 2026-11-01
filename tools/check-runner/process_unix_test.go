@@ -103,16 +103,14 @@ func TestCommandExitCode(t *testing.T) {
 	}
 }
 
-func TestCancellationStopsDescendantsBeforeUnlock(t *testing.T) {
-	root := repository(t)
+func TestCancellationStopsDescendantsBeforeReturn(t *testing.T) {
+	root := t.TempDir()
 	heartbeat := filepath.Join(t.TempDir(), "heartbeat")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- withLock(ctx, root, func() error {
-			return runCommand(ctx, root, append(os.Environ(), "DIFFX_CHECK_TEST_HELPER=parent", "DIFFX_CHECK_TEST_HEARTBEAT="+heartbeat), []string{os.Args[0], "-test.run=^TestCommandHelper$"}, os.Stdout, os.Stderr)
-		})
+		done <- runCommand(ctx, root, append(os.Environ(), "DIFFX_CHECK_TEST_HELPER=parent", "DIFFX_CHECK_TEST_HEARTBEAT="+heartbeat), []string{os.Args[0], "-test.run=^TestCommandHelper$"}, os.Stdout, os.Stderr)
 	}()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -133,23 +131,16 @@ func TestCancellationStopsDescendantsBeforeUnlock(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("cancellation did not finish")
 	}
-	lockCtx, stop := context.WithTimeout(context.Background(), time.Second)
-	defer stop()
-	if err := withLock(lockCtx, root, func() error {
-		before, err := os.ReadFile(heartbeat)
-		if err != nil {
-			return err
-		}
-		time.Sleep(100 * time.Millisecond)
-		after, err := os.ReadFile(heartbeat)
-		if err != nil {
-			return err
-		}
-		if string(before) != string(after) {
-			t.Error("descendant continued running after lock release")
-		}
-		return nil
-	}); err != nil {
+	before, err := os.ReadFile(heartbeat)
+	if err != nil {
 		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	after, err := os.ReadFile(heartbeat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Error("descendant continued running after command cancellation returned")
 	}
 }

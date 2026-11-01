@@ -12,7 +12,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --test --test-reporter=dot test/*.test.ts"
+    "test": "mise -C ../.. run check:unit",
+    "test:exec": "node --test --test-reporter=dot test/*.test.ts"
   },
   "devDependencies": {
     "@opencode/plugin": "catalog:"

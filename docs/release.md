@@ -7,11 +7,13 @@ Releases. It checks out the latest `main` when the run starts and marks the
 release as GitHub's latest stable release. Dispatches from other branches are
 skipped.
 
-Full test suites run locally through the pre-push hook; CI never runs it.
+Checks and test suites run locally through explicit `mise run check:pr` before
+creating or updating PRs, including after rebasing onto changed upstream content.
+GitHub Actions does not validate PRs.
 Workflows set `HUSKY=0`, and the `release:edge` and `release:tag` pushes pass
-`--no-verify`. Release verification runs static checks, rebuilds generated
-files, rejects drift, and smoke-tests the distribution before publishing, using
-the same `mise run check:ci` task as PR CI.
+`--no-verify`. Publishing stages embedded web assets, compiles release binaries
+with GoReleaser, generates checksums, and validates the Homebrew formula syntax.
+It does not repeat lint, type checks, generated-file verification or test suites.
 Release steps run through `release:*` mise tasks and pnpm scripts; GoReleaser
 is installed only by `mise run release:publish`.
 
@@ -29,7 +31,7 @@ Required repository secret:
 
 1. Merge release-ready code to `main`.
 2. Run the **Release** workflow with `main` selected. It requires no inputs.
-3. The workflow verifies the repository, commits the embedded web assets on top
+3. The workflow builds and commits the embedded web assets on top
    of the `main` tip as `release: vX.Y.Z`, pushes only the tag, and publishes
    the GitHub Release with GoReleaser from that release commit.
 4. It generates `Formula/diffx.rb` and opens or updates a pull request in
@@ -62,13 +64,13 @@ checks before merge.
 
 ## Development installs
 
-Install the latest `main` commit that passed CI, including unreleased changes:
+Install the latest `main` commit published to edge, including unreleased changes:
 
 ```sh
 go install github.com/flexdinesh/diffx/cmd/diffx@edge
 ```
 
-After the `checks` job passes on a push to `main`, CI's `edge` job builds the web
+On a push to `main`, the **Edge** workflow builds the web
 assets, commits them on top of that `main` commit, and force-pushes the result to
 the `edge` branch with a lease. Runs are serialized and superseded runs are
 cancelled; a run whose commit `edge` already includes is skipped. When the latest
@@ -101,10 +103,10 @@ directory is ignored on `main`, which avoids recommitting the bundle on every UI
 change. CI commits it only on installable refs, each one commit on top of `main`
 created with `tools/asset-commit.sh`:
 
-| Ref      | Trigger                              | Commit                                        |
-| -------- | ------------------------------------ | --------------------------------------------- |
-| `vX.Y.Z` | Manual **Release** workflow          | `release: vX.Y.Z`: `main` tip plus assets     |
-| `edge`   | Push to `main` after `checks` passes | `edge: <sha>`: that `main` commit plus assets |
+| Ref      | Trigger                     | Commit                                        |
+| -------- | --------------------------- | --------------------------------------------- |
+| `vX.Y.Z` | Manual **Release** workflow | `release: vX.Y.Z`: `main` tip plus assets     |
+| `edge`   | Push to `main`              | `edge: <sha>`: that `main` commit plus assets |
 
 Release archives are built from the release commit, so archives and source
 installs share commit identity. Version selection and reruns compare a tag's
@@ -155,7 +157,7 @@ GitHub integration is enabled. Images are published even before the k8s-cluster
 manifests are provisioned. Woodpecker must trust the repository for the Docker
 socket and hold a `KUBECONFIG` secret with deployment access to both namespaces.
 Pushes to `main` deploy staging without waiting for GitHub Actions; verification
-stays in GitHub Actions and the local pre-push hook. Staging and prod must drop
+is performed through explicit local PR validation. Staging and prod must drop
 `DIFFX_SERVER_SIGNUP` and `DIFFX_SERVER_PASSWORD_SIGNIN` before deploying a
 build without them, since the server refuses to start while either is set; set
 admission in the console's Settings page after deploy.

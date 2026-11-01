@@ -25,7 +25,7 @@ Or install a specific stable version:
 go install github.com/flexdinesh/diffx/cmd/diffx@v0.2.0
 ```
 
-Or install the latest `main` changes that passed CI:
+Or install the latest `main` changes published to edge:
 
 ```sh
 go install github.com/flexdinesh/diffx/cmd/diffx@edge

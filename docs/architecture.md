@@ -5,6 +5,37 @@ canonical record of package boundaries and architectural decisions.
 [System semantics](system.md) covers identities and durability;
 [development](development.md) covers commands and checks.
 
+## Local validation
+
+`tools/check-runner` owns immutable source capture, group selection, successful
+validation records, reporting and Dagger orchestration. Mise owns the underlying
+commands. Tests and stateful checks run in private Linux x64 containers. Static
+checks run on the host against a private temporary source/dependency snapshot,
+without requiring Docker. Hosted workflows publish releases and edge builds;
+they do not run PR validation.
+A PR gate validates clean committed HEAD,
+whereas interactive checks snapshot working files without certifying HEAD.
+
+Preparation and build outputs are immutable reusable inputs. Every executing
+group owns its writable files and temporary state. Container groups own their test services. Browser clients
+and fixture servers share the group's container; application ports are never
+published to the host. Postgres is supplied through a private Dagger service
+binding. Existing per-test database isolation still applies within each group.
+
+Successful results are reusable only for matching source, configuration,
+toolchain and runner inputs. Commit identity records provenance but is not a
+cache key. Host static results also include the installed Go, Node and pnpm
+binary digests. Unknown inputs invalidate conservatively; failed and cancelled runs
+never become successful validation records. Generated-file checks compare
+explicit generator outputs with the submitted baseline.
+
+One explicitly managed, version-pinned engine and dedicated cache volume serve
+this repository's worktrees. Engine lifetime is independent of invocation
+lifetime: cancellation releases the session, never the shared engine. Setup
+rejects foreign or ambiguous ownership and does not replace existing resources.
+Engine upgrades and cleanup require explicit coordination; automatic provisioning
+and broad pruning are forbidden.
+
 ## Modes are compositions
 
 | Concern    | Local `diffx [PATH]`                                                | Remote `diffx-server`                    |
@@ -225,19 +256,19 @@ primary failure.
 `mise run test:contracts` runs production dependency checks, frontend token
 guards, shared Go/TypeScript comment examples, the Go suite (including
 storage/lifecycle/queue/transport boundary tests) and real HTTP schema
-validation. Local `mise run check` and pre-push run these checks alongside the
-web unit/DOM/browser, plugin and docs-site suites. Full checks and pre-push keep
-critical suites mandatory and serialize across linked worktrees using the Git
-common directory and `processlock`. Heavy phases run sequentially, Chromium uses
-one worker, and Go parallelism is bounded. The runner owns child cancellation and
-cleanup before releasing the lock; failed phases fail the invocation. Build output
-is reused within the invocation. Standalone suite commands remain available and
-are outside that full-check lock.
-`test:contracts:rules`
-holds only the non-Go guards, because `check` and pre-push already run every Go
-package; no hand-maintained package list can miss a new boundary test. CI and
-release verification retain static checks, builds, generated-file consistency
-and the distribution API smoke test; full suites and guards stay local.
+validation. Local `mise run check` and explicit `check:pr` cover these checks
+alongside web unit/DOM/browser, plugin and docs-site suites. Required check groups
+either execute on their declared host/container executor or reuse matching successful validation.
+Groups run sequentially; Chromium uses one worker and Go parallelism is bounded.
+Two participating invocations may run concurrently through user-level admission.
+The runner owns cancellation and session cleanup before releasing admission;
+failed groups fail the invocation. Immutable preparation and build outputs are
+reusable. Public mise and pnpm test commands use Dagger; internal `exec` commands
+remain available for container execution.
+`test:contracts:rules` holds only the non-Go guards, because aggregate checks run every Go
+package; no hand-maintained package list can miss a new boundary test. All static
+checks, generated-file verification and test suites stay local. Publishing retains
+the builds, checksums and formula validation needed to produce release artifacts.
 
 `mise run check:boundaries` classifies every package under `cmd/` and `internal/`
 using `tools/check-boundaries`. Unclassified packages, forbidden dependencies and
@@ -258,10 +289,10 @@ The PR template records ownership, contract/mode implications, validation and
 intentional design changes. Change a boundary policy only for a concrete new
 responsibility, updating its rationale and tests in the same PR. Passing checks
 does not establish cohesive modules, correct DRY abstractions or visual quality;
-those remain review responsibilities. `main` requires the GitHub Actions `checks`
-status through the `ci-required` ruleset. That status covers lightweight CI;
-architecture/design guards and full-suite validation are enforced locally by
-pre-push and recorded in the PR evidence.
+those remain review responsibilities. `main` requires no hosted validation status.
+Architecture/design guards and full-suite validation run locally through explicit
+`mise run check:pr` and are recorded in the PR evidence. Pushes do not trigger
+the full suite, and local validation is not remote enforcement.
 
 ## Adapter and schema evolution
 

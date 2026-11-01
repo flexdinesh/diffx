@@ -491,10 +491,11 @@ test("feature files render primitives instead of raw form controls", () => {
     }
     const result = spawnSync(
       join(root, "node_modules/.bin/oxlint"),
-      ["-c", ".oxlintrc.json", "apps", "packages"],
+      ["-c", ".oxlintrc.json", "--format", "unix", "apps", "packages"],
       { cwd: directory, encoding: "utf8" },
     );
     const output = result.stdout + result.stderr;
+    assert.equal(result.status, 1, output);
     for (const name of ["ProjectsNav", "row", "Members", "Gallery"])
       assert.match(output, new RegExp(`${name}\\.tsx.*forbid-elements`));
     assert.doesNotMatch(output, /button\.tsx.*forbid-elements/);
