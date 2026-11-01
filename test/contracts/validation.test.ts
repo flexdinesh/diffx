@@ -1,33 +1,36 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
-test("public package test commands enter mise instead of starting host fixtures", () => {
-  for (const path of [
-    "../../package.json",
-    "../../apps/web/package.json",
-    "../../apps/console/package.json",
-    "../../packages/plugin-opencode/package.json",
-    "../../packages/plugin-pi/package.json",
-  ]) {
+const root = new URL("../../", import.meta.url);
+
+function manifests(): string[] {
+  const paths = ["package.json"];
+  for (const parent of ["apps", "packages"]) {
+    for (const entry of readdirSync(new URL(`${parent}/`, root), {
+      withFileTypes: true,
+    })) {
+      if (entry.isDirectory())
+        paths.push(`${parent}/${entry.name}/package.json`);
+    }
+  }
+  return paths;
+}
+
+test("package scripts run JS tooling and never delegate to the mise task runner", () => {
+  for (const path of manifests()) {
     const manifest: unknown = JSON.parse(
-      readFileSync(new URL(path, import.meta.url), "utf8"),
+      readFileSync(new URL(path, root), "utf8"),
     );
     assert.ok(typeof manifest === "object" && manifest !== null);
-    assert.ok("scripts" in manifest);
+    if (!("scripts" in manifest)) continue;
     const scripts = manifest.scripts;
     assert.ok(typeof scripts === "object" && scripts !== null);
     for (const [name, command] of Object.entries(scripts)) {
-      if (
-        (name === "test" || name.startsWith("test:")) &&
-        !name.startsWith("test:exec") &&
-        name !== "test:browser:install"
-      ) {
-        assert.ok(
-          typeof command === "string" && command.startsWith("mise "),
-          `${path} ${name}: route public tests through mise; raw commands belong in test:exec scripts`,
-        );
-      }
+      assert.ok(
+        typeof command === "string" && !/(^|[\s;&|(])mise\s/.test(command),
+        `${path} ${name}: repo tasks belong in mise.toml; package scripts only wrap JS tooling`,
+      );
     }
   }
 });

@@ -67,7 +67,7 @@ build.
 | Start the container server with its bundled Postgres       | `mise run docker:up`             |
 | Stop the container server, preserving its database         | `mise run docker:down`           |
 | Install Playwright Chromium                                | `pnpm test:browser:install`      |
-| Run web unit and browser tests                             | `pnpm test:web`                  |
+| Run web/console unit and browser tests                     | `mise run test:js`               |
 | Run Go tests                                               | `mise run test:go`               |
 | Run boundary and shared-rule contracts                     | `mise run test:contracts`        |
 | Check production package dependencies                      | `mise run check:boundaries`      |
@@ -87,7 +87,7 @@ testcontainers' reaper) and gives every test its own database cloned from a
 template migrated once per schema. Set `DIFFX_TEST_DATABASE_URL` to a
 `postgres://` URL whose role may create databases to use a running server
 instead, such as the development Postgres. Local-mode tests stay on SQLite.
-Direct `go test` commands run on the host. Public mise and pnpm test tasks supply a
+Direct `go test` commands run on the host. Public mise test tasks supply a
 private Postgres service through Dagger and do not inherit a host
 `DIFFX_TEST_DATABASE_URL`.
 
@@ -135,8 +135,7 @@ PR validation requires clean tracked files and no non-ignored untracked files.
 It validates captured HEAD and rechecks the checkout before reporting readiness.
 Run `check:status` immediately before PR creation/update and confirm HEAD has not
 changed since validation. PR creation remains separate. There is no full-suite pre-push hook;
-`mise run check:push` and `pnpm check:push` remain aliases for explicit PR
-validation. Agents must run `check:pr` before creating or updating a PR. Local
+`mise run check:push` remains an alias for explicit PR validation. Agents must run `check:pr` before creating or updating a PR. Local
 commands and validation records are bypassable and are not remote enforcement.
 
 Use `mise run check:<group>` for targeted checks. Groups are `static`,
@@ -144,12 +143,11 @@ Use `mise run check:<group>` for targeted checks. Groups are `static`,
 `generated`. They cover the existing static checks, architecture guards, Go
 tests, web/console unit and DOM tests, plugins, browser suites, API contracts,
 docs build, release tooling, and generated API/SQL/plugin consistency. PR
-validation uses Go's race detector. Public mise `test:*` and pnpm test scripts,
-including workspace package scripts, route through these isolated groups.
-Package-specific test aliases currently run the containing unit/browser group.
-Commands containing `exec` are internal implementation details used inside
-containers; they must not call public test wrappers.
-Direct `go test` remains possible for native debugging but bypasses isolation.
+validation uses Go's race detector. Public mise `test:*` tasks route through
+these isolated groups. mise is the only task runner: package.json scripts wrap
+JS tooling (build, typecheck, lint, format, raw test runners) and never call
+mise. Groups invoke those scripts and hidden mise `exec` tasks inside
+containers; running them directly, like direct `go test`, bypasses isolation.
 
 The `static` group runs on the host: type checking, lint, format verification,
 Go formatting and read-only architecture/design guards. It installs locked

@@ -6,11 +6,8 @@
   "scripts": {
     "build": "vite build --logLevel warn",
     "dev": "vite",
-    "test": "mise -C ../.. run test:js",
-    "test:dom": "mise -C ../.. run check:unit",
-    "test:browser": "mise -C ../.. run check:browser",
-    "test:exec:dom": "node --import tsx --import ./test/dom/setup.ts --test --test-reporter=dot test/dom/*.test.ts",
-    "test:exec:browser": "playwright test",
+    "test:dom": "node --import tsx --import ./test/dom/setup.ts --test --test-reporter=dot test/dom/*.test.ts",
+    "test:browser": "playwright test",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
