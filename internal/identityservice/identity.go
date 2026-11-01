@@ -237,8 +237,8 @@ func canonicalUsername(username string) (string, error) {
 }
 
 func validatePassword(password string) error {
-	if len(password) < 12 || len(password) > 128 {
-		return fmt.Errorf("%w: password must be 12–128 bytes", ErrInvalidInput)
+	if len(password) < 8 || len(password) > 128 {
+		return fmt.Errorf("%w: password must be 8–128 bytes", ErrInvalidInput)
 	}
 	return nil
 }
