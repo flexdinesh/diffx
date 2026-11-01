@@ -204,6 +204,49 @@ func TestDaggerSourceUpload(t *testing.T) {
 	}
 }
 
+func TestDaggerFailureArtifacts(t *testing.T) {
+	if os.Getenv("DIFFX_DAGGER_INTEGRATION") != "1" {
+		t.Skip("set DIFFX_DAGGER_INTEGRATION=1 after explicit engine setup")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	defer cancel()
+	configureIsolationEnvironment(t, ctx)
+	root, err := snapshotGit(ctx, ".", "rev-parse", "--show-toplevel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, cleanup, err := captureSnapshot(ctx, strings.TrimSpace(string(root)), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	client, err := dagger.Connect(ctx, dagger.WithRunnerHost("docker-container://"+engineName), dagger.WithLogOutput(os.Stderr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	artifacts := t.TempDir()
+	group := checkGroup{
+		Name:     "release",
+		Commands: [][]string{{"sh", "-c", "printf 'failure-evidence\\n'; exit 17"}},
+	}
+	err = newPipeline(client, snapshot.Root).execute(ctx, group, isolationNonce(t), artifacts)
+	if err == nil || !strings.Contains(err.Error(), "checks exited 17") {
+		t.Fatalf("failure exit status was not preserved: %v", err)
+	}
+	log, err := os.ReadFile(filepath.Join(artifacts, "release", "00.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(log), "failure-evidence\n") {
+		t.Fatalf("failure log was not retained: %q", log)
+	}
+	present, err := inspectEngine(ctx, engineCommandOutput)
+	if err != nil || !present {
+		t.Fatalf("shared engine did not survive failed check: present=%v, err=%v", present, err)
+	}
+}
+
 func isolationNonce(t *testing.T) string {
 	t.Helper()
 	var bytes [12]byte
