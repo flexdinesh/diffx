@@ -94,19 +94,63 @@ type Store interface {
 	// CompleteRefresh atomically admits every submission with its notification
 	// intent, marks the leased generation refreshed and records the observed
 	// state and, when nonempty, the captured head. A generation requested
-	// during the lease stays pending.
+	// during the lease stays pending. An admission for PublicOwnerID records
+	// its job, the fetch time and head as the public snapshot.
 	CompleteRefresh(ctx context.Context, lease Lease, state, head string, admissions []Admission, now int64) error
+
+	// PublicPullRequest returns the public preview state by repository ID, and
+	// PublicPullRequestNamed by case-insensitive full name. ErrNotFound when
+	// the pull request has no refresh row.
+	PublicPullRequest(ctx context.Context, repositoryID int64, number int, now int64) (PublicState, error)
+	PublicPullRequestNamed(ctx context.Context, fullName string, number int, now int64) (PublicState, error)
+	// RequestPublicRefresh advances the generation with public demand and
+	// records the pull request read for it. It never replaces an existing
+	// row's installation; a new row reads through ref's installation.
+	RequestPublicRefresh(ctx context.Context, ref PullRequestRef, pull []byte, retentionRun string, now int64) error
+	// RecordPublicCheck records a public read of the pull request that
+	// needed no fetch.
+	RecordPublicCheck(ctx context.Context, repositoryID int64, number int, pull []byte, now int64) error
+	// RetryPublicRefresh makes a pending, unleased refresh available now and
+	// clears its failure detail.
+	RetryPublicRefresh(ctx context.Context, repositoryID int64, number int, now int64) error
+}
+
+// PublicState is a pull request's public preview: its demand, pending
+// refresh and last public snapshot.
+type PublicState struct {
+	Ref PullRequestRef
+	// Demanded reports a public request was ever made.
+	Demanded bool
+	// Pending refreshes wait for or hold a lease; failed attempts back off
+	// with a detail.
+	Pending bool
+	Leased  bool
+	Attempt int
+	Detail  string
+	// Pull is the GitHub pull request JSON last read for a public request.
+	Pull []byte
+	// Head, FetchedAt and JobState describe the last public snapshot's
+	// ingestion; ContextID is set only once it succeeded and while it is
+	// unexpired.
+	Head      string
+	FetchedAt int64
+	JobState  string
+	ContextID string
+	// CheckedAt is when a public request last read GitHub.
+	CheckedAt int64
 }
 
 var ErrLeaseLost = errors.New("fetch lease lost")
 
-// Lease is one claimed refresh of a pull request at a generation.
+// Lease is one claimed refresh of a pull request at a generation. Public
+// reports that the leased generation covers public demand.
 type Lease struct {
 	Ref          PullRequestRef
 	Token        string
 	Generation   int64
 	RetentionRun string
 	Attempt      int
+	Public       bool
 }
 
 // Admission is one account's submission of a fetched snapshot. A non-nil

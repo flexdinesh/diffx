@@ -239,6 +239,53 @@ test("admins set who can join the app", async ({
   await expect(password).toBeChecked({ checked: passwords });
 });
 
+test("admins set public pull request previews", async ({ page }) => {
+  await signIn(page, root);
+  await page.getByRole("link", { name: "Settings" }).click();
+  const previews = page.getByRole("checkbox", { name: "Public pull requests" });
+  const retention = page.getByRole("spinbutton", {
+    name: "Public retention (days)",
+  });
+  const save = page.getByRole("button", { name: "Save retention" });
+  async function saved(action: () => Promise<void>) {
+    const response = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/v1/settings" &&
+        response.request().method() === "PUT",
+    );
+    await action();
+    expect((await response).ok()).toBe(true);
+  }
+  const enabled = await previews.isChecked();
+  const days = await retention.inputValue();
+
+  await saved(() => previews.click());
+  await expect(previews).toBeChecked({ checked: !enabled });
+
+  // The browser refuses out-of-range days and the page explains why.
+  await retention.fill("31");
+  await save.click();
+  await expect(
+    page.getByText("Enter a whole number of days from 1 to 30."),
+  ).toBeVisible();
+  await expect(retention).toHaveAttribute("aria-invalid", "true");
+
+  const next = days === "12" ? "13" : "12";
+  await retention.fill(next);
+  await expect(retention).toHaveAttribute("aria-invalid", "false");
+  await saved(() => save.click());
+
+  // Saved settings survive a reload.
+  await page.reload();
+  await expect(previews).toBeChecked({ checked: !enabled });
+  await expect(retention).toHaveValue(next);
+  await saved(() => previews.click());
+  await expect(previews).toBeChecked({ checked: enabled });
+  await retention.fill(days);
+  await saved(() => save.click());
+  await expect(retention).toHaveValue(days);
+});
+
 test("a password change signs the admin out", async ({ page }) => {
   await signIn(page, root);
   await page.getByRole("link", { name: "Admin" }).click();

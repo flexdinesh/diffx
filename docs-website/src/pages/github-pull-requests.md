@@ -153,6 +153,32 @@ The bell beside each followed repository mutes or unmutes its notifications.
 longer use. Signing out stops notifications to that browser, and blocked
 notifications are turned back on in the browser's site settings.
 
+## Public pull request previews
+
+With previews on, anyone can open a read-only preview of a pull request in a
+public GitHub repository without signing in: paste its link on the diffx home
+page, or replace `github.com` with your diffx host in its URL
+(`https://diffx.example.com/owner/repo/pull/123`). Previews have no comments or
+reviewed marks; signing in leads to following your own repositories.
+
+To turn them on:
+
+1. Set `DIFFX_SERVER_GITHUB_PUBLIC_INSTALLATION_ID` to the ID of an
+   installation of your GitHub App (for example the one on your own account).
+   The server reads public repositories with its token; repositories need not
+   install the app. Without it, previews stay off.
+2. Upgrade `diffx-fetcher` with the server. A fetcher from an earlier release
+   rejects the anonymous fetches previews use.
+3. In the console's Settings, turn on **Public pull requests** and choose
+   **Public retention (days)** (1–30, default 1): how long a preview is kept
+   after its last fetch.
+
+Each pull request is fetched once and shared by every reader. Previews refresh
+only when someone presses Refresh. Private or missing repositories, and
+repositories over 500 MB, are refused. Fetches are limited to five per visitor
+per hour when `DIFFX_SERVER_CLIENT_IP_HEADER` names the header your ingress
+sets to the client IP; without it, to thirty per hour for the whole server.
+
 ## Limits
 
 - A push, edit or state change creates a new snapshot in the same review

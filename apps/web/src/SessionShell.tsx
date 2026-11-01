@@ -57,7 +57,18 @@ export function SessionShell({ children }: { children: ReactNode }) {
                     tabIndex={-1}
                   >
                     {loading ? (
-                      <WorkspaceLoading collecting={collectOnLoad} />
+                      <WorkspaceLoading
+                        title={
+                          collectOnLoad
+                            ? "Collecting latest changes"
+                            : "Loading review"
+                        }
+                        detail={
+                          collectOnLoad
+                            ? "Reading checkouts…"
+                            : "Reading stored changes…"
+                        }
+                      />
                     ) : (
                       <EmptyState
                         size="page"

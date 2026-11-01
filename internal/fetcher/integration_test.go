@@ -44,6 +44,9 @@ func (s stubGitHub) PullRequest(context.Context, int64, string, int) (gh.PullReq
 func (stubGitHub) InstallationToken(context.Context, int64, []int64, map[string]string) (gh.Token, error) {
 	return gh.Token{Value: testToken, ExpiresAt: time.Now().Add(time.Hour)}, nil
 }
+func (stubGitHub) Repository(context.Context, int64, string) (gh.Repository, error) {
+	return gh.Repository{ID: 42, FullName: "octo/repo", Visibility: "public", Size: 1}, nil
+}
 
 // leaseServer is the fetcher's view of the server, wired straight to the service.
 type leaseServer struct {
@@ -122,5 +125,62 @@ func TestFetchedPullRequestBecomesFollowerReview(t *testing.T) {
 	}
 	if metadata.RepositoryKey != review.RemoteRepositoryKey("https://github.com/octo/repo.git") || metadata.Branch != "feature" || metadata.Root != "https://github.com/octo/repo/pull/7" {
 		t.Fatalf("stored identity %+v", metadata)
+	}
+}
+
+func TestPublicPullRequestBecomesSharedPreview(t *testing.T) {
+	requireTestGit(t)
+	origin := newOrigin(t)
+	store := pgtest.Store(t)
+	created := time.UnixMilli(1_700_000_000_000)
+	repository := gh.Repository{ID: 42, FullName: "octo/repo", CloneURL: "https://github.com/octo/repo.git"}
+	pull := gh.PullRequest{Number: 7, State: "open", Title: "Edit files", Author: gh.Account{Login: "mona"},
+		Base: gh.Ref{Ref: "main", SHA: origin.base, Repository: repository}, Head: gh.Ref{Ref: "feature", SHA: origin.head, Repository: repository},
+		CreatedAt: created, UpdatedAt: created.Add(time.Minute)}
+	service, err := githubsync.New(store.GitHub(), stubGitHub{pull: pull}, githubsync.Options{PublicURL: "https://diffx.test", TokenKey: make([]byte, 32), PublicInstallationID: 9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status, err := service.EnsurePublic(t.Context(), "octo", "repo", 7, func(context.Context) error { return nil }); err != nil || status.Status != githubsync.PublicQueued {
+		t.Fatalf("ensure: %+v %v", status, err)
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server := &leaseServer{service: service, reported: cancel}
+	if err := run(ctx, server, Settings{Mirrors: t.TempDir(), DiskLimit: 1 << 30, Concurrency: 1, PollInterval: time.Millisecond, CollectorVersion: "test"}, origin.remote()); err != nil {
+		t.Fatal(err)
+	}
+	if server.err != nil {
+		t.Fatalf("server refused the public snapshot: %v", server.err)
+	}
+	delivery, err := store.Queue().Claim(t.Context(), time.Minute)
+	if err != nil || delivery.OwnerID != githubsync.PublicOwnerID {
+		t.Fatalf("public admission: %+v %v", delivery, err)
+	}
+	if status, err := service.PublicStatus(t.Context(), "octo", "repo", 7); err != nil || status.Status != githubsync.PublicFetching {
+		t.Fatalf("admitted snapshot status: %+v %v", status, err)
+	}
+	published, err := store.IngestContext(t.Context(), delivery.OwnerID, delivery.Request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Queue().Complete(t.Context(), delivery, published.ContextID); err != nil {
+		t.Fatal(err)
+	}
+	status, err := service.PublicStatus(t.Context(), "Octo", "Repo", 7)
+	if err != nil || status.Status != githubsync.PublicReady || status.ContextID == nil || *status.ContextID != published.ContextID || status.FetchedAt == nil {
+		t.Fatalf("published status: %+v %v", status, err)
+	}
+	item, err := store.Context(t.Context(), githubsync.PublicOwnerID, published.ContextID, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Public snapshots keep the default public retention of one day.
+	if item.ExpiresAt == nil {
+		t.Fatal("public snapshot never expires")
+	}
+	if expires := time.UnixMilli(*item.ExpiresAt); expires.After(time.Now().Add(25*time.Hour)) || expires.Before(time.Now().Add(23*time.Hour)) {
+		t.Fatalf("public snapshot expires %v", expires)
 	}
 }

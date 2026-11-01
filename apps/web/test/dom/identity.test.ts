@@ -47,6 +47,7 @@ function bootstrap(
 ) {
   return {
     mode: "remote",
+    publicPullRequests: false,
     googleEnabled: google,
     signupEnabled: signup,
     passwordSignupEnabled: password,

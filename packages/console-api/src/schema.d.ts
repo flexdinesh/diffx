@@ -425,6 +425,10 @@ export interface components {
       signup: boolean;
       /** @description Whether new app accounts can choose a password, by signup or invite. Existing password accounts always sign in. */
       passwordSignup: boolean;
+      /** @description Whether anyone, without signing in, can open read-only previews of public GitHub pull requests. Takes effect only on servers with the GitHub integration and DIFFX_SERVER_GITHUB_PUBLIC_INSTALLATION_ID. */
+      publicPullRequests: boolean;
+      /** @description Days a public pull request preview is kept after its last fetch. Applies to previews fetched after the change. */
+      publicRetentionDays: number;
     };
     SetupToken: {
       /** @description The secret from the setup link's `#t=` fragment. */

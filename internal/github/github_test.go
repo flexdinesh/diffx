@@ -319,6 +319,37 @@ func TestPullRequestMapsForkWithDeletedHead(t *testing.T) {
 	}
 }
 
+func TestRepositoryReadsVisibilityAndSizeWithInstallationWideToken(t *testing.T) {
+	var mints atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /app/installations/9/access_tokens", func(writer http.ResponseWriter, request *http.Request) {
+		raw, _ := io.ReadAll(request.Body)
+		if strings.Contains(string(raw), "repository_ids") || strings.Contains(string(raw), "permissions") {
+			t.Errorf("repository read narrowed its token: %s", raw)
+		}
+		tokenHandler(t, &mints, time.Hour)(writer, request)
+	})
+	mux.HandleFunc("GET /repos/vercel/next.js", func(writer http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Authorization") != "Bearer ghs_1" {
+			t.Errorf("authorization %q", request.Header.Get("Authorization"))
+		}
+		io.WriteString(writer, `{"id":70107786,"full_name":"vercel/next.js","clone_url":"https://github.com/vercel/next.js.git","private":false,"visibility":"public","size":2400000}`)
+	})
+	client := testClient(t, mux)
+	repository, err := client.Repository(context.Background(), 9, "vercel/next.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Repository{ID: 70107786, FullName: "vercel/next.js", CloneURL: "https://github.com/vercel/next.js.git", Visibility: "public", Size: 2400000}
+	if !reflect.DeepEqual(repository, want) {
+		t.Fatalf("repository\n%+v\nwant\n%+v", repository, want)
+	}
+	var status *Error
+	if _, err := client.Repository(context.Background(), 9, "octo/missing"); !errors.As(err, &status) || status.Status != http.StatusNotFound {
+		t.Fatalf("missing repository: %v", err)
+	}
+}
+
 func TestOpenPullRequestsFollowsLinks(t *testing.T) {
 	var mints atomic.Int32
 	var server *httptest.Server

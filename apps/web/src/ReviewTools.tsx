@@ -103,7 +103,7 @@ export function ReviewTools() {
 }
 
 export function ChangeSummary() {
-  const { repository, commit } = useDiffSource();
+  const { repository, marking } = useDiffSource();
   const { isReviewed, resetReviewed, pending } = useReviewedFilesState();
   const allFiles = repository?.files ?? [];
   const fileChanges = [
@@ -194,7 +194,7 @@ export function ChangeSummary() {
         </div>
         <div
           className="flex items-center justify-between gap-2 text-sm text-muted"
-          hidden={commit !== null}
+          hidden={!marking}
         >
           <span id="review-count">
             {formatProgress(reviewedCount, allFiles.length)}

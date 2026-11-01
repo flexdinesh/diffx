@@ -11,18 +11,25 @@ import (
 )
 
 const appSettings = `-- name: AppSettings :one
-SELECT signup_open, password_signup FROM app_settings
+SELECT signup_open, password_signup, public_pull_requests, public_retention_days FROM app_settings
 `
 
 type AppSettingsRow struct {
-	SignupOpen     bool
-	PasswordSignup bool
+	SignupOpen          bool
+	PasswordSignup      bool
+	PublicPullRequests  bool
+	PublicRetentionDays int32
 }
 
 func (q *Queries) AppSettings(ctx context.Context) (AppSettingsRow, error) {
 	row := q.db.QueryRow(ctx, appSettings)
 	var i AppSettingsRow
-	err := row.Scan(&i.SignupOpen, &i.PasswordSignup)
+	err := row.Scan(
+		&i.SignupOpen,
+		&i.PasswordSignup,
+		&i.PublicPullRequests,
+		&i.PublicRetentionDays,
+	)
 	return i, err
 }
 
@@ -43,21 +50,38 @@ func (q *Queries) LockAppSettings(ctx context.Context) (LockAppSettingsRow, erro
 	return i, err
 }
 
+const publicRetentionDays = `-- name: PublicRetentionDays :one
+SELECT public_retention_days FROM app_settings
+`
+
+func (q *Queries) PublicRetentionDays(ctx context.Context) (int32, error) {
+	row := q.db.QueryRow(ctx, publicRetentionDays)
+	var public_retention_days int32
+	err := row.Scan(&public_retention_days)
+	return public_retention_days, err
+}
+
 const putAppSettings = `-- name: PutAppSettings :exec
-UPDATE app_settings SET signup_open = $1, password_signup = $2, updated_at = $3, updated_by = NULLIF($4::text, '')
+UPDATE app_settings SET signup_open = $1, password_signup = $2,
+  public_pull_requests = $3, public_retention_days = $4,
+  updated_at = $5, updated_by = NULLIF($6::text, '')
 `
 
 type PutAppSettingsParams struct {
-	SignupOpen     bool
-	PasswordSignup bool
-	UpdatedAt      time.Time
-	UpdatedBy      string
+	SignupOpen          bool
+	PasswordSignup      bool
+	PublicPullRequests  bool
+	PublicRetentionDays int32
+	UpdatedAt           time.Time
+	UpdatedBy           string
 }
 
 func (q *Queries) PutAppSettings(ctx context.Context, arg PutAppSettingsParams) error {
 	_, err := q.db.Exec(ctx, putAppSettings,
 		arg.SignupOpen,
 		arg.PasswordSignup,
+		arg.PublicPullRequests,
+		arg.PublicRetentionDays,
 		arg.UpdatedAt,
 		arg.UpdatedBy,
 	)

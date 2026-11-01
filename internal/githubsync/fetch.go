@@ -29,7 +29,7 @@ var ErrInvalidResult = errors.New("fetch result does not match the leased pull r
 
 // Lease claims the next pending pull request refresh for the fetcher. It
 // resolves refreshes that need no fetch (deleted pull requests, repositories
-// without followers) itself. Nil means nothing is pending.
+// without followers or public demand) itself. Nil means nothing is pending.
 func (s *Service) Lease(ctx context.Context) (*fetchprotocol.Job, error) {
 	for range maxSkips {
 		token, err := randomToken()
@@ -71,12 +71,18 @@ func (s *Service) prepare(ctx context.Context, lease Lease, now time.Time) (*fet
 	if err != nil {
 		return nil, err
 	}
-	if !hasActive(follows) {
+	followed := hasActive(follows)
+	if !followed && !lease.Public {
 		return nil, s.store.CompleteRefresh(ctx, lease, pullState(pull), "", nil, now.UnixMilli())
 	}
-	credential, err := s.github.InstallationToken(ctx, ref.InstallationID, []int64{ref.RepositoryID}, map[string]string{"contents": "read"})
-	if err != nil {
-		return nil, fmt.Errorf("mint fetch token for %s: %w", ref.FullName, err)
+	// Followed repositories fetch with a token narrowed to them; a pull request
+	// only the public demands fetches anonymously, as it is public.
+	var credential github.Token
+	if followed {
+		credential, err = s.github.InstallationToken(ctx, ref.InstallationID, []int64{ref.RepositoryID}, map[string]string{"contents": "read"})
+		if err != nil {
+			return nil, fmt.Errorf("mint fetch token for %s: %w", ref.FullName, err)
+		}
 	}
 	raw, err := json.Marshal(pull)
 	if err != nil {
@@ -90,20 +96,25 @@ func (s *Service) prepare(ctx context.Context, lease Lease, now time.Time) (*fet
 	if pull.Base.Repository.FullName != "" {
 		name = pull.Base.Repository.FullName
 	}
-	return &fetchprotocol.Job{
+	job := &fetchprotocol.Job{
 		ID: jobID(ref), LeaseToken: lease.Token, LeaseExpiresAt: now.Add(leaseDuration).UnixMilli(),
 		Repository: fetchprotocol.Repository{ID: ref.RepositoryID, FullName: name, CloneURL: "https://github.com/" + name + ".git"},
 		Number:     ref.Number, HeadSHA: pull.Head.SHA, BaseRef: pull.Base.Ref, BaseSHA: pull.Base.SHA,
-		Token: credential.Value, TokenExpiresAt: credential.ExpiresAt.UnixMilli(),
-	}, nil
+		Public: !followed,
+	}
+	if followed {
+		job.Token, job.TokenExpiresAt = credential.Value, credential.ExpiresAt.UnixMilli()
+	}
+	return job, nil
 }
 
 // Finish applies a fetcher result. A snapshot is published to every account
-// with verified access in one transaction with the refresh; a failure retries
-// with backoff. ErrLeaseLost means another lease superseded this one. When the
+// with verified access, and to PublicOwnerID when the lease covers public
+// demand, in one transaction with the refresh; a failure retries with
+// backoff. ErrLeaseLost means another lease superseded this one. When the
 // snapshot announces new work (see announcement), the same transaction records
 // a push notification for every admitted follower that has not muted the
-// repository.
+// repository; the public owner is never notified.
 func (s *Service) Finish(ctx context.Context, result fetchprotocol.Result) error {
 	repositoryID, number, ok := parseJobID(result.ID)
 	if !ok {
@@ -139,13 +150,16 @@ func (s *Service) Finish(ctx context.Context, result fetchprotocol.Result) error
 		return err
 	}
 	notification := announcement(lease.Ref, pull, previous, opened)
-	admissions := make([]Admission, 0, len(follows))
+	admissions := make([]Admission, 0, len(follows)+1)
 	for _, follow := range follows {
 		admission := Admission{OwnerID: follow.OwnerID, Request: request}
 		if notification != nil && !follow.Muted {
 			admission.Notification = notification
 		}
 		admissions = append(admissions, admission)
+	}
+	if lease.Public {
+		admissions = append(admissions, Admission{OwnerID: PublicOwnerID, Request: request})
 	}
 	return s.store.CompleteRefresh(ctx, lease, pullState(pull), pull.Head.SHA, admissions, s.millis())
 }
@@ -213,14 +227,8 @@ func publication(lease Lease, pull github.PullRequest, fetched ingestion.Request
 			CheckoutKey: digest("github-pull-request-checkout", identity), BranchID: digest("github-pull-request-branch", identity),
 			Root: pullURL, WorktreeName: "PR #" + strconv.Itoa(ref.Number), Branch: pull.Head.Ref, Head: &head,
 			CollectedAt: pull.UpdatedAt.UnixMilli(), ActivityAt: pull.UpdatedAt.UnixMilli(), CollectorVersion: metadata.CollectorVersion,
-			Comparison: &ingestion.Comparison{Kind: "branch", BaseRef: "refs/heads/" + pull.Base.Ref, BaseCommit: comparison.BaseCommit, MergeBase: comparison.MergeBase},
-			PullRequest: &ingestion.PullRequest{
-				Provider: "github", RepositoryID: ref.RepositoryID, FullName: ref.FullName, Number: ref.Number, URL: pullURL,
-				Title: pull.Title, Body: pull.Body, State: pullState(pull), Draft: pull.Draft,
-				Author:  ingestion.PullRequestAuthor{Login: pull.Author.Login, URL: "https://github.com/" + pull.Author.Login},
-				BaseRef: pull.Base.Ref, HeadRef: pull.Head.Ref, HeadRepository: pull.Head.Repository.FullName,
-				CreatedAt: pull.CreatedAt.UnixMilli(), UpdatedAt: pull.UpdatedAt.UnixMilli(),
-			},
+			Comparison:  &ingestion.Comparison{Kind: "branch", BaseRef: "refs/heads/" + pull.Base.Ref, BaseCommit: comparison.BaseCommit, MergeBase: comparison.MergeBase},
+			PullRequest: pullRequestMetadata(ref, pull),
 		},
 		Scopes: make([]ingestion.Scope, 0, len(fetched.Scopes)),
 	}
@@ -239,6 +247,18 @@ func publication(lease Lease, pull github.PullRequest, fetched ingestion.Request
 		return ingestion.Request{}, errors.Join(ErrInvalidResult, err)
 	}
 	return request, nil
+}
+
+// pullRequestMetadata is the server-authored pull request metadata.
+func pullRequestMetadata(ref PullRequestRef, pull github.PullRequest) *ingestion.PullRequest {
+	return &ingestion.PullRequest{
+		Provider: "github", RepositoryID: ref.RepositoryID, FullName: ref.FullName, Number: ref.Number,
+		URL:   "https://github.com/" + ref.FullName + "/pull/" + strconv.Itoa(ref.Number),
+		Title: pull.Title, Body: pull.Body, State: pullState(pull), Draft: pull.Draft,
+		Author:  ingestion.PullRequestAuthor{Login: pull.Author.Login, URL: "https://github.com/" + pull.Author.Login},
+		BaseRef: pull.Base.Ref, HeadRef: pull.Head.Ref, HeadRepository: pull.Head.Repository.FullName,
+		CreatedAt: pull.CreatedAt.UnixMilli(), UpdatedAt: pull.UpdatedAt.UnixMilli(),
+	}
 }
 
 func pullState(pull github.PullRequest) string {

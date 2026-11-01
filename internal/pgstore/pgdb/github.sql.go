@@ -18,7 +18,8 @@ FROM (
   ORDER BY pending.requested_at, pending.repository_id, pending.number LIMIT 1 FOR UPDATE SKIP LOCKED
 ) claimed
 WHERE p.repository_id = claimed.repository_id AND p.number = claimed.number
-RETURNING p.repository_id, p.installation_id, p.full_name, p.number, p.leased_generation, p.leased_run, p.attempt
+RETURNING p.repository_id, p.installation_id, p.full_name, p.number, p.leased_generation, p.leased_run, p.attempt,
+  (p.public_generation > p.refreshed_generation)::boolean AS public
 `
 
 type ClaimGitHubRefreshParams struct {
@@ -35,6 +36,7 @@ type ClaimGitHubRefreshRow struct {
 	LeasedGeneration int64
 	LeasedRun        string
 	Attempt          int32
+	Public           bool
 }
 
 // SKIP LOCKED lets replicas claim distinct pull requests concurrently; a row
@@ -50,6 +52,7 @@ func (q *Queries) ClaimGitHubRefresh(ctx context.Context, arg ClaimGitHubRefresh
 		&i.LeasedGeneration,
 		&i.LeasedRun,
 		&i.Attempt,
+		&i.Public,
 	)
 	return i, err
 }
@@ -233,7 +236,8 @@ func (q *Queries) GitHubKnownOpen(ctx context.Context, repositoryID int64) ([]in
 }
 
 const gitHubLeased = `-- name: GitHubLeased :one
-SELECT repository_id, installation_id, full_name, number, leased_generation, leased_run, attempt, leased FROM github_pull_requests
+SELECT repository_id, installation_id, full_name, number, leased_generation, leased_run, attempt, leased,
+  (public_generation > refreshed_generation)::boolean AS public FROM github_pull_requests
 WHERE repository_id = $1 AND number = $2 AND lease_token = $3 AND lease_until > $4 AND leased <> ''
 `
 
@@ -253,6 +257,7 @@ type GitHubLeasedRow struct {
 	LeasedRun        string
 	Attempt          int32
 	Leased           []byte
+	Public           bool
 }
 
 func (q *Queries) GitHubLeased(ctx context.Context, arg GitHubLeasedParams) (GitHubLeasedRow, error) {
@@ -272,6 +277,7 @@ func (q *Queries) GitHubLeased(ctx context.Context, arg GitHubLeasedParams) (Git
 		&i.LeasedRun,
 		&i.Attempt,
 		&i.Leased,
+		&i.Public,
 	)
 	return i, err
 }
@@ -433,6 +439,138 @@ func (q *Queries) MuteGitHubFollow(ctx context.Context, arg MuteGitHubFollowPara
 	return err
 }
 
+const publicGitHubPullRequest = `-- name: PublicGitHubPullRequest :one
+SELECT p.repository_id, p.installation_id, p.full_name, p.number, p.public_generation,
+  (p.public_generation > p.refreshed_generation)::boolean AS pending, (p.lease_until > $1::timestamptz)::boolean AS leased,
+  p.attempt, p.detail, p.public_pull, p.public_head, p.public_checked_at, p.public_fetched_at,
+  COALESCE(j.state, '')::text AS job_state,
+  COALESCE((SELECT o.context_id FROM observations o JOIN contexts c ON c.id = o.context_id JOIN diffs d ON d.id = c.anchor_diff_id
+    WHERE j.state = 'succeeded' AND o.owner_id = $2::text AND o.context_id = j.context_id AND d.expires_at > $1::timestamptz), '')::text AS context_id
+FROM github_pull_requests p LEFT JOIN ingestion_jobs j ON j.id = p.public_job_id
+WHERE p.repository_id = $3 AND p.number = $4
+`
+
+type PublicGitHubPullRequestParams struct {
+	Now          time.Time
+	OwnerID      string
+	RepositoryID int64
+	Number       int32
+}
+
+type PublicGitHubPullRequestRow struct {
+	RepositoryID     int64
+	InstallationID   int64
+	FullName         string
+	Number           int32
+	PublicGeneration int64
+	Pending          bool
+	Leased           bool
+	Attempt          int32
+	Detail           string
+	PublicPull       []byte
+	PublicHead       string
+	PublicCheckedAt  *time.Time
+	PublicFetchedAt  *time.Time
+	JobState         string
+	ContextID        string
+}
+
+// pending is a pending refresh that covers public demand; context_id is set
+// only for a succeeded public job whose snapshot is unexpired.
+func (q *Queries) PublicGitHubPullRequest(ctx context.Context, arg PublicGitHubPullRequestParams) (PublicGitHubPullRequestRow, error) {
+	row := q.db.QueryRow(ctx, publicGitHubPullRequest,
+		arg.Now,
+		arg.OwnerID,
+		arg.RepositoryID,
+		arg.Number,
+	)
+	var i PublicGitHubPullRequestRow
+	err := row.Scan(
+		&i.RepositoryID,
+		&i.InstallationID,
+		&i.FullName,
+		&i.Number,
+		&i.PublicGeneration,
+		&i.Pending,
+		&i.Leased,
+		&i.Attempt,
+		&i.Detail,
+		&i.PublicPull,
+		&i.PublicHead,
+		&i.PublicCheckedAt,
+		&i.PublicFetchedAt,
+		&i.JobState,
+		&i.ContextID,
+	)
+	return i, err
+}
+
+const publicGitHubPullRequestNamed = `-- name: PublicGitHubPullRequestNamed :one
+SELECT p.repository_id, p.installation_id, p.full_name, p.number, p.public_generation,
+  (p.public_generation > p.refreshed_generation)::boolean AS pending, (p.lease_until > $1::timestamptz)::boolean AS leased,
+  p.attempt, p.detail, p.public_pull, p.public_head, p.public_checked_at, p.public_fetched_at,
+  COALESCE(j.state, '')::text AS job_state,
+  COALESCE((SELECT o.context_id FROM observations o JOIN contexts c ON c.id = o.context_id JOIN diffs d ON d.id = c.anchor_diff_id
+    WHERE j.state = 'succeeded' AND o.owner_id = $2::text AND o.context_id = j.context_id AND d.expires_at > $1::timestamptz), '')::text AS context_id
+FROM github_pull_requests p LEFT JOIN ingestion_jobs j ON j.id = p.public_job_id
+WHERE lower(p.full_name) = lower($3::text) AND p.number = $4
+ORDER BY p.requested_at DESC LIMIT 1
+`
+
+type PublicGitHubPullRequestNamedParams struct {
+	Now      time.Time
+	OwnerID  string
+	FullName string
+	Number   int32
+}
+
+type PublicGitHubPullRequestNamedRow struct {
+	RepositoryID     int64
+	InstallationID   int64
+	FullName         string
+	Number           int32
+	PublicGeneration int64
+	Pending          bool
+	Leased           bool
+	Attempt          int32
+	Detail           string
+	PublicPull       []byte
+	PublicHead       string
+	PublicCheckedAt  *time.Time
+	PublicFetchedAt  *time.Time
+	JobState         string
+	ContextID        string
+}
+
+// Names are case-insensitive; after renames the most recently requested row wins.
+func (q *Queries) PublicGitHubPullRequestNamed(ctx context.Context, arg PublicGitHubPullRequestNamedParams) (PublicGitHubPullRequestNamedRow, error) {
+	row := q.db.QueryRow(ctx, publicGitHubPullRequestNamed,
+		arg.Now,
+		arg.OwnerID,
+		arg.FullName,
+		arg.Number,
+	)
+	var i PublicGitHubPullRequestNamedRow
+	err := row.Scan(
+		&i.RepositoryID,
+		&i.InstallationID,
+		&i.FullName,
+		&i.Number,
+		&i.PublicGeneration,
+		&i.Pending,
+		&i.Leased,
+		&i.Attempt,
+		&i.Detail,
+		&i.PublicPull,
+		&i.PublicHead,
+		&i.PublicCheckedAt,
+		&i.PublicFetchedAt,
+		&i.JobState,
+		&i.ContextID,
+	)
+	return i, err
+}
+
 const putGitHubConnection = `-- name: PutGitHubConnection :exec
 INSERT INTO github_connections(owner_id, user_id, login, access_token, access_expires_at, refresh_token, refresh_expires_at, status, connected_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -572,6 +710,52 @@ func (q *Queries) RecordGitHubPullRequestHead(ctx context.Context, arg RecordGit
 	return err
 }
 
+const recordPublicGitHubCheck = `-- name: RecordPublicGitHubCheck :exec
+UPDATE github_pull_requests SET public_pull = $1, public_checked_at = $2
+WHERE repository_id = $3 AND number = $4
+`
+
+type RecordPublicGitHubCheckParams struct {
+	PublicPull   []byte
+	Now          *time.Time
+	RepositoryID int64
+	Number       int32
+}
+
+func (q *Queries) RecordPublicGitHubCheck(ctx context.Context, arg RecordPublicGitHubCheckParams) error {
+	_, err := q.db.Exec(ctx, recordPublicGitHubCheck,
+		arg.PublicPull,
+		arg.Now,
+		arg.RepositoryID,
+		arg.Number,
+	)
+	return err
+}
+
+const recordPublicGitHubSnapshot = `-- name: RecordPublicGitHubSnapshot :exec
+UPDATE github_pull_requests SET public_job_id = $1, public_fetched_at = $2, public_head = $3
+WHERE repository_id = $4 AND number = $5
+`
+
+type RecordPublicGitHubSnapshotParams struct {
+	JobID        string
+	Now          *time.Time
+	Head         string
+	RepositoryID int64
+	Number       int32
+}
+
+func (q *Queries) RecordPublicGitHubSnapshot(ctx context.Context, arg RecordPublicGitHubSnapshotParams) error {
+	_, err := q.db.Exec(ctx, recordPublicGitHubSnapshot,
+		arg.JobID,
+		arg.Now,
+		arg.Head,
+		arg.RepositoryID,
+		arg.Number,
+	)
+	return err
+}
+
 const releaseGitHubRefresh = `-- name: ReleaseGitHubRefresh :execrows
 UPDATE github_pull_requests SET lease_token = '', lease_until = '-infinity', leased = '', attempt = attempt + 1, available_at = $1, detail = $2
 WHERE repository_id = $3 AND number = $4 AND lease_token = $5
@@ -626,6 +810,57 @@ func (q *Queries) RequestGitHubRefresh(ctx context.Context, arg RequestGitHubRef
 		arg.RetentionRun,
 		arg.RequestedAt,
 	)
+	return err
+}
+
+const requestPublicGitHubRefresh = `-- name: RequestPublicGitHubRefresh :exec
+INSERT INTO github_pull_requests(repository_id, number, installation_id, full_name, generation, retention_run, requested_at,
+  public_generation, public_pull, public_checked_at)
+VALUES ($1, $2, $3, $4, 1, $5, $6, 1, $7, $6)
+ON CONFLICT (repository_id, number) DO UPDATE SET full_name = excluded.full_name,
+  generation = github_pull_requests.generation + 1, retention_run = excluded.retention_run, requested_at = excluded.requested_at,
+  public_generation = github_pull_requests.generation + 1, public_pull = excluded.public_pull, public_checked_at = excluded.public_checked_at
+`
+
+type RequestPublicGitHubRefreshParams struct {
+	RepositoryID   int64
+	Number         int32
+	InstallationID int64
+	FullName       string
+	RetentionRun   string
+	RequestedAt    time.Time
+	PublicPull     []byte
+}
+
+// Public demand advances the generation like any refresh but never replaces
+// a follower's installation; a new row reads through the public installation.
+func (q *Queries) RequestPublicGitHubRefresh(ctx context.Context, arg RequestPublicGitHubRefreshParams) error {
+	_, err := q.db.Exec(ctx, requestPublicGitHubRefresh,
+		arg.RepositoryID,
+		arg.Number,
+		arg.InstallationID,
+		arg.FullName,
+		arg.RetentionRun,
+		arg.RequestedAt,
+		arg.PublicPull,
+	)
+	return err
+}
+
+const retryPublicGitHubRefresh = `-- name: RetryPublicGitHubRefresh :exec
+UPDATE github_pull_requests SET available_at = $1, detail = ''
+WHERE repository_id = $2 AND number = $3 AND generation > refreshed_generation AND lease_until <= $1
+`
+
+type RetryPublicGitHubRefreshParams struct {
+	Now          time.Time
+	RepositoryID int64
+	Number       int32
+}
+
+// Only a pending, unleased refresh waits for backoff.
+func (q *Queries) RetryPublicGitHubRefresh(ctx context.Context, arg RetryPublicGitHubRefreshParams) error {
+	_, err := q.db.Exec(ctx, retryPublicGitHubRefresh, arg.Now, arg.RepositoryID, arg.Number)
 	return err
 }
 

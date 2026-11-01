@@ -76,6 +76,10 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 	if values.AuthRateLimit {
 		settings.ClientIPHeader = values.ClientIPHeader
 	}
+	if err := values.ValidateClientIPHeader(); err != nil {
+		return settings, false, err
+	}
+	settings.PublicClientIPHeader = values.ClientIPHeader
 	if _, err := remoteserver.Retention(settings.RetentionDays); err != nil {
 		return settings, false, err
 	}
@@ -89,7 +93,7 @@ func parseSettings(arguments []string, stderr io.Writer) (remoteserver.Settings,
 		}
 		settings.GitHub = &remoteserver.GitHubSettings{AppID: github.AppID, ClientID: github.ClientID, ClientSecret: github.ClientSecret,
 			PrivateKeyFile: github.PrivateKeyFile, WebhookSecret: github.WebhookSecret, TokenKey: github.TokenKey, PublicURL: github.PublicURL,
-			InternalListen: internal, FetcherSecret: github.FetcherSecret}
+			InternalListen: internal, FetcherSecret: github.FetcherSecret, PublicInstallationID: github.PublicInstallationID}
 	}
 	return settings, false, nil
 }

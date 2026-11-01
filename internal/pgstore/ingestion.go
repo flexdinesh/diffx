@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/contextservice"
+	"github.com/flexdinesh/diffx/internal/githubsync"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/pgstore/pgdb"
 	"github.com/flexdinesh/diffx/internal/review"
@@ -103,7 +104,11 @@ func (store *Store) ingest(ctx context.Context, queries *pgdb.Queries, ownerID s
 	if id != "" {
 		return observationBinding(ctx, queries, ownerID, id, now)
 	}
-	expires := now.Add(store.retention)
+	retention, err := store.retentionOf(ctx, queries, ownerID)
+	if err != nil {
+		return reviewdata.Binding{}, err
+	}
+	expires := now.Add(retention)
 	identityRequest := request
 	identityRequest.Metadata.BranchID = ingestion.BranchIdentity(request.Metadata)
 	identity, err := ingestion.ContentIdentity(identityRequest)
@@ -243,6 +248,20 @@ func (store *Store) ingest(ctx context.Context, queries *pgdb.Queries, ownerID s
 		}
 	}
 	return binding, nil
+}
+
+// retentionOf is the store's retention, except for public pull request
+// snapshots, which keep the admins' public retention read in the ingesting
+// transaction.
+func (store *Store) retentionOf(ctx context.Context, queries *pgdb.Queries, ownerID string) (time.Duration, error) {
+	if ownerID != githubsync.PublicOwnerID {
+		return store.retention, nil
+	}
+	days, err := queries.PublicRetentionDays(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return time.Duration(days) * 24 * time.Hour, nil
 }
 
 func putObservationSubmission(ctx context.Context, queries *pgdb.Queries, ownerID, contextID, hash string, request ingestion.Request, sequence int64) error {

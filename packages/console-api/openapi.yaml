@@ -707,7 +707,8 @@ components:
     Settings:
       type: object
       additionalProperties: false
-      required: [signup, passwordSignup]
+      required:
+        [signup, passwordSignup, publicPullRequests, publicRetentionDays]
       properties:
         signup:
           type: boolean
@@ -715,6 +716,14 @@ components:
         passwordSignup:
           type: boolean
           description: Whether new app accounts can choose a password, by signup or invite. Existing password accounts always sign in.
+        publicPullRequests:
+          type: boolean
+          description: Whether anyone, without signing in, can open read-only previews of public GitHub pull requests. Takes effect only on servers with the GitHub integration and DIFFX_SERVER_GITHUB_PUBLIC_INSTALLATION_ID.
+        publicRetentionDays:
+          type: integer
+          minimum: 1
+          maximum: 30
+          description: Days a public pull request preview is kept after its last fetch. Applies to previews fetched after the change.
     SetupToken:
       type: object
       additionalProperties: false

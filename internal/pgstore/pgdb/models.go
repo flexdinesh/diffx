@@ -39,11 +39,13 @@ type AgentSession struct {
 }
 
 type AppSetting struct {
-	Singleton      bool
-	SignupOpen     bool
-	PasswordSignup bool
-	UpdatedAt      time.Time
-	UpdatedBy      *string
+	Singleton           bool
+	SignupOpen          bool
+	PasswordSignup      bool
+	UpdatedAt           time.Time
+	UpdatedBy           *string
+	PublicPullRequests  bool
+	PublicRetentionDays int32
 }
 
 type AuthAttempt struct {
@@ -175,6 +177,12 @@ type GithubPullRequest struct {
 	Attempt             int32
 	AvailableAt         time.Time
 	Detail              string
+	PublicGeneration    int64
+	PublicJobID         string
+	PublicFetchedAt     *time.Time
+	PublicHead          string
+	PublicCheckedAt     *time.Time
+	PublicPull          []byte
 }
 
 type GoogleAuthState struct {

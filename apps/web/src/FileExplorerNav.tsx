@@ -40,7 +40,7 @@ import { ChangeSummary, ReviewTools } from "./ReviewTools.tsx";
 import { capabilityEnabled, useSession } from "./session-context.tsx";
 
 export function FileExplorerNav() {
-  const { repository, diff, mode, commit } = useDiffSource();
+  const { repository, diff, mode, commit, marking } = useDiffSource();
   const session = useSession();
   const { capabilities } = session;
   const {
@@ -194,8 +194,8 @@ export function FileExplorerNav() {
                 setFilteredClosed(new Set());
               }}
             />
-            {/* Commit views are read-only, without review marks. */}
-            {!commit && (
+            {/* Commit views and public previews have no review marks. */}
+            {marking && (
               <Tooltip>
                 <TooltipTrigger
                   render={

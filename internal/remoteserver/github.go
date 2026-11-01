@@ -31,6 +31,9 @@ type GitHubSettings struct {
 	// InternalListen serves the fetcher protocol, authenticated by FetcherSecret.
 	InternalListen string
 	FetcherSecret  string
+	// PublicInstallationID reads public repositories for public pull request
+	// previews; zero makes them unavailable.
+	PublicInstallationID int64
 	// apiURL and webURL replace github.com in tests.
 	apiURL, webURL string
 }
@@ -62,7 +65,7 @@ func composeGitHub(store *pgstore.Store, settings *GitHubSettings) (*githubsync.
 	if err != nil {
 		return nil, err
 	}
-	return githubsync.New(store.GitHub(), client, githubsync.Options{PublicURL: settings.PublicURL, TokenKey: tokenKey})
+	return githubsync.New(store.GitHub(), client, githubsync.Options{PublicURL: settings.PublicURL, TokenKey: tokenKey, PublicInstallationID: settings.PublicInstallationID})
 }
 
 // reconcileLock admits one replica's reconcile at a time, reporting whether it ran.

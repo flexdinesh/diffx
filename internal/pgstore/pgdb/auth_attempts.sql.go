@@ -33,14 +33,65 @@ func (q *Queries) CountAuthAttempt(ctx context.Context, arg CountAuthAttemptPara
 	return attempts, err
 }
 
+const countFetchAttempt = `-- name: CountFetchAttempt :one
+INSERT INTO auth_attempts AS a (client, window_start, attempts) VALUES ($1, $2, 1)
+ON CONFLICT (client) DO UPDATE SET
+  window_start = CASE WHEN a.window_start <= $3::timestamptz THEN EXCLUDED.window_start ELSE a.window_start END,
+  attempts = CASE WHEN a.window_start <= $3::timestamptz THEN 1 ELSE a.attempts + 1 END
+RETURNING attempts, window_start
+`
+
+type CountFetchAttemptParams struct {
+	Client  string
+	Now     time.Time
+	Expired time.Time
+}
+
+type CountFetchAttemptRow struct {
+	Attempts    int32
+	WindowStart time.Time
+}
+
+// CountAuthAttempt's fixed window, also returning when the window started.
+func (q *Queries) CountFetchAttempt(ctx context.Context, arg CountFetchAttemptParams) (CountFetchAttemptRow, error) {
+	row := q.db.QueryRow(ctx, countFetchAttempt, arg.Client, arg.Now, arg.Expired)
+	var i CountFetchAttemptRow
+	err := row.Scan(&i.Attempts, &i.WindowStart)
+	return i, err
+}
+
 const pruneAuthAttempts = `-- name: PruneAuthAttempts :exec
 DELETE FROM auth_attempts d WHERE d.client IN (
-  SELECT s.client FROM auth_attempts s WHERE s.window_start <= $1::timestamptz FOR UPDATE SKIP LOCKED
+  SELECT s.client FROM auth_attempts s WHERE s.window_start <= $1::timestamptz AND NOT starts_with(s.client, $2::text)
+  FOR UPDATE SKIP LOCKED
 )
 `
 
+type PruneAuthAttemptsParams struct {
+	Expired     time.Time
+	FetchPrefix string
+}
+
 // Skips rows other statements hold, so pruning never waits or deadlocks.
-func (q *Queries) PruneAuthAttempts(ctx context.Context, expired time.Time) error {
-	_, err := q.db.Exec(ctx, pruneAuthAttempts, expired)
+// Fetch counters have a longer window and prune themselves.
+func (q *Queries) PruneAuthAttempts(ctx context.Context, arg PruneAuthAttemptsParams) error {
+	_, err := q.db.Exec(ctx, pruneAuthAttempts, arg.Expired, arg.FetchPrefix)
+	return err
+}
+
+const pruneFetchAttempts = `-- name: PruneFetchAttempts :exec
+DELETE FROM auth_attempts d WHERE d.client IN (
+  SELECT s.client FROM auth_attempts s WHERE s.window_start <= $1::timestamptz AND starts_with(s.client, $2::text)
+  FOR UPDATE SKIP LOCKED
+)
+`
+
+type PruneFetchAttemptsParams struct {
+	Expired     time.Time
+	FetchPrefix string
+}
+
+func (q *Queries) PruneFetchAttempts(ctx context.Context, arg PruneFetchAttemptsParams) error {
+	_, err := q.db.Exec(ctx, pruneFetchAttempts, arg.Expired, arg.FetchPrefix)
 	return err
 }

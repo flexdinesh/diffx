@@ -11,7 +11,7 @@ import {
   PanelLeftOpenIcon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { ContextIcon } from "@diffx/ui/components/context-icon";
 import { CountBadge } from "@diffx/ui/components/count-badge";
 import { DisclosureRow } from "@diffx/ui/components/disclosure-row";
@@ -561,24 +561,44 @@ export function NewerSnapshotNotice() {
   const newer = newerHead(session, heads.contexts);
   const now = useNow();
   return (
+    <NewerNotice
+      onView={newer && (() => openStream(newer, { restoreFocus: false }))}
+    >
+      {newer &&
+        `Newer snapshot of ${streamTitle(newer)} · ${contextChangeLabel(newer)} · ${relativeAge(contextActivity(newer), now)}`}
+    </NewerNotice>
+  );
+}
+
+/**
+ * Announces a newer snapshot of the open review without swapping it; stays
+ * mounted (hidden) so its arrival is announced. `onView` opens the latest.
+ */
+export function NewerNotice({
+  onView,
+  children,
+}: {
+  onView: (() => void) | undefined;
+  children: ReactNode;
+}) {
+  return (
     <Notice
-      hidden={!newer}
-      icon={newer && <HistoryIcon aria-hidden="true" />}
+      hidden={!onView}
+      icon={onView && <HistoryIcon aria-hidden="true" />}
       action={
-        newer && (
+        onView && (
           <Button
             type="button"
             variant="outline-muted"
             size="sm"
-            onClick={() => openStream(newer, { restoreFocus: false })}
+            onClick={onView}
           >
             View latest
           </Button>
         )
       }
     >
-      {newer &&
-        `Newer snapshot of ${streamTitle(newer)} · ${contextChangeLabel(newer)} · ${relativeAge(contextActivity(newer), now)}`}
+      {onView && children}
     </Notice>
   );
 }

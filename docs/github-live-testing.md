@@ -64,6 +64,14 @@ Each needs a real GitHub App, an installation and public HTTPS for webhooks
     each notify once while first follow, Resync and edits stay silent.
     Verified so far only against a local fake push service
     (`internal/webpush`, `internal/pushservice`, `internal/remoteserver`).
+11. **Public pull request previews.** An installation token of
+    `DIFFX_SERVER_GITHUB_PUBLIC_INSTALLATION_ID` reading `GET /repos/{o}/{r}`
+    and `GET /repos/{o}/{r}/pulls/{n}` of a public repository outside that
+    installation (assumed from Actions' repository-scoped `GITHUB_TOKEN`
+    reading other public repositories), 404 for a private one, and the
+    fetcher's anonymous HTTPS partial clone of `refs/pull/N/head` without
+    `http.extraHeader`. Verified so far only against a fake GitHub and a
+    `file://` origin.
 
 ## Known risks and likely follow-ups
 

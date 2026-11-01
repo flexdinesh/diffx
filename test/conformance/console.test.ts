@@ -186,10 +186,20 @@ test("The console administers the server's accounts over one database", async (t
   // Settings the console stores reach the server through the database.
   const stored = await console.GET("/api/v1/settings", { headers: admin });
   consoleConforms("Settings", stored.data);
-  assert.deepEqual(stored.data, { signup: true, passwordSignup: true });
+  assert.deepEqual(stored.data, {
+    signup: true,
+    passwordSignup: true,
+    publicPullRequests: false,
+    publicRetentionDays: 1,
+  });
   const closed = await console.PUT("/api/v1/settings", {
     headers: admin,
-    body: { signup: false, passwordSignup: true },
+    body: {
+      signup: false,
+      passwordSignup: true,
+      publicPullRequests: false,
+      publicRetentionDays: 1,
+    },
   });
   assert.equal(closed.response.status, 200);
   consoleConforms("Settings", closed.data);

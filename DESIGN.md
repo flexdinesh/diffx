@@ -734,6 +734,37 @@ at `/design.html` (see `docs/development.md`).
   username.
 - Pages for a method the server turned off render sign-in, like unknown paths.
   Link secrets come from the fragment and leave history before any request.
+- With public pull requests on, signed-out `/` is the landing page in the same
+  `auth-page` column: `h1` "Review a pull request", one prose line, a labeled
+  "Pull request URL" field with the one primary "Open" action and an inline
+  field error, a "Try one" list of demo pull requests (mono `owner/repo #n`
+  and title), a muted tip to replace github.com with the host, then "Have an
+  account? Sign in". Sign-in lives at `/signin`; with previews off `/` stays
+  sign-in. Sign-in accepts `?next=` only for `/settings/github`.
+
+### Public pull request previews
+
+- `/{owner}/{repo}/pull/{n}` is a standalone review shell for everyone, like a
+  capture: no Reviews column, rail, drawer toggle, search, comboboxes or sync.
+  The header keeps the brand, a static `owner/repo` with `PR #n`, and the
+  account slot: a "Sign in" button signed out, the account menu signed in.
+  GitHub tab suffixes normalize to that path.
+- Previews are read-only and say so by absence, not disabled controls: no
+  comment gutters or cards, Reviewed toggles, Alt+M, "Hide reviewed files",
+  Copy review or WebMCP. Comparisons offer Branch changes and Commits.
+- The pull request banner shows as soon as metadata arrives, with a Refresh
+  icon action and muted "Fetched … ago". An unchanged head announces "Up to
+  date" politely; a new snapshot uses the newer-snapshot notice and "View
+  latest", never swapping the open review.
+- A preview notice in the same notice style explains the read-only view and
+  offers its one way further, following your repositories: "Sign in" (to
+  Settings > GitHub) signed out, "Open Settings" signed in. Dismissal persists
+  per browser; the notice stays mounted and hidden.
+- The first fetch keeps the diff skeleton under the banner; the status line
+  reads "Queued", then "Fetching owner/repo from GitHub · 12s", adding after
+  ten seconds that a large repository's first fetch takes longer. Refusals,
+  failures and the fetch limit replace the skeleton with the page empty state,
+  its explanation, and Retry or "Open on GitHub" where they help.
 
 ### Console
 

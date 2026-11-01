@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ApiBootstrap } from "@diffx/api";
-import { shellPolicy, showsReviewColumn } from "../src/shell-policy.ts";
+import {
+  publicPreviewPolicy,
+  shellPolicy,
+  showsReviewColumn,
+} from "../src/shell-policy.ts";
 
 function local(input: "checkout" | "checkouts" | "capture"): ApiBootstrap {
   return {
@@ -18,6 +22,7 @@ const inputs: ("checkout" | "checkouts")[] = ["checkout", "checkouts"];
 
 const remote: ApiBootstrap = {
   mode: "remote",
+  publicPullRequests: false,
   googleEnabled: false,
   signupEnabled: false,
   passwordSignupEnabled: false,
@@ -30,22 +35,49 @@ test("shell policy follows what the server serves", () => {
     reviewNavigation: true,
     reviewColumn: "multiple",
     collection: "checkout",
+    reviewMarks: true,
+    serverStatus: true,
   });
   assert.deepEqual(shellPolicy(local("checkouts")), {
     reviewNavigation: true,
     reviewColumn: "multiple",
     collection: "checkouts",
+    reviewMarks: true,
+    serverStatus: true,
   });
   assert.deepEqual(shellPolicy(local("capture")), {
     reviewNavigation: false,
     reviewColumn: "multiple",
     collection: null,
+    reviewMarks: true,
+    serverStatus: true,
   });
   assert.deepEqual(shellPolicy(remote), {
     reviewNavigation: true,
     reviewColumn: "always",
     collection: null,
+    reviewMarks: true,
+    serverStatus: true,
   });
+});
+
+test("a public preview is one read-only snapshot without review navigation", () => {
+  const visitor = publicPreviewPolicy(remote);
+  assert.deepEqual(visitor, {
+    reviewNavigation: false,
+    reviewColumn: "multiple",
+    collection: null,
+    reviewMarks: false,
+    serverStatus: false,
+  });
+  assert.equal(showsReviewColumn(visitor, 3), false);
+  const member = publicPreviewPolicy({
+    ...remote,
+    user: { id: "account-a", email: "alice@example.com", method: "google" },
+    csrfToken: "csrf",
+  });
+  assert.equal(member.serverStatus, true);
+  assert.equal(member.reviewMarks, false);
 });
 
 test("a local review column waits for a second review; remote always shows", () => {

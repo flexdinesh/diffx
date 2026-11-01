@@ -1,9 +1,8 @@
-import { ListTreeIcon, RefreshCwIcon } from "lucide-react";
+import { RefreshCwIcon } from "lucide-react";
 import { IconButton } from "@diffx/ui/components/icon-button";
 import { useDiffSource } from "./app-state.tsx";
-import { useSidebarState } from "./sidebar-context.tsx";
 import { useCatalog, useSession } from "./session-context.tsx";
-import { SyncButton, Topbar } from "./Topbar.tsx";
+import { SidebarToggle, SyncButton, Topbar } from "./Topbar.tsx";
 import { contextDiagnostics, observationSummary } from "./project-picker.ts";
 import { useCompactChrome } from "./use-compact-chrome.ts";
 
@@ -12,24 +11,10 @@ export function Header() {
   const session = useSession();
   const { observation } = session;
   const { collect, collecting } = useCatalog();
-  const sidebar = useSidebarState();
   const compact = useCompactChrome();
-  const sidebarOpen = sidebar.expanded;
   return (
     <Topbar
-      lead={
-        <IconButton
-          id="sidebar-toggle"
-          variant="shell"
-          touch
-          label={`${sidebarOpen ? "Hide" : "Show"} file sidebar`}
-          aria-controls="sidebar"
-          aria-expanded={sidebarOpen}
-          onClick={sidebar.toggleFiles}
-        >
-          <ListTreeIcon aria-hidden="true" />
-        </IconButton>
-      }
+      lead={<SidebarToggle />}
       actions={
         collect ? (
           <SyncButton busy={collecting || diff.busy} onClick={refresh} />

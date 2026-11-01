@@ -16,12 +16,18 @@ const (
 	// flowCookie binds a Google authorization to the browser that started it,
 	// so a forged callback cannot sign a victim into another account.
 	flowCookie = "diffx_google_flow"
+	// nextCookie carries the app page a successful sign-in opens.
+	nextCookie = "diffx_google_next"
 )
+
+// googleNext lists the app pages a sign-in may return to; anything else is
+// refused, so the callback never redirects off the app.
+var googleNext = map[string]bool{"/settings/github": true}
 
 // googleStart begins Google sign-in, optionally from an invite link. It is an
 // authentication form: the caller already bounded admission.
 func (remote *transport) googleStart(w http.ResponseWriter, r *http.Request) {
-	var invite string
+	var invite, next string
 	if r.URL.Path == "/api/v2/invites/google" {
 		var input struct {
 			Token string `json:"token"`
@@ -30,15 +36,32 @@ func (remote *transport) googleStart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		invite = input.Token
-	} else if !authhttp.DecodeJSON(w, r, &struct{}{}) {
-		return
+	} else {
+		var input struct {
+			Next string `json:"next"`
+		}
+		if !authhttp.DecodeJSON(w, r, &input) {
+			return
+		}
+		if input.Next != "" && !googleNext[input.Next] {
+			authhttp.Problem(w, 400, "Unsupported return page")
+			return
+		}
+		next = input.Next
 	}
 	authorize, binding, err := remote.identity.StartGoogle(r.Context(), invite)
 	if err != nil {
 		googleError(w, r, err)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: flowCookie, Value: binding, Path: googleCallback, MaxAge: int(identityservice.GoogleFlowLifetime / time.Second),
+	lifetime := int(identityservice.GoogleFlowLifetime / time.Second)
+	http.SetCookie(w, &http.Cookie{Name: flowCookie, Value: binding, Path: googleCallback, MaxAge: lifetime,
+		HttpOnly: true, Secure: !remote.settings.InsecureCookies, SameSite: http.SameSiteLaxMode})
+	// Each start replaces an earlier flow's return page.
+	if next == "" {
+		lifetime = -1
+	}
+	http.SetCookie(w, &http.Cookie{Name: nextCookie, Value: next, Path: googleCallback, MaxAge: lifetime,
 		HttpOnly: true, Secure: !remote.settings.InsecureCookies, SameSite: http.SameSiteLaxMode})
 	authhttp.WriteJSON(w, 200, struct {
 		AuthorizeURL string `json:"authorizeUrl"`
@@ -90,6 +113,11 @@ func (remote *transport) googleCallbackRoute(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: flowCookie, Path: googleCallback, MaxAge: -1, HttpOnly: true, Secure: !remote.settings.InsecureCookies, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: nextCookie, Path: googleCallback, MaxAge: -1, HttpOnly: true, Secure: !remote.settings.InsecureCookies, SameSite: http.SameSiteLaxMode})
+	target := "/"
+	if cookie, err := r.Cookie(nextCookie); err == nil && googleNext[cookie.Value] {
+		target = cookie.Value
+	}
 	query := r.URL.Query()
 	if query.Get("error") != "" || query.Get("code") == "" {
 		http.Redirect(w, r, "/?signin=cancelled", http.StatusSeeOther)
@@ -118,7 +146,6 @@ func (remote *transport) googleCallbackRoute(w http.ResponseWriter, r *http.Requ
 		}
 		outcome = "failed"
 	}
-	target := "/"
 	if outcome != "" {
 		target = "/?signin=" + outcome
 	}

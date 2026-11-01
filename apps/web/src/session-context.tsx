@@ -3,6 +3,7 @@ import {
   errorDetail,
   type ApiCommitSummary,
   type ApiContext,
+  type ApiMiddleware,
 } from "@diffx/api";
 import {
   createContext,
@@ -11,6 +12,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -137,7 +139,44 @@ export function capabilityEnabled(capability: { state: string }) {
   return capability.state === "enabled";
 }
 
-export function SessionProvider({ children }: { children: ReactNode }) {
+/**
+ * Where the session's review comes from. A public pull request preview views
+ * one snapshot, once ready, through the credential-free public reads; it has
+ * no catalog, events, routes or collection.
+ */
+export type SessionSource = { kind: "public"; contextId: string | null };
+
+/**
+ * Sends a public snapshot's context reads to `/api/v2/public/contexts`, which
+ * serves the same shapes. Only that context is rewritten, and only while its
+ * session is mounted.
+ */
+function usePublicReads(contextId: string) {
+  useLayoutEffect(() => {
+    if (!contextId) return;
+    const from = `/api/v2/contexts/${encodeURIComponent(contextId)}`;
+    const middleware: ApiMiddleware = {
+      onRequest({ request }) {
+        const url = new URL(request.url);
+        if (url.pathname !== from && !url.pathname.startsWith(`${from}/`))
+          return request;
+        url.pathname = `/api/v2/public${url.pathname.slice("/api/v2".length)}`;
+        return new Request(url, request);
+      },
+    };
+    api.use(middleware);
+    return () => api.eject(middleware);
+  }, [contextId]);
+}
+
+export function SessionProvider({
+  children,
+  source,
+}: {
+  children: ReactNode;
+  source?: SessionSource;
+}) {
+  const publicId = source ? (source.contextId ?? "") : null;
   const { state: identity } = useIdentity();
   const preferenceOwner =
     identity.status === "ready" ? (identity.bootstrap.user?.id ?? "local") : "";
@@ -147,20 +186,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     identity.status === "ready" &&
     identity.bootstrap.mode === "local" &&
     identity.bootstrap.collect;
-  const [route, setRoute] = useState(routeFromUrl);
+  // A public snapshot is pinned by its owner, not by the page URL.
+  const [route, setRoute] = useState<Route>(() =>
+    publicId === null ? routeFromUrl() : { kind: "pinned", id: publicId },
+  );
   const [requestedScope, setRequestedScope] = useState(scopeFromUrl);
   const [requestedCommit, setRequestedCommit] = useState(commitFromUrl);
-  const [selectedId, setSelectedId] = useState(() =>
+  const [routedId, setSelectedId] = useState(() =>
     route.kind === "pinned" ? route.id : "",
   );
+  const selectedId = publicId ?? routedId;
+  usePublicReads(publicId ?? "");
   // A live route without a current head (expired, deleted, or unknown).
   const [missing, setMissing] = useState(false);
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
   // Navigation needs only current work; the picker's history loads on demand.
-  const heads = useContextCatalog(true, true);
-  const history = useContextCatalog(false, pickerOpen);
+  const heads = useContextCatalog(true, publicId === null);
+  const history = useContextCatalog(false, publicId === null && pickerOpen);
   const selectedRef = useRef(selectedId);
   useEffect(() => {
     selectedRef.current = selectedId;
@@ -271,9 +315,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
   useEffect(() => {
     const handleNavigation = () => {
-      const next = routeFromUrl();
       setRequestedScope(scopeFromUrl());
       setRequestedCommit(commitFromUrl());
+      if (publicId !== null) return;
+      const next = routeFromUrl();
       if (sameRoute(route, next)) return;
       setRoute(next);
       setMissing(false);
@@ -282,7 +327,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("popstate", handleNavigation);
     return () => window.removeEventListener("popstate", handleNavigation);
-  }, [route]);
+  }, [route, publicId]);
   // Live URLs open available catalog data while local collection continues; the
   // root waits for the collection's default. Once selected, a snapshot stays
   // open; collection only announces newer heads.

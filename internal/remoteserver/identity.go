@@ -24,6 +24,7 @@ type transport struct {
 	settings     Settings
 	assets       fs.FS
 	admission    *authhttp.Admission
+	fetches      *authhttp.FetchLimiter
 	github       *githubsync.Service
 	push         *pushservice.Service
 }
@@ -45,11 +46,13 @@ type bootstrapJSON struct {
 	PasswordSignupEnabled bool         `json:"passwordSignupEnabled"`
 	User                  *accountJSON `json:"user"`
 	CSRFToken             *string      `json:"csrfToken"`
+	PublicPullRequests    bool         `json:"publicPullRequests"`
 }
 
 func (remote *transport) bootstrap(w http.ResponseWriter, r *http.Request, p principal) {
 	settings := remote.identity.Settings()
-	result := bootstrapJSON{Mode: "remote", GoogleEnabled: remote.identity.GoogleEnabled(), SignupEnabled: settings.Signup, PasswordSignupEnabled: settings.PasswordSignup}
+	result := bootstrapJSON{Mode: "remote", GoogleEnabled: remote.identity.GoogleEnabled(), SignupEnabled: settings.Signup, PasswordSignupEnabled: settings.PasswordSignup,
+		PublicPullRequests: remote.publicPullRequests()}
 	if p.session != nil {
 		result.User = &accountJSON{ID: p.account.ID, Email: p.account.Email, Method: p.account.Method}
 		result.CSRFToken = &p.session.CSRFToken
@@ -86,7 +89,8 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		remote.googleCallbackRoute(w, r)
 		return
 	}
-	page := !strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/mcp") && !strings.HasPrefix(r.URL.Path, "/control/")
+	// Owners such as mcp-tools name pull request pages, so only /mcp itself is MCP.
+	page := !strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/mcp" && !strings.HasPrefix(r.URL.Path, "/mcp/") && !strings.HasPrefix(r.URL.Path, "/control/")
 	if !serverapp.SameOrigin(r) && !(page && serverapp.PageNavigation(r)) {
 		authhttp.Problem(w, 403, "Cross-origin access denied")
 		return
@@ -94,7 +98,8 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Login remains available with an expired browser cookie. Explicit bearer
 	// credentials are always validated; never silently fall back to cookies.
 	authForm := authForms[r.URL.Path]
-	public := r.URL.Path == "/api/v2/bootstrap" || page
+	publicRoute := strings.HasPrefix(r.URL.Path, "/api/v2/public/")
+	public := r.URL.Path == "/api/v2/bootstrap" || page || publicRoute
 	p, err := remote.authenticate(r)
 	if errors.Is(err, identityservice.ErrAuthentication) && r.Header.Get("Authorization") == "" && (public || authForm) {
 		remote.cookie(w, "", time.Time{})
@@ -119,6 +124,12 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if page {
 		remote.static(w, r)
+		return
+	}
+	// Public pull request previews hold no account state, so they serve
+	// everyone alike and need no CSRF token; same-origin is enforced above.
+	if publicRoute {
+		remote.publicRoutes(w, r)
 		return
 	}
 	if p.account.ID == "" {

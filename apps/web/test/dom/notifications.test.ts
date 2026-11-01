@@ -121,6 +121,7 @@ function server({ enabled = true, github = "absent", handle }: Server = {}) {
     if (path === "/api/v2/bootstrap")
       return json({
         mode: "remote",
+        publicPullRequests: false,
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,

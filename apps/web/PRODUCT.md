@@ -26,6 +26,7 @@ A local review workspace that combines a browser-based Git diff with comments th
 - The CLI can also display a piped Git patch as a fixed review.
 - A remote diffx server can collect from many agent sessions across many repositories. The Reviews column keeps that work navigable as people hop between agents: each repository lists only its current changed branches, newest first, the column collapses to repository marks that open each repository's latest work, the header repository and branch comboboxes filter as you type, and new arrivals are marked without replacing the review in progress. A piped patch shows only that diff.
 - A remote diffx server is an installable web app. With an HTTPS public URL it sends push notifications, per device and opted in from Settings, when a followed GitHub repository's pull request opens or gets new commits. Local diffx has neither.
+- When its admins turn it on, a remote diffx server also previews any public GitHub pull request without sign-in: visitors paste its link on the home page or swap `github.com` for the diffx host. Previews are read-only, shared by every reader and refreshed only on request; diffx comments are agent feedback, not GitHub review comments, so previews offer none and point visitors to following their own repositories instead.
 - Review data is stored by the local diffx server, as documented in `../../docs-website/src/pages/api.md`.
 
 ## Capabilities and Constraints

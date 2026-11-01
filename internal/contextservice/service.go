@@ -57,6 +57,7 @@ type Publication struct {
 type Service struct {
 	events     events
 	external   bool
+	policies   reviewsession.Policies
 	store      Store
 	user       reviewdata.User
 	scopeMu    sync.RWMutex
@@ -115,6 +116,12 @@ type Option func(*Service)
 // process, through Notify.
 func ExternalEvents() Option {
 	return func(service *Service) { service.external = true }
+}
+
+// DisableComments resolves every context with comments disabled, for owners
+// whose snapshots are read-only.
+func DisableComments() Option {
+	return func(service *Service) { service.policies.Comments = reviewsession.DisablePolicy }
 }
 
 func New(store Store, user reviewdata.User) *Service {
@@ -206,7 +213,7 @@ func (service *Service) Resolve(ctx context.Context, id string) (reviewsession.S
 		return reviewsession.Session{}, review.Error(500, "Observation metadata missing")
 	}
 	source := &storedSource{store: service.store, ownerID: service.user.ID, id: id, metadata: *item.Metadata, binding: binding, kind: item.Source}
-	resolved := reviewsession.Resolve(source, reviewsession.Policies{})
+	resolved := reviewsession.Resolve(source, service.policies)
 	resolved.User = reviewsession.User{ID: service.user.ID, Name: service.user.Name}
 	resolved.ContextID = binding.ContextID
 	resolved.LocationID = binding.LocationID
@@ -321,7 +328,7 @@ func (service *Service) present(ctx context.Context, item reviewdata.ContextInfo
 		if name == "" {
 			name = "Piped"
 		}
-		value := Context{ScopeSummaries: item.ScopeSummaries, Commits: item.Commits, Source: item.Source, Stale: item.Stale, ID: item.ID, Kind: "observation", Name: name, Root: &m.Root, RepositoryID: item.RepositoryID, CreatedAt: item.CreatedAt, LastSubmittedAt: item.LastSubmittedAt, LastChangedAt: item.ActivityAt, ExpiresAt: item.ExpiresAt, ChangedFileCount: item.ChangedFileCount, SubmittedFrom: item.SubmittedFrom, Observation: m, Sessions: item.Sessions, Branch: &m.Branch, WorktreeName: &m.WorktreeName, StreamID: item.StreamID, LatestContextID: item.LatestContextID, Availability: "available", Capabilities: storedCapabilities(scopes, item.Source == "local")}
+		value := Context{ScopeSummaries: item.ScopeSummaries, Commits: item.Commits, Source: item.Source, Stale: item.Stale, ID: item.ID, Kind: "observation", Name: name, Root: &m.Root, RepositoryID: item.RepositoryID, CreatedAt: item.CreatedAt, LastSubmittedAt: item.LastSubmittedAt, LastChangedAt: item.ActivityAt, ExpiresAt: item.ExpiresAt, ChangedFileCount: item.ChangedFileCount, SubmittedFrom: item.SubmittedFrom, Observation: m, Sessions: item.Sessions, Branch: &m.Branch, WorktreeName: &m.WorktreeName, StreamID: item.StreamID, LatestContextID: item.LatestContextID, Availability: "available", Capabilities: storedCapabilities(scopes, item.Source == "local", service.policies)}
 		if item.Source == "stdin" {
 			value.Name, value.Stale = "Piped", false
 			value.Root, value.RepositoryID, value.Branch, value.WorktreeName = nil, nil, nil, nil
