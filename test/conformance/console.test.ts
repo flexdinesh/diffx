@@ -103,26 +103,31 @@ test("The console administers the server's accounts over one database", async (t
     token && consoleLog.includes(`${consoleOrigin}/setup#t=`),
     consoleLog,
   );
+  const invalidSetup = await console.POST("/api/v1/setup", {
+    body: { token, email: "root", password },
+  });
+  assert.equal(invalidSetup.response.status, 400);
   const setup = await console.POST("/api/v1/setup", {
-    body: { token, username: "root", password },
+    body: { token, email: "root@example.com", password },
   });
   assert.equal(setup.response.status, 200);
   consoleConforms("Bootstrap", setup.data);
-  assert.equal(setup.data?.admin?.username, "root");
+  assert.equal(setup.data?.admin?.username, "root@example.com");
+  assert.equal(setup.data?.admin?.email, "root@example.com");
   const csrf = setup.data?.csrfToken;
   assert.ok(csrf);
   const admin = { Cookie: cookieFrom(setup.response), "X-CSRF-Token": csrf };
 
   // The admin is a regular app account too.
   const adminApp = await app.POST("/api/v2/auth/login", {
-    body: { username: "root", password },
+    body: { username: "root@example.com", password },
   });
   assert.equal(adminApp.response.status, 200);
   conforms("Bootstrap", adminApp.data);
 
   // A member's app session never authenticates in the console.
   const signup = await app.POST("/api/v2/auth/signup", {
-    body: { username: "member", password },
+    body: { email: "member@example.com", password },
   });
   assert.equal(signup.response.status, 200);
   assert.ok(signup.data?.mode === "remote" && signup.data.csrfToken);
@@ -135,7 +140,7 @@ test("The console administers the server's accounts over one database", async (t
   });
   assert.equal(refused.response.status, 401);
   const memberLogin = await console.POST("/api/v1/auth/login", {
-    body: { username: "member", password },
+    body: { username: "member@example.com", password },
   });
   assert.equal(memberLogin.response.status, 401);
 
@@ -144,7 +149,7 @@ test("The console administers the server's accounts over one database", async (t
   for (const account of accounts.data?.accounts ?? [])
     consoleConforms("Account", account);
   const memberId = accounts.data?.accounts.find(
-    (account) => account.username === "member",
+    (account) => account.username === "member@example.com",
   )?.id;
   assert.ok(memberId);
 
@@ -162,6 +167,19 @@ test("The console administers the server's accounts over one database", async (t
   });
   assert.equal(lookup.response.status, 200);
   assert.equal(lookup.data?.email, "new@example.com");
+  const mismatch = await app.POST("/api/v2/invites/password", {
+    body: { token: inviteToken, email: "other@example.com", password },
+  });
+  assert.equal(mismatch.response.status, 400);
+  const accepted = await app.POST("/api/v2/invites/password", {
+    body: { token: inviteToken, email: "new@example.com", password },
+  });
+  assert.equal(accepted.response.status, 200);
+  conforms("Bootstrap", accepted.data);
+  assert.equal(
+    accepted.data?.mode === "remote" && accepted.data.user?.email,
+    "new@example.com",
+  );
   const invites = await console.GET("/api/v1/invites", { headers: admin });
   for (const value of invites.data?.invites ?? [])
     consoleConforms("Invite", value);
@@ -185,7 +203,7 @@ test("The console administers the server's accounts over one database", async (t
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   const refusedSignup = await app.POST("/api/v2/auth/signup", {
-    body: { username: "latecomer", password },
+    body: { email: "latecomer@example.com", password },
   });
   assert.equal(refusedSignup.response.status, 404);
   const reset = await console.POST(
@@ -198,12 +216,12 @@ test("The console administers the server's accounts over one database", async (t
   const resetLookup = await app.POST("/api/v2/password-reset/lookup", {
     body: { token: resetToken },
   });
-  assert.equal(resetLookup.data?.username, "member");
+  assert.equal(resetLookup.data?.username, "member@example.com");
 
   // Offline recovery prints a link for the account's surface.
   const cli = await run(
     consoleBinary,
-    ["user", "reset-password", "--username", "root"],
+    ["user", "reset-password", "--username", "root@example.com"],
     { env: consoleEnv },
   );
   assert.match(cli.stdout, new RegExp(`${consoleOrigin}/reset-password#t=`));

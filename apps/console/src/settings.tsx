@@ -17,7 +17,7 @@ const options: {
   {
     key: "passwordSignup",
     label: "Password signup",
-    hint: "When on, new accounts can choose a username and password, by signup or invite. When off, new accounts use Google; existing password accounts keep signing in.",
+    hint: "When on, new accounts can join with an email and password, by signup or invite. When off, new accounts use Google; existing password accounts keep signing in.",
   },
 ];
 

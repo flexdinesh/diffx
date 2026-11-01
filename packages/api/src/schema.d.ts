@@ -47,7 +47,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Distributed only, when both signup and password signup are on (otherwise 404). Create a password account without an invite and sign it in. */
+    /** @description Distributed only, when both signup and password signup are on (otherwise 404). Create an account with an email and password without an invite and sign it in. The email is required and stored, but is not verified. */
     post: operations["signUp"];
     delete?: never;
     options?: never;
@@ -132,7 +132,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Distributed only, when password signup is on (otherwise 404). Accept a pending invite by choosing a username and password, and sign in. Holding the link is the proof; the invited email is not verified. The invite is used once. */
+    /** @description Distributed only, when password signup is on (otherwise 404). Accept a pending invite with the invited email and a password, and sign in. The email must match the invite and is stored, but is not verified. The invite is used once. */
     post: operations["acceptInviteWithPassword"];
     delete?: never;
     options?: never;
@@ -937,7 +937,7 @@ export interface components {
     AccountUser: {
       id: string;
       username: string;
-      /** @description The latest email Google reported for the account; null for password accounts. */
+      /** @description The account email submitted at password signup or last reported by Google. Null for legacy password accounts; a submitted email is not verified. */
       email: string | null;
       /**
        * @description How the account signs in, fixed when it was created.
@@ -973,7 +973,13 @@ export interface components {
           user: components["schemas"]["AccountUser"] | null;
           csrfToken: string | null;
         };
+    PasswordSignupCredentials: {
+      /** Format: email */
+      email: string;
+      password: string;
+    };
     PasswordCredentials: {
+      /** @description Account email, or the username of an existing legacy account. */
       username: string;
       password: string;
     };
@@ -1647,7 +1653,7 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["PasswordCredentials"];
+        "application/json": components["schemas"]["PasswordSignupCredentials"];
       };
     };
     responses: {
@@ -1780,7 +1786,8 @@ export interface operations {
         "application/json": {
           /** @description The secret from the invite link's `#t=` fragment. */
           token: string;
-          username: string;
+          /** Format: email */
+          email: string;
           password: string;
         };
       };

@@ -70,9 +70,14 @@ export function SignIn() {
       )}
       <CredentialForm
         submitLabel="Sign in"
-        failure="Unable to sign in. Check your username and password."
+        failure="Unable to sign in. Check your email or username and password."
         submit={(credentials) =>
-          api.POST("/api/v1/auth/login", { body: credentials })
+          api.POST("/api/v1/auth/login", {
+            body: {
+              username: credentials.identifier,
+              password: credentials.password,
+            },
+          })
         }
       />
     </AuthPage>
@@ -182,7 +187,13 @@ export function Setup() {
             submitLabel="Create admin"
             failure="Unable to create the admin. Try again."
             submit={(credentials) =>
-              api.POST("/api/v1/setup", { body: { ...credentials, token } })
+              api.POST("/api/v1/setup", {
+                body: {
+                  email: credentials.identifier,
+                  password: credentials.password,
+                  token,
+                },
+              })
             }
           />
         </>
@@ -360,9 +371,9 @@ export function ResetPassword() {
   );
 }
 
-type Credentials = { username: string; password: string };
+type Credentials = { identifier: string; password: string };
 
-/** Username and password sign-in, or the first admin's creation. */
+/** Email-based admin creation, with legacy username sign-in. */
 function CredentialForm({
   creating = false,
   submitLabel,
@@ -389,7 +400,10 @@ function CredentialForm({
     setBusy(true);
     setError("");
     try {
-      const { data, error, response } = await submit({ username, password });
+      const { data, error, response } = await submit({
+        identifier: username,
+        password,
+      });
       // Refused credentials share one generic 401; name the form's failure.
       if (response.status === 401) throw new Error(failure);
       if (!data) throw new Error(errorDetail(error, failure));
@@ -408,17 +422,20 @@ function CredentialForm({
   }
   return (
     <form className="console-form" onSubmit={send}>
-      <label htmlFor="username">Username</label>
+      <label htmlFor="username">
+        {creating ? "Email" : "Email or username"}
+      </label>
       <Input
         id="username"
-        name="username"
+        name={creating ? "email" : "username"}
+        type={creating ? "email" : "text"}
         autoComplete="username"
         touch
         value={username}
         onChange={(event) => setUsername(event.target.value)}
         required
         minLength={3}
-        maxLength={32}
+        maxLength={254}
         disabled={busy}
       />
       <label htmlFor="password">Password</label>

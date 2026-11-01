@@ -65,11 +65,12 @@ test("open signup creates a password account with a password section", async ({
   page,
 }) => {
   const open = { signupEnabled: true, passwordSignupEnabled: true };
+  const email = "alice.with.a.long.email.address@example.com";
   await remote(page, false, open);
   await page.route("**/api/v2/auth/signup", (route) => {
     expect(route.request().headers()["x-csrf-token"]).toBeUndefined();
     expect(route.request().postDataJSON()).toEqual({
-      username: "alice",
+      email,
       password: "a-secure-password",
     });
     return route.fulfill({
@@ -83,8 +84,21 @@ test("open signup creates a password account with a password section", async ({
     page.getByRole("heading", { name: "Create an account" }),
   ).toBeVisible();
   expect(new URL(page.url()).pathname).toBe("/signup");
-  await page.getByLabel("Username", { exact: true }).fill("alice");
+  const emailField = page.getByLabel("Email", { exact: true });
+  await expect(emailField).toHaveAttribute("type", "email");
+  await emailField.fill("alice");
   await page.getByLabel("Password", { exact: true }).fill("a-secure-password");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  await expect(emailField).toBeVisible();
+  expect(
+    await emailField.evaluate(
+      (field) =>
+        field instanceof HTMLInputElement && field.validity.typeMismatch,
+    ),
+  ).toBe(true);
+  await emailField.fill(email);
   await page
     .getByRole("button", { name: "Create account", exact: true })
     .click();
@@ -503,7 +517,7 @@ test("an invite accepted with a password signs the account in", async ({
   await page.route("**/api/v2/invites/password", (route) => {
     expect(route.request().postDataJSON()).toEqual({
       token: "invite-secret",
-      username: "bob",
+      email: "bob@example.com",
       password: "a-secure-password",
     });
     return route.fulfill({
@@ -518,7 +532,13 @@ test("an invite accepted with a password signs the account in", async ({
   await expect(
     page.getByRole("button", { name: "Continue with Google" }),
   ).toBeVisible();
-  await page.getByLabel("Username", { exact: true }).fill("bob");
+  await expect(page.getByLabel("Email", { exact: true })).toHaveValue(
+    "bob@example.com",
+  );
+  await expect(page.getByLabel("Email", { exact: true })).toHaveAttribute(
+    "readonly",
+    "",
+  );
   await page.getByLabel("Password", { exact: true }).fill("a-secure-password");
   await page
     .getByRole("button", { name: "Create account", exact: true })

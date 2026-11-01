@@ -11,7 +11,11 @@ import (
 )
 
 const emailLinked = `-- name: EmailLinked :one
-SELECT EXISTS (SELECT 1 FROM google_identities WHERE email = $1)
+SELECT EXISTS (
+  SELECT 1 FROM google_identities g WHERE g.email = $1::text
+  UNION ALL
+  SELECT 1 FROM remote_accounts a WHERE a.email = $1::text
+)
 `
 
 func (q *Queries) EmailLinked(ctx context.Context, email string) (bool, error) {
@@ -46,17 +50,6 @@ func (q *Queries) GoogleAccount(ctx context.Context, sub string) (GoogleAccountR
 		&i.Disabled,
 	)
 	return i, err
-}
-
-const googleEmail = `-- name: GoogleEmail :one
-SELECT email FROM google_identities WHERE user_id = $1
-`
-
-func (q *Queries) GoogleEmail(ctx context.Context, userID string) (string, error) {
-	row := q.db.QueryRow(ctx, googleEmail, userID)
-	var email string
-	err := row.Scan(&email)
-	return email, err
 }
 
 const insertGoogleFlow = `-- name: InsertGoogleFlow :exec
@@ -381,17 +374,23 @@ func (q *Queries) UseInvite(ctx context.Context, arg UseInviteParams) (int64, er
 
 const usePasswordInvite = `-- name: UsePasswordInvite :execrows
 UPDATE account_invites SET used_at = $1::timestamptz, used_by = $2::text
-WHERE id = $3 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > $1::timestamptz
+WHERE id = $3 AND email = $4 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > $1::timestamptz
 `
 
 type UsePasswordInviteParams struct {
 	Now    time.Time
 	UserID string
 	ID     string
+	Email  string
 }
 
 func (q *Queries) UsePasswordInvite(ctx context.Context, arg UsePasswordInviteParams) (int64, error) {
-	result, err := q.db.Exec(ctx, usePasswordInvite, arg.Now, arg.UserID, arg.ID)
+	result, err := q.db.Exec(ctx, usePasswordInvite,
+		arg.Now,
+		arg.UserID,
+		arg.ID,
+		arg.Email,
+	)
 	if err != nil {
 		return 0, err
 	}

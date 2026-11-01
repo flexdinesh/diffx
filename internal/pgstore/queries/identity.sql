@@ -8,7 +8,7 @@ SELECT pg_advisory_xact_lock(@key::bigint);
 INSERT INTO users(id, name, created_at) VALUES ($1, $2, $3);
 
 -- name: InsertRemoteAccount :execrows
-INSERT INTO remote_accounts(user_id, username, password_hash) VALUES ($1, $2, $3)
+INSERT INTO remote_accounts(user_id, username, password_hash, email) VALUES ($1, $2, $3, $4)
 ON CONFLICT (username) DO NOTHING;
 
 -- name: PutAdminSetup :execrows
@@ -35,7 +35,7 @@ INSERT INTO admin_account(user_id) VALUES ($1);
 -- name: AccountSummaries :many
 SELECT a.user_id, a.username,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
-  COALESCE(g.email, '')::text AS email,
+  COALESCE(g.email, a.email, '')::text AS email,
   EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.user_id = a.user_id) AS disabled,
   (CASE WHEN g.sub IS NULL THEN 'password' ELSE 'google' END)::text AS method,
   u.created_at
@@ -83,6 +83,7 @@ DELETE FROM users WHERE id = $1;
 
 -- name: AccountPassword :one
 SELECT a.user_id, a.username,
+  COALESCE((SELECT g.email FROM google_identities g WHERE g.user_id = a.user_id), a.email, '')::text AS email,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
   a.password_hash
@@ -91,6 +92,7 @@ WHERE a.username = $1 AND NOT EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.
 
 -- name: AccountPasswordByID :one
 SELECT a.user_id, a.username,
+  COALESCE((SELECT g.email FROM google_identities g WHERE g.user_id = a.user_id), a.email, '')::text AS email,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
   a.password_hash
@@ -120,6 +122,7 @@ WHERE a.user_id = @user_id AND a.password_hash = @expected
 
 -- name: ResolveSession :one
 SELECT a.user_id, a.username,
+  COALESCE((SELECT g.email FROM google_identities g WHERE g.user_id = a.user_id), a.email, '')::text AS email,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
   s.csrf_token, s.expires_at
@@ -149,12 +152,14 @@ FROM remote_accounts a
 WHERE a.user_id = t.user_id AND t.secret_hash = @secret_hash AND t.expires_at > @now::timestamptz
   AND NOT EXISTS (SELECT 1 FROM disabled_accounts d WHERE d.user_id = a.user_id)
 RETURNING a.user_id, a.username,
+  COALESCE((SELECT g.email FROM google_identities g WHERE g.user_id = a.user_id), a.email, '')::text AS email,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
   t.purpose, t.expires_at;
 
 -- name: IdentityAccounts :many
 SELECT a.user_id, a.username,
+  COALESCE((SELECT g.email FROM google_identities g WHERE g.user_id = a.user_id), a.email, '')::text AS email,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method
 FROM remote_accounts a
@@ -167,6 +172,7 @@ ON CONFLICT (user_id) DO UPDATE SET token_hash = excluded.token_hash, expires_at
 
 -- name: PasswordReset :one
 SELECT a.user_id, a.username,
+  COALESCE((SELECT g.email FROM google_identities g WHERE g.user_id = a.user_id), a.email, '')::text AS email,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
   a.password_hash

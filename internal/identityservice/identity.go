@@ -17,6 +17,7 @@ import (
 var (
 	ErrAuthentication = errors.New("invalid credentials")
 	ErrInvalidInput   = errors.New("invalid identity input")
+	ErrInvalidEmail   = fmt.Errorf("%w: invalid email address", ErrInvalidInput)
 	ErrConflict       = errors.New("username already exists")
 	ErrNotFound       = errors.New("identity not found")
 	// ErrForbidden refuses an administrative action an admin takes on itself.
@@ -75,16 +76,20 @@ func (settings Settings) allows(required Settings) bool {
 // Account is an authenticated owner. Admin marks accounts that may also sign
 // in to the console and manage other accounts.
 type Account struct {
-	ID       string
+	ID string
+	// Username remains the stable sign-in identifier: email for new password
+	// accounts, a handle for legacy passwords and Google accounts.
 	Username string
-	Admin    bool
-	Method   Method
+	// Email is submitted for password accounts, or last reported by Google.
+	// Legacy password accounts may have no known email.
+	Email  string
+	Admin  bool
+	Method Method
 }
 
 // AccountSummary is the administrative view of an account.
 type AccountSummary struct {
 	Account
-	Email     string
 	Disabled  bool
 	CreatedAt time.Time
 }
@@ -223,6 +228,9 @@ func New(store Store, options ...Option) *Service {
 }
 
 func canonicalUsername(username string) (string, error) {
+	if strings.Contains(username, "@") {
+		return canonicalEmail(username)
+	}
 	username = strings.ToLower(username)
 	if len(username) < 3 || len(username) > 32 {
 		return "", fmt.Errorf("%w: username must be 3–32 characters", ErrInvalidInput)
@@ -277,26 +285,15 @@ func (service *Service) SetupRequired(ctx context.Context) (bool, error) {
 }
 
 // CompleteSetup creates the admin from a valid setup secret and signs it in.
-func (service *Service) CompleteSetup(ctx context.Context, secret, username, password string) (Session, error) {
-	username, err := canonicalUsername(username)
+func (service *Service) CompleteSetup(ctx context.Context, secret, email, password string) (Session, error) {
+	account, hash, err := service.newPasswordAccount(email, password)
 	if err != nil {
-		return Session{}, err
-	}
-	if err := validatePassword(password); err != nil {
 		return Session{}, err
 	}
 	if len(secret) != 43 {
 		return Session{}, ErrNotFound
 	}
-	hash, err := hashPassword(password)
-	if err != nil {
-		return Session{}, err
-	}
-	id, err := opaqueSecret()
-	if err != nil {
-		return Session{}, err
-	}
-	account := Account{ID: id, Username: username, Admin: true, Method: MethodPassword}
+	account.Admin = true
 	if err := service.store.CreateAdmin(ctx, account, hash, credentialHash(secret), service.now()); err != nil {
 		return Session{}, err
 	}
@@ -327,12 +324,12 @@ func (service *Service) Login(ctx context.Context, audience Audience, username, 
 
 // SignUp creates a password member and signs it in, while both signup and
 // password signup are on.
-func (service *Service) SignUp(ctx context.Context, username, password string) (Session, error) {
+func (service *Service) SignUp(ctx context.Context, email, password string) (Session, error) {
 	required := Settings{Signup: true, PasswordSignup: true}
 	if !service.Settings().allows(required) {
 		return Session{}, ErrDisabled
 	}
-	account, hash, err := service.newPasswordAccount(username, password)
+	account, hash, err := service.newPasswordAccount(email, password)
 	if err != nil {
 		return Session{}, err
 	}
@@ -342,9 +339,10 @@ func (service *Service) SignUp(ctx context.Context, username, password string) (
 	return service.issueSession(ctx, account, hash)
 }
 
-// newPasswordAccount validates a chosen username and password for a new member.
-func (service *Service) newPasswordAccount(username, password string) (Account, string, error) {
-	username, err := canonicalUsername(username)
+// newPasswordAccount requires an email, used as the password sign-in identifier.
+// Collecting an email does not verify ownership of its mailbox.
+func (service *Service) newPasswordAccount(email, password string) (Account, string, error) {
+	email, err := canonicalEmail(email)
 	if err != nil {
 		return Account{}, "", err
 	}
@@ -359,7 +357,7 @@ func (service *Service) newPasswordAccount(username, password string) (Account, 
 	if err != nil {
 		return Account{}, "", err
 	}
-	return Account{ID: id, Username: username, Method: MethodPassword}, hash, nil
+	return Account{ID: id, Username: email, Email: email, Method: MethodPassword}, hash, nil
 }
 
 // issueSession fences on the credential the caller verified: a concurrent

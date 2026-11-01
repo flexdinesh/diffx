@@ -485,7 +485,11 @@ records; producer paths do not identify server files.
 | Stored time          | Server timestamp used for catalog ordering; separate from the producer's collection timestamp.                                                                                                  |
 
 Accounts have stable opaque IDs independent of username, passwords, browser
-sessions and API tokens. Username matching is case-insensitive and usernames are
+sessions and API tokens. Password setup, signup and invite acceptance require an
+email and password; new password accounts use the canonical, case-insensitive
+email as their sign-in identifier and retain it as account email. Submitted
+emails are not ownership-verified. Legacy password accounts keep their handle
+sign-in and recovery; upgrades leave their unknown email empty. Identifiers are
 fixed in this version. Local mode automatically resolves one stable OS-backed
 owner; users never manage local identity. A remote server has no default
 credential. Each account has one sign-in method, fixed when it is created:
@@ -494,7 +498,7 @@ account: admins use the app like any user and also sign in to the console
 (`diffx-console`, a separate binary and origin over the same database), which
 owns first-admin setup and account administration. `diffx-server` serves no
 admin routes or UI. Admins come only from first-admin setup or promotion in the
-console. Setup creates a password account or, with the console's own Google
+console. Setup creates an email-and-password account or, with the console's own Google
 client, a Google account whose email Google verified, deriving the username
 from it; if that Google account already has an app account, setup makes it the
 admin instead. The setup secret is consumed once under the admin lock.
@@ -528,11 +532,13 @@ Invites come from the console and always create members. The link carries a
 hashed one-time secret in its fragment, is shown once, expires after 48 hours
 and replaces that email's pending invite. Accepting with Google requires a
 verified email equal to the invite's and derives the username from it;
-accepting with a password (while `passwordSignup` is on) takes a username and
-password. Either way the invite is used and the account created in
+accepting with a password (while `passwordSignup` is on) requires the invited
+email and a password. Storage rechecks the email match when consuming the invite.
+Either way the invite is used and the account created in
 one transaction. Open signup with Google requires a verified email. Google
 accounts are identified by their stable subject, not email: a changed email
-keeps the account and updates its recorded email. Google sign-in uses the
+keeps the account and updates its recorded email. Matching a password account's
+submitted email never links it to a Google identity. Google sign-in uses the
 authorization code flow with PKCE, state and nonce; a short-lived HttpOnly
 cookie binds the flow to the starting browser and each state is consumed once.
 Without signup or an invite, a Google account cannot create an account. Without

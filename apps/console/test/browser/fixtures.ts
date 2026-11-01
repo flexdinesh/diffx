@@ -118,14 +118,17 @@ export const test = base.extend<
   baseURL: async ({ deployment }, use) => use(deployment.origin),
 });
 
-export const root = { username: "root", password: "console-password-0001" };
+export const root = {
+  username: "root.with.a.long.email.address@example.com",
+  password: "console-password-0001",
+};
 
 export async function signIn(
   page: Page,
   { username, password }: { username: string; password: string },
 ) {
   await page.goto("/");
-  await page.getByLabel("Username").fill(username);
+  await page.getByLabel("Email or username").fill(username);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
 }

@@ -30,7 +30,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Create the first admin, a password account, from the one-time secret diffx-console logged at startup (the setup link's `#t=` fragment) and sign it in. Works regardless of the app's settings. The secret expires after 24 hours and is replaced on each start until an admin exists; then every secret is 404. */
+    /** @description Create the first admin with an email and password, from the one-time secret diffx-console logged at startup (the setup link's `#t=` fragment), and sign it in. The email is required and stored, but is not verified. Works regardless of the app's settings. The secret expires after 24 hours and is replaced on each start until an admin exists; then every secret is 404. */
     post: operations["completeSetup"];
     delete?: never;
     options?: never;
@@ -390,14 +390,14 @@ export interface components {
     Admin: {
       id: string;
       username: string;
-      /** @description The latest email Google reported for the account; null for password accounts. */
+      /** @description The account email submitted at password signup or last reported by Google. Null for legacy password accounts; a submitted email is not verified. */
       email: string | null;
       method: components["schemas"]["Method"];
     };
     Account: {
       id: string;
       username: string;
-      /** @description The latest email Google reported for the account; null for password accounts. */
+      /** @description The account email submitted at password signup or last reported by Google. Null for legacy password accounts; a submitted email is not verified. */
       email: string | null;
       method: components["schemas"]["Method"];
       admin: boolean;
@@ -433,6 +433,7 @@ export interface components {
       token: string;
     };
     PasswordCredentials: {
+      /** @description Account email, or the username of an existing legacy account. */
       username: string;
       password: string;
     };
@@ -526,7 +527,8 @@ export interface operations {
       content: {
         "application/json": {
           token: string;
-          username: string;
+          /** Format: email */
+          email: string;
           password: string;
         };
       };

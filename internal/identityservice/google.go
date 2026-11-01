@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -114,9 +115,6 @@ type GoogleStore interface {
 	PromoteSetupAdmin(ctx context.Context, accountID, setupHash string, now time.Time) error
 	// GoogleAccount resolves a linked subject, recording the latest email.
 	GoogleAccount(ctx context.Context, identity google.Identity, now time.Time) (account Account, disabled bool, err error)
-	// GoogleEmail is the latest email Google reported for the account; "" for
-	// accounts without a Google identity.
-	GoogleEmail(ctx context.Context, accountID string) (string, error)
 	PutGoogleFlow(ctx context.Context, stateHash string, flow GoogleFlow) error
 	// TakeGoogleFlow consumes an unexpired flow exactly once.
 	TakeGoogleFlow(ctx context.Context, stateHash string, now time.Time) (GoogleFlow, error)
@@ -124,16 +122,12 @@ type GoogleStore interface {
 
 func (service *Service) GoogleEnabled() bool { return service.google != nil }
 
-// GoogleEmail is the account's latest Google email, or "" for password accounts.
-func (service *Service) GoogleEmail(ctx context.Context, accountID string) (string, error) {
-	return service.store.GoogleEmail(ctx, accountID)
-}
-
 func canonicalEmail(email string) (string, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	local, domain, found := strings.Cut(email, "@")
-	if !found || local == "" || !strings.Contains(domain, ".") || len(email) > 254 || strings.ContainsAny(email, " \t\r\n<>\"") || strings.Contains(domain, "@") {
-		return "", fmt.Errorf("%w: email address is invalid", ErrInvalidInput)
+	address, err := mail.ParseAddress(email)
+	if err != nil || address.Address != email || !found || local == "" || !strings.Contains(domain, ".") || len(email) > 254 || strings.ContainsAny(email, " \t\r\n<>\"") {
+		return "", ErrInvalidEmail
 	}
 	return email, nil
 }
@@ -292,7 +286,7 @@ func (service *Service) CompleteGoogle(ctx context.Context, audience Audience, s
 		return Session{}, ErrAuthentication
 	}
 	identity.Email = email
-	created, err := service.createNamedAccount(email, Account{Method: MethodGoogle}, func(account Account) error {
+	created, err := service.createNamedAccount(email, Account{Email: email, Method: MethodGoogle}, func(account Account) error {
 		return service.store.CreateGoogleAccount(ctx, account, identity, service.now(), required)
 	})
 	if errors.Is(err, ErrDisabled) {
@@ -326,7 +320,7 @@ func (service *Service) completeGoogleSetup(ctx context.Context, setupHash strin
 		return Session{}, ErrAuthentication
 	}
 	identity.Email = email
-	created, err := service.createNamedAccount(email, Account{Admin: true, Method: MethodGoogle}, func(account Account) error {
+	created, err := service.createNamedAccount(email, Account{Email: email, Admin: true, Method: MethodGoogle}, func(account Account) error {
 		return service.store.CreateGoogleAdmin(ctx, account, identity, setupHash, service.now())
 	})
 	if err != nil {
@@ -338,18 +332,21 @@ func (service *Service) completeGoogleSetup(ctx context.Context, setupHash strin
 // AcceptPasswordInvite creates a password account from an invite link and
 // signs it in while password signup is on. Holding the link is the proof; the
 // invited email is not verified.
-func (service *Service) AcceptPasswordInvite(ctx context.Context, secret, username, password string) (Session, error) {
+func (service *Service) AcceptPasswordInvite(ctx context.Context, secret, email, password string) (Session, error) {
 	required := Settings{PasswordSignup: true}
 	if !service.Settings().allows(required) {
 		return Session{}, ErrDisabled
 	}
-	account, hash, err := service.newPasswordAccount(username, password)
+	account, hash, err := service.newPasswordAccount(email, password)
 	if err != nil {
 		return Session{}, err
 	}
 	invite, err := service.PendingInvite(ctx, secret)
 	if err != nil {
 		return Session{}, err
+	}
+	if account.Email != invite.Email {
+		return Session{}, ErrInviteMismatch
 	}
 	if err := service.store.AcceptPasswordInvite(ctx, invite.ID, account, hash, service.now(), required); err != nil {
 		return Session{}, err
@@ -370,7 +367,7 @@ func (service *Service) acceptInvite(ctx context.Context, inviteID string, ident
 		return Session{}, ErrInviteMismatch
 	}
 	identity.Email = email
-	account, err := service.createNamedAccount(email, Account{Method: MethodGoogle}, func(account Account) error {
+	account, err := service.createNamedAccount(email, Account{Email: email, Method: MethodGoogle}, func(account Account) error {
 		return service.store.AcceptInvite(ctx, inviteID, account, identity, service.now())
 	})
 	if err != nil {

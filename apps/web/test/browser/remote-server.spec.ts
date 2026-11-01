@@ -7,7 +7,10 @@ import { type Page } from "@playwright/test";
 import { reviewedToggle } from "./fixtures.ts";
 import { expect, test } from "./remote-fixtures.ts";
 
-const account = { username: "alice", password: "browser-password-0001" };
+const account = {
+  username: "alice@example.com",
+  password: "browser-password-0001",
+};
 
 /** A checkout with one uncommitted change for `diffx sync` to collect. */
 async function changedCheckout(home: string) {
@@ -90,7 +93,7 @@ test("a signed-up user syncs a checkout and reviews it on a Postgres server", as
     await expect(
       page.getByRole("heading", { name: "Create an account" }),
     ).toBeVisible();
-    await page.getByLabel("Username", { exact: true }).fill(account.username);
+    await page.getByLabel("Email", { exact: true }).fill(account.username);
     await page.getByLabel("Password", { exact: true }).fill(account.password);
     await page
       .getByRole("button", { name: "Create account", exact: true })
@@ -163,7 +166,7 @@ test("a signed-up user syncs a checkout and reviews it on a Postgres server", as
       const fresh = await context.newPage();
       await fresh.goto("/");
       await fresh
-        .getByLabel("Username", { exact: true })
+        .getByLabel("Email or username", { exact: true })
         .fill(account.username);
       await fresh
         .getByLabel("Password", { exact: true })

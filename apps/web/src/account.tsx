@@ -148,7 +148,7 @@ export function SignIn() {
         <CredentialForm
           path="/api/v2/auth/login"
           submitLabel="Sign in"
-          failure="Unable to sign in. Check your username and password."
+          failure="Unable to sign in. Check your email or username and password."
           autoFocus={revealed}
         />
       ) : (
@@ -378,11 +378,12 @@ export function InviteSignUp() {
           {password && (
             <>
               <p className={prose}>
-                {google ? "Or choose" : "Choose"} a username and password.
+                {google ? "Or choose" : "Choose"} a password for this email.
               </p>
               <CredentialForm
                 path="/api/v2/invites/password"
                 token={token}
+                invitedEmail={link.value.email}
                 submitLabel="Create account"
                 failure="Unable to create the account. Try again."
               />
@@ -511,10 +512,11 @@ export function ResetPassword() {
   );
 }
 
-/** Username and password sign-in, signup or invite acceptance. */
+/** Email-based account creation, with legacy username sign-in. */
 function CredentialForm({
   path,
   token = "",
+  invitedEmail,
   submitLabel,
   failure,
   autoFocus = false,
@@ -524,13 +526,14 @@ function CredentialForm({
     | "/api/v2/auth/signup"
     | "/api/v2/invites/password";
   token?: string;
+  invitedEmail?: string;
   submitLabel: string;
   failure: string;
-  /** Focuses the username when the form appears on request. */
+  /** Focuses the sign-in identifier when the form appears on request. */
   autoFocus?: boolean;
 }) {
   const { establish } = useIdentity();
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(invitedEmail ?? "");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -543,8 +546,10 @@ function CredentialForm({
     try {
       const { data, error } =
         path === "/api/v2/invites/password"
-          ? await api.POST(path, { body: { token, username, password } })
-          : await api.POST(path, { body: { username, password } });
+          ? await api.POST(path, { body: { token, email: username, password } })
+          : path === "/api/v2/auth/signup"
+            ? await api.POST(path, { body: { email: username, password } })
+            : await api.POST(path, { body: { username, password } });
       if (!data) throw new Error(errorDetail(error, failure));
       const bootstrap = readBootstrap(data);
       if (
@@ -565,10 +570,13 @@ function CredentialForm({
   }
   return (
     <form className="account-form" onSubmit={submit}>
-      <label htmlFor="username">Username</label>
+      <label htmlFor="username">
+        {creating ? "Email" : "Email or username"}
+      </label>
       <Input
         id="username"
-        name="username"
+        name={creating ? "email" : "username"}
+        type={creating ? "email" : "text"}
         autoComplete="username"
         touch
         value={username}
@@ -576,7 +584,8 @@ function CredentialForm({
         autoFocus={autoFocus}
         required
         minLength={3}
-        maxLength={32}
+        maxLength={254}
+        readOnly={invitedEmail !== undefined}
         disabled={busy}
       />
       <label htmlFor="password">Password</label>

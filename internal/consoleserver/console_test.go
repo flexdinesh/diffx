@@ -74,14 +74,10 @@ func login(t *testing.T, handler http.Handler, username string) (*http.Cookie, s
 	return signedIn(t, request(handler, "POST", "/api/v1/auth/login", `{"username":"`+username+`","password":"`+testPassword+`"}`, nil, ""))
 }
 
-// passwordMember signs up a password member, as the app does.
+// passwordMember preserves a legacy password member fixture.
 func passwordMember(t *testing.T, store *pgstore.Store, username string) identityservice.Account {
 	t.Helper()
-	session, err := testsupport.Identity(t, store).SignUp(t.Context(), username, testPassword)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return session.Account
+	return testsupport.RemotePasswordAccount(t, store, username, testPassword)
 }
 
 func accountID(t *testing.T, handler http.Handler, cookie *http.Cookie, username string) string {
@@ -110,15 +106,18 @@ func TestSetupCreatesTheFirstAdminOnce(t *testing.T) {
 	if err != nil || secret == "" {
 		t.Fatalf("prepare: %v", err)
 	}
-	if w := request(handler, "POST", "/api/v1/setup", `{"token":"wrong","username":"root","password":"`+testPassword+`"}`, nil, ""); w.Code != 404 {
+	if w := request(handler, "POST", "/api/v1/setup", `{"token":"`+secret+`","username":"root","password":"`+testPassword+`"}`, nil, ""); w.Code != 400 || !strings.Contains(w.Body.String(), "valid email address") {
+		t.Fatalf("setup without email: %d %s", w.Code, w.Body.String())
+	}
+	if w := request(handler, "POST", "/api/v1/setup", `{"token":"wrong","email":"root@example.com","password":"`+testPassword+`"}`, nil, ""); w.Code != 404 {
 		t.Fatalf("wrong secret: %d", w.Code)
 	}
-	cookie, _ := signedIn(t, request(handler, "POST", "/api/v1/setup", `{"token":"`+secret+`","username":"root","password":"`+testPassword+`"}`, nil, ""))
+	cookie, _ := signedIn(t, request(handler, "POST", "/api/v1/setup", `{"token":"`+secret+`","email":"root@example.com","password":"`+testPassword+`"}`, nil, ""))
 	result := decode[bootstrapJSON](t, request(handler, "GET", "/api/v1/bootstrap", "", cookie, ""))
-	if result.SetupRequired || result.Admin == nil || result.Admin.Username != "root" || result.Admin.Method != identityservice.MethodPassword {
+	if result.SetupRequired || result.Admin == nil || result.Admin.Username != "root@example.com" || result.Admin.Method != identityservice.MethodPassword {
 		t.Fatalf("admin bootstrap: %+v", result)
 	}
-	if w := request(handler, "POST", "/api/v1/setup", `{"token":"`+secret+`","username":"second","password":"`+testPassword+`"}`, nil, ""); w.Code != 404 {
+	if w := request(handler, "POST", "/api/v1/setup", `{"token":"`+secret+`","email":"second@example.com","password":"`+testPassword+`"}`, nil, ""); w.Code != 404 {
 		t.Fatalf("reused secret: %d", w.Code)
 	}
 	if again, err := identityservice.New(store).PrepareSetup(t.Context()); err != nil || again != "" {
