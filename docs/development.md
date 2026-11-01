@@ -88,7 +88,7 @@ testcontainers' reaper) and gives every test its own database cloned from a
 template migrated once per schema. Set `DIFFX_TEST_DATABASE_URL` to a
 `postgres://` URL whose role may create databases to use a running server
 instead, such as the development Postgres. Local-mode tests stay on SQLite.
-These direct test commands run on the host. Isolated checks instead supply a
+Direct `go test` commands run on the host. Public mise and pnpm test tasks supply a
 private Postgres service through Dagger and do not inherit a host
 `DIFFX_TEST_DATABASE_URL`. `mise run check:ci` does not use the runner; its
 conformance tests start their own containers.
@@ -124,7 +124,7 @@ with active worktrees. Do not run broad Docker or Dagger prune commands.
 Cancellation closes only the current validation session; the shared engine and
 its cache persist.
 
-`mise run check` validates an immutable snapshot of working files, including
+`mise run check` validates a snapshot of working files, including
 non-ignored untracked files. It does not certify committed HEAD. Before creating
 or updating a PR, commit the intended changes and run:
 
@@ -135,21 +135,35 @@ mise run check:status
 
 PR validation requires clean tracked files and no non-ignored untracked files.
 It validates captured HEAD and rechecks the checkout before reporting readiness.
-PR creation remains separate. There is no full-suite pre-push hook;
+Run `check:status` immediately before PR creation/update and confirm HEAD has not
+changed since validation. PR creation remains separate. There is no full-suite pre-push hook;
 `mise run check:push` and `pnpm check:push` remain aliases for explicit PR
 validation. Agents must run `check:pr` before creating or updating a PR. Local
 commands and validation records are bypassable and are not remote enforcement.
 
-Use `mise run check:<group>` for isolated targeted checks. Groups are `static`,
+Use `mise run check:<group>` for targeted checks. Groups are `static`,
 `contracts`, `go`, `unit`, `browser`, `conformance`, `docs`, `release`, and
 `generated`. They cover the existing static checks, architecture guards, Go
 tests, web/console unit and DOM tests, plugins, browser suites, API contracts,
 docs build, release tooling, and generated API/SQL/plugin consistency. PR
-validation uses Go's race detector. Underlying `test:*`, pnpm and direct Go
-commands remain available for native debugging; those commands do not provide
-container isolation.
+validation uses Go's race detector. Public mise `test:*` and pnpm test scripts,
+including workspace package scripts, route through these isolated groups.
+Package-specific test aliases currently run the containing unit/browser group.
+Commands containing `exec` are internal implementation details used inside
+containers and by lightweight CI; they must not call public test wrappers.
+Direct `go test` remains possible for native debugging but bypasses isolation.
 
-Each executing group has private writable files, home, temporary directories and
+The `static` group runs on the host: type checking, lint, format verification,
+Go formatting and read-only architecture/design guards. It installs locked
+dependencies into a disposable source snapshot, with its own temporary directory;
+it never writes build outputs or dependencies into the working tree. It needs no
+Docker or Dagger CLI. Installed Go, Node and pnpm binary digests participate in
+its success identity. Development servers, formatting and direct static commands
+also stay on the host. Go vet runs with the isolated Go group because it needs
+embedded application build assets. Docs builds and generated-file verification
+stay in Dagger because they produce build outputs or regenerate source files.
+
+Each executing container group has private writable files, home, temporary directories and
 test services. Browsers and fixture servers run together inside the container;
 localhost refers to that execution, not another worktree or a host service.
 Checks publish no application ports, use no host networking or tunnels, and

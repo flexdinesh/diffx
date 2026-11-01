@@ -9,19 +9,22 @@ canonical record of package boundaries and architectural decisions.
 
 `tools/check-runner` owns immutable source capture, group selection, successful
 validation records, reporting and Dagger orchestration. Mise owns the underlying
-commands. Public checks run in private Linux x64 containers; CI retains its
-lightweight host execution path. A PR gate validates clean committed HEAD,
+commands. Tests and stateful checks run in private Linux x64 containers. Static
+checks run on the host against a private temporary source/dependency snapshot,
+without requiring Docker. CI retains its lightweight host execution path.
+A PR gate validates clean committed HEAD,
 whereas interactive checks snapshot working files without certifying HEAD.
 
 Preparation and build outputs are immutable reusable inputs. Every executing
-group owns its writable files, temporary state and test services. Browser clients
+group owns its writable files and temporary state. Container groups own their test services. Browser clients
 and fixture servers share the group's container; application ports are never
 published to the host. Postgres is supplied through a private Dagger service
 binding. Existing per-test database isolation still applies within each group.
 
 Successful results are reusable only for matching source, configuration,
 toolchain and runner inputs. Commit identity records provenance but is not a
-cache key. Unknown inputs invalidate conservatively; failed and cancelled runs
+cache key. Host static results also include the installed Go, Node and pnpm
+binary digests. Unknown inputs invalidate conservatively; failed and cancelled runs
 never become successful validation records. Generated-file checks compare
 explicit generator outputs with the submitted baseline.
 
@@ -254,12 +257,13 @@ guards, shared Go/TypeScript comment examples, the Go suite (including
 storage/lifecycle/queue/transport boundary tests) and real HTTP schema
 validation. Local `mise run check` and explicit `check:pr` cover these checks
 alongside web unit/DOM/browser, plugin and docs-site suites. Required check groups
-either execute in isolated containers or reuse matching successful validation.
+either execute on their declared host/container executor or reuse matching successful validation.
 Groups run sequentially; Chromium uses one worker and Go parallelism is bounded.
 Two participating invocations may run concurrently through user-level admission.
 The runner owns cancellation and session cleanup before releasing admission;
 failed groups fail the invocation. Immutable preparation and build outputs are
-reusable. Direct standalone suite commands remain available on the host.
+reusable. Public mise and pnpm test commands use Dagger; internal `exec` commands
+remain available for container execution and lightweight CI.
 `test:contracts:rules` holds only the non-Go guards, because aggregate checks run every Go
 package; no hand-maintained package list can miss a new boundary test. CI and
 release verification retain static checks, builds, generated-file consistency

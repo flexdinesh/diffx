@@ -13,13 +13,14 @@ contract and release tests in `test/`.
 - Use pnpm. Install dependencies with `pnpm install --frozen-lockfile`.
 - Use mise tasks or pnpm scripts for project commands; toolchain and orchestration live in `mise.toml`.
 - While iterating, run only the checks for what changed:
-  - Go package: `go test ./internal/<pkg>/...`
+  - Go tests and vet: `mise run check:go`
   - TypeScript, lint, formatting: `mise run check:static`
   - Web/console unit, DOM and plugins: `mise run check:unit`
   - Web/console browser: `mise run check:browser`
   - API contract: `mise run check:conformance`; boundaries and design tokens: `mise run check:contracts`
   - Docs site: `mise run check:docs`
-- `mise run check` validates a snapshot of working files in isolated Linux containers; targeted `check:<group>` tasks use the same isolation. Direct Go/pnpm test commands remain host-native.
+- `mise run check` validates working-file snapshots: static checks run on the host; tests and their services run in isolated Linux containers. Public mise and pnpm test tasks route through Dagger. `*:exec:*` tasks/scripts are internal execution commands, not public test entry points.
+- Development, formatting, format verification, lint, type checking and read-only architecture guards stay on the host. Static aggregate checks use a private temporary snapshot and dependencies, without Docker. Go vet stays with Go tests because it requires embedded build assets.
 - Before creating or updating a PR, commit changes and run `mise run check:pr` on clean HEAD. Matching successful group results are reused; use `mise run check:pr --force` to execute checks again.
 - Run long checks in the background and wait for their completion notification; never poll logs or `sleep`.
 - Keep full suites and architecture/design guards local through explicit PR validation; keep CI/release verification lightweight.
@@ -46,4 +47,4 @@ contract and release tests in `test/`.
 
 ## Git etiquette
 
-- Pushes do not run the full suite. Validate clean committed HEAD with `mise run check:pr` before creating or updating a PR, and report executed/reused results. PR creation remains separate. `check:push` is a compatibility alias for explicit `check:pr`.
+- Pushes do not run the full suite. Validate clean committed HEAD with `mise run check:pr` before creating or updating a PR, then run `mise run check:status` immediately before submission and confirm HEAD has not changed. Report executed/reused results. PR creation remains separate. `check:push` is a compatibility alias for explicit `check:pr`.

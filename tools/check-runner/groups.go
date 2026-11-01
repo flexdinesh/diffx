@@ -8,23 +8,24 @@ type checkGroup struct {
 	Build    bool
 	Database bool
 	Browser  bool
+	Host     bool
 }
 
 func groups(race bool) []checkGroup {
-	goTask := "test:go"
+	goTask := "test:exec:go"
 	if race {
-		goTask = "test:race"
+		goTask = "test:exec:race"
 	}
 	return []checkGroup{
-		{"static", [][]string{{"mise", "run", "check:exec:static"}, {"mise", "run", "check:exec:go:static"}}, true, false, false},
-		{"contracts", [][]string{{"mise", "run", "check:exec:contracts"}}, true, false, false},
-		{"go", [][]string{{"mise", "run", goTask}}, true, true, false},
-		{"unit", [][]string{{"pnpm", "--filter", "@diffx/web", "test:unit"}, {"pnpm", "--filter", "@diffx/console", "test:dom"}, {"pnpm", "--recursive", "--filter", "@diffx/plugin-*", "test"}}, false, false, false},
-		{"browser", [][]string{{"pnpm", "--filter", "@diffx/web", "test:browser"}, {"pnpm", "--filter", "@diffx/console", "test:browser"}}, true, true, true},
-		{"conformance", [][]string{{"pnpm", "test:conformance"}}, true, true, false},
-		{"docs", [][]string{{"mise", "run", "--force", "docs:check"}}, false, false, false},
-		{"release", [][]string{{"mise", "run", "test:release"}}, false, false, false},
-		{"generated", [][]string{{"mise", "run", "generate"}, {"mise", "run", "check:exec:generated"}}, false, false, false},
+		{"static", [][]string{{"mise", "run", "check:exec:static"}, {"mise", "run", "check:format:go"}, {"mise", "run", "check:boundaries"}, {"mise", "run", "check:design"}}, false, false, false, true},
+		{"contracts", [][]string{{"mise", "run", "check:exec:contracts"}}, true, false, false, false},
+		{"go", [][]string{{"go", "vet", "./..."}, {"mise", "run", goTask}}, true, true, false, false},
+		{"unit", [][]string{{"pnpm", "--filter", "@diffx/web", "test:exec:unit"}, {"pnpm", "--filter", "@diffx/console", "test:exec:dom"}, {"pnpm", "--recursive", "--filter", "@diffx/plugin-*", "test:exec"}}, false, false, false, false},
+		{"browser", [][]string{{"pnpm", "--filter", "@diffx/web", "test:exec:browser"}, {"pnpm", "--filter", "@diffx/console", "test:exec:browser"}}, true, true, true, false},
+		{"conformance", [][]string{{"pnpm", "test:exec:conformance"}}, true, true, false, false},
+		{"docs", [][]string{{"mise", "run", "--force", "docs:check"}}, false, false, false, false},
+		{"release", [][]string{{"pnpm", "test:exec:release"}}, false, false, false, false},
+		{"generated", [][]string{{"mise", "run", "generate"}, {"mise", "run", "check:exec:generated"}}, false, false, false, false},
 	}
 }
 

@@ -63,11 +63,14 @@ func TestPRGroupsPreserveSuiteCoverage(t *testing.T) {
 		if len(group.Commands) == 0 {
 			t.Errorf("empty group %s", group.Name)
 		}
-		if group.Name == "go" && !slices.Equal(group.Commands[0], []string{"mise", "run", "test:race"}) {
+		if group.Name == "go" && !slices.Equal(group.Commands[1], []string{"mise", "run", "test:exec:race"}) {
 			t.Fatal("PR validation dropped race coverage")
 		}
 		if group.Name == "browser" && (!group.Build || !group.Database || !group.Browser) {
 			t.Fatal("browser checks missing fixture preparation")
+		}
+		if group.Host != (group.Name == "static") {
+			t.Fatalf("unexpected execution boundary for %s", group.Name)
 		}
 	}
 	for _, name := range []string{"static", "contracts", "go", "unit", "browser", "conformance", "docs", "release", "generated"} {

@@ -150,28 +150,6 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	defer release()
-	env, err := engineEnvironment(ctx)
-	if err != nil {
-		return err
-	}
-	for _, name := range []string{"DAGGER_SESSION_PORT", "DAGGER_SESSION_TOKEN", "DAGGER_ENGINE", "_EXPERIMENTAL_DAGGER_CLI_BIN", "_EXPERIMENTAL_DAGGER_RUNNER_HOST"} {
-		os.Unsetenv(name)
-	}
-	for _, item := range env {
-		key, value, ok := strings.Cut(item, "=")
-		if ok {
-			if err := os.Setenv(key, value); err != nil {
-				return err
-			}
-		}
-	}
-	cli, err := exec.LookPath("dagger")
-	if err != nil {
-		return err
-	}
-	if err := os.Setenv("_EXPERIMENTAL_DAGGER_CLI_BIN", cli); err != nil {
-		return err
-	}
 	idBytes := make([]byte, 12)
 	if _, err := rand.Read(idBytes); err != nil {
 		return err
@@ -202,21 +180,32 @@ func run(ctx context.Context, args []string) error {
 		_ = os.WriteFile(filepath.Join(artifacts, "complete"), []byte(snapshot.Commit+"\n"), 0o644)
 		_ = pruneArtifacts(filepath.Dir(artifacts))
 	}()
-	client, err := dagger.Connect(ctx, dagger.WithRunnerHost("docker-container://"+engineName), dagger.WithLogOutput(io.MultiWriter(os.Stderr, log)))
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	pipeline := newPipeline(client, snapshot.Root)
+	var client *dagger.Client
+	defer func() {
+		if client != nil {
+			_ = client.Close()
+		}
+	}()
 	for _, group := range pending {
 		statuses[group.Name] = "running"
 		fmt.Fprintln(os.Stderr, "check-runner: executing", group.Name)
 		started := time.Now()
-		if err := pipeline.execute(ctx, group, id, artifacts); err != nil {
+		var executionErr error
+		if group.Host {
+			executionErr = executeHost(ctx, snapshot.Root, group, artifacts)
+		} else {
+			if client == nil {
+				client, executionErr = connectValidationEngine(ctx, io.MultiWriter(os.Stderr, log))
+			}
+			if executionErr == nil {
+				executionErr = newPipeline(client, snapshot.Root).execute(ctx, group, id, artifacts)
+			}
+		}
+		if executionErr != nil {
 			if ctx.Err() == nil {
 				statuses[group.Name] = "failed"
 			}
-			return fmt.Errorf("%s: %w (artifacts: %s)", group.Name, err, artifacts)
+			return fmt.Errorf("%s: %w (artifacts: %s)", group.Name, executionErr, artifacts)
 		}
 		record := validationRecord{Group: group.Name, Fingerprint: keys[group.Name], Commit: snapshot.Commit, Artifacts: artifacts, CompletedAt: time.Now().UTC()}
 		if err := saveValidationRecord(records, record); err != nil {
@@ -249,6 +238,21 @@ func groupFingerprint(root string, group checkGroup) (string, error) {
 	}
 	miseDigest := sha256.Sum256(binary)
 	files += hex.EncodeToString(miseDigest[:]) + engineImage
+	if group.Host {
+		// Host results cannot be reused against different installed runtimes.
+		for _, tool := range []string{"go", "node", "pnpm"} {
+			path, err := exec.LookPath(tool)
+			if err != nil {
+				return "", err
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return "", err
+			}
+			digest := sha256.Sum256(data)
+			files += hex.EncodeToString(digest[:])
+		}
+	}
 	policy, err := json.Marshal(struct {
 		Group                         checkGroup
 		Files, Platform, Base, Dagger string
@@ -258,4 +262,34 @@ func groupFingerprint(root string, group checkGroup) (string, error) {
 	}
 	hash := sha256.Sum256(policy)
 	return hex.EncodeToString(hash[:]), nil
+}
+
+// Host-only checks never inspect Docker or initialize Dagger.
+func connectValidationEngine(ctx context.Context, log io.Writer) (*dagger.Client, error) {
+	env, err := engineEnvironment(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range os.Environ() {
+		key, _, _ := strings.Cut(item, "=")
+		if strings.HasPrefix(key, "DAGGER_") || strings.HasPrefix(key, "_EXPERIMENTAL_DAGGER_") {
+			os.Unsetenv(key)
+		}
+	}
+	for _, item := range env {
+		key, value, ok := strings.Cut(item, "=")
+		if ok {
+			if err := os.Setenv(key, value); err != nil {
+				return nil, err
+			}
+		}
+	}
+	cli, err := exec.LookPath("dagger")
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Setenv("_EXPERIMENTAL_DAGGER_CLI_BIN", cli); err != nil {
+		return nil, err
+	}
+	return dagger.Connect(ctx, dagger.WithRunnerHost("docker-container://"+engineName), dagger.WithLogOutput(log))
 }
