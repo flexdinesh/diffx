@@ -316,9 +316,16 @@ test("connecting GitHub starts authorization with CSRF and reports the callback 
     page.getByText("GitHub authorization was cancelled."),
   ).toBeVisible();
   expect(new URL(page.url()).search).toBe("");
+  const steps = page.getByRole("list", { name: "Set up GitHub" });
+  await expect(steps.getByRole("heading")).toHaveText([
+    "Connect your GitHub account",
+    "Choose repositories for the diffx app",
+  ]);
+  await expect(steps.getByRole("button")).toHaveText(["Connect GitHub"]);
   await expect(
-    page.getByRole("link", { name: "Install on repositories" }),
+    steps.getByRole("link", { name: "Choose repositories on GitHub" }),
   ).toHaveAttribute("href", "https://github.com/apps/diffx/installations/new");
+  await expect(page.getByText(/repositor(y|ies) available/)).toHaveCount(0);
   await page
     .getByRole("button", { name: "Connect GitHub", exact: true })
     .click();
@@ -378,6 +385,7 @@ test("followed repositories toggle with CSRF, resync, and lost access stays list
   });
   await page.goto("/settings/github");
   await expect(page.getByText("Connected as @alice-gh.")).toBeVisible();
+  await expect(page.getByText("1 repository available.")).toBeVisible();
   const app = page.getByRole("checkbox", { name: "octo/app" });
   await expect(app).not.toBeChecked();
   await expect(page.getByRole("img", { name: "Private" })).toBeVisible();
@@ -398,6 +406,75 @@ test("followed repositories toggle with CSRF, resync, and lost access stays list
     page.getByText("Refreshing pull requests of followed repositories."),
   ).toBeVisible();
   expect(resynced).toBe(true);
+});
+
+test("choosing repositories on GitHub reloads the list once on return", async ({
+  page,
+}) => {
+  await remote(page);
+  await page.route("**/api/v2/github/connection", (route) =>
+    route.fulfill({
+      json: {
+        connected: true,
+        login: "alice-gh",
+        state: "active",
+        installUrl: "https://github.test/apps/diffx/installations/new",
+      },
+    }),
+  );
+  let loads = 0;
+  await page.route("**/api/v2/github/repositories", (route) => {
+    loads += 1;
+    return route.fulfill({
+      json: {
+        repositories:
+          loads === 1
+            ? []
+            : [
+                {
+                  id: 10,
+                  fullName: "octo/app",
+                  private: false,
+                  followed: false,
+                  lost: false,
+                },
+              ],
+      },
+    });
+  });
+  await page
+    .context()
+    .route("https://github.test/**", (route) =>
+      route.fulfill({ contentType: "text/html", body: "<h1>Install</h1>" }),
+    );
+  const returned = () =>
+    page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  const noReload = () =>
+    expect(
+      page.waitForRequest("**/api/v2/github/repositories", { timeout: 500 }),
+    ).rejects.toThrow();
+  await page.goto("/settings/github");
+  await expect(page.getByText("No repositories yet.")).toBeVisible();
+  await expect(
+    page.getByText(
+      "No repositories to follow yet. Choose repositories on GitHub; this list updates when you return.",
+    ),
+  ).toBeVisible();
+  await returned();
+  await noReload();
+  expect(loads).toBe(1);
+  const install = page.waitForEvent("popup");
+  await page
+    .getByRole("link", { name: "Choose repositories on GitHub" })
+    .click();
+  await (await install).close();
+  await returned();
+  await expect(page.getByRole("checkbox", { name: "octo/app" })).toBeVisible();
+  await expect(page.getByText("1 repository available.")).toBeVisible();
+  expect(loads).toBe(2);
+  await returned();
+  await noReload();
+  expect(loads).toBe(2);
 });
 
 test("expired GitHub authorization asks to connect again and disconnect confirms", async ({
@@ -430,9 +507,9 @@ test("expired GitHub authorization asks to connect again and disconnect confirms
   await expect(
     page.getByRole("button", { name: "Connect GitHub again" }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Repositories" })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole("heading", { name: "Repositories", exact: true }),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Actions for @alice-gh" }).click();
   await page.getByRole("menuitem", { name: "Disconnect…" }).click();
   const confirm = page.getByRole("dialog", { name: "Disconnect GitHub?" });
@@ -554,7 +631,9 @@ test("settings scroll at the window edge with a nav that marks the current page"
   await expect(current).toHaveText("GitHub");
   // Pages keep one width, so the nav does not move under the pointer.
   expect(await nav.boundingBox()).toEqual(navBox);
-  await expect(page.getByRole("heading", { name: "GitHub" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "GitHub", exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("heading", { name: "API tokens" })).toHaveCount(
     0,
   );

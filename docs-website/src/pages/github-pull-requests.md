@@ -109,8 +109,11 @@ fetcher needs Git 2.44 or later and HTTPS access to github.com.
 
 1. Open **Account settings** and choose **Connect GitHub**. GitHub asks you to
    authorize the app, then returns to Settings.
-2. Choose **Install on repositories** to install the app where you need it.
-   You can follow only repositories that both you and the app can read.
+2. Select **Choose repositories on GitHub** to install the app on the
+   repositories you need. Connecting lets diffx see what you can read;
+   installing lets the app read it. You can follow only repositories that both
+   you and the app can read. Organization repositories may need an owner's
+   approval. The list updates when you return to Settings.
 3. Check the repositories to follow. Their open pull requests, drafts
    included, appear in the Reviews column shortly.
 

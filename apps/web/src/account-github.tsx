@@ -10,7 +10,7 @@ import {
   ExternalLinkIcon,
   LockIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { ConfirmDialog } from "@diffx/ui/components/confirm-dialog";
 import { ErrorState } from "@diffx/ui/components/error-state";
 import { LinkButton } from "@diffx/ui/components/link-button";
@@ -59,6 +59,74 @@ type Connection =
   | { status: "unconfigured" }
   | { status: "error"; message: string }
   | { status: "ready"; connection: ApiGitHubConnection };
+
+type RepositoryList = {
+  repositories: ApiGitHubRepository[];
+  setRepositories: Dispatch<SetStateAction<ApiGitHubRepository[]>>;
+  loaded: boolean;
+  error: string;
+  setError: Dispatch<SetStateAction<string>>;
+  reload: () => void;
+  /** Reloads once when the page is visible again, after a trip to GitHub. */
+  reloadOnReturn: () => void;
+};
+
+/** Repositories the account can follow, loaded while `enabled`. */
+function useRepositoryList(enabled: boolean): RepositoryList {
+  const [repositories, setRepositories] = useState<ApiGitHubRepository[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [error, setError] = useState("");
+  const [returning, setReturning] = useState(false);
+  const [wasEnabled, setWasEnabled] = useState(enabled);
+  if (enabled !== wasEnabled) {
+    setWasEnabled(enabled);
+    setRepositories([]);
+    setLoaded(false);
+  }
+  useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    setError("");
+    void api
+      .GET("/api/v2/github/repositories", { signal: controller.signal })
+      .then(({ data, error }) => {
+        if (controller.signal.aborted) return;
+        if (!data)
+          throw new Error(
+            errorDetail(error, "Unable to load repositories. Try again."),
+          );
+        setRepositories(data.repositories);
+        setLoaded(true);
+      })
+      .catch((failure: unknown) => {
+        if (!controller.signal.aborted)
+          setError(
+            errorDetail(failure, "Unable to load repositories. Try again."),
+          );
+      });
+    return () => controller.abort();
+  }, [enabled, attempt]);
+  useEffect(() => {
+    if (!enabled || !returning) return;
+    const visible = () => {
+      if (document.hidden) return;
+      setReturning(false);
+      setAttempt((value) => value + 1);
+    };
+    document.addEventListener("visibilitychange", visible);
+    return () => document.removeEventListener("visibilitychange", visible);
+  }, [enabled, returning]);
+  return {
+    repositories,
+    setRepositories,
+    loaded,
+    error,
+    setError,
+    reload: () => setAttempt((value) => value + 1),
+    reloadOnReturn: () => setReturning(true),
+  };
+}
 
 /**
  * Connect GitHub and follow repositories whose pull requests appear as
@@ -119,6 +187,9 @@ export function AccountGitHub({
     if (unconfigured) onFollowingChange?.("unavailable");
     else if (inactive) onFollowingChange?.("none");
   }, [unconfigured, inactive, onFollowingChange]);
+  const current = connection.status === "ready" ? connection.connection : null;
+  const active = current?.connected === true && current.state === "active";
+  const list = useRepositoryList(active);
   if (connection.status === "unconfigured")
     return <SettingsSectionAbsent id="github" />;
   if (connection.status === "loading") return null;
@@ -154,8 +225,9 @@ export function AccountGitHub({
       setBusy(false);
     }
   }
-  const current = connection.status === "ready" ? connection.connection : null;
-  const active = current?.connected === true && current.state === "active";
+  const available = list.repositories.filter(
+    (repository) => !repository.lost,
+  ).length;
   return (
     <SettingsSection
       id="github"
@@ -174,61 +246,89 @@ export function AccountGitHub({
           onRetry={() => setAttempt((value) => value + 1)}
         />
       )}
-      {current?.connected && (
-        <div className="mb-4 flex items-start justify-between gap-4">
-          {active ? (
-            <p className="min-w-0 leading-copy text-secondary wrap-anywhere">
-              Connected as <strong>@{current.login}</strong>. Pull requests of
-              followed repositories update from GitHub events.
-            </p>
-          ) : (
-            <p
-              className="min-w-0 leading-copy text-secondary wrap-anywhere"
-              role="status"
-            >
-              GitHub authorization for <strong>@{current.login}</strong>{" "}
-              {current.state === "revoked" ? "was revoked" : "expired"}. Connect
-              again to keep receiving pull requests.
-            </p>
-          )}
-          <RowActions
-            label={`Actions for @${current.login}`}
-            disabled={busy}
-            actions={[
-              {
-                label: "Disconnect…",
-                onSelect: () => {
-                  setError("");
-                  setDisconnecting(true);
-                },
-              },
-            ]}
-          />
-        </div>
-      )}
-      {error && <ErrorState message={error} className="mb-4" touch />}
       {current && (
-        <div className="mb-4 flex flex-wrap gap-2">
-          {!active && (
-            <Button
+        <ol
+          className="mb-8 list-decimal pl-6 marker:text-secondary"
+          aria-label="Set up GitHub"
+        >
+          <li className="mb-8 pl-1">
+            <h3 className="mb-1 text-base font-semibold">
+              Connect your GitHub account
+            </h3>
+            <p className={prose}>
+              Lets diffx check which repositories you can read.
+            </p>
+            {current.connected && (
+              <div className="mb-4 flex items-start justify-between gap-4">
+                {active ? (
+                  <p className="min-w-0 leading-copy text-secondary wrap-anywhere">
+                    Connected as <strong>@{current.login}</strong>. Pull
+                    requests of followed repositories update from GitHub events.
+                  </p>
+                ) : (
+                  <p
+                    className="min-w-0 leading-copy text-secondary wrap-anywhere"
+                    role="status"
+                  >
+                    GitHub authorization for <strong>@{current.login}</strong>{" "}
+                    {current.state === "revoked" ? "was revoked" : "expired"}.
+                    Connect again to keep receiving pull requests.
+                  </p>
+                )}
+                <RowActions
+                  label={`Actions for @${current.login}`}
+                  disabled={busy}
+                  actions={[
+                    {
+                      label: "Disconnect…",
+                      onSelect: () => {
+                        setError("");
+                        setDisconnecting(true);
+                      },
+                    },
+                  ]}
+                />
+              </div>
+            )}
+            {error && <ErrorState message={error} className="mb-4" touch />}
+            {!active && (
+              <Button
+                touch
+                disabled={busy}
+                aria-busy={busy}
+                onClick={() => void connect()}
+              >
+                {current.connected ? "Connect GitHub again" : "Connect GitHub"}
+              </Button>
+            )}
+          </li>
+          <li className="pl-1">
+            <h3 className="mb-1 text-base font-semibold">
+              Choose repositories for the diffx app
+            </h3>
+            <p className={prose}>
+              The app reads pull requests only from repositories you install it
+              on. Organization repositories may need an owner&apos;s approval.
+            </p>
+            {active && list.loaded && (
+              <p className={prose}>
+                {available === 0
+                  ? "No repositories yet."
+                  : `${available} ${available === 1 ? "repository" : "repositories"} available.`}
+              </p>
+            )}
+            <LinkButton
+              variant="outline"
               touch
-              disabled={busy}
-              aria-busy={busy}
-              onClick={() => void connect()}
+              href={current.installUrl}
+              external
+              onClick={list.reloadOnReturn}
             >
-              {current.connected ? "Connect GitHub again" : "Connect GitHub"}
-            </Button>
-          )}
-          <LinkButton
-            variant="outline"
-            touch
-            href={current.installUrl}
-            external
-          >
-            Install on repositories
-            <ExternalLinkIcon className="size-icon-sm" aria-hidden="true" />
-          </LinkButton>
-        </div>
+              Choose repositories on GitHub
+              <ExternalLinkIcon className="size-icon-sm" aria-hidden="true" />
+            </LinkButton>
+          </li>
+        </ol>
       )}
       <ConfirmDialog
         open={disconnecting}
@@ -245,6 +345,7 @@ export function AccountGitHub({
       />
       {active && (
         <FollowedRepositories
+          list={list}
           notify={notify}
           onFollowingChange={onFollowingChange}
         />
@@ -254,42 +355,20 @@ export function AccountGitHub({
 }
 
 function FollowedRepositories({
+  list,
   notify,
   onFollowingChange,
 }: {
+  list: RepositoryList;
   notify: boolean;
   onFollowingChange: ((following: GitHubFollowing) => void) | undefined;
 }) {
-  const [repositories, setRepositories] = useState<ApiGitHubRepository[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  const [error, setError] = useState("");
+  const { repositories, setRepositories, loaded, error, setError, reload } =
+    list;
   const [pending, setPending] = useState<number | null>(null);
   const [resyncing, setResyncing] = useState(false);
   const [notifying, setNotifying] = useState<ReadonlySet<number>>(new Set());
   const [status, setStatus] = useState("");
-  useEffect(() => {
-    const controller = new AbortController();
-    setError("");
-    void api
-      .GET("/api/v2/github/repositories", { signal: controller.signal })
-      .then(({ data, error }) => {
-        if (controller.signal.aborted) return;
-        if (!data)
-          throw new Error(
-            errorDetail(error, "Unable to load repositories. Try again."),
-          );
-        setRepositories(data.repositories);
-        setLoaded(true);
-      })
-      .catch((failure: unknown) => {
-        if (!controller.signal.aborted)
-          setError(
-            errorDetail(failure, "Unable to load repositories. Try again."),
-          );
-      });
-    return () => controller.abort();
-  }, [attempt]);
   async function setFollowed(repository: ApiGitHubRepository, follow: boolean) {
     setPending(repository.id);
     setError("");
@@ -411,7 +490,7 @@ function FollowedRepositories({
           message={error}
           className="mb-4"
           touch
-          {...(!loaded && { onRetry: () => setAttempt((value) => value + 1) })}
+          {...(!loaded && { onRetry: reload })}
         />
       )}
       {!loaded && !error && (
@@ -421,8 +500,8 @@ function FollowedRepositories({
       )}
       {loaded && repositories.length === 0 && (
         <p className={prose}>
-          No repositories yet. Install the app on repositories you can read,
-          then reload this page.
+          No repositories to follow yet. Choose repositories on GitHub; this
+          list updates when you return.
         </p>
       )}
       {loaded && repositories.length > 0 && (
