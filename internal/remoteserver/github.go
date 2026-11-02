@@ -65,7 +65,8 @@ func composeGitHub(store *pgstore.Store, settings *GitHubSettings) (*githubsync.
 	if err != nil {
 		return nil, err
 	}
-	return githubsync.New(store.GitHub(), client, githubsync.Options{PublicURL: settings.PublicURL, TokenKey: tokenKey, PublicInstallationID: settings.PublicInstallationID})
+	return githubsync.New(store.GitHub(), client, githubsync.Options{PublicURL: settings.PublicURL, TokenKey: tokenKey, PublicInstallationID: settings.PublicInstallationID,
+		PublicReadSources: githubsync.DefaultPublicReadSources()})
 }
 
 // reconcileLock admits one replica's reconcile at a time, reporting whether it ran.

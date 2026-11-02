@@ -64,18 +64,18 @@ func (s *Service) prepare(ctx context.Context, lease Lease, now time.Time) (*fet
 		return nil, err
 	}
 	followed := hasActive(follows)
-	// A pull request only the public demands reads through the repository's
-	// own installation when the app has one; others through the installation
-	// their refresh recorded.
+	// A pull request only the public demands reads through the public read
+	// sources, without a viewer; others through the installation their
+	// refresh recorded.
 	var pull github.PullRequest
-	installation, own := ref.InstallationID, false
+	var read publicRead
 	if !followed && lease.Public {
-		installation, own, err = s.readPublic(ctx, ref.FullName, func(installation int64) (err error) {
-			pull, err = s.github.PullRequest(ctx, installation, ref.FullName, ref.Number)
+		read, err = s.readPublic(ctx, ref.FullName, "", func(credential github.Credential) (err error) {
+			pull, err = s.github.PullRequest(ctx, credential, ref.FullName, ref.Number)
 			return err
 		})
 	} else {
-		pull, err = s.github.PullRequest(ctx, ref.InstallationID, ref.FullName, ref.Number)
+		pull, err = s.github.PullRequest(ctx, github.Installation(ref.InstallationID), ref.FullName, ref.Number)
 	}
 	var status *github.Error
 	if errors.As(err, &status) && status.Status == http.StatusNotFound {
@@ -94,7 +94,7 @@ func (s *Service) prepare(ctx context.Context, lease Lease, now time.Time) (*fet
 	if followed {
 		credential, err = s.github.InstallationToken(ctx, ref.InstallationID, []int64{ref.RepositoryID}, map[string]string{"contents": "read"})
 	} else {
-		credential, err = s.publicCredential(ctx, ref, installation, own)
+		credential, err = s.publicCredential(ctx, ref, read)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("mint fetch token for %s: %w", ref.FullName, err)

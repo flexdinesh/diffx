@@ -305,6 +305,8 @@ type Failure = {
   /** Re-requests the preview; absent where retrying cannot help. */
   retry?: boolean;
   github?: boolean;
+  /** The primary in-app recovery, such as signing in. */
+  recover?: { label: string; href: string };
   /** Retry is offered once the fetch limit admits another fetch. */
   retryAt?: number;
 };
@@ -334,7 +336,26 @@ function failure(preview: PublicPreview): Failure | null {
   if (!value || value.contextId || value.status !== "failed" || !value.failure)
     return null;
   const name = value.fullName;
-  const description = failureMessage(value.failure.code, name);
+  const { code, remedy } = value.failure;
+  const description = failureMessage(code, name, remedy);
+  if (code === "restricted") {
+    const title = "GitHub restricts this repository";
+    if (remedy === "sign_in")
+      return {
+        title,
+        description,
+        github: true,
+        recover: { label: "Sign in", href: `/signin?next=${followPage}` },
+      };
+    if (remedy === "connect_github")
+      return {
+        title,
+        description,
+        github: true,
+        recover: { label: "Open Settings", href: followPage },
+      };
+    return { title, description, github: true, retry: true };
+  }
   if (value.failure.code === "not_found")
     return { title: "Pull request unavailable", description, github: true };
   if (value.failure.code === "too_large")
@@ -396,8 +417,17 @@ function PublicStatus() {
               : problem?.description)
           }
           action={
-            retry || problem?.github ? (
+            retry || problem?.github || problem?.recover ? (
               <>
+                {problem?.recover && (
+                  <LinkButton
+                    variant="default"
+                    href={problem.recover.href}
+                    onClick={follow}
+                  >
+                    {problem.recover.label}
+                  </LinkButton>
+                )}
                 {problem?.github && (
                   <LinkButton href={gitHubUrl(pull)} external>
                     Open on GitHub

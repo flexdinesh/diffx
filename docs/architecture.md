@@ -126,8 +126,9 @@ owner. See [development.md](development.md) for isolated checkout commands.
   repositories, sealed user tokens, webhook deduplication, coalesced pull
   request refresh intent, reconciliation, fetch leases, server-authored
   pull request observations, which snapshots notify followers, and public
-  pull request previews (public demand, refusal of private or oversized
-  repositories, refresh rules and status) owned by the reserved
+  pull request previews (public demand, ordered read sources and their
+  fallback rules, refusal of private, oversized or restricted repositories,
+  refresh rules and status) owned by the reserved
   `github-public` owner. Remote composition only.
 - `webpush`: Web Push wire adapter: VAPID keys and JWTs, RFC 8291 payload
   encryption and push service response classes. No storage or diffx policy.

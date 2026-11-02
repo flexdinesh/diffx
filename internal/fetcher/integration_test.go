@@ -38,7 +38,7 @@ func (stubGitHub) UserRepositories(context.Context, string) ([]gh.Repository, er
 func (s stubGitHub) OpenPullRequests(context.Context, int64, string) ([]gh.PullRequest, error) {
 	return []gh.PullRequest{s.pull}, nil
 }
-func (s stubGitHub) PullRequest(context.Context, int64, string, int) (gh.PullRequest, error) {
+func (s stubGitHub) PullRequest(context.Context, gh.Credential, string, int) (gh.PullRequest, error) {
 	return s.pull, nil
 }
 func (stubGitHub) InstallationToken(context.Context, int64, []int64, map[string]string) (gh.Token, error) {
@@ -50,7 +50,7 @@ func (stubGitHub) RepositoryInstallation(context.Context, string) (int64, error)
 
 // InstallationHasPrivate keeps public fetches of the file origin anonymous.
 func (stubGitHub) InstallationHasPrivate(context.Context, int64) (bool, error) { return true, nil }
-func (stubGitHub) Repository(context.Context, int64, string) (gh.Repository, error) {
+func (stubGitHub) Repository(context.Context, gh.Credential, string) (gh.Repository, error) {
 	return gh.Repository{ID: 42, FullName: "octo/repo", Visibility: "public", Size: 1}, nil
 }
 
@@ -147,7 +147,7 @@ func TestPublicPullRequestBecomesSharedPreview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status, err := service.EnsurePublic(t.Context(), "octo", "repo", 7, func(context.Context) error { return nil }); err != nil || status.Status != githubsync.PublicQueued {
+	if status, err := service.EnsurePublic(t.Context(), "octo", "repo", 7, "", func(context.Context) error { return nil }); err != nil || status.Status != githubsync.PublicQueued {
 		t.Fatalf("ensure: %+v %v", status, err)
 	}
 

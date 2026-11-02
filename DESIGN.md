@@ -795,6 +795,12 @@ Review, Hand off) on the real review surface, in the same world as the app.
   ten seconds that a large repository's first fetch takes longer. Refusals,
   failures and the fetch limit replace the skeleton with the page empty state,
   its explanation, and Retry or "Open on GitHub" where they help.
+- When GitHub refuses every credential diffx reads with, the empty state reads
+  "GitHub restricts this repository" and names the owner's limit. When the
+  reader's own GitHub access could help, the filled primary action is that
+  recovery: "Sign in" (to Settings > GitHub) signed out, "Open Settings" for a
+  member without a GitHub connection, each beside "Open on GitHub". Once the
+  reader's access was refused too, it offers "Open on GitHub" and Retry.
 
 ### Console
 

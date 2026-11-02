@@ -83,7 +83,9 @@ export function usePublicPullRequest(pull: PullRequestRef) {
       if (!awaitingRefresh.current || previewPending(next)) return;
       awaitingRefresh.current = false;
       if (next.status === "failed" && next.failure)
-        setFeedback(failureMessage(next.failure.code, name));
+        setFeedback(
+          failureMessage(next.failure.code, name, next.failure.remedy),
+        );
       else if (next.contextId === viewed.current) setFeedback(upToDate);
     },
     [name],

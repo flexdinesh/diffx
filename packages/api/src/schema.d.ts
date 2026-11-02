@@ -1271,11 +1271,16 @@ export interface components {
     };
     PublicPullRequestFailure: {
       /**
-       * @description not_found covers private and missing repositories and pull requests; too_large is a repository over the preview size limit.
+       * @description not_found covers private and missing repositories and pull requests; too_large is a repository over the preview size limit; restricted is GitHub refusing every credential the server may read with, as an organization's IP allow list does.
        * @enum {string}
        */
-      code: "not_found" | "too_large" | "fetch_failed";
+      code: "not_found" | "too_large" | "fetch_failed" | "restricted";
       detail: string;
+      /**
+       * @description Only for restricted. sign_in and connect_github name what lets the reader's own GitHub access read the pull request; absent or null when nothing can.
+       * @enum {string|null}
+       */
+      remedy?: "sign_in" | "connect_github" | null;
     };
     /** @description Hosted pull request a capture reviews. Authored only by the server's GitHub integration; public ingestion rejects it. A current stream head shows its winning submission's value, so edits and state changes appear without new content; older snapshots keep their captured value. */
     PullRequest: {

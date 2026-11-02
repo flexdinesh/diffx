@@ -191,6 +191,12 @@ Repositories that installed your app are read and cloned through their own
 installation, which spends that installation's GitHub rate limit, not the
 public one's.
 
+Some organizations refuse your app's tokens, for example with an IP allow list.
+The server then falls back to the reader's own GitHub connection, if they are
+signed in and have connected GitHub, and then to anonymous reads and clones.
+If GitHub refuses all of these, the preview asks the reader to sign in or
+connect GitHub when their own access could help.
+
 Each pull request is fetched once and shared by every reader. Previews refresh
 only when someone presses Refresh. Private or missing repositories, and
 repositories over 500 MB, are refused. Fetches are limited to five per visitor
