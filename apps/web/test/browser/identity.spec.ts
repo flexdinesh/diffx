@@ -76,7 +76,20 @@ test("open signup creates a password account with a password section", async ({
       json: bootstrap(true, { ...open, method: "password" }),
     });
   });
+  // Signed-out home is the landing page; "Go to app" leads to sign-in.
   await page.goto("/");
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: "Review the diff. Hand the fixes to your agent.",
+    }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Pull request URL")).toHaveCount(0);
+  await page
+    .getByRole("banner")
+    .getByRole("link", { name: "Go to app" })
+    .click();
+  await expect(page).toHaveURL(/\/signin$/);
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   await page.getByRole("link", { name: "Create an account" }).click();
   await expect(

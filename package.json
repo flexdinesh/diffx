@@ -6,8 +6,10 @@
   "scripts": {
     "prepare": "husky",
     "build": "pnpm generate:api && pnpm --filter @diffx/web build && pnpm --filter @diffx/console build",
+    "build:docs": "pnpm --filter @diffx/docs build",
     "dev:web": "pnpm --filter @diffx/web dev",
     "dev:console": "pnpm --filter @diffx/console dev",
+    "dev:docs": "pnpm --filter @diffx/docs dev",
     "generate:api": "pnpm --filter @diffx/api generate && pnpm --filter @diffx/console-api generate",
     "typecheck": "pnpm --recursive --if-present typecheck && tsc --noEmit -p test/tsconfig.json",
     "test:release": "node --test --test-reporter=dot test/release/*.test.ts",

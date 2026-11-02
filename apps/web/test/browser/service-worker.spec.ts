@@ -26,7 +26,7 @@ test("the service worker shows pushed pull requests and a fallback for unreadabl
       },
     }),
   );
-  await page.goto("/");
+  await page.goto("/signin");
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   await page.evaluate(() => navigator.serviceWorker.ready);
   const cdp = await context.newCDPSession(page);

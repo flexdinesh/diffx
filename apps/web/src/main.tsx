@@ -15,6 +15,7 @@ import "./style.css";
 import "./loading.css";
 import "./review.css";
 import "./account.css";
+import "./landing.css";
 import {
   IdentityProvider,
   IdentityStatus,
@@ -29,6 +30,7 @@ import {
   signupOpen,
 } from "./account.tsx";
 import { Landing } from "./Landing.tsx";
+import { LandingDemoDiff } from "./LandingDemoDiff.tsx";
 import { PublicPullRequest } from "./PublicPullRequest.tsx";
 import { PublicReview } from "./PublicReview.tsx";
 import {
@@ -112,14 +114,18 @@ function ApplicationRoutes() {
     if (path === "/signup" && signupOpen(state.bootstrap)) return <SignUp />;
     if (path === "/invite") return <InviteSignUp />;
     if (path === "/reset-password") return <ResetPassword />;
-    // With previews on, home is the landing page; sign-in moves to /signin,
-    // which also reports Google sign-in outcomes returned to home.
+    // Home is the landing page; sign-in lives at /signin, and home still
+    // reports Google sign-in outcomes returned to it.
     if (
       path === "/" &&
-      state.bootstrap.publicPullRequests &&
       !new URLSearchParams(window.location.search).has("signin")
     )
-      return <Landing />;
+      return (
+        <Landing
+          previews={state.bootstrap.publicPullRequests}
+          demoDiff={<LandingDemoDiff />}
+        />
+      );
     return <SignIn />;
   }
   if (isSettingsPath(path) && state.bootstrap.mode === "remote")

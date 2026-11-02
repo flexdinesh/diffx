@@ -17,6 +17,8 @@
   --text-input-touch: 1rem;
   --text-xl: 1.25rem;
   --text-code: 0.8125rem;
+  /* The signed-out landing headline only; never app chrome (DESIGN.md). */
+  --text-display: clamp(2rem, 1.25rem + 2.25vw, 3.25rem);
   --weight-normal: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
@@ -25,6 +27,8 @@
   --leading-copy: 1.5;
   --tracking-heading: -0.02em;
   --tracking-label: 0.06em;
+  --leading-display: 1.1;
+  --tracking-display: -0.03em;
 
   --icon-sm: 0.875rem;
   --icon-base: 1rem;

@@ -91,6 +91,8 @@
   --activity-item: var(--control-height);
   --activity-width: var(--topbar-height);
   --reading-width: 42.5rem;
+  /* Content column of the signed-out landing page. */
+  --landing-width: 72rem;
   --layer-sidebar: 10;
   --layer-backdrop: 9;
   --layer-resizer: 12;

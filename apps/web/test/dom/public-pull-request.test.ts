@@ -19,6 +19,7 @@ import { AppearanceProvider } from "../../src/appearance-context.tsx";
 import { SignIn, SignUp } from "../../src/account.tsx";
 import { IdentityProvider, useIdentity } from "../../src/identity-context.tsx";
 import { Landing } from "../../src/Landing.tsx";
+import { demoAgentReview } from "../../src/landing-demo.ts";
 import {
   PublicLayout,
   PublicPullRequest,
@@ -436,7 +437,7 @@ test("members get their account and Settings instead of Sign in", async () => {
 });
 
 test("the landing page validates a pasted link and opens its preview", () => {
-  render(createElement(Landing));
+  render(createElement(Landing, { previews: true, demoDiff: null }));
   const field = screen.getByLabelText("Pull request URL");
   assert.equal(
     field.getAttribute("placeholder"),
@@ -473,6 +474,29 @@ test("the landing page validates a pasted link and opens its preview", () => {
     screen.getByRole("link", { name: "Sign in" }).getAttribute("href"),
     "/signin",
   );
+});
+
+test("the landing page sends visitors to the app and shows the demo review", () => {
+  render(createElement(Landing, { previews: false, demoDiff: null }));
+  assert.ok(
+    screen.getByRole("heading", {
+      level: 1,
+      name: "Review the diff. Hand the fixes to your agent.",
+    }),
+  );
+  // Without previews there is nothing to paste; the app is the way in.
+  assert.equal(screen.queryByLabelText("Pull request URL"), null);
+  assert.equal(screen.queryByRole("heading", { name: "Try one" }), null);
+  const app = screen.getAllByRole("link", { name: "Go to app" });
+  assert.ok(app.length > 0);
+  for (const link of app) assert.equal(link.getAttribute("href"), "/signin");
+  // The hand-off shows exactly what Copy review exports for the demo comment.
+  const exported = document.querySelector(".landing-agent-xml");
+  assert.equal(exported?.textContent, demoAgentReview);
+  assert.match(demoAgentReview, /line="11"/);
+  assert.match(demoAgentReview, /await sleep\(baseDelay \* 2 \*\* attempt\);/);
+  fireEvent.click(app[0] ?? document.body);
+  assert.equal(window.location.pathname, "/signin");
 });
 
 function mountSignedOut(Page: typeof SignIn) {
