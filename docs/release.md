@@ -57,10 +57,13 @@ before running **Release**): new producers send
 optional activity metadata that older servers reject. Existing protocol 4
 submissions without that metadata still replay unchanged and need no reset. In-memory state lasts only for one process.
 
-The tap branch is deterministic per version, such as `diffx-v0.2.0`.
-Rerunning a release whose tag's first parent is still current `main` reuses the existing
-GitHub artifacts and updates the same tap pull request. Published artifacts are
-not rebuilt or replaced.
+The tap branch is a single rolling `diffx-homebrew`. Every release force-pushes the
+regenerated formula to it with a lease and retitles the open pull request, so a
+release that lands before the previous request is merged updates that request
+instead of opening a superseded one. Merging the request may delete the branch;
+the next release recreates it. Rerunning a release whose tag's first parent is
+still current `main` reuses the existing GitHub artifacts. Published artifacts
+are not rebuilt or replaced.
 
 The tap repository owns Homebrew style, strict audit, install, and formula test
 checks before merge.
