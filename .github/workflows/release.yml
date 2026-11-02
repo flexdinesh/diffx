@@ -99,7 +99,7 @@ jobs:
       - name: Validate Homebrew formula syntax
         run: mise run release:homebrew:check
 
-      - name: Open Homebrew tap pull request
+      - name: Open or update Homebrew tap pull request
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           RELEASE_VERSION: ${{ steps.version.outputs.number }}
