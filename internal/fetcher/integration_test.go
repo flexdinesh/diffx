@@ -44,6 +44,12 @@ func (s stubGitHub) PullRequest(context.Context, int64, string, int) (gh.PullReq
 func (stubGitHub) InstallationToken(context.Context, int64, []int64, map[string]string) (gh.Token, error) {
 	return gh.Token{Value: testToken, ExpiresAt: time.Now().Add(time.Hour)}, nil
 }
+func (stubGitHub) RepositoryInstallation(context.Context, string) (int64, error) {
+	return 0, &gh.Error{Status: 404, Message: "Not Found"}
+}
+
+// InstallationHasPrivate keeps public fetches of the file origin anonymous.
+func (stubGitHub) InstallationHasPrivate(context.Context, int64) (bool, error) { return true, nil }
 func (stubGitHub) Repository(context.Context, int64, string) (gh.Repository, error) {
 	return gh.Repository{ID: 42, FullName: "octo/repo", Visibility: "public", Size: 1}, nil
 }

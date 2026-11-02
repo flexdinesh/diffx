@@ -31,6 +31,32 @@ type fakeGitHub struct {
 	// request read's installation.
 	public    map[string]github.Repository
 	pullReads []int64
+	// installed maps repositories to the app's installation on them, counting
+	// lookups; reads and mints through an uninstalled installation answer
+	// 404; private marks installations that read a private repository, and
+	// privateErr fails that check.
+	installed   map[string]int64
+	lookups     int
+	uninstalled map[int64]bool
+	private     map[int64]bool
+	privateErr  error
+}
+
+func (f *fakeGitHub) RepositoryInstallation(_ context.Context, fullName string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lookups++
+	installation, ok := f.installed[fullName]
+	if !ok {
+		return 0, &github.Error{Status: 404, Message: "Not Found"}
+	}
+	return installation, nil
+}
+
+func (f *fakeGitHub) InstallationHasPrivate(_ context.Context, installation int64) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.private[installation], f.privateErr
 }
 
 type tokenGrant struct {
@@ -75,7 +101,7 @@ func (f *fakeGitHub) PullRequest(_ context.Context, installation int64, _ string
 	defer f.mu.Unlock()
 	f.pullReads = append(f.pullReads, installation)
 	pull, ok := f.pulls[number]
-	if !ok {
+	if !ok || f.uninstalled[installation] {
 		return github.PullRequest{}, &github.Error{Status: 404, Message: "Not Found"}
 	}
 	return pull, nil
@@ -83,15 +109,18 @@ func (f *fakeGitHub) PullRequest(_ context.Context, installation int64, _ string
 func (f *fakeGitHub) InstallationToken(_ context.Context, installation int64, repositories []int64, permissions map[string]string) (github.Token, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.uninstalled[installation] {
+		return github.Token{}, &github.Error{Status: 404, Message: "Not Found"}
+	}
 	f.tokens = append(f.tokens, tokenGrant{installation, repositories, permissions})
 	return github.Token{Value: "installation-token", ExpiresAt: time.Now().Add(time.Hour)}, nil
 }
 
-func (f *fakeGitHub) Repository(_ context.Context, _ int64, fullName string) (github.Repository, error) {
+func (f *fakeGitHub) Repository(_ context.Context, installation int64, fullName string) (github.Repository, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	repository, ok := f.public[fullName]
-	if !ok {
+	if !ok || f.uninstalled[installation] {
 		return github.Repository{}, &github.Error{Status: 404, Message: "Not Found"}
 	}
 	return repository, nil

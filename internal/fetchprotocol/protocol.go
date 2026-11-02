@@ -25,9 +25,10 @@ const (
 )
 
 // Job leases one pull request head. Token is a short-lived installation token
-// limited to Repository with contents:read; it is valid only for fetching.
-// Public jobs carry no token: the repository is public and is fetched
-// anonymously.
+// with contents:read, limited to Repository unless it is the public
+// installation's token for a public repository outside it; it is valid only
+// for fetching. Public jobs carry no token: the repository is public and is
+// fetched anonymously.
 type Job struct {
 	ID             string     `json:"id"`
 	LeaseToken     string     `json:"leaseToken"`

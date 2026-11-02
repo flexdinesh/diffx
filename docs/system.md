@@ -263,15 +263,28 @@ session, diffs, file patches and contents, commits) under
 public route, and account contexts are not found there.
 
 `PUT /api/v2/public/pull-requests/{owner}/{repo}/{number}` ensures a preview.
-`githubsync` reads the repository and pull request through the public
-installation; a private or missing one answers failure `not_found` and a
+`githubsync` reads the repository and pull request through the app's own
+installation on that repository when there is one, so its reads and fetches
+spend that installation's rate limit, and otherwise, or when that read fails
+as after an uninstall, through the public installation. The repository's
+installation is looked up with the app JWT and cached per replica for ten
+minutes; installation webhooks clear the cache on the replica that receives
+them. A private or missing repository answers failure `not_found` and a
 repository over 500 MB `too_large`, neither persisted. A pending refresh or an
 unexpired snapshot is returned as is. Otherwise the request is admitted as a
 fetch and advances the pull request's refresh generation with public demand,
 without replacing the installation a follow recorded. The lease proceeds for
-public demand without followers; a pull request only the public demands
-fetches anonymously over HTTPS (`Job.Public`, no token), while followed ones
-keep their narrowed installation token. Completion admits the public owner,
+public demand without followers; followed pull requests keep their narrowed
+installation token. A pull request only the public demands fetches with a
+token of the repository's own installation narrowed to it with
+`contents:read`. Without one, the public installation's token cannot be
+narrowed to a repository outside it, so it is minted with `contents:read` and
+`metadata:read` only after listing that installation's repositories finds no
+private or internal one; otherwise, or when that check fails, the pull
+request fetches anonymously over HTTPS (`Job.Public`, no token) and the
+server logs why. Unauthenticated clones share GitHub's lower per-IP limits, so
+the public installation belongs on an account that installs the app on one
+public repository only. Completion admits the public owner,
 never with a notification, beside verified followers, and records the public
 job, fetch time and head. `GET` projects status from that state: `queued`,
 `fetching` (leased, or its admitted job still publishing), `failed` (backing

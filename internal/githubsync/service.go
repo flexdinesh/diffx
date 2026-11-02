@@ -32,6 +32,8 @@ type GitHub interface {
 	PullRequest(ctx context.Context, installationID int64, fullName string, number int) (github.PullRequest, error)
 	InstallationToken(ctx context.Context, installationID int64, repositoryIDs []int64, permissions map[string]string) (github.Token, error)
 	Repository(ctx context.Context, installationID int64, fullName string) (github.Repository, error)
+	RepositoryInstallation(ctx context.Context, fullName string) (int64, error)
+	InstallationHasPrivate(ctx context.Context, installationID int64) (bool, error)
 }
 
 var (
@@ -68,6 +70,9 @@ type Service struct {
 	locks   map[string]*sync.Mutex
 	slugMu  sync.Mutex
 	slug    string
+	// installations caches the app's installation per public repository.
+	installationsMu sync.Mutex
+	installations   map[string]cachedInstallation
 }
 
 func New(store Store, client GitHub, options Options) (*Service, error) {
@@ -79,7 +84,7 @@ func New(store Store, client GitHub, options Options) (*Service, error) {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{store: store, github: client, sealer: sealer, callback: strings.TrimSuffix(options.PublicURL, "/") + "/api/v2/github/callback", public: options.PublicInstallationID, now: now, locks: make(map[string]*sync.Mutex)}, nil
+	return &Service{store: store, github: client, sealer: sealer, callback: strings.TrimSuffix(options.PublicURL, "/") + "/api/v2/github/callback", public: options.PublicInstallationID, now: now, locks: make(map[string]*sync.Mutex), installations: make(map[string]cachedInstallation)}, nil
 }
 
 func (s *Service) millis() int64 { return s.now().UnixMilli() }
@@ -504,10 +509,12 @@ func (s *Service) apply(ctx context.Context, event any) error {
 		ref := PullRequestRef{RepositoryID: event.Repository.ID, InstallationID: event.InstallationID, FullName: event.Repository.FullName, Number: event.Number}
 		return s.store.RequestRefresh(ctx, ref, "", slices.Contains(announcingActions, event.Action), s.millis())
 	case github.InstallationEvent:
+		s.forgetInstallations()
 		if event.Action == "deleted" || event.Action == "suspend" {
 			return s.store.LoseInstallation(ctx, event.InstallationID, nil)
 		}
 	case github.InstallationRepositoriesEvent:
+		s.forgetInstallations()
 		if len(event.Removed) > 0 {
 			ids := make([]int64, 0, len(event.Removed))
 			for _, repository := range event.Removed {
