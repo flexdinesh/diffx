@@ -2067,10 +2067,14 @@ components:
       properties:
         code:
           type: string
-          enum: [not_found, too_large, fetch_failed]
-          description: not_found covers private and missing repositories and pull requests; too_large is a repository over the preview size limit.
+          enum: [not_found, too_large, fetch_failed, restricted]
+          description: not_found covers private and missing repositories and pull requests; too_large is a repository over the preview size limit; restricted is GitHub refusing every credential the server may read with, as an organization's IP allow list does.
         detail:
           type: string
+        remedy:
+          type: [string, "null"]
+          enum: [sign_in, connect_github, null]
+          description: Only for restricted. sign_in and connect_github name what lets the reader's own GitHub access read the pull request; absent or null when nothing can.
     PullRequest:
       type: object
       additionalProperties: false

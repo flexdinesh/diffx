@@ -40,6 +40,9 @@ const (
 	FailureNotFound    = "not_found"
 	FailureTooLarge    = "too_large"
 	FailureFetchFailed = "fetch_failed"
+	// FailureRestricted is GitHub refusing every read source, as an
+	// organization's IP allow list does; Remedy says what the viewer can do.
+	FailureRestricted = "restricted"
 )
 
 // PublicPullRequest is a public pull request's shared read-only preview.
@@ -56,10 +59,13 @@ type PublicPullRequest struct {
 }
 
 // PublicFailure explains why the latest request produced no snapshot. Its
-// detail never carries internal error text.
+// detail never carries internal error text. Remedy, only for
+// FailureRestricted, is RemedySignIn or RemedyConnectGitHub when the
+// viewer's own GitHub access could still read the pull request.
 type PublicFailure struct {
-	Code   string `json:"code"`
-	Detail string `json:"detail"`
+	Code   string  `json:"code"`
+	Detail string  `json:"detail"`
+	Remedy *string `json:"remedy,omitempty"`
 }
 
 var (
@@ -102,20 +108,25 @@ func (s *Service) PublicStatus(ctx context.Context, owner, repo string, number i
 }
 
 // EnsurePublic requests a shared preview of a public pull request. Private,
-// missing and oversized repositories are refused in the returned failure,
-// which is not persisted. A pending refresh or an unexpired snapshot is
-// returned as is; otherwise admit decides whether this fetch may proceed,
-// and its error is returned unchanged.
-func (s *Service) EnsurePublic(ctx context.Context, owner, repo string, number int, admit func(context.Context) error) (PublicPullRequest, error) {
+// missing, oversized and restricted repositories are refused in the
+// returned failure, which is not persisted. viewer is the requesting
+// browser session's account, or empty; see readPublic. A pending refresh or
+// an unexpired snapshot is returned as is; otherwise admit decides whether
+// this fetch may proceed, and its error is returned unchanged.
+func (s *Service) EnsurePublic(ctx context.Context, owner, repo string, number int, viewer string, admit func(context.Context) error) (PublicPullRequest, error) {
 	fullName, err := s.publicName(owner, repo, number)
 	if err != nil {
 		return PublicPullRequest{}, err
 	}
 	var repository github.Repository
-	_, _, err = s.readPublic(ctx, fullName, func(installation int64) (err error) {
-		repository, err = s.github.Repository(ctx, installation, fullName)
+	_, err = s.readPublic(ctx, fullName, viewer, func(credential github.Credential) (err error) {
+		repository, err = s.github.Repository(ctx, credential, fullName)
 		return err
 	})
+	var restricted *restrictedError
+	if errors.As(err, &restricted) {
+		return restrictedRefusal(fullName, number, restricted.remedy), nil
+	}
 	if notFound(err) {
 		return refused(fullName, number, FailureNotFound), nil
 	}
@@ -140,7 +151,10 @@ func (s *Service) EnsurePublic(ctx context.Context, owner, repo string, number i
 	}
 	ref := PullRequestRef{RepositoryID: repository.ID, InstallationID: s.public, FullName: repository.FullName, Number: number}
 	// The read precedes admission, so refused pull requests cost no fetch.
-	_, raw, err := s.readPublicPull(ctx, ref)
+	_, raw, err := s.readPublicPull(ctx, ref, viewer)
+	if errors.As(err, &restricted) {
+		return restrictedRefusal(ref.FullName, number, restricted.remedy), nil
+	}
 	if notFound(err) {
 		return refused(ref.FullName, number, FailureNotFound), nil
 	}
@@ -156,8 +170,8 @@ func (s *Service) EnsurePublic(ctx context.Context, owner, repo string, number i
 // RefreshPublic rereads a previewed pull request and fetches a new snapshot when
 // its head changed. It joins a pending refresh and does nothing within a
 // minute of the last public read of GitHub. Without a ready snapshot it
-// ensures one.
-func (s *Service) RefreshPublic(ctx context.Context, owner, repo string, number int, admit func(context.Context) error) (PublicPullRequest, error) {
+// ensures one. viewer is as for EnsurePublic.
+func (s *Service) RefreshPublic(ctx context.Context, owner, repo string, number int, viewer string, admit func(context.Context) error) (PublicPullRequest, error) {
 	fullName, err := s.publicName(owner, repo, number)
 	if err != nil {
 		return PublicPullRequest{}, err
@@ -175,7 +189,7 @@ func (s *Service) RefreshPublic(ctx context.Context, owner, repo string, number 
 	case inProgress(state.JobState):
 		return publicStatus(state)
 	case state.ContextID == "":
-		return s.EnsurePublic(ctx, owner, repo, number, admit)
+		return s.EnsurePublic(ctx, owner, repo, number, viewer, admit)
 	case now.Sub(time.UnixMilli(state.CheckedAt)) < publicRefreshInterval:
 		return publicStatus(state)
 	}
@@ -184,7 +198,11 @@ func (s *Service) RefreshPublic(ctx context.Context, owner, repo string, number 
 	}
 	ref := state.Ref
 	ref.InstallationID = s.public
-	pull, raw, err := s.readPublicPull(ctx, ref)
+	pull, raw, err := s.readPublicPull(ctx, ref, viewer)
+	var restricted *restrictedError
+	if errors.As(err, &restricted) {
+		return restrictedRefusal(ref.FullName, number, restricted.remedy), nil
+	}
 	if notFound(err) {
 		return refused(ref.FullName, number, FailureNotFound), nil
 	}
@@ -202,10 +220,10 @@ func (s *Service) RefreshPublic(ctx context.Context, owner, repo string, number 
 
 // readPublicPull reads the pull request as readPublic does, returning it with
 // its stored encoding.
-func (s *Service) readPublicPull(ctx context.Context, ref PullRequestRef) (github.PullRequest, []byte, error) {
+func (s *Service) readPublicPull(ctx context.Context, ref PullRequestRef, viewer string) (github.PullRequest, []byte, error) {
 	var pull github.PullRequest
-	_, _, err := s.readPublic(ctx, ref.FullName, func(installation int64) (err error) {
-		pull, err = s.github.PullRequest(ctx, installation, ref.FullName, ref.Number)
+	_, err := s.readPublic(ctx, ref.FullName, viewer, func(credential github.Credential) (err error) {
+		pull, err = s.github.PullRequest(ctx, credential, ref.FullName, ref.Number)
 		return err
 	})
 	if err != nil {
@@ -231,21 +249,6 @@ const (
 	// preview requests; a full cache starts over.
 	maxCachedInstallations = 4096
 )
-
-// readPublic reads a public repository through the app's installation on it
-// when there is one, so its reads and fetches spend that installation's rate
-// limit and can use a token narrowed to it. Otherwise, or when that read fails,
-// as after an uninstall, it reads through the public installation. It returns
-// the installation that served read and whether it is the repository's own.
-func (s *Service) readPublic(ctx context.Context, fullName string, read func(installation int64) error) (int64, bool, error) {
-	if installation := s.repositoryInstallation(ctx, fullName); installation != 0 {
-		if err := read(installation); err == nil {
-			return installation, true, nil
-		}
-		s.forgetInstallation(fullName)
-	}
-	return s.public, false, read(s.public)
-}
 
 // repositoryInstallation returns the app's installation on a repository, or
 // zero when it has none or the lookup fails; only answers are cached.
@@ -287,14 +290,19 @@ func (s *Service) forgetInstallations() {
 }
 
 // publicCredential mints the token that fetches a pull request only the public
-// demands. The repository's own installation narrows it to that repository.
-// The public installation's token cannot be narrowed to a repository outside
-// it, so it is minted only while that installation reads no private
-// repository; otherwise the pull request is fetched anonymously, with an empty
-// token.
-func (s *Service) publicCredential(ctx context.Context, ref PullRequestRef, installation int64, own bool) (github.Token, error) {
-	if own {
-		token, err := s.github.InstallationToken(ctx, installation, []int64{ref.RepositoryID}, map[string]string{"contents": "read"})
+// demands, following the source that served the lease's read. The
+// repository's own installation narrows it to that repository. An anonymous
+// read fetches anonymously, with an empty token; the fetcher never holds a
+// viewer's token, and the lease reads without one. The public installation's
+// token cannot be narrowed to a repository outside it, so it is minted only
+// while that installation reads no private repository; otherwise the pull
+// request is fetched anonymously.
+func (s *Service) publicCredential(ctx context.Context, ref PullRequestRef, read publicRead) (github.Token, error) {
+	switch read.source {
+	case SourceAnonymous, SourceViewer:
+		return github.Token{}, nil
+	case SourceRepository:
+		token, err := s.github.InstallationToken(ctx, read.installation, []int64{ref.RepositoryID}, map[string]string{"contents": "read"})
 		if err == nil {
 			return token, nil
 		}
@@ -387,6 +395,13 @@ func refused(fullName string, number int, code string) PublicPullRequest {
 		detail = fullName + " is over 500 MB, too large to preview."
 	}
 	return PublicPullRequest{FullName: fullName, Number: number, Status: PublicFailed, Failure: &PublicFailure{Code: code, Detail: detail}}
+}
+
+// restrictedRefusal answers a pull request GitHub refused every read source
+// for; like other refusals it is not persisted.
+func restrictedRefusal(fullName string, number int, remedy *string) PublicPullRequest {
+	return PublicPullRequest{FullName: fullName, Number: number, Status: PublicFailed,
+		Failure: &PublicFailure{Code: FailureRestricted, Detail: "GitHub refused access to " + fullName + ".", Remedy: remedy}}
 }
 
 func fetchFailure() *PublicFailure {

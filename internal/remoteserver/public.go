@@ -21,16 +21,23 @@ func (remote *transport) publicPullRequests() bool {
 }
 
 // publicRoutes serves /api/v2/public/: public pull request previews and the
-// read-only routes of their shared snapshots. Credentials play no part, and
-// everything else, including while previews are off, is not found.
-func (remote *transport) publicRoutes(w http.ResponseWriter, r *http.Request) {
+// read-only routes of their shared snapshots. Everything else, including
+// while previews are off, is not found. Credentials grant nothing here; a
+// browser session only lends its GitHub connection as a read source when
+// GitHub refuses the app's own credentials.
+func (remote *transport) publicRoutes(w http.ResponseWriter, r *http.Request, p principal) {
 	if !remote.publicPullRequests() {
 		authhttp.Problem(w, 404, "Not found")
 		return
 	}
 	rest := strings.TrimPrefix(r.URL.Path, "/api/v2/public/")
 	if address, ok := strings.CutPrefix(rest, "pull-requests/"); ok {
-		remote.publicPullRequest(w, r, address)
+		// API tokens never lend their account's GitHub connection.
+		viewer := ""
+		if p.session != nil {
+			viewer = p.account.ID
+		}
+		remote.publicPullRequest(w, r, address, viewer)
 		return
 	}
 	if route, ok := strings.CutPrefix(rest, "contexts/"); ok && publicContextRoute(strings.Split(route, "/")) {
@@ -42,8 +49,8 @@ func (remote *transport) publicRoutes(w http.ResponseWriter, r *http.Request) {
 
 // publicPullRequest serves {owner}/{repo}/{number}: GET status, PUT ensure,
 // and POST {owner}/{repo}/{number}/refresh. Only fetches count toward the
-// fetch limit.
-func (remote *transport) publicPullRequest(w http.ResponseWriter, r *http.Request, address string) {
+// fetch limit. viewer is the browser session's account, or empty.
+func (remote *transport) publicPullRequest(w http.ResponseWriter, r *http.Request, address, viewer string) {
 	parts := strings.Split(address, "/")
 	refresh := len(parts) == 4 && parts[3] == "refresh"
 	if len(parts) != 3 && !refresh {
@@ -59,11 +66,11 @@ func (remote *transport) publicPullRequest(w http.ResponseWriter, r *http.Reques
 	var status githubsync.PublicPullRequest
 	switch {
 	case refresh && r.Method == http.MethodPost:
-		status, err = remote.github.RefreshPublic(ctx, owner, repo, number, remote.fetches.Admit(r))
+		status, err = remote.github.RefreshPublic(ctx, owner, repo, number, viewer, remote.fetches.Admit(r))
 	case !refresh && r.Method == http.MethodGet:
 		status, err = remote.github.PublicStatus(ctx, owner, repo, number)
 	case !refresh && r.Method == http.MethodPut:
-		status, err = remote.github.EnsurePublic(ctx, owner, repo, number, remote.fetches.Admit(r))
+		status, err = remote.github.EnsurePublic(ctx, owner, repo, number, viewer, remote.fetches.Admit(r))
 	default:
 		authhttp.Problem(w, 405, "Method not allowed")
 		return

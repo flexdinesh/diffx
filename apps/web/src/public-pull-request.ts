@@ -124,14 +124,27 @@ export function returnQuery(next: ReturnPage | null) {
 
 export const notPublic = "This pull request isn't public or doesn't exist.";
 
+/** What lets the reader's own GitHub access read a restricted pull request. */
+export type FailureRemedy = "sign_in" | "connect_github" | null | undefined;
+
 /** Why a preview has no snapshot, as the reader sees it. */
 export function failureMessage(
-  code: "not_found" | "too_large" | "fetch_failed",
+  code: "not_found" | "too_large" | "fetch_failed" | "restricted",
   name: string,
+  remedy?: FailureRemedy,
 ) {
   if (code === "not_found") return notPublic;
   if (code === "too_large")
     return `${name} is over 500 MB, too large to preview.`;
+  if (code === "restricted") {
+    const owner = name.split("/")[0];
+    const limits = `${owner} limits which apps can read ${name} on GitHub`;
+    if (remedy === "sign_in")
+      return `${limits}. Sign in and connect GitHub to preview it with your own access.`;
+    if (remedy === "connect_github")
+      return `${limits}. Connect GitHub in Settings to preview it with your own access.`;
+    return `${limits}, so diffx can't preview it.`;
+  }
   return "GitHub fetch failed.";
 }
 

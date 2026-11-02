@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"slices"
 	"sync"
@@ -40,6 +41,12 @@ type fakeGitHub struct {
 	uninstalled map[int64]bool
 	private     map[int64]bool
 	privateErr  error
+	// reads records every repository and pull request read's credential
+	// (see credentialKey); refused credentials answer their error, and
+	// hidden credentials cannot see the repository at all (404).
+	reads   []string
+	refused map[string]error
+	hidden  map[string]bool
 }
 
 func (f *fakeGitHub) RepositoryInstallation(_ context.Context, fullName string) (int64, error) {
@@ -96,12 +103,42 @@ func (f *fakeGitHub) UserRepositories(_ context.Context, token string) ([]github
 func (f *fakeGitHub) OpenPullRequests(_ context.Context, _ int64, fullName string) ([]github.PullRequest, error) {
 	return f.open[fullName], nil
 }
-func (f *fakeGitHub) PullRequest(_ context.Context, installation int64, _ string, number int) (github.PullRequest, error) {
+
+// credentialKey names a read's credential: "installation:N", "user:TOKEN"
+// or "anonymous".
+func credentialKey(credential github.Credential) string {
+	switch {
+	case credential.InstallationID() != 0:
+		return fmt.Sprintf("installation:%d", credential.InstallationID())
+	case credential.AccessToken() != "":
+		return "user:" + credential.AccessToken()
+	}
+	return "anonymous"
+}
+
+// refusal answers a read GitHub refuses for its credential: refused
+// credentials answer their error, and an uninstalled installation's token
+// cannot be minted.
+func (f *fakeGitHub) refusal(credential github.Credential) error {
+	if err := f.refused[credentialKey(credential)]; err != nil {
+		return err
+	}
+	if f.uninstalled[credential.InstallationID()] {
+		return fmt.Errorf("%w: %w", github.ErrCredentialUnavailable, &github.Error{Status: 404, Message: "Not Found"})
+	}
+	return nil
+}
+
+func (f *fakeGitHub) PullRequest(_ context.Context, credential github.Credential, _ string, number int) (github.PullRequest, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.pullReads = append(f.pullReads, installation)
+	f.pullReads = append(f.pullReads, credential.InstallationID())
+	f.reads = append(f.reads, credentialKey(credential))
+	if err := f.refusal(credential); err != nil {
+		return github.PullRequest{}, err
+	}
 	pull, ok := f.pulls[number]
-	if !ok || f.uninstalled[installation] {
+	if !ok || f.hidden[credentialKey(credential)] {
 		return github.PullRequest{}, &github.Error{Status: 404, Message: "Not Found"}
 	}
 	return pull, nil
@@ -116,11 +153,15 @@ func (f *fakeGitHub) InstallationToken(_ context.Context, installation int64, re
 	return github.Token{Value: "installation-token", ExpiresAt: time.Now().Add(time.Hour)}, nil
 }
 
-func (f *fakeGitHub) Repository(_ context.Context, installation int64, fullName string) (github.Repository, error) {
+func (f *fakeGitHub) Repository(_ context.Context, credential github.Credential, fullName string) (github.Repository, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.reads = append(f.reads, credentialKey(credential))
+	if err := f.refusal(credential); err != nil {
+		return github.Repository{}, err
+	}
 	repository, ok := f.public[fullName]
-	if !ok || f.uninstalled[installation] {
+	if !ok || f.hidden[credentialKey(credential)] {
 		return github.Repository{}, &github.Error{Status: 404, Message: "Not Found"}
 	}
 	return repository, nil

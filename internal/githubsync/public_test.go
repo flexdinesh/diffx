@@ -34,7 +34,7 @@ func (f *fixture) publicPull() {
 
 func (f *fixture) ensure(t *testing.T, admit *admitter) githubsync.PublicPullRequest {
 	t.Helper()
-	status, err := f.service.EnsurePublic(t.Context(), "octo", "app", 1, admit.admit)
+	status, err := f.service.EnsurePublic(t.Context(), "octo", "app", 1, "", admit.admit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestPublicPreviewRefusesPrivateMissingAndOversizedRepositories(t *testing.T
 		owner, repo string
 		number      int
 	}{{"-octo", "app", 1}, {"octo-", "app", 1}, {"oc/to", "app", 1}, {"octo", "..", 1}, {"octo", "a/b", 1}, {"octo", "app", 0}, {"octo", "a pp", 1}} {
-		if _, err := f.service.EnsurePublic(t.Context(), address.owner, address.repo, address.number, admit.admit); !errors.Is(err, githubsync.ErrInvalidPullRequest) {
+		if _, err := f.service.EnsurePublic(t.Context(), address.owner, address.repo, address.number, "", admit.admit); !errors.Is(err, githubsync.ErrInvalidPullRequest) {
 			t.Fatalf("address %+v: %v", address, err)
 		}
 	}
@@ -121,7 +121,7 @@ func TestPublicPreviewRefusesPrivateMissingAndOversizedRepositories(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := unavailable.EnsurePublic(t.Context(), "octo", "app", 1, admit.admit); !errors.Is(err, githubsync.ErrNotFound) || unavailable.PublicAvailable() {
+	if _, err := unavailable.EnsurePublic(t.Context(), "octo", "app", 1, "", admit.admit); !errors.Is(err, githubsync.ErrNotFound) || unavailable.PublicAvailable() {
 		t.Fatalf("preview without a public installation: %v", err)
 	}
 }
@@ -189,24 +189,24 @@ func TestPublicRefreshJoinsWaitsAndFetchesOnlyNewHeads(t *testing.T) {
 	f := newFixture(t)
 	f.publicPull()
 	admit := &admitter{}
-	if _, err := f.service.RefreshPublic(t.Context(), "octo", "app", 1, admit.admit); !errors.Is(err, githubsync.ErrNotFound) {
+	if _, err := f.service.RefreshPublic(t.Context(), "octo", "app", 1, "", admit.admit); !errors.Is(err, githubsync.ErrNotFound) {
 		t.Fatalf("refresh without a preview: %v", err)
 	}
 	f.ensure(t, admit)
-	if joined, err := f.service.RefreshPublic(t.Context(), "octo", "app", 1, admit.admit); err != nil || joined.Status != githubsync.PublicQueued || admit.count != 1 {
+	if joined, err := f.service.RefreshPublic(t.Context(), "octo", "app", 1, "", admit.admit); err != nil || joined.Status != githubsync.PublicQueued || admit.count != 1 {
 		t.Fatalf("refresh joined the pending fetch: %+v %v after %d fetches", joined, err, admit.count)
 	}
 	f.publish(t)
 	first := f.ingest(t, f.admitted(t))
 
-	if recent, err := f.service.RefreshPublic(t.Context(), "octo", "app", 1, admit.admit); err != nil || recent.Status != githubsync.PublicReady || admit.count != 1 {
+	if recent, err := f.service.RefreshPublic(t.Context(), "octo", "app", 1, "", admit.admit); err != nil || recent.Status != githubsync.PublicReady || admit.count != 1 {
 		t.Fatalf("refresh within a minute: %+v %v after %d fetches", recent, err, admit.count)
 	}
 	*f.clock = f.clock.Add(61 * time.Second)
 	retitled := pullRequest(headOne)
 	retitled.Title = "Add fuzzy search"
 	f.github.pulls[1] = retitled
-	unchanged, err := f.service.RefreshPublic(t.Context(), "octo", "app", 1, admit.admit)
+	unchanged, err := f.service.RefreshPublic(t.Context(), "octo", "app", 1, "", admit.admit)
 	if err != nil || unchanged.Status != githubsync.PublicReady || unchanged.ContextID == nil || *unchanged.ContextID != first || admit.count != 2 {
 		t.Fatalf("unchanged head: %+v %v after %d fetches", unchanged, err, admit.count)
 	}
@@ -216,13 +216,13 @@ func TestPublicRefreshJoinsWaitsAndFetchesOnlyNewHeads(t *testing.T) {
 	if job := f.lease(t); job != nil {
 		t.Fatalf("unchanged head fetched: %+v", job)
 	}
-	if again, err := f.service.RefreshPublic(t.Context(), "octo", "app", 1, admit.admit); err != nil || admit.count != 2 || *again.ContextID != first {
+	if again, err := f.service.RefreshPublic(t.Context(), "octo", "app", 1, "", admit.admit); err != nil || admit.count != 2 || *again.ContextID != first {
 		t.Fatalf("refresh within a minute of a check: %+v %v after %d fetches", again, err, admit.count)
 	}
 
 	*f.clock = f.clock.Add(61 * time.Second)
 	f.github.pulls[1] = pullRequest(headTwo)
-	pushed, err := f.service.RefreshPublic(t.Context(), "octo", "app", 1, admit.admit)
+	pushed, err := f.service.RefreshPublic(t.Context(), "octo", "app", 1, "", admit.admit)
 	if err != nil || pushed.Status != githubsync.PublicQueued || pushed.ContextID == nil || *pushed.ContextID != first || admit.count != 3 {
 		t.Fatalf("new head keeps the ready snapshot while queued: %+v %v after %d fetches", pushed, err, admit.count)
 	}
@@ -239,7 +239,7 @@ func TestPublicRefreshJoinsWaitsAndFetchesOnlyNewHeads(t *testing.T) {
 	*f.clock = f.clock.Add(61 * time.Second)
 	limited := &admitter{err: errors.New("limit reached")}
 	f.github.pulls[1] = pullRequest(headThree)
-	if _, err := f.service.RefreshPublic(t.Context(), "octo", "app", 1, limited.admit); !errors.Is(err, limited.err) {
+	if _, err := f.service.RefreshPublic(t.Context(), "octo", "app", 1, "", limited.admit); !errors.Is(err, limited.err) {
 		t.Fatalf("limited refresh: %v", err)
 	}
 	if job := f.lease(t); job != nil {

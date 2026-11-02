@@ -282,6 +282,8 @@ test("each failure replaces the skeleton with its explanation and recovery", asy
     description: string;
     retry: boolean;
     github: boolean;
+    /** The primary in-app recovery link, if any. */
+    recover?: { name: string; href: string };
   }[] = [
     {
       reply: () =>
@@ -337,6 +339,64 @@ test("each failure replaces the skeleton with its explanation and recovery", asy
     },
     {
       reply: () =>
+        json(
+          status({
+            status: "failed",
+            contextId: null,
+            fetchedAt: null,
+            failure: {
+              code: "restricted",
+              detail: "refused",
+              remedy: "sign_in",
+            },
+          }),
+        ),
+      title: "GitHub restricts this repository",
+      description:
+        "flexdinesh limits which apps can read flexdinesh/diffx on GitHub. Sign in and connect GitHub to preview it with your own access.",
+      retry: false,
+      github: true,
+      recover: { name: "Sign in", href: "/signin?next=/settings/github" },
+    },
+    {
+      reply: () =>
+        json(
+          status({
+            status: "failed",
+            contextId: null,
+            fetchedAt: null,
+            failure: {
+              code: "restricted",
+              detail: "refused",
+              remedy: "connect_github",
+            },
+          }),
+        ),
+      title: "GitHub restricts this repository",
+      description:
+        "flexdinesh limits which apps can read flexdinesh/diffx on GitHub. Connect GitHub in Settings to preview it with your own access.",
+      retry: false,
+      github: true,
+      recover: { name: "Open Settings", href: "/settings/github" },
+    },
+    {
+      reply: () =>
+        json(
+          status({
+            status: "failed",
+            contextId: null,
+            fetchedAt: null,
+            failure: { code: "restricted", detail: "refused", remedy: null },
+          }),
+        ),
+      title: "GitHub restricts this repository",
+      description:
+        "flexdinesh limits which apps can read flexdinesh/diffx on GitHub, so diffx can't preview it.",
+      retry: true,
+      github: true,
+    },
+    {
+      reply: () =>
         Response.json(
           { detail: "Too many requests" },
           { status: 429, headers: { "Retry-After": "150" } },
@@ -372,6 +432,23 @@ test("each failure replaces the skeleton with its explanation and recovery", asy
         ?.getAttribute("href") ?? null,
       failure.github ? "https://github.com/flexdinesh/diffx/pull/157" : null,
     );
+    if (failure.recover)
+      assert.equal(
+        within(state)
+          .getByRole("link", { name: failure.recover.name })
+          .getAttribute("href"),
+        failure.recover.href,
+      );
+    else {
+      assert.equal(
+        within(state).queryByRole("link", { name: "Sign in" }),
+        null,
+      );
+      assert.equal(
+        within(state).queryByRole("link", { name: "Open Settings" }),
+        null,
+      );
+    }
     if (failure.retry) {
       fireEvent.click(within(state).getByRole("button", { name: "Retry" }));
       await waitFor(() =>

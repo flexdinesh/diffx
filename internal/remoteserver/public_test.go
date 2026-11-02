@@ -44,9 +44,42 @@ func publicGitHubAPI(t *testing.T) *httptest.Server {
 			"head":{"ref":"search","sha":"1111111111111111111111111111111111111111","repo":{"id":77,"full_name":"mona/app"}},
 			"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T01:00:00Z"}`))
 	})
+	// The locked organization's IP allow list refuses every credential.
+	mux.HandleFunc("/repos/locked/", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-RateLimit-Remaining", "4999")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"the locked organization has an IP allow list enabled"}`))
+	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 	return server
+}
+
+func TestRestrictedPublicPreviewOffersOnlyBrowserSessionsTheirGitHubAccess(t *testing.T) {
+	store, handler, _ := publicServer(t, "", publicOn)
+	cookie, _ := memberSession(t, store, "member")
+	bearer := "Bearer " + provisionToken(t, store, "agent", identityservice.PurposeAPI)
+	path := "/api/v2/public/pull-requests/locked/app/1"
+	for _, test := range []struct {
+		name   string
+		cookie *http.Cookie
+		bearer string
+		remedy string
+	}{
+		{"signed out", nil, "", githubsync.RemedySignIn},
+		{"browser session without GitHub", cookie, "", githubsync.RemedyConnectGitHub},
+		{"API token", nil, bearer, githubsync.RemedySignIn},
+	} {
+		status := publicStatus(t, identityRequest(handler, "PUT", path, "", test.cookie, "", test.bearer))
+		failure := status.Failure
+		if status.Status != githubsync.PublicFailed || failure == nil || failure.Code != githubsync.FailureRestricted || failure.Remedy == nil || *failure.Remedy != test.remedy {
+			t.Fatalf("%s: %+v", test.name, status)
+		}
+	}
+	if w := publicRequest(handler, "GET", path, ""); w.Code != 404 {
+		t.Fatalf("restricted refusal persisted: %d", w.Code)
+	}
 }
 
 // publicServer composes a server with the GitHub integration, a public

@@ -182,4 +182,16 @@ test("failures name the problem in the reader's terms", () => {
     "a/b is over 500 MB, too large to preview.",
   );
   assert.equal(failureMessage("fetch_failed", "a/b"), "GitHub fetch failed.");
+  assert.equal(
+    failureMessage("restricted", "cursor/plugins", "sign_in"),
+    "cursor limits which apps can read cursor/plugins on GitHub. Sign in and connect GitHub to preview it with your own access.",
+  );
+  assert.equal(
+    failureMessage("restricted", "cursor/plugins", "connect_github"),
+    "cursor limits which apps can read cursor/plugins on GitHub. Connect GitHub in Settings to preview it with your own access.",
+  );
+  assert.equal(
+    failureMessage("restricted", "cursor/plugins", null),
+    "cursor limits which apps can read cursor/plugins on GitHub, so diffx can't preview it.",
+  );
 });

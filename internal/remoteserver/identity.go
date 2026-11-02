@@ -129,7 +129,7 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Public pull request previews hold no account state, so they serve
 	// everyone alike and need no CSRF token; same-origin is enforced above.
 	if publicRoute {
-		remote.publicRoutes(w, r)
+		remote.publicRoutes(w, r, p)
 		return
 	}
 	if p.account.ID == "" {

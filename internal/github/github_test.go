@@ -250,7 +250,7 @@ func TestInstallationTokenCache(t *testing.T) {
 			})
 			client := testClient(t, mux)
 			for range 2 {
-				if _, err := client.PullRequest(context.Background(), 9, "octo/repo", 1); err != nil {
+				if _, err := client.PullRequest(context.Background(), Installation(9), "octo/repo", 1); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -274,10 +274,10 @@ func TestInstallationTokenForgottenAfterUnauthorized(t *testing.T) {
 		writeJSON(t, writer, map[string]int{"number": 1})
 	})
 	client := testClient(t, mux)
-	if _, err := client.PullRequest(context.Background(), 9, "octo/repo", 1); !errors.Is(err, ErrUnauthorized) {
+	if _, err := client.PullRequest(context.Background(), Installation(9), "octo/repo", 1); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("err %v", err)
 	}
-	if _, err := client.PullRequest(context.Background(), 9, "octo/repo", 1); err != nil {
+	if _, err := client.PullRequest(context.Background(), Installation(9), "octo/repo", 1); err != nil {
 		t.Fatal(err)
 	}
 	if mints.Load() != 2 {
@@ -304,7 +304,7 @@ func TestPullRequestMapsForkWithDeletedHead(t *testing.T) {
 		io.WriteString(writer, forkPullRequest)
 	})
 	client := testClient(t, mux)
-	pull, err := client.PullRequest(context.Background(), 9, "octo/repo", 12)
+	pull, err := client.PullRequest(context.Background(), Installation(9), "octo/repo", 12)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +336,7 @@ func TestRepositoryReadsVisibilityAndSizeWithInstallationWideToken(t *testing.T)
 		io.WriteString(writer, `{"id":70107786,"full_name":"vercel/next.js","clone_url":"https://github.com/vercel/next.js.git","private":false,"visibility":"public","size":2400000}`)
 	})
 	client := testClient(t, mux)
-	repository, err := client.Repository(context.Background(), 9, "vercel/next.js")
+	repository, err := client.Repository(context.Background(), Installation(9), "vercel/next.js")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,7 +345,7 @@ func TestRepositoryReadsVisibilityAndSizeWithInstallationWideToken(t *testing.T)
 		t.Fatalf("repository\n%+v\nwant\n%+v", repository, want)
 	}
 	var status *Error
-	if _, err := client.Repository(context.Background(), 9, "octo/missing"); !errors.As(err, &status) || status.Status != http.StatusNotFound {
+	if _, err := client.Repository(context.Background(), Installation(9), "octo/missing"); !errors.As(err, &status) || status.Status != http.StatusNotFound {
 		t.Fatalf("missing repository: %v", err)
 	}
 }
@@ -530,6 +530,74 @@ func TestOAuthErrors(t *testing.T) {
 		}
 		if strings.Contains(err.Error(), testSecret) || strings.Contains(err.Error(), "ghr_old") {
 			t.Fatalf("%s: error leaks secret: %v", code, err)
+		}
+	}
+}
+
+func TestReadsAuthenticateWithTheirCredential(t *testing.T) {
+	var mints atomic.Int32
+	var authorizations []string
+	mux := http.NewServeMux()
+	mux.Handle("POST /app/installations/9/access_tokens", tokenHandler(t, &mints, time.Hour))
+	mux.HandleFunc("GET /repos/octo/repo/pulls/1", func(writer http.ResponseWriter, request *http.Request) {
+		authorizations = append(authorizations, request.Header.Get("Authorization"))
+		writeJSON(t, writer, map[string]int{"number": 1})
+	})
+	mux.HandleFunc("GET /repos/octo/repo", func(writer http.ResponseWriter, request *http.Request) {
+		authorizations = append(authorizations, request.Header.Get("Authorization"))
+		io.WriteString(writer, `{"id":1,"full_name":"octo/repo","visibility":"public"}`)
+	})
+	client := testClient(t, mux)
+	for _, credential := range []Credential{Anonymous(), UserAccess("ghu_viewer"), Installation(9)} {
+		if _, err := client.PullRequest(context.Background(), credential, "octo/repo", 1); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := client.Repository(context.Background(), credential, "octo/repo"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := []string{"", "", "Bearer ghu_viewer", "Bearer ghu_viewer", "Bearer ghs_1", "Bearer ghs_1"}
+	if !reflect.DeepEqual(authorizations, want) {
+		t.Fatalf("authorizations %q want %q", authorizations, want)
+	}
+	if mints.Load() != 1 {
+		t.Fatalf("mints %d: only the installation credential mints", mints.Load())
+	}
+}
+
+func TestUnmintableInstallationIsAnUnavailableCredential(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /app/installations/9/access_tokens", func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusNotFound)
+		io.WriteString(writer, `{"message":"Not Found"}`)
+	})
+	mux.HandleFunc("GET /repos/octo/repo/pulls/1", func(writer http.ResponseWriter, request *http.Request) {
+		t.Error("read without a credential")
+	})
+	client := testClient(t, mux)
+	if _, err := client.PullRequest(context.Background(), Installation(9), "octo/repo", 1); !errors.Is(err, ErrCredentialUnavailable) {
+		t.Fatalf("err %v", err)
+	}
+}
+
+func TestForbiddenResponseIsRestrictedButRateLimitsAreNot(t *testing.T) {
+	for name, test := range map[string]struct {
+		header     map[string]string
+		restricted bool
+	}{
+		"ip allow list": {map[string]string{"X-RateLimit-Remaining": "4993"}, true},
+		"rate limited":  {map[string]string{"X-RateLimit-Remaining": "0"}, false},
+	} {
+		client := testClient(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			for key, value := range test.header {
+				writer.Header().Set(key, value)
+			}
+			writer.WriteHeader(http.StatusForbidden)
+			io.WriteString(writer, `{"message":"the organization has an IP allow list enabled"}`)
+		}))
+		_, err := client.PullRequest(context.Background(), Anonymous(), "octo/repo", 1)
+		if errors.Is(err, ErrRestricted) != test.restricted || errors.Is(err, ErrUnauthorized) {
+			t.Fatalf("%s: err %v", name, err)
 		}
 	}
 }

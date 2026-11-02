@@ -29,9 +29,9 @@ type GitHub interface {
 	User(ctx context.Context, accessToken string) (github.Account, error)
 	UserRepositories(ctx context.Context, accessToken string) ([]github.Repository, error)
 	OpenPullRequests(ctx context.Context, installationID int64, fullName string) ([]github.PullRequest, error)
-	PullRequest(ctx context.Context, installationID int64, fullName string, number int) (github.PullRequest, error)
+	PullRequest(ctx context.Context, credential github.Credential, fullName string, number int) (github.PullRequest, error)
 	InstallationToken(ctx context.Context, installationID int64, repositoryIDs []int64, permissions map[string]string) (github.Token, error)
-	Repository(ctx context.Context, installationID int64, fullName string) (github.Repository, error)
+	Repository(ctx context.Context, credential github.Credential, fullName string) (github.Repository, error)
 	RepositoryInstallation(ctx context.Context, fullName string) (int64, error)
 	InstallationHasPrivate(ctx context.Context, installationID int64) (bool, error)
 }
@@ -55,7 +55,10 @@ type Options struct {
 	// PublicInstallationID reads public repositories for previews; zero
 	// makes public previews unavailable.
 	PublicInstallationID int64
-	Now                  func() time.Time
+	// PublicReadSources orders the credentials public previews read GitHub
+	// with; nil uses DefaultPublicReadSources.
+	PublicReadSources []PublicSource
+	Now               func() time.Time
 }
 
 type Service struct {
@@ -64,6 +67,7 @@ type Service struct {
 	sealer   sealer
 	callback string
 	public   int64
+	sources  []PublicSource
 	now      func() time.Time
 	// Refresh tokens rotate on use, so each account refreshes serially.
 	locksMu sync.Mutex
@@ -80,11 +84,15 @@ func New(store Store, client GitHub, options Options) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	sources, err := publicReadSources(options.PublicReadSources)
+	if err != nil {
+		return nil, err
+	}
 	now := options.Now
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{store: store, github: client, sealer: sealer, callback: strings.TrimSuffix(options.PublicURL, "/") + "/api/v2/github/callback", public: options.PublicInstallationID, now: now, locks: make(map[string]*sync.Mutex), installations: make(map[string]cachedInstallation)}, nil
+	return &Service{store: store, github: client, sealer: sealer, callback: strings.TrimSuffix(options.PublicURL, "/") + "/api/v2/github/callback", public: options.PublicInstallationID, sources: sources, now: now, locks: make(map[string]*sync.Mutex), installations: make(map[string]cachedInstallation)}, nil
 }
 
 func (s *Service) millis() int64 { return s.now().UnixMilli() }

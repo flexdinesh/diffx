@@ -266,28 +266,51 @@ session, diffs, file patches and contents, commits) under
 public route, and account contexts are not found there.
 
 `PUT /api/v2/public/pull-requests/{owner}/{repo}/{number}` ensures a preview.
-`githubsync` reads the repository and pull request through the app's own
-installation on that repository when there is one, so its reads and fetches
-spend that installation's rate limit, and otherwise, or when that read fails
-as after an uninstall, through the public installation. The repository's
-installation is looked up with the app JWT and cached per replica for ten
-minutes; installation webhooks clear the cache on the replica that receives
-them. A private or missing repository answers failure `not_found` and a
-repository over 500 MB `too_large`, neither persisted. A pending refresh or an
+`githubsync` reads the repository and pull request through ordered read
+sources, an app policy the remote composition passes in
+(`DefaultPublicReadSources`):
+
+1. `repository`: the app's own installation on that repository, so its reads
+   and fetches spend that installation's rate limit. Its installation is
+   looked up with the app JWT and cached per replica for ten minutes;
+   installation webhooks clear the cache on the replica that receives them.
+   Skipped when the app is not installed there.
+2. `public`: the public installation.
+3. `viewer`: the requesting browser session's GitHub connection. API tokens
+   never lend theirs, and the fetcher never uses one. Skipped without a
+   connected session.
+4. `anonymous`: no credential, within GitHub's per-IP limit for
+   unauthenticated requests, which every replica behind one egress address
+   shares.
+
+A refused credential moves the read to the next source: one that cannot be
+obtained (as after an uninstall), a 401, a 403 that is not a rate limit (as an
+organization's IP allow list or SAML enforcement answers) or a rate limit.
+A 404 ends the chain, except at `repository`, whose installation's reach may be
+stale; after any 404 `viewer` is skipped, so a viewer's access never reads a
+repository the other sources cannot. Other errors end the chain. Each fallback
+is logged. A private or missing repository answers failure `not_found` and a
+repository over 500 MB `too_large`. When GitHub refuses every source, a rate
+limit answers 429; otherwise failure `restricted` carries a `remedy`:
+`sign_in` without a session, `connect_github` for a session without an active
+GitHub connection, and none once the viewer's own access was refused. No
+refusal is persisted. A pending refresh or an
 unexpired snapshot is returned as is. Otherwise the request is admitted as a
 fetch and advances the pull request's refresh generation with public demand,
 without replacing the installation a follow recorded. The lease proceeds for
 public demand without followers; followed pull requests keep their narrowed
-installation token. A pull request only the public demands fetches with a
-token of the repository's own installation narrowed to it with
-`contents:read`. Without one, the public installation's token cannot be
+installation token. A pull request only the public demands is reread through
+the same sources without a viewer, and its fetch credential follows the source
+that served that read. `repository` fetches with a token of that installation
+narrowed to the repository with `contents:read`. `anonymous` fetches
+anonymously over HTTPS (`Job.Public`, no token). For `public`, or when the
+narrowed token cannot be minted, the public installation's token cannot be
 narrowed to a repository outside it, so it is minted with `contents:read` and
 `metadata:read` only after listing that installation's repositories finds no
 private or internal one; otherwise, or when that check fails, the pull
-request fetches anonymously over HTTPS (`Job.Public`, no token) and the
-server logs why. Unauthenticated clones share GitHub's lower per-IP limits, so
-the public installation belongs on an account that installs the app on one
-public repository only. Completion admits the public owner,
+request fetches anonymously and the server logs why. Unauthenticated clones
+share GitHub's lower per-IP limits, so the public installation belongs on an
+account that installs the app on one public repository only. Completion admits the public owner,
 never with a notification, beside verified followers, and records the public
 job, fetch time and head. `GET` projects status from that state: `queued`,
 `fetching` (leased, or its admitted job still publishing), `failed` (backing

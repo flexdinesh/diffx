@@ -75,20 +75,20 @@ func (repository repositoryJSON) repository(installationID int64) Repository {
 		Private: repository.Private, InstallationID: installationID}
 }
 
-// Repository reads a repository through an installation-wide token. GitHub
-// answers 404 for repositories the token cannot read.
-func (c *Client) Repository(ctx context.Context, installationID int64, fullName string) (Repository, error) {
+// Repository reads a repository with credential. GitHub answers 404 for
+// repositories the credential cannot read.
+func (c *Client) Repository(ctx context.Context, credential Credential, fullName string) (Repository, error) {
 	path, err := repositoryPath(fullName)
 	if err != nil {
 		return Repository{}, err
 	}
-	bearer, err := c.installationBearer(ctx, installationID)
+	bearer, err := c.bearer(ctx, credential)
 	if err != nil {
 		return Repository{}, err
 	}
 	var repository repositoryJSON
 	if _, err := c.get(ctx, c.apiURL+path, bearer, &repository); err != nil {
-		return Repository{}, c.forgetRejected(installationID, err)
+		return Repository{}, c.rejected(credential, err)
 	}
 	result := repository.repository(0)
 	result.Visibility, result.Size = repository.Visibility, repository.Size
@@ -130,7 +130,8 @@ func (pull pullRequestJSON) pullRequest() PullRequest {
 		Base: pull.Base.ref(), Head: pull.Head.ref(), CreatedAt: pull.CreatedAt, UpdatedAt: pull.UpdatedAt}
 }
 
-func (c *Client) PullRequest(ctx context.Context, installationID int64, fullName string, number int) (PullRequest, error) {
+// PullRequest reads a pull request with credential.
+func (c *Client) PullRequest(ctx context.Context, credential Credential, fullName string, number int) (PullRequest, error) {
 	path, err := repositoryPath(fullName)
 	if err != nil {
 		return PullRequest{}, err
@@ -138,13 +139,13 @@ func (c *Client) PullRequest(ctx context.Context, installationID int64, fullName
 	if number <= 0 {
 		return PullRequest{}, errors.New("github pull request number must be positive")
 	}
-	bearer, err := c.installationBearer(ctx, installationID)
+	bearer, err := c.bearer(ctx, credential)
 	if err != nil {
 		return PullRequest{}, err
 	}
 	var pull pullRequestJSON
 	if _, err := c.get(ctx, c.apiURL+path+"/pulls/"+strconv.Itoa(number), bearer, &pull); err != nil {
-		return PullRequest{}, c.forgetRejected(installationID, err)
+		return PullRequest{}, c.rejected(credential, err)
 	}
 	return pull.pullRequest(), nil
 }

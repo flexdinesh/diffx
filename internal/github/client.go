@@ -30,8 +30,16 @@ const (
 
 var (
 	// ErrUnauthorized matches 401 responses and rejected OAuth codes or refresh tokens.
-	ErrUnauthorized      = errors.New("github: unauthorized")
-	ErrInvalidRepository = errors.New("github: repository must be owner/name")
+	ErrUnauthorized = errors.New("github: unauthorized")
+	// ErrRestricted matches 403 responses that are not rate limits: GitHub
+	// refused this credential, as an organization's IP allow list or SAML
+	// enforcement does, though another credential may succeed.
+	ErrRestricted = errors.New("github: credential refused")
+	// ErrCredentialUnavailable wraps a failure to obtain a read's credential,
+	// such as minting a token for an uninstalled installation, so it is never
+	// mistaken for the response to the read itself.
+	ErrCredentialUnavailable = errors.New("github: credential unavailable")
+	ErrInvalidRepository     = errors.New("github: repository must be owner/name")
 )
 
 // Error is a non-2xx GitHub API response. Rate-limited 403s report Status 429.
@@ -48,7 +56,51 @@ func (err *Error) Error() string {
 }
 
 func (err *Error) Is(target error) bool {
-	return target == ErrUnauthorized && err.Status == http.StatusUnauthorized
+	return target == ErrUnauthorized && err.Status == http.StatusUnauthorized ||
+		target == ErrRestricted && err.Status == http.StatusForbidden
+}
+
+// Credential selects how a read authenticates: an app installation, a user
+// access token, or nothing (Anonymous), which reads public resources only.
+type Credential struct {
+	installation int64
+	user         string
+}
+
+// Installation reads with an installation-wide token of the app.
+func Installation(id int64) Credential { return Credential{installation: id} }
+
+// UserAccess reads with a user's access token.
+func UserAccess(token string) Credential { return Credential{user: token} }
+
+// Anonymous reads without credentials.
+func Anonymous() Credential { return Credential{} }
+
+// InstallationID is the installation a credential reads with; zero otherwise.
+func (credential Credential) InstallationID() int64 { return credential.installation }
+
+// AccessToken is the user access token a credential reads with; empty otherwise.
+func (credential Credential) AccessToken() string { return credential.user }
+
+// bearer resolves a credential to its Authorization bearer; empty reads
+// anonymously.
+func (c *Client) bearer(ctx context.Context, credential Credential) (string, error) {
+	if credential.installation == 0 {
+		return credential.user, nil
+	}
+	bearer, err := c.installationBearer(ctx, credential.installation)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrCredentialUnavailable, err)
+	}
+	return bearer, nil
+}
+
+// rejected drops a cached installation token GitHub no longer accepts.
+func (c *Client) rejected(credential Credential, err error) error {
+	if credential.installation == 0 {
+		return err
+	}
+	return c.forgetRejected(credential.installation, err)
 }
 
 type App struct {
