@@ -59,7 +59,24 @@ func (s *Service) Lease(ctx context.Context) (*fetchprotocol.Job, error) {
 // error means the refresh completed without a fetch.
 func (s *Service) prepare(ctx context.Context, lease Lease, now time.Time) (*fetchprotocol.Job, error) {
 	ref := lease.Ref
-	pull, err := s.github.PullRequest(ctx, ref.InstallationID, ref.FullName, ref.Number)
+	follows, err := s.store.RepositoryFollows(ctx, ref.RepositoryID)
+	if err != nil {
+		return nil, err
+	}
+	followed := hasActive(follows)
+	// A pull request only the public demands reads through the repository's
+	// own installation when the app has one; others through the installation
+	// their refresh recorded.
+	var pull github.PullRequest
+	installation, own := ref.InstallationID, false
+	if !followed && lease.Public {
+		installation, own, err = s.readPublic(ctx, ref.FullName, func(installation int64) (err error) {
+			pull, err = s.github.PullRequest(ctx, installation, ref.FullName, ref.Number)
+			return err
+		})
+	} else {
+		pull, err = s.github.PullRequest(ctx, ref.InstallationID, ref.FullName, ref.Number)
+	}
 	var status *github.Error
 	if errors.As(err, &status) && status.Status == http.StatusNotFound {
 		return nil, s.store.CompleteRefresh(ctx, lease, "closed", "", nil, now.UnixMilli())
@@ -67,22 +84,20 @@ func (s *Service) prepare(ctx context.Context, lease Lease, now time.Time) (*fet
 	if err != nil {
 		return nil, fmt.Errorf("read pull request %s#%d: %w", ref.FullName, ref.Number, err)
 	}
-	follows, err := s.store.RepositoryFollows(ctx, ref.RepositoryID)
-	if err != nil {
-		return nil, err
-	}
-	followed := hasActive(follows)
 	if !followed && !lease.Public {
 		return nil, s.store.CompleteRefresh(ctx, lease, pullState(pull), "", nil, now.UnixMilli())
 	}
-	// Followed repositories fetch with a token narrowed to them; a pull request
-	// only the public demands fetches anonymously, as it is public.
+	// Followed repositories fetch with a token narrowed to them; see
+	// publicCredential for a pull request only the public demands. An empty
+	// credential fetches anonymously, as the pull request is public.
 	var credential github.Token
 	if followed {
 		credential, err = s.github.InstallationToken(ctx, ref.InstallationID, []int64{ref.RepositoryID}, map[string]string{"contents": "read"})
-		if err != nil {
-			return nil, fmt.Errorf("mint fetch token for %s: %w", ref.FullName, err)
-		}
+	} else {
+		credential, err = s.publicCredential(ctx, ref, installation, own)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("mint fetch token for %s: %w", ref.FullName, err)
 	}
 	raw, err := json.Marshal(pull)
 	if err != nil {
@@ -100,9 +115,9 @@ func (s *Service) prepare(ctx context.Context, lease Lease, now time.Time) (*fet
 		ID: jobID(ref), LeaseToken: lease.Token, LeaseExpiresAt: now.Add(leaseDuration).UnixMilli(),
 		Repository: fetchprotocol.Repository{ID: ref.RepositoryID, FullName: name, CloneURL: "https://github.com/" + name + ".git"},
 		Number:     ref.Number, HeadSHA: pull.Head.SHA, BaseRef: pull.Base.Ref, BaseSHA: pull.Base.SHA,
-		Public: !followed,
+		Public: credential.Value == "",
 	}
-	if followed {
+	if credential.Value != "" {
 		job.Token, job.TokenExpiresAt = credential.Value, credential.ExpiresAt.UnixMilli()
 	}
 	return job, nil

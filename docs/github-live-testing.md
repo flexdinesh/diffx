@@ -67,9 +67,13 @@ Each needs a real GitHub App, an installation and public HTTPS for webhooks
 11. **Public pull request previews.** An installation token of
     `DIFFX_SERVER_GITHUB_PUBLIC_INSTALLATION_ID` reading `GET /repos/{o}/{r}`
     and `GET /repos/{o}/{r}/pulls/{n}` of a public repository outside that
-    installation (assumed from Actions' repository-scoped `GITHUB_TOKEN`
-    reading other public repositories), 404 for a private one, and the
-    fetcher's anonymous HTTPS partial clone of `refs/pull/N/head` without
+    installation was verified on staging (2026-11-02, `octocat/Hello-World`,
+    `charmbracelet/glow#1081` fetched anonymously to ready). Still to verify:
+    404 for a private one; the app JWT's `GET /repos/{o}/{r}/installation`
+    (200 installed, 404 not); `GET /installation/repositories` flagging
+    private and internal repositories; and the fetcher's HTTPS partial clone of
+    `refs/pull/N/head` of a public repository outside the public installation
+    with that installation's `contents:read`, `metadata:read` token in
     `http.extraHeader`. Verified so far only against a fake GitHub and a
     `file://` origin.
 

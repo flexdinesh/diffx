@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"maps"
+	"slices"
 	"testing"
 	"time"
 
@@ -124,7 +126,7 @@ func TestPublicPreviewRefusesPrivateMissingAndOversizedRepositories(t *testing.T
 	}
 }
 
-func TestPublicPreviewFetchesOnceAnonymouslyForThePublicOwner(t *testing.T) {
+func TestPublicPreviewFetchesOnceForThePublicOwner(t *testing.T) {
 	f := newFixture(t)
 	f.publicPull()
 	admit := &admitter{}
@@ -143,12 +145,15 @@ func TestPublicPreviewFetchesOnceAnonymouslyForThePublicOwner(t *testing.T) {
 			t.Fatalf("public read through installation %d", installation)
 		}
 	}
+	// The public installation reads no private repository, so its token,
+	// which cannot be narrowed to octo/app, authenticates the fetch.
 	job := f.lease(t)
-	if job == nil || !job.Public || job.Token != "" || job.TokenExpiresAt != 0 || job.HeadSHA != headOne {
+	if job == nil || job.Public || job.Token != "installation-token" || job.TokenExpiresAt == 0 || job.HeadSHA != headOne {
 		t.Fatalf("public lease: %+v", job)
 	}
-	if len(f.github.tokens) != 0 {
-		t.Fatalf("public lease minted tokens: %+v", f.github.tokens)
+	if len(f.github.tokens) != 1 || f.github.tokens[0].installation != publicInstallation || f.github.tokens[0].repositories != nil ||
+		!maps.Equal(f.github.tokens[0].permissions, map[string]string{"contents": "read", "metadata": "read"}) {
+		t.Fatalf("public lease tokens: %+v", f.github.tokens)
 	}
 	if got := f.status(t); got.Status != githubsync.PublicFetching {
 		t.Fatalf("leased status: %+v", got)
@@ -265,7 +270,7 @@ func TestFailedPublicFetchReportsGenericFailureAndRetriesOnRequest(t *testing.T)
 	if retried.Status != githubsync.PublicQueued || admit.count != 2 {
 		t.Fatalf("retry request: %+v after %d fetches", retried, admit.count)
 	}
-	if again := f.lease(t); again == nil || !again.Public {
+	if again := f.lease(t); again == nil || again.HeadSHA != headOne {
 		t.Fatalf("retry not leased now: %+v", again)
 	}
 }
@@ -320,5 +325,101 @@ func TestFollowedPullRequestAdmitsThePublicOwnerWithoutNotification(t *testing.T
 		if delivery.OwnerID == githubsync.PublicOwnerID {
 			t.Fatal("follower refresh admitted the public owner without public demand")
 		}
+	}
+}
+
+func TestPublicFetchIsAnonymousUnlessThePublicInstallationIsProvablyPublicOnly(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		private bool
+		err     error
+	}{
+		{"reads a private repository", true, nil},
+		{"check fails", false, errors.New("listing failed")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newFixture(t)
+			f.publicPull()
+			f.github.private = map[int64]bool{publicInstallation: test.private}
+			f.github.privateErr = test.err
+			f.ensure(t, &admitter{})
+			job := f.lease(t)
+			if job == nil || !job.Public || job.Token != "" || job.TokenExpiresAt != 0 {
+				t.Fatalf("public lease: %+v", job)
+			}
+			if len(f.github.tokens) != 0 {
+				t.Fatalf("minted a public installation token: %+v", f.github.tokens)
+			}
+		})
+	}
+}
+
+func TestPublicPreviewReadsAndFetchesThroughTheRepositorysOwnInstallation(t *testing.T) {
+	f := newFixture(t)
+	f.publicPull()
+	const own = 77
+	f.github.installed = map[string]int64{"octo/app": own}
+	if status := f.ensure(t, &admitter{}); status.Status != githubsync.PublicQueued {
+		t.Fatalf("ensure: %+v", status)
+	}
+	job := f.lease(t)
+	if job == nil || job.Public || job.Token != "installation-token" {
+		t.Fatalf("lease: %+v", job)
+	}
+	for _, installation := range f.github.pullReads {
+		if installation != own {
+			t.Fatalf("read through installation %d, want the repository's own", installation)
+		}
+	}
+	if len(f.github.tokens) != 1 || f.github.tokens[0].installation != own || !slices.Equal(f.github.tokens[0].repositories, []int64{appRepo.ID}) ||
+		!maps.Equal(f.github.tokens[0].permissions, map[string]string{"contents": "read"}) {
+		t.Fatalf("tokens: %+v", f.github.tokens)
+	}
+	// Ensure and lease share one cached lookup.
+	if f.github.lookups != 1 {
+		t.Fatalf("installation looked up %d times", f.github.lookups)
+	}
+	// An installation webhook clears the cache.
+	added := []byte(`{"action":"added","installation":{"id":77},"repositories_added":[{"id":12,"full_name":"octo/new"}],"repositories_removed":[]}`)
+	if err := f.service.Webhook(t.Context(), "installation_repositories", "i1", "valid", added); err != nil {
+		t.Fatal(err)
+	}
+	f.ensure(t, &admitter{})
+	if f.github.lookups != 2 {
+		t.Fatalf("installation looked up %d times after the webhook", f.github.lookups)
+	}
+	// Cached lookups last ten minutes.
+	*f.clock = f.clock.Add(9 * time.Minute)
+	f.ensure(t, &admitter{})
+	if f.github.lookups != 2 {
+		t.Fatalf("installation looked up %d times within the cache age", f.github.lookups)
+	}
+	*f.clock = f.clock.Add(2 * time.Minute)
+	f.ensure(t, &admitter{})
+	if f.github.lookups != 3 {
+		t.Fatalf("installation looked up %d times after expiry", f.github.lookups)
+	}
+}
+
+func TestPublicPreviewFallsBackToThePublicInstallationAfterAnUninstall(t *testing.T) {
+	f := newFixture(t)
+	f.publicPull()
+	const own = 77
+	f.github.installed = map[string]int64{"octo/app": own}
+	f.ensure(t, &admitter{})
+	// The app is uninstalled from octo/app after the cached lookup.
+	f.github.uninstalled = map[int64]bool{own: true}
+	job := f.lease(t)
+	if job == nil || job.Public || job.Token != "installation-token" {
+		t.Fatalf("lease after uninstall: %+v", job)
+	}
+	if reads := f.github.pullReads; reads[len(reads)-1] != publicInstallation {
+		t.Fatalf("pull request reads %v", reads)
+	}
+	if len(f.github.tokens) != 1 || f.github.tokens[0].installation != publicInstallation {
+		t.Fatalf("tokens: %+v", f.github.tokens)
+	}
+	if got := f.status(t); got.Status != githubsync.PublicFetching {
+		t.Fatalf("uninstall closed the preview: %+v", got)
 	}
 }

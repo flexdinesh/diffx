@@ -672,3 +672,67 @@ func TestParseEvent(t *testing.T) {
 		}
 	}
 }
+
+func TestRepositoryInstallationUsesAppJWT(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /repos/octo/app/installation", func(writer http.ResponseWriter, request *http.Request) {
+		bearer, ok := strings.CutPrefix(request.Header.Get("Authorization"), "Bearer ")
+		if !ok || strings.Count(bearer, ".") != 2 {
+			t.Errorf("authorization %q is not an app JWT", request.Header.Get("Authorization"))
+		}
+		writeJSON(t, writer, map[string]int64{"id": 77})
+	})
+	client := testClient(t, mux)
+	installation, err := client.RepositoryInstallation(context.Background(), "octo/app")
+	if err != nil || installation != 77 {
+		t.Fatalf("installation %d %v", installation, err)
+	}
+	var status *Error
+	if _, err := client.RepositoryInstallation(context.Background(), "octo/other"); !errors.As(err, &status) || status.Status != http.StatusNotFound {
+		t.Fatalf("app not installed: %v", err)
+	}
+	if _, err := client.RepositoryInstallation(context.Background(), "octo"); !errors.Is(err, ErrInvalidRepository) {
+		t.Fatalf("invalid name: %v", err)
+	}
+}
+
+func TestInstallationHasPrivateFollowsLinks(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		second  string
+		private bool
+	}{
+		{"public only", `{"repositories":[{"id":2,"full_name":"bot/b","private":false,"visibility":"public"}]}`, false},
+		{"private on a later page", `{"repositories":[{"id":2,"full_name":"bot/b","private":true,"visibility":"private"}]}`, true},
+		{"internal", `{"repositories":[{"id":2,"full_name":"bot/b","private":false,"visibility":"internal"}]}`, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var mints atomic.Int32
+			var server *httptest.Server
+			mux := http.NewServeMux()
+			mux.Handle("POST /app/installations/9/access_tokens", tokenHandler(t, &mints, time.Hour))
+			mux.HandleFunc("GET /installation/repositories", func(writer http.ResponseWriter, request *http.Request) {
+				if request.Header.Get("Authorization") != "Bearer ghs_1" {
+					t.Errorf("authorization %q", request.Header.Get("Authorization"))
+				}
+				if request.URL.Query().Get("page") == "2" {
+					io.WriteString(writer, test.second)
+					return
+				}
+				writer.Header().Set("Link", `<`+server.URL+`/installation/repositories?per_page=100&page=2>; rel="next"`)
+				io.WriteString(writer, `{"repositories":[{"id":1,"full_name":"bot/a","private":false,"visibility":"public"}]}`)
+			})
+			server = httptest.NewServer(mux)
+			t.Cleanup(server.Close)
+			client, err := New(App{ID: 42, ClientID: "Iv1.client", ClientSecret: testSecret, PrivateKey: testKey,
+				WebhookSecret: []byte("webhook-secret")}, WithAPIURL(server.URL+"/"), WithWebURL(server.URL))
+			if err != nil {
+				t.Fatal(err)
+			}
+			private, err := client.InstallationHasPrivate(context.Background(), 9)
+			if err != nil || private != test.private {
+				t.Fatalf("private %v %v, want %v", private, err, test.private)
+			}
+		})
+	}
+}

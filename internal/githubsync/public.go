@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/github"
@@ -109,7 +111,11 @@ func (s *Service) EnsurePublic(ctx context.Context, owner, repo string, number i
 	if err != nil {
 		return PublicPullRequest{}, err
 	}
-	repository, err := s.github.Repository(ctx, s.public, fullName)
+	var repository github.Repository
+	_, _, err = s.readPublic(ctx, fullName, func(installation int64) (err error) {
+		repository, err = s.github.Repository(ctx, installation, fullName)
+		return err
+	})
 	if notFound(err) {
 		return refused(fullName, number, FailureNotFound), nil
 	}
@@ -194,15 +200,116 @@ func (s *Service) RefreshPublic(ctx context.Context, owner, repo string, number 
 	return s.publicState(ctx, ref)
 }
 
-// readPublicPull reads the pull request through the public installation,
-// returning it with its stored encoding.
+// readPublicPull reads the pull request as readPublic does, returning it with
+// its stored encoding.
 func (s *Service) readPublicPull(ctx context.Context, ref PullRequestRef) (github.PullRequest, []byte, error) {
-	pull, err := s.github.PullRequest(ctx, s.public, ref.FullName, ref.Number)
+	var pull github.PullRequest
+	_, _, err := s.readPublic(ctx, ref.FullName, func(installation int64) (err error) {
+		pull, err = s.github.PullRequest(ctx, installation, ref.FullName, ref.Number)
+		return err
+	})
 	if err != nil {
 		return github.PullRequest{}, nil, fmt.Errorf("read pull request %s#%d: %w", ref.FullName, ref.Number, err)
 	}
 	raw, err := json.Marshal(pull)
 	return pull, raw, err
+}
+
+// cachedInstallation is the app's installation on a repository; zero when
+// the app is not installed there.
+type cachedInstallation struct {
+	id    int64
+	until time.Time
+}
+
+const (
+	// installationCacheAge bounds how long a repository's installation is
+	// trusted; installation webhooks clear the cache sooner on the replica
+	// that receives them.
+	installationCacheAge = 10 * time.Minute
+	// maxCachedInstallations bounds the cache, which anyone can fill with
+	// preview requests; a full cache starts over.
+	maxCachedInstallations = 4096
+)
+
+// readPublic reads a public repository through the app's installation on it
+// when there is one, so its reads and fetches spend that installation's rate
+// limit and can use a token narrowed to it. Otherwise, or when that read fails,
+// as after an uninstall, it reads through the public installation. It returns
+// the installation that served read and whether it is the repository's own.
+func (s *Service) readPublic(ctx context.Context, fullName string, read func(installation int64) error) (int64, bool, error) {
+	if installation := s.repositoryInstallation(ctx, fullName); installation != 0 {
+		if err := read(installation); err == nil {
+			return installation, true, nil
+		}
+		s.forgetInstallation(fullName)
+	}
+	return s.public, false, read(s.public)
+}
+
+// repositoryInstallation returns the app's installation on a repository, or
+// zero when it has none or the lookup fails; only answers are cached.
+func (s *Service) repositoryInstallation(ctx context.Context, fullName string) int64 {
+	key, now := strings.ToLower(fullName), s.now()
+	s.installationsMu.Lock()
+	cached, ok := s.installations[key]
+	s.installationsMu.Unlock()
+	if ok && now.Before(cached.until) {
+		return cached.id
+	}
+	installation, err := s.github.RepositoryInstallation(ctx, fullName)
+	if notFound(err) {
+		installation, err = 0, nil
+	}
+	if err != nil {
+		return 0
+	}
+	s.installationsMu.Lock()
+	if len(s.installations) >= maxCachedInstallations {
+		clear(s.installations)
+	}
+	s.installations[key] = cachedInstallation{id: installation, until: now.Add(installationCacheAge)}
+	s.installationsMu.Unlock()
+	return installation
+}
+
+func (s *Service) forgetInstallation(fullName string) {
+	s.installationsMu.Lock()
+	delete(s.installations, strings.ToLower(fullName))
+	s.installationsMu.Unlock()
+}
+
+// forgetInstallations clears the cache when installations change.
+func (s *Service) forgetInstallations() {
+	s.installationsMu.Lock()
+	clear(s.installations)
+	s.installationsMu.Unlock()
+}
+
+// publicCredential mints the token that fetches a pull request only the public
+// demands. The repository's own installation narrows it to that repository.
+// The public installation's token cannot be narrowed to a repository outside
+// it, so it is minted only while that installation reads no private
+// repository; otherwise the pull request is fetched anonymously, with an empty
+// token.
+func (s *Service) publicCredential(ctx context.Context, ref PullRequestRef, installation int64, own bool) (github.Token, error) {
+	if own {
+		token, err := s.github.InstallationToken(ctx, installation, []int64{ref.RepositoryID}, map[string]string{"contents": "read"})
+		if err == nil {
+			return token, nil
+		}
+		s.forgetInstallation(ref.FullName)
+	}
+	private, err := s.github.InstallationHasPrivate(ctx, s.public)
+	switch {
+	case err != nil:
+		log.Printf("githubsync: fetching %s anonymously: checking public installation %d: %v", ref.FullName, s.public, err)
+		return github.Token{}, nil
+	case private:
+		log.Printf("githubsync: fetching %s anonymously: public installation %d can read private repositories", ref.FullName, s.public)
+		return github.Token{}, nil
+	}
+	return s.github.InstallationToken(ctx, s.public, nil, map[string]string{"contents": "read", "metadata": "read"})
 }
 
 // requestPublic requests a refresh with public demand. A fresh retention run

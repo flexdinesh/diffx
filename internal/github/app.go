@@ -119,6 +119,53 @@ func (c *Client) InstallationToken(ctx context.Context, installationID int64, re
 	return Token{Value: response.Token, ExpiresAt: response.ExpiresAt}, nil
 }
 
+// RepositoryInstallation returns the app's installation on a repository.
+// GitHub answers 404 when the app is not installed there.
+func (c *Client) RepositoryInstallation(ctx context.Context, fullName string) (int64, error) {
+	path, err := repositoryPath(fullName)
+	if err != nil {
+		return 0, err
+	}
+	jwt, err := c.appJWT(time.Now())
+	if err != nil {
+		return 0, err
+	}
+	var installation struct {
+		ID int64 `json:"id"`
+	}
+	if _, err := c.get(ctx, c.apiURL+path+"/installation", jwt, &installation); err != nil {
+		return 0, err
+	}
+	if installation.ID <= 0 {
+		return 0, errors.New("github installation response missing ID")
+	}
+	return installation.ID, nil
+}
+
+// InstallationHasPrivate reports whether an installation can read any
+// private repository. A listing that reaches its cap cannot rule one out and
+// counts as private.
+func (c *Client) InstallationHasPrivate(ctx context.Context, installationID int64) (bool, error) {
+	bearer, err := c.installationBearer(ctx, installationID)
+	if err != nil {
+		return false, err
+	}
+	repositories, err := collect(ctx, c, bearer, "/installation/repositories?per_page="+pageSize, maxUserRepositories,
+		func(page repositoriesPage) []repositoryJSON { return page.Repositories })
+	if err != nil {
+		return false, c.forgetRejected(installationID, err)
+	}
+	if len(repositories) >= maxUserRepositories {
+		return true, nil
+	}
+	for _, repository := range repositories {
+		if repository.Private || repository.Visibility != "" && repository.Visibility != "public" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // installationBearer reuses an installation-wide token until tokenRefreshMargin before expiry.
 func (c *Client) installationBearer(ctx context.Context, installationID int64) (string, error) {
 	c.mu.Lock()

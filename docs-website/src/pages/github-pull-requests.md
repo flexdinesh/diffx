@@ -38,6 +38,15 @@ also reconciles at startup and when you choose **Resync pull requests**.
 In GitHub, open **Settings → Developer settings → GitHub Apps → New GitHub
 App** (or the same page of an organization).
 
+Prefer an organization: its owners can manage the app's keys without your
+personal account, and install screens name the organization. Create one app
+per server, such as staging and production, because an app has one callback
+and one webhook URL. GitHub rate limits count per installation and per user
+token, not per app owner, so the app never spends your personal quota; only
+GitHub calls diffx makes as a connected user count toward that user's limit.
+Under **Where can this GitHub App be installed?**, choose **Any account** so
+others can install it on their repositories.
+
 - **Homepage URL**: your diffx server, such as `https://diffx.example.com`.
 - **Callback URL**: `https://diffx.example.com/api/v2/github/callback`.
 - **Expire user authorization tokens**: on.
@@ -164,14 +173,23 @@ reviewed marks; signing in leads to following your own repositories.
 To turn them on:
 
 1. Set `DIFFX_SERVER_GITHUB_PUBLIC_INSTALLATION_ID` to the ID of an
-   installation of your GitHub App (for example the one on your own account).
-   The server reads public repositories with its token; repositories need not
-   install the app. Without it, previews stay off.
+   installation of your GitHub App, the number at the end of its settings URL
+   (`…/settings/installations/<id>`). The server reads public repositories
+   with its token; repositories need not install the app. Without it, previews
+   stay off. Install the app for this purpose on an organization, with only
+   one empty public repository selected: the fetcher then clones previews with
+   that installation's token. If the installation can read any private
+   repository, previews are cloned anonymously instead, under GitHub's lower
+   limits for unauthenticated clones.
 2. Upgrade `diffx-fetcher` with the server. A fetcher from an earlier release
    rejects the anonymous fetches previews use.
 3. In the console's Settings, turn on **Public pull requests** and choose
    **Public retention (days)** (1–30, default 1): how long a preview is kept
    after its last fetch.
+
+Repositories that installed your app are read and cloned through their own
+installation, which spends that installation's GitHub rate limit, not the
+public one's.
 
 Each pull request is fetched once and shared by every reader. Previews refresh
 only when someone presses Refresh. Private or missing repositories, and
