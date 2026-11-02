@@ -1,6 +1,6 @@
 import { type Page } from "@playwright/test";
 import { createApiClient, type ApiPublicPullRequest } from "@diffx/api";
-import { expect, reviewedToggle, test } from "./fixtures.ts";
+import { expect, fileToggle, reviewedToggle, test } from "./fixtures.ts";
 
 const statusPath = "/api/v2/public/pull-requests/flexdinesh/diffx/157";
 
@@ -121,7 +121,8 @@ async function expectReadOnlyPreview(page: Page, requested: string[]) {
   await expect(
     page.getByText(/^Read-only preview of a public pull request/),
   ).toBeVisible();
-  await expect(page.getByText("Badge.tsx").first()).toBeVisible();
+  // The snapshot's diff renders; on a phone the file tree is a closed drawer.
+  await expect(fileToggle(page).first()).toBeVisible();
   await expect(reviewedToggle(page)).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Copy review/ })).toHaveCount(
     0,
