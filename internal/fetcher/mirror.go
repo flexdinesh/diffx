@@ -155,8 +155,10 @@ func (repository mirror) fetch(ctx context.Context, job fetchprotocol.Job) error
 			return err
 		}
 	}
+	// The base is fetched by its leased commit, not the branch: GitHub
+	// freezes a closed pull request's base while the branch moves on.
 	_, err = repository.git(ctx, true, "", "fetch", "--quiet", "--no-tags", "--recurse-submodules=no", "--filter=blob:none", "origin",
-		"+refs/pull/"+strconv.Itoa(job.Number)+"/head:"+headRef(job), "+refs/heads/"+job.BaseRef+":"+baseRef(job))
+		"+refs/pull/"+strconv.Itoa(job.Number)+"/head:"+headRef(job), "+"+job.BaseSHA+":"+baseRef(job))
 	if err != nil {
 		return fmt.Errorf("fetch pull request: %w", err)
 	}
