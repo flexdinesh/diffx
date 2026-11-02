@@ -71,7 +71,8 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     const bootstrap = current.current;
     if (!bootstrap || bootstrap.mode !== "remote") return;
     establish({ ...bootstrap, user: null, csrfToken: null });
-    window.history.replaceState(null, "", "/");
+    // Back to sign-in, not the signed-out landing page at `/`.
+    window.history.replaceState(null, "", "/signin");
     window.dispatchEvent(new PopStateEvent("popstate"));
   }, [establish]);
   useEffect(() => {

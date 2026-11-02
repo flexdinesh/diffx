@@ -577,7 +577,8 @@ zero observations. Signed out, `/` renders the landing page (`Landing.tsx`,
 with the Pierre demo passed in from `LandingDemoDiff.tsx` so DOM tests never
 load Pierre) unless it carries a `?signin=` outcome; `/invite`, `/signup`
 (while signup is on) and `/reset-password` render their pages and every other
-path, including `/signin`, renders sign-in:
+path, including `/signin`, renders sign-in (sign-out and expired sessions
+return to `/signin`):
 Google first, and the password form while password signup is on, otherwise
 behind a "Sign in with password" link (bootstrap `passwordSignupEnabled`). The app has no admin
 pages; admins use the console. Invite and reset pages read their secret from the

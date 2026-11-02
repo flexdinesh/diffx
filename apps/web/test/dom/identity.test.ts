@@ -421,7 +421,7 @@ test("expired account requests dispose account UI and clear the route", async ()
     screen.queryByRole("heading", { name: "Account settings" }),
     null,
   );
-  assert.equal(window.location.pathname, "/");
+  assert.equal(window.location.pathname, "/signin");
 });
 
 test("password change sends CSRF and signs out after revoking sessions", async () => {
