@@ -45,6 +45,10 @@ func (repository mirror) git(ctx context.Context, network bool, stdin string, ar
 			"GIT_CONFIG_VALUE_0=Authorization: Basic "+basicCredential(repository.token))
 	}
 	name := arguments[0]
+	// Leading -c options precede the subcommand that names errors.
+	for index := 0; name == "-c" && index+2 < len(arguments); index += 2 {
+		name = arguments[index+2]
+	}
 	commandContext, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	arguments = append([]string{

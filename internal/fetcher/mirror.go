@@ -225,7 +225,9 @@ func (repository mirror) prefetch(ctx context.Context, job fetchprotocol.Job) er
 	if err != nil || len(missing) == 0 {
 		return err
 	}
-	_, err = repository.git(ctx, true, strings.Join(missing, "\n")+"\n", "fetch", "--quiet", "--no-tags", "--no-write-fetch-head",
+	// Without negotiation, as in Git's lazy fetch: GitHub omits wanted objects
+	// reachable from the mirror's commits, which already hold these blobs' trees.
+	_, err = repository.git(ctx, true, strings.Join(missing, "\n")+"\n", "-c", "fetch.negotiationAlgorithm=noop", "fetch", "--quiet", "--no-tags", "--no-write-fetch-head",
 		"--recurse-submodules=no", "--filter=blob:none", "--stdin", "origin")
 	if err != nil {
 		return fmt.Errorf("fetch changed files: %w", err)

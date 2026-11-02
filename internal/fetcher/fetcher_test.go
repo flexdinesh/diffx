@@ -86,6 +86,9 @@ func newOrigin(t *testing.T) origin {
 	git(t, bare, "config", "uploadpack.allowFilter", "true")
 	git(t, bare, "config", "uploadpack.allowAnySHA1InWant", "true")
 	git(t, work, "push", "--quiet", bare, "main:refs/heads/main", "feature:refs/pull/7/head")
+	// GitHub serves from reachability bitmaps, which omit wanted objects
+	// reachable from the client's advertised commits.
+	git(t, bare, "repack", "-a", "-d", "-b", "--quiet")
 	return origin{bare: bare, work: work, base: git(t, work, "rev-parse", "main"), head: git(t, work, "rev-parse", "feature"), unchanged: git(t, work, "rev-parse", "main:stable.txt")}
 }
 
