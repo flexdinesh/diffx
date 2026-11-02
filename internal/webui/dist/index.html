@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <script>
+      (() => {
+        // Keep these palette ids synchronized with THEMES in src/theme.ts.
+        const lightPalettes = [
+          "catppuccin-latte",
+          "flexoki-light",
+          "lupine",
+          "rose-pine",
+          "white",
+        ];
+        const darkPalettes = [
+          "catppuccin",
+          "ethereal",
+          "everforest",
+          "gruvbox",
+          "hackerman",
+          "kanagawa",
+          "last-horizon",
+          "lumon",
+          "matte-black",
+          "miasma",
+          "nord",
+          "osaka-jade",
+          "retro-82",
+          "ristretto",
+          "solitude",
+          "tokyo-night",
+          "vantablack",
+        ];
+        const root = document.documentElement;
+        let theme = "light";
+        try {
+          const preference = localStorage.getItem("theme-v2");
+          const systemDark = matchMedia("(prefers-color-scheme: dark)").matches;
+          if (lightPalettes.includes(preference)) {
+            root.dataset.palette = preference;
+            theme = "light";
+          } else if (darkPalettes.includes(preference)) {
+            root.dataset.palette = preference;
+            theme = "dark";
+          } else
+            theme =
+              preference === "light" || preference === "dark"
+                ? preference
+                : systemDark
+                  ? "dark"
+                  : "light";
+        } catch {}
+        root.dataset.theme = theme;
+      })();
+    </script>
+    <title>diffx · Code review</title>
+    <script type="module" crossorigin src="/assets/index-DjhMNOpg.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-fzuCm2E4.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
