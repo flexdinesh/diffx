@@ -304,3 +304,80 @@ func TestGoogleRoutesAbsentWithoutConfiguration(t *testing.T) {
 		t.Fatalf("unconfigured callback: %d", w.Code)
 	}
 }
+
+// nextFrom returns the return-page cookie a Google start set.
+func nextFrom(t *testing.T, handler http.Handler, body string) (string, *http.Cookie, *http.Cookie) {
+	t.Helper()
+	w := identityRequest(handler, "POST", "/api/v2/auth/google", body, nil, "", "")
+	if w.Code != 200 {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	var started struct {
+		AuthorizeURL string `json:"authorizeUrl"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &started); err != nil {
+		t.Fatal(err)
+	}
+	var flow, next *http.Cookie
+	for _, cookie := range w.Result().Cookies() {
+		switch cookie.Name {
+		case flowCookie:
+			flow = cookie
+		case nextCookie:
+			next = cookie
+		}
+	}
+	if flow == nil || next == nil || next.Path != googleCallback || !next.HttpOnly {
+		t.Fatalf("start cookies: flow %+v next %+v", flow, next)
+	}
+	return started.AuthorizeURL, flow, next
+}
+
+func callbackWith(handler http.Handler, state, code string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+	r := httptest.NewRequest("GET", googleCallback+"?"+url.Values{"state": {state}, "code": {code}}.Encode(), nil)
+	r.Header.Set("Sec-Fetch-Site", "cross-site")
+	for _, cookie := range cookies {
+		r.AddCookie(&http.Cookie{Name: cookie.Name, Value: cookie.Value})
+	}
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	return w
+}
+
+func TestGoogleSignInReturnsOnlyToListedPages(t *testing.T) {
+	fake := newFakeGoogle(t)
+	_, handler := identityHandler(t, Settings{PublicURL: "https://diffx.example.com", Google: fake.settings()}, identityservice.Settings{Signup: true})
+	for _, next := range []string{"/", "https://evil.example.com", "//evil.example.com", "/settings/github/../tokens"} {
+		if w := identityRequest(handler, "POST", "/api/v2/auth/google", `{"next":"`+next+`"}`, nil, "", ""); w.Code != 400 {
+			t.Fatalf("next %q: %d", next, w.Code)
+		}
+	}
+	authorize, flow, next := nextFrom(t, handler, `{"next":"/settings/github"}`)
+	if next.Value != "/settings/github" || next.MaxAge <= 0 {
+		t.Fatalf("next cookie: %+v", next)
+	}
+	state := fake.authorize(t, authorize, "unverified", "subject-next", "next@example.com", false)
+	if w := callbackWith(handler, state, "unverified", flow, next); w.Header().Get("Location") != "/?signin=failed" {
+		t.Fatalf("failed sign-in returned to the page: %s", w.Header().Get("Location"))
+	}
+	authorize, flow, next = nextFrom(t, handler, `{"next":"/settings/github"}`)
+	state = fake.authorize(t, authorize, "verified", "subject-next", "next@example.com", true)
+	w := callbackWith(handler, state, "verified", flow, next)
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/settings/github" {
+		t.Fatalf("sign-in redirect: %d %s", w.Code, w.Header().Get("Location"))
+	}
+	cleared := false
+	for _, cookie := range w.Result().Cookies() {
+		cleared = cleared || cookie.Name == nextCookie && cookie.MaxAge < 0
+	}
+	if !cleared {
+		t.Fatal("callback kept the return page")
+	}
+	// A start without a page clears an earlier one, and a forged page is ignored.
+	authorize, flow, next = nextFrom(t, handler, `{}`)
+	if next.MaxAge >= 0 {
+		t.Fatalf("start without next kept a page: %+v", next)
+	}
+	state = fake.authorize(t, authorize, "forged", "subject-next", "next@example.com", true)
+	sessionFrom(t, callbackWith(handler, state, "forged", flow, &http.Cookie{Name: nextCookie, Value: "https://evil.example.com"}))
+}

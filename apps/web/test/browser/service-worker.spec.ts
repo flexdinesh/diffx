@@ -17,6 +17,7 @@ test("the service worker shows pushed pull requests and a fallback for unreadabl
     route.fulfill({
       json: {
         mode: "remote",
+        publicPullRequests: false,
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,

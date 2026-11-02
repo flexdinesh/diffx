@@ -31,6 +31,7 @@ type GitHub interface {
 	OpenPullRequests(ctx context.Context, installationID int64, fullName string) ([]github.PullRequest, error)
 	PullRequest(ctx context.Context, installationID int64, fullName string, number int) (github.PullRequest, error)
 	InstallationToken(ctx context.Context, installationID int64, repositoryIDs []int64, permissions map[string]string) (github.Token, error)
+	Repository(ctx context.Context, installationID int64, fullName string) (github.Repository, error)
 }
 
 var (
@@ -49,7 +50,10 @@ const stateLifetime = 10 * time.Minute
 type Options struct {
 	PublicURL string
 	TokenKey  []byte
-	Now       func() time.Time
+	// PublicInstallationID reads public repositories for previews; zero
+	// makes public previews unavailable.
+	PublicInstallationID int64
+	Now                  func() time.Time
 }
 
 type Service struct {
@@ -57,6 +61,7 @@ type Service struct {
 	github   GitHub
 	sealer   sealer
 	callback string
+	public   int64
 	now      func() time.Time
 	// Refresh tokens rotate on use, so each account refreshes serially.
 	locksMu sync.Mutex
@@ -74,7 +79,7 @@ func New(store Store, client GitHub, options Options) (*Service, error) {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{store: store, github: client, sealer: sealer, callback: strings.TrimSuffix(options.PublicURL, "/") + "/api/v2/github/callback", now: now, locks: make(map[string]*sync.Mutex)}, nil
+	return &Service{store: store, github: client, sealer: sealer, callback: strings.TrimSuffix(options.PublicURL, "/") + "/api/v2/github/callback", public: options.PublicInstallationID, now: now, locks: make(map[string]*sync.Mutex)}, nil
 }
 
 func (s *Service) millis() int64 { return s.now().UnixMilli() }

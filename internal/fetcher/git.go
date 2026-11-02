@@ -28,7 +28,8 @@ func basicCredential(token string) string {
 // git runs one command in the mirror with a minimal environment that ignores
 // system and user configuration, prompts and hooks, and allows only the
 // remote's protocol. The token reaches only network commands, through
-// environment configuration; never argv or on-disk config.
+// environment configuration; never argv or on-disk config. Public leases
+// have no token and fetch without any credential.
 func (repository mirror) git(ctx context.Context, network bool, stdin string, arguments ...string) (string, error) {
 	timeout := localTimeout
 	environment := []string{
@@ -38,6 +39,8 @@ func (repository mirror) git(ctx context.Context, network bool, stdin string, ar
 	}
 	if network {
 		timeout = networkTimeout
+	}
+	if network && repository.token != "" {
 		environment = append(environment, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.extraHeader",
 			"GIT_CONFIG_VALUE_0=Authorization: Basic "+basicCredential(repository.token))
 	}

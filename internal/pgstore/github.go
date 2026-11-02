@@ -201,7 +201,7 @@ func (s *GitHubStore) ClaimRefresh(ctx context.Context, token string, now, lease
 	}
 	return githubsync.Lease{
 		Ref:   githubsync.PullRequestRef{RepositoryID: row.RepositoryID, InstallationID: row.InstallationID, FullName: row.FullName, Number: int(row.Number)},
-		Token: token, Generation: row.LeasedGeneration, RetentionRun: row.LeasedRun, Attempt: int(row.Attempt),
+		Token: token, Generation: row.LeasedGeneration, RetentionRun: row.LeasedRun, Attempt: int(row.Attempt), Public: row.Public,
 	}, nil
 }
 
@@ -225,7 +225,7 @@ func (s *GitHubStore) Leased(ctx context.Context, repositoryID int64, number int
 	}
 	return githubsync.Lease{
 		Ref:   githubsync.PullRequestRef{RepositoryID: row.RepositoryID, InstallationID: row.InstallationID, FullName: row.FullName, Number: int(row.Number)},
-		Token: token, Generation: row.LeasedGeneration, RetentionRun: row.LeasedRun, Attempt: int(row.Attempt),
+		Token: token, Generation: row.LeasedGeneration, RetentionRun: row.LeasedRun, Attempt: int(row.Attempt), Public: row.Public,
 	}, row.Leased, nil
 }
 
@@ -259,9 +259,84 @@ func (s *GitHubStore) CompleteRefresh(ctx context.Context, lease githubsync.Leas
 					return err
 				}
 			}
+			if admission.OwnerID == githubsync.PublicOwnerID {
+				if err := queries.RecordPublicGitHubSnapshot(ctx, pgdb.RecordPublicGitHubSnapshotParams{
+					JobID: job.ID, Now: &at, Head: head, RepositoryID: lease.Ref.RepositoryID, Number: int32(lease.Ref.Number),
+				}); err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	})
+}
+
+func (s *GitHubStore) PublicPullRequest(ctx context.Context, repositoryID int64, number int, now int64) (githubsync.PublicState, error) {
+	row, err := s.store.queries.PublicGitHubPullRequest(ctx, pgdb.PublicGitHubPullRequestParams{
+		Now: time.UnixMilli(now), OwnerID: githubsync.PublicOwnerID, RepositoryID: repositoryID, Number: int32(number),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return githubsync.PublicState{}, githubsync.ErrNotFound
+	}
+	if err != nil {
+		return githubsync.PublicState{}, err
+	}
+	return publicStateFromRow(row), nil
+}
+
+func (s *GitHubStore) PublicPullRequestNamed(ctx context.Context, fullName string, number int, now int64) (githubsync.PublicState, error) {
+	row, err := s.store.queries.PublicGitHubPullRequestNamed(ctx, pgdb.PublicGitHubPullRequestNamedParams{
+		Now: time.UnixMilli(now), OwnerID: githubsync.PublicOwnerID, FullName: fullName, Number: int32(number),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return githubsync.PublicState{}, githubsync.ErrNotFound
+	}
+	if err != nil {
+		return githubsync.PublicState{}, err
+	}
+	// Both queries select the same columns.
+	return publicStateFromRow(pgdb.PublicGitHubPullRequestRow(row)), nil
+}
+
+func publicStateFromRow(row pgdb.PublicGitHubPullRequestRow) githubsync.PublicState {
+	state := githubsync.PublicState{
+		Ref:      githubsync.PullRequestRef{RepositoryID: row.RepositoryID, InstallationID: row.InstallationID, FullName: row.FullName, Number: int(row.Number)},
+		Demanded: row.PublicGeneration > 0, Pending: row.Pending, Leased: row.Leased, Attempt: int(row.Attempt), Detail: row.Detail,
+		Pull: row.PublicPull, Head: row.PublicHead, JobState: row.JobState, ContextID: row.ContextID,
+	}
+	if row.PublicFetchedAt != nil {
+		state.FetchedAt = row.PublicFetchedAt.UnixMilli()
+	}
+	// A completed fetch also counts as reading GitHub.
+	state.CheckedAt = state.FetchedAt
+	if row.PublicCheckedAt != nil {
+		state.CheckedAt = max(state.CheckedAt, row.PublicCheckedAt.UnixMilli())
+	}
+	return state
+}
+
+func (s *GitHubStore) RequestPublicRefresh(ctx context.Context, ref githubsync.PullRequestRef, pull []byte, retentionRun string, now int64) error {
+	return s.store.queries.RequestPublicGitHubRefresh(ctx, pgdb.RequestPublicGitHubRefreshParams{
+		RepositoryID: ref.RepositoryID, Number: int32(ref.Number), InstallationID: ref.InstallationID, FullName: ref.FullName,
+		RetentionRun: retentionRun, RequestedAt: time.UnixMilli(now), PublicPull: nonNil(pull),
+	})
+}
+
+func (s *GitHubStore) RecordPublicCheck(ctx context.Context, repositoryID int64, number int, pull []byte, now int64) error {
+	at := time.UnixMilli(now)
+	return s.store.queries.RecordPublicGitHubCheck(ctx, pgdb.RecordPublicGitHubCheckParams{PublicPull: nonNil(pull), Now: &at, RepositoryID: repositoryID, Number: int32(number)})
+}
+
+func (s *GitHubStore) RetryPublicRefresh(ctx context.Context, repositoryID int64, number int, now int64) error {
+	return s.store.queries.RetryPublicGitHubRefresh(ctx, pgdb.RetryPublicGitHubRefreshParams{Now: time.UnixMilli(now), RepositoryID: repositoryID, Number: int32(number)})
+}
+
+// nonNil stores nothing as empty; pgx sends nil as NULL.
+func nonNil(value []byte) []byte {
+	if value == nil {
+		return []byte{}
+	}
+	return value
 }
 
 // ReconcileAlone runs reconcile unless another replica's reconcile holds the

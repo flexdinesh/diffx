@@ -79,8 +79,8 @@ func (source *storedSource) Contents(ctx context.Context, mode review.DiffMode, 
 	return *preview.Contents, nil
 }
 
-func storedCapabilities(scopes []review.DiffMode, contents bool) reviewsession.Capabilities {
-	return reviewsession.ResolveCapabilities(storedSupport(scopes, contents), reviewsession.Policies{})
+func storedCapabilities(scopes []review.DiffMode, contents bool, policies reviewsession.Policies) reviewsession.Capabilities {
+	return reviewsession.ResolveCapabilities(storedSupport(scopes, contents), policies)
 }
 
 func storedSupport(scopes []review.DiffMode, contents bool) review.Support {

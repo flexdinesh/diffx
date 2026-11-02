@@ -34,7 +34,7 @@ export function App() {
   );
 }
 
-function SidebarBackdrop() {
+export function SidebarBackdrop() {
   const sidebar = useSidebarState();
   return sidebar.drawer === "files" ? (
     <Scrim label="Close review sidebar" onDismiss={sidebar.closeMobile} />

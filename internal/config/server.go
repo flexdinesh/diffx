@@ -64,6 +64,9 @@ type GitHub struct {
 	TokenKey       string `json:"-"`
 	// FetcherSecret authenticates diffx-fetcher on the internal listener.
 	FetcherSecret string `json:"-"`
+	// PublicInstallationID is the optional installation whose token reads
+	// public repositories for public pull request previews.
+	PublicInstallationID int64 `json:"publicInstallationId"`
 }
 
 // Enabled reports whether any GitHub setting is present; Validate requires all.
@@ -107,6 +110,9 @@ func (github GitHub) Validate(insecureCookies bool) error {
 	}
 	if len(github.FetcherSecret) < 32 {
 		return errors.New("DIFFX_SERVER_FETCHER_SECRET must be at least 32 characters, such as the output of: openssl rand -base64 32")
+	}
+	if github.PublicInstallationID < 0 {
+		return errors.New("DIFFX_SERVER_GITHUB_PUBLIC_INSTALLATION_ID must be a positive GitHub App installation ID")
 	}
 	return nil
 }
@@ -221,12 +227,20 @@ func LoadServerFile(path string) (ServerValues, error) {
 		}
 	}
 	// Compose passes unset integration variables through as empty.
-	if raw := os.Getenv("DIFFX_SERVER_GITHUB_APP_ID"); raw != "" {
-		value, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
-			return values, fmt.Errorf("invalid DIFFX_SERVER_GITHUB_APP_ID: %w", err)
+	for _, field := range []struct {
+		name   string
+		target *int64
+	}{
+		{"DIFFX_SERVER_GITHUB_APP_ID", &values.GitHub.AppID},
+		{"DIFFX_SERVER_GITHUB_PUBLIC_INSTALLATION_ID", &values.GitHub.PublicInstallationID},
+	} {
+		if raw := os.Getenv(field.name); raw != "" {
+			value, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil || value <= 0 {
+				return values, fmt.Errorf("invalid %s: must be a positive integer", field.name)
+			}
+			*field.target = value
 		}
-		values.GitHub.AppID = value
 	}
 	for _, field := range []struct {
 		name   string
@@ -262,6 +276,15 @@ func (values ServerValues) ValidateAuthRateLimit() error {
 	}
 	if !validHeaderName(values.ClientIPHeader) {
 		return errors.New("DIFFX_SERVER_AUTH_RATE_LIMIT needs DIFFX_SERVER_CLIENT_IP_HEADER: the request header name, such as X-Real-IP, that your trusted ingress sets to the single client IP")
+	}
+	return nil
+}
+
+// ValidateClientIPHeader requires a usable header name when one is set: it
+// also makes public pull request fetch limits per client.
+func (values ServerValues) ValidateClientIPHeader() error {
+	if values.ClientIPHeader != "" && !validHeaderName(values.ClientIPHeader) {
+		return errors.New("DIFFX_SERVER_CLIENT_IP_HEADER must be the request header name, such as X-Real-IP, that your trusted ingress sets to the single client IP")
 	}
 	return nil
 }

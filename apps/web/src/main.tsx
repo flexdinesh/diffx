@@ -28,6 +28,13 @@ import {
   SignUp,
   signupOpen,
 } from "./account.tsx";
+import { Landing } from "./Landing.tsx";
+import { PublicPullRequest } from "./PublicPullRequest.tsx";
+import { PublicReview } from "./PublicReview.tsx";
+import {
+  publicPullRequestLocation,
+  pullRequestPath,
+} from "./public-pull-request.ts";
 import { startPwa } from "./pwa.ts";
 import { isSettingsPath, settingsSection } from "./settings-layout.tsx";
 import { syncPushDevice } from "./push.ts";
@@ -46,6 +53,28 @@ function ApplicationRoutes() {
   const ready = state.status === "ready";
   const remote = ready && state.bootstrap.mode === "remote";
   const signedIn = ready && state.bootstrap.user !== null;
+  // Public pull request previews answer GitHub's own pull request paths.
+  const publicPreviews =
+    ready &&
+    state.bootstrap.mode === "remote" &&
+    state.bootstrap.publicPullRequests;
+  const preview = publicPreviews
+    ? publicPullRequestLocation({
+        pathname: path,
+        search: window.location.search,
+      })
+    : null;
+  const canonical = preview?.href ?? null;
+  useEffect(() => {
+    if (
+      canonical === null ||
+      canonical ===
+        `${window.location.pathname}${window.location.search}${window.location.hash}`
+    )
+      return;
+    window.history.replaceState(null, "", canonical);
+    setPath(window.location.pathname);
+  }, [canonical]);
   const userId = (ready && state.bootstrap.user?.id) || null;
   // Only the remote server is an installable app with push notifications.
   useEffect(() => {
@@ -59,7 +88,8 @@ function ApplicationRoutes() {
     ready &&
     ((!remote && isSettingsPath(path)) ||
       (signedIn &&
-        (path === "/signup" ||
+        (path === "/signin" ||
+          path === "/signup" ||
           path === "/invite" ||
           path === "/reset-password")));
   useEffect(() => {
@@ -68,11 +98,28 @@ function ApplicationRoutes() {
     setPath("/");
   }, [misplaced]);
   if (state.status !== "ready") return <IdentityStatus />;
+  if (preview)
+    return (
+      <PublicPullRequest
+        key={pullRequestPath(preview.pull)}
+        pull={preview.pull}
+      >
+        <PublicReview />
+      </PublicPullRequest>
+    );
   if (state.bootstrap.mode === "remote" && !state.bootstrap.user) {
     // Pages for a method the server turned off render sign-in.
     if (path === "/signup" && signupOpen(state.bootstrap)) return <SignUp />;
     if (path === "/invite") return <InviteSignUp />;
     if (path === "/reset-password") return <ResetPassword />;
+    // With previews on, home is the landing page; sign-in moves to /signin,
+    // which also reports Google sign-in outcomes returned to home.
+    if (
+      path === "/" &&
+      state.bootstrap.publicPullRequests &&
+      !new URLSearchParams(window.location.search).has("signin")
+    )
+      return <Landing />;
     return <SignIn />;
   }
   if (isSettingsPath(path) && state.bootstrap.mode === "remote")

@@ -145,7 +145,7 @@ func TestReplicasReloadChangedSettings(t *testing.T) {
 		t.Fatalf("default bootstrap: %s", body)
 	}
 	// Another process, the console, changes the stored settings.
-	if err := identityservice.New(store).PutSettings(t.Context(), "", identityservice.Settings{PasswordSignup: true}); err != nil {
+	if err := identityservice.New(store).PutSettings(t.Context(), "", identityservice.Settings{PasswordSignup: true, PublicRetentionDays: 1}); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(10 * time.Second)
@@ -184,7 +184,7 @@ func TestResyncReloadsMissedSettings(t *testing.T) {
 		<-done
 	})
 	deadline := time.Now().Add(10 * time.Second)
-	for identity.Settings() != (identityservice.Settings{}) {
+	for identity.Settings() != (identityservice.Settings{PublicRetentionDays: 1}) {
 		if time.Now().After(deadline) {
 			t.Fatalf("missed settings not reloaded: %+v", identity.Settings())
 		}

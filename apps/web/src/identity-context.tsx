@@ -40,6 +40,12 @@ const anonymous = new Set([
   "/api/v2/password-reset/lookup",
   "/api/v2/password-reset",
 ]);
+/** Public pull request previews: no credentials, for anyone. */
+const publicPrefix = "/api/v2/public/";
+function anonymousRequest(request: Request) {
+  const path = new URL(request.url).pathname;
+  return anonymous.has(path) || path.startsWith(publicPrefix);
+}
 
 export function navigate(path: string, { replace = false } = {}) {
   if (replace) window.history.replaceState(null, "", path);
@@ -71,7 +77,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const middleware: ApiMiddleware = {
       onRequest({ request }) {
-        if (anonymous.has(new URL(request.url).pathname)) return request;
+        if (anonymousRequest(request)) return request;
         const csrf = current.current?.csrfToken;
         if (csrf && request.method !== "GET" && request.method !== "HEAD")
           request.headers.set("X-CSRF-Token", csrf);
@@ -80,10 +86,12 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         });
       },
       onResponse({ request, response }) {
+        // Without an account there is no session to end.
         if (
           response.status === 401 &&
           !request.signal.aborted &&
-          !anonymous.has(new URL(request.url).pathname)
+          current.current?.user &&
+          !anonymousRequest(request)
         )
           signedOut();
       },

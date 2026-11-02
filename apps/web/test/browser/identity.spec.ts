@@ -20,6 +20,7 @@ function bootstrap(
 ) {
   return {
     mode: "remote",
+    publicPullRequests: false,
     googleEnabled,
     signupEnabled,
     passwordSignupEnabled,

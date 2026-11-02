@@ -11,13 +11,15 @@ import (
 
 func (store *Store) AppSettings(ctx context.Context) (identityservice.Settings, error) {
 	row, err := store.queries.AppSettings(ctx)
-	return identityservice.Settings{Signup: row.SignupOpen, PasswordSignup: row.PasswordSignup}, err
+	return identityservice.Settings{Signup: row.SignupOpen, PasswordSignup: row.PasswordSignup,
+		PublicPullRequests: row.PublicPullRequests, PublicRetentionDays: int(row.PublicRetentionDays)}, err
 }
 
 // PutAppSettings notifies every replica in the transaction that commits the change.
 func (store *Store) PutAppSettings(ctx context.Context, settings identityservice.Settings, actorID string, at time.Time) error {
 	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
-		if err := queries.PutAppSettings(ctx, pgdb.PutAppSettingsParams{SignupOpen: settings.Signup, PasswordSignup: settings.PasswordSignup, UpdatedAt: millisecond(at), UpdatedBy: actorID}); err != nil {
+		if err := queries.PutAppSettings(ctx, pgdb.PutAppSettingsParams{SignupOpen: settings.Signup, PasswordSignup: settings.PasswordSignup,
+			PublicPullRequests: settings.PublicPullRequests, PublicRetentionDays: int32(settings.PublicRetentionDays), UpdatedAt: millisecond(at), UpdatedBy: actorID}); err != nil {
 			return err
 		}
 		return notifySettings(ctx, queries)

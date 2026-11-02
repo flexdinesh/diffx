@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/diffx/internal/githubsync"
 	"github.com/flexdinesh/diffx/internal/google"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/pgstore"
@@ -54,10 +55,16 @@ func secretHash(secret string) string {
 	return hex.EncodeToString(hash[:])
 }
 
+// tableRows counts a table's rows; users excludes the reserved public owner,
+// which every database has.
 func tableRows(t *testing.T, conn *pgx.Conn, table string) int {
 	t.Helper()
+	query := `SELECT COUNT(*) FROM diffx.` + table
+	if table == "users" {
+		query += ` WHERE id <> '` + githubsync.PublicOwnerID + `'`
+	}
 	var rows int
-	if err := conn.QueryRow(t.Context(), `SELECT COUNT(*) FROM diffx.`+table).Scan(&rows); err != nil {
+	if err := conn.QueryRow(t.Context(), query).Scan(&rows); err != nil {
 		t.Fatal(err)
 	}
 	return rows
@@ -684,7 +691,7 @@ func TestSettingsDefaultOnAndAnnounceChanges(t *testing.T) {
 	t.Parallel()
 	store, service, _ := identityStore(t)
 	ctx := context.Background()
-	if got := service.Settings(); got != (identityservice.Settings{Signup: true, PasswordSignup: true}) {
+	if got := service.Settings(); got != (identityservice.Settings{Signup: true, PasswordSignup: true, PublicRetentionDays: 1}) {
 		t.Fatalf("default settings: %+v", got)
 	}
 	if got := identityservice.New(store).Settings(); got != (identityservice.Settings{}) {
@@ -707,7 +714,10 @@ func TestSettingsDefaultOnAndAnnounceChanges(t *testing.T) {
 		_ = listener.Run(listening, func(change pgstore.Notification) { changes <- change })
 	}()
 	admin := setupAdmin(t, store, "admin")
-	want := identityservice.Settings{PasswordSignup: true}
+	if err := service.PutSettings(ctx, admin.Account.ID, identityservice.Settings{PublicRetentionDays: 31}); !errors.Is(err, identityservice.ErrInvalidSettings) {
+		t.Fatalf("public retention over 30 days: %v", err)
+	}
+	want := identityservice.Settings{PasswordSignup: true, PublicPullRequests: true, PublicRetentionDays: 30}
 	if err := service.PutSettings(ctx, admin.Account.ID, want); err != nil {
 		t.Fatal(err)
 	}

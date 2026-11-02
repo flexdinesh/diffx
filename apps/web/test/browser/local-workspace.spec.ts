@@ -1663,6 +1663,7 @@ for (const mode of ["local", "remote"]) {
           mode,
           googleEnabled: false,
           ...(mode === "remote" && {
+            publicPullRequests: false,
             signupEnabled: false,
             passwordSignupEnabled: true,
           }),
@@ -2246,6 +2247,7 @@ test("each remote account baselines its own seen heads", async ({ page }) => {
     route.fulfill({
       json: {
         mode: "remote",
+        publicPullRequests: false,
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,
@@ -2369,6 +2371,7 @@ test("a remote server shows the review column for a single review", async ({
     route.fulfill({
       json: {
         mode: "remote",
+        publicPullRequests: false,
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,
@@ -2940,6 +2943,7 @@ test("saved comparison preferences belong to the active account", async ({
     route.fulfill({
       json: {
         mode: "remote",
+        publicPullRequests: false,
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,
@@ -2973,6 +2977,7 @@ test("pull request reviews show GitHub identity and a sanitized description; clo
     route.fulfill({
       json: {
         mode: "remote",
+        publicPullRequests: false,
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,

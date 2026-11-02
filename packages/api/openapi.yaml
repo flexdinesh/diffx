@@ -86,6 +86,11 @@ paths:
             schema:
               type: object
               additionalProperties: false
+              properties:
+                next:
+                  type: string
+                  enum: [/settings/github]
+                  description: App page the successful callback redirects to instead of `/`. Only listed pages are accepted.
       responses:
         "200":
           $ref: "#/components/responses/GoogleAuthorization"
@@ -1478,6 +1483,244 @@ paths:
           description: Review mark deleted.
         default:
           $ref: "#/components/responses/Problem"
+  /api/v2/public/pull-requests/{owner}/{repo}/{number}:
+    parameters:
+      - $ref: "#/components/parameters/PublicOwner"
+      - $ref: "#/components/parameters/PublicRepo"
+      - $ref: "#/components/parameters/PublicNumber"
+    get:
+      operationId: getPublicPullRequest
+      description: Remote only, without credentials. Status of a public GitHub pull request's shared read-only preview. 404 until a PUT requested it, while public pull requests are off, or without the GitHub integration.
+      security: []
+      responses:
+        "200":
+          description: Preview status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicPullRequest"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: putPublicPullRequest
+      description: Remote only, without credentials. Ensures a shared read-only preview of a public GitHub pull request. Idempotent; it fetches only when no unexpired snapshot exists and no fetch is pending, and only such requests count toward the per-client (or, without a client IP header, server-wide) fetch limit. Private, missing and oversized repositories are refused in the returned failure.
+      security: []
+      responses:
+        "200":
+          description: Preview status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicPullRequest"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/public/pull-requests/{owner}/{repo}/{number}/refresh:
+    parameters:
+      - $ref: "#/components/parameters/PublicOwner"
+      - $ref: "#/components/parameters/PublicRepo"
+      - $ref: "#/components/parameters/PublicNumber"
+    post:
+      operationId: refreshPublicPullRequest
+      description: Remote only, without credentials. Rereads the pull request from GitHub and fetches a new snapshot when its head changed. Joins a fetch already pending and does nothing within a minute of the last refresh. Counts toward the fetch limit.
+      security: []
+      responses:
+        "200":
+          description: Preview status. An unchanged contextId with status ready means the preview is up to date.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicPullRequest"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/public/contexts/{contextId}:
+    parameters:
+      - $ref: "#/components/parameters/ContextId"
+    get:
+      operationId: getPublicContext
+      description: Remote only, without credentials. Read-only metadata of a public pull request preview. Comments are disabled; contexts of accounts are not found.
+      security: []
+      responses:
+        "200":
+          description: Stable review target metadata and capabilities.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Context"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/public/contexts/{contextId}/session:
+    parameters:
+      - $ref: "#/components/parameters/ContextId"
+    get:
+      operationId: getPublicSession
+      security: []
+      responses:
+        "200":
+          description: Active diff source and capabilities.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/public/contexts/{contextId}/diffs/current:
+    parameters:
+      - $ref: "#/components/parameters/ContextId"
+    get:
+      operationId: getPublicCurrentDiff
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Scope"
+      responses:
+        "200":
+          description: Current diff snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepositoryDiff"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/public/contexts/{contextId}/diffs/{diffId}/versions/{versionId}:
+    parameters:
+      - $ref: "#/components/parameters/ContextId"
+    get:
+      operationId: getPublicDiffVersion
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/DiffId"
+        - $ref: "#/components/parameters/VersionIdPath"
+      responses:
+        "200":
+          description: Retained immutable diff version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepositoryDiff"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/public/contexts/{contextId}/diffs/{diffId}/files/{fileId}/patch:
+    parameters:
+      - $ref: "#/components/parameters/ContextId"
+    get:
+      operationId: getPublicFilePatch
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/DiffId"
+        - $ref: "#/components/parameters/FileId"
+        - $ref: "#/components/parameters/VersionId"
+        - $ref: "#/components/parameters/Scope"
+        - $ref: "#/components/parameters/FileVersion"
+      responses:
+        "200":
+          description: File patch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FilePatch"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/public/contexts/{contextId}/diffs/{diffId}/files/{fileId}/contents:
+    parameters:
+      - $ref: "#/components/parameters/ContextId"
+    get:
+      operationId: getPublicFileContents
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/DiffId"
+        - $ref: "#/components/parameters/FileId"
+        - $ref: "#/components/parameters/VersionId"
+        - $ref: "#/components/parameters/Scope"
+        - $ref: "#/components/parameters/FileVersion"
+      responses:
+        "200":
+          description: Complete before and after contents.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileContents"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/public/contexts/{contextId}/commits:
+    parameters:
+      - $ref: "#/components/parameters/ContextId"
+    get:
+      operationId: listPublicCommits
+      security: []
+      responses:
+        "200":
+          description: Captured commits.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommitList"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/public/contexts/{contextId}/commits/{oid}/diff:
+    parameters:
+      - $ref: "#/components/parameters/ContextId"
+      - $ref: "#/components/parameters/CommitOid"
+    get:
+      operationId: getPublicCommitDiff
+      security: []
+      responses:
+        "200":
+          description: The commit's diff against its first parent. Merge commits have none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepositoryDiff"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/public/contexts/{contextId}/commits/{oid}/files/{fileId}/patch:
+    parameters:
+      - $ref: "#/components/parameters/ContextId"
+      - $ref: "#/components/parameters/CommitOid"
+    get:
+      operationId: getPublicCommitFilePatch
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/FileId"
+        - $ref: "#/components/parameters/FileVersion"
+      responses:
+        "200":
+          description: File patch within the commit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FilePatch"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/public/contexts/{contextId}/commits/{oid}/files/{fileId}/contents:
+    parameters:
+      - $ref: "#/components/parameters/ContextId"
+      - $ref: "#/components/parameters/CommitOid"
+    get:
+      operationId: getPublicCommitFileContents
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/FileId"
+        - $ref: "#/components/parameters/FileVersion"
+      responses:
+        "200":
+          description: Complete contents before and after the commit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileContents"
+        default:
+          $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
     bearerAuth:
@@ -1507,6 +1750,32 @@ components:
       required: true
       schema:
         type: string
+    PublicOwner:
+      name: owner
+      in: path
+      required: true
+      description: GitHub repository owner.
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$"
+        maxLength: 39
+    PublicRepo:
+      name: repo
+      in: path
+      required: true
+      description: GitHub repository name.
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9._-]+$"
+        maxLength: 100
+    PublicNumber:
+      name: number
+      in: path
+      required: true
+      description: Pull request number.
+      schema:
+        type: integer
+        minimum: 1
     Scope:
       name: scope
       in: query
@@ -1575,6 +1844,18 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Probe"
+    RateLimited:
+      description: Fetch limit reached. Retry-After gives the seconds until another fetch is admitted.
+      headers:
+        Retry-After:
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
     GoogleAuthorization:
       description: Google authorization to navigate to.
       content:
@@ -1650,11 +1931,15 @@ components:
               passwordSignupEnabled,
               user,
               csrfToken,
+              publicPullRequests,
             ]
           properties:
             mode:
               type: string
               enum: [remote]
+            publicPullRequests:
+              type: boolean
+              description: Whether anyone, signed in or not, can open read-only previews of public GitHub pull requests. Admins turn it on in the console; it also needs the server's GitHub integration and public installation.
             googleEnabled:
               type: boolean
               description: Whether people can sign in with Google.
@@ -1741,6 +2026,50 @@ components:
         id:
           type: string
         name:
+          type: string
+    PublicPullRequest:
+      type: object
+      additionalProperties: false
+      description: A public GitHub pull request's shared read-only preview. contextId names the newest ready snapshot, read through /api/v2/public/contexts; it can be set while a refresh is queued or fetching.
+      required:
+        [fullName, number, status, pullRequest, contextId, fetchedAt, failure]
+      properties:
+        fullName:
+          type: string
+          description: Base repository as owner/name, as GitHub names it.
+        number:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [queued, fetching, ready, failed]
+          description: queued waits for a fetcher; fetching is being fetched or published; ready has a snapshot and nothing pending; failed has no new snapshot (see failure).
+        pullRequest:
+          description: Metadata GitHub reported when the preview was last requested; null before the first read.
+          oneOf:
+            - $ref: "#/components/schemas/PullRequest"
+            - type: "null"
+        contextId:
+          type: [string, "null"]
+        fetchedAt:
+          type: [integer, "null"]
+          format: int64
+          description: Unix milliseconds when the snapshot named by contextId was fetched.
+        failure:
+          description: Why the latest request produced no snapshot. A failed fetch retries with backoff; refused repositories do not.
+          oneOf:
+            - $ref: "#/components/schemas/PublicPullRequestFailure"
+            - type: "null"
+    PublicPullRequestFailure:
+      type: object
+      additionalProperties: false
+      required: [code, detail]
+      properties:
+        code:
+          type: string
+          enum: [not_found, too_large, fetch_failed]
+          description: not_found covers private and missing repositories and pull requests; too_large is a repository over the preview size limit.
+        detail:
           type: string
     PullRequest:
       type: object

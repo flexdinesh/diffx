@@ -45,7 +45,9 @@ func validateJob(job fetchprotocol.Job) error {
 		return errors.New("lease requires a repository ID and pull request number")
 	case !objectID.MatchString(job.HeadSHA) || !objectID.MatchString(job.BaseSHA):
 		return errors.New("lease head and base must be full commit IDs")
-	case job.Token == "" || strings.ContainsAny(job.Token, "\r\n"):
+	case job.Public && job.Token != "":
+		return errors.New("public lease must not carry a token")
+	case !job.Public && (job.Token == "" || strings.ContainsAny(job.Token, "\r\n")):
 		return errors.New("lease requires an installation token")
 	case !validBranch(job.BaseRef):
 		return errors.New("lease base ref is not a valid branch name")

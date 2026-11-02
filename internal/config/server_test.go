@@ -140,6 +140,39 @@ func TestGitHubConfigIsAllOrNothingWithSecretsFromEnvironment(t *testing.T) {
 	}
 }
 
+func TestPublicInstallationIsOptionalAndPositive(t *testing.T) {
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	t.Setenv("DIFFX_SERVER_GITHUB_PUBLIC_INSTALLATION_ID", "")
+	values, err := LoadServerFile("")
+	if err != nil || values.GitHub.PublicInstallationID != 0 || values.GitHub.Enabled() {
+		t.Fatalf("absent public installation: %+v %v", values.GitHub, err)
+	}
+	t.Setenv("DIFFX_SERVER_GITHUB_PUBLIC_INSTALLATION_ID", "4242")
+	if values, err := LoadServerFile(""); err != nil || values.GitHub.PublicInstallationID != 4242 {
+		t.Fatalf("public installation: %+v %v", values.GitHub, err)
+	}
+	for _, raw := range []string{"0", "-3", "abc"} {
+		t.Setenv("DIFFX_SERVER_GITHUB_PUBLIC_INSTALLATION_ID", raw)
+		if _, err := LoadServerFile(""); err == nil || !strings.Contains(err.Error(), "DIFFX_SERVER_GITHUB_PUBLIC_INSTALLATION_ID") {
+			t.Fatalf("public installation %q: %v", raw, err)
+		}
+	}
+}
+
+func TestClientIPHeaderMustBeAHeaderNameWhenSet(t *testing.T) {
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	for header, valid := range map[string]bool{"": true, "X-Real-IP": true, "X Real IP": false, "X-Real-IP:": false} {
+		t.Setenv("DIFFX_SERVER_CLIENT_IP_HEADER", header)
+		values, err := LoadServerFile("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := values.ValidateClientIPHeader(); (err == nil) != valid {
+			t.Fatalf("header %q: %v", header, err)
+		}
+	}
+}
+
 func TestGoogleSignInNeedsBothCredentialsAndPublicURL(t *testing.T) {
 	t.Setenv("DIFFX_SERVER_CONFIG", "")
 	t.Setenv("DIFFX_SERVER_GOOGLE_CLIENT_ID", "client")
@@ -222,7 +255,7 @@ func TestInternalListenerSharesHostOnSeparatePort(t *testing.T) {
 
 func TestEmptyGitHubEnvironmentDisablesIntegration(t *testing.T) {
 	t.Setenv("DIFFX_SERVER_CONFIG", "")
-	for _, name := range []string{"APP_ID", "CLIENT_ID", "PRIVATE_KEY_FILE", "PUBLIC_URL", "CLIENT_SECRET", "WEBHOOK_SECRET", "TOKEN_KEY"} {
+	for _, name := range []string{"APP_ID", "CLIENT_ID", "PRIVATE_KEY_FILE", "PUBLIC_URL", "CLIENT_SECRET", "WEBHOOK_SECRET", "TOKEN_KEY", "PUBLIC_INSTALLATION_ID"} {
 		t.Setenv("DIFFX_SERVER_GITHUB_"+name, "")
 	}
 	t.Setenv("DIFFX_SERVER_FETCHER_SECRET", "")

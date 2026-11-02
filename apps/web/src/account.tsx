@@ -12,6 +12,11 @@ import { AccountNotifications } from "./account-notifications.tsx";
 import { AccountTokens } from "./account-tokens.tsx";
 import { forgetPushDevice } from "./push.ts";
 import {
+  returnQuery,
+  signInReturn,
+  type ReturnPage,
+} from "./public-pull-request.ts";
+import {
   SettingsLayout,
   SettingsSection,
   SettingsSectionAbsent,
@@ -40,7 +45,7 @@ export function AccountButton({ variant }: { variant: "rail" | "shell" }) {
   );
 }
 
-const prose = "mb-4 leading-copy text-secondary";
+export const prose = "mb-4 leading-copy text-secondary";
 
 /** Failed outcomes the Google callback reports through `/?signin=`. */
 const signInFailures: Record<string, string> = {
@@ -98,7 +103,13 @@ function useMethods() {
 }
 
 /** An in-app link that keeps the page loaded. */
-function PageLink({ to, children }: { to: string; children: ReactNode }) {
+export function PageLink({
+  to,
+  children,
+}: {
+  to: string;
+  children: ReactNode;
+}) {
   return (
     <a
       href={to}
@@ -114,7 +125,13 @@ function PageLink({ to, children }: { to: string; children: ReactNode }) {
 }
 
 /** The signed-out page shell shared by every account form. */
-function AuthPage({ title, children }: { title: string; children: ReactNode }) {
+export function AuthPage({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
   return (
     <main className="account-page auth-page">
       <a className="brand" href="/">
@@ -139,6 +156,7 @@ function MethodSeparator() {
 export function SignIn() {
   const { google, password, signup } = useMethods();
   const [outcome] = useState(takeSignInOutcome);
+  const [next] = useState(() => signInReturn(window.location.search));
   const [revealed, setRevealed] = useState(false);
   const failure = signInFailures[outcome];
   const form = !google || password || revealed;
@@ -150,7 +168,7 @@ export function SignIn() {
         </p>
       )}
       {failure && <ErrorState message={failure} className="mb-4" />}
-      {google && <ContinueWithGoogle secondary={form} />}
+      {google && <ContinueWithGoogle secondary={form} next={next} />}
       {google && form && <MethodSeparator />}
       {form ? (
         <CredentialForm
@@ -158,6 +176,7 @@ export function SignIn() {
           submitLabel="Sign in"
           failure="Unable to sign in. Check your email and password."
           autoFocus={revealed}
+          next={next}
         />
       ) : (
         <p className="mt-4 text-sm leading-copy text-secondary">
@@ -174,7 +193,10 @@ export function SignIn() {
       <p className="mt-6 leading-copy text-secondary">
         {signup ? (
           <>
-            New here? <PageLink to="/signup">Create an account</PageLink>
+            New here?{" "}
+            <PageLink to={`/signup${returnQuery(next)}`}>
+              Create an account
+            </PageLink>
           </>
         ) : (
           "Accounts are by invite. Ask us for one."
@@ -187,6 +209,7 @@ export function SignIn() {
 /** Open signup with each enabled method; Google supplies the account email. */
 export function SignUp() {
   const { google, password } = useMethods();
+  const [next] = useState(() => signInReturn(window.location.search));
   return (
     <AuthPage title="Create an account">
       {google && (
@@ -194,7 +217,7 @@ export function SignUp() {
           <p className={prose}>
             Continue with Google to sign up with your verified email.
           </p>
-          <ContinueWithGoogle secondary={password} />
+          <ContinueWithGoogle secondary={password} next={next} />
         </>
       )}
       {google && password && <MethodSeparator />}
@@ -203,10 +226,12 @@ export function SignUp() {
           path="/api/v2/auth/signup"
           submitLabel="Create account"
           failure="Unable to create the account. Try again."
+          next={next}
         />
       )}
       <p className="mt-6 leading-copy text-secondary">
-        Already have an account? <PageLink to="/">Sign in</PageLink>
+        Already have an account?{" "}
+        <PageLink to={`/signin${returnQuery(next)}`}>Sign in</PageLink>
       </p>
     </AuthPage>
   );
@@ -219,9 +244,12 @@ export function SignUp() {
 function ContinueWithGoogle({
   invite,
   secondary = false,
+  next = null,
 }: {
   invite?: string;
   secondary?: boolean;
+  /** The page the callback opens instead of `/`. */
+  next?: ReturnPage | null;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -231,7 +259,9 @@ function ContinueWithGoogle({
     try {
       const { data, error } =
         invite === undefined
-          ? await api.POST("/api/v2/auth/google", { body: {} })
+          ? await api.POST("/api/v2/auth/google", {
+              body: next ? { next } : {},
+            })
           : await api.POST("/api/v2/invites/google", {
               body: { token: invite },
             });
@@ -441,7 +471,7 @@ export function ResetPassword() {
       {done ? (
         <p className={prose} role="status">
           Your password is set and your browser sessions are signed out.{" "}
-          <PageLink to="/">Sign in</PageLink> with the new password.
+          <PageLink to="/signin">Sign in</PageLink> with the new password.
         </p>
       ) : (
         <>
@@ -527,6 +557,7 @@ function CredentialForm({
   submitLabel,
   failure,
   autoFocus = false,
+  next = null,
 }: {
   path:
     | "/api/v2/auth/login"
@@ -538,6 +569,8 @@ function CredentialForm({
   failure: string;
   /** Focuses the email field when the form appears on request. */
   autoFocus?: boolean;
+  /** The page to open once signed in; otherwise the app's home. */
+  next?: ReturnPage | null;
 }) {
   const { establish } = useIdentity();
   const [email, setEmail] = useState(invitedEmail ?? "");
@@ -567,6 +600,7 @@ function CredentialForm({
         );
       establish(bootstrap);
       setPassword("");
+      if (next) navigate(next, { replace: true });
     } catch (failed: unknown) {
       setError(errorDetail(failed, failure));
     } finally {

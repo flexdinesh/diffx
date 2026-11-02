@@ -922,6 +922,239 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v2/public/pull-requests/{owner}/{repo}/{number}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description GitHub repository owner. */
+        owner: components["parameters"]["PublicOwner"];
+        /** @description GitHub repository name. */
+        repo: components["parameters"]["PublicRepo"];
+        /** @description Pull request number. */
+        number: components["parameters"]["PublicNumber"];
+      };
+      cookie?: never;
+    };
+    /** @description Remote only, without credentials. Status of a public GitHub pull request's shared read-only preview. 404 until a PUT requested it, while public pull requests are off, or without the GitHub integration. */
+    get: operations["getPublicPullRequest"];
+    /** @description Remote only, without credentials. Ensures a shared read-only preview of a public GitHub pull request. Idempotent; it fetches only when no unexpired snapshot exists and no fetch is pending, and only such requests count toward the per-client (or, without a client IP header, server-wide) fetch limit. Private, missing and oversized repositories are refused in the returned failure. */
+    put: operations["putPublicPullRequest"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/public/pull-requests/{owner}/{repo}/{number}/refresh": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description GitHub repository owner. */
+        owner: components["parameters"]["PublicOwner"];
+        /** @description GitHub repository name. */
+        repo: components["parameters"]["PublicRepo"];
+        /** @description Pull request number. */
+        number: components["parameters"]["PublicNumber"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Remote only, without credentials. Rereads the pull request from GitHub and fetches a new snapshot when its head changed. Joins a fetch already pending and does nothing within a minute of the last refresh. Counts toward the fetch limit. */
+    post: operations["refreshPublicPullRequest"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/public/contexts/{contextId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+      };
+      cookie?: never;
+    };
+    /** @description Remote only, without credentials. Read-only metadata of a public pull request preview. Comments are disabled; contexts of accounts are not found. */
+    get: operations["getPublicContext"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/public/contexts/{contextId}/session": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+      };
+      cookie?: never;
+    };
+    get: operations["getPublicSession"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/public/contexts/{contextId}/diffs/current": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+      };
+      cookie?: never;
+    };
+    get: operations["getPublicCurrentDiff"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/public/contexts/{contextId}/diffs/{diffId}/versions/{versionId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+      };
+      cookie?: never;
+    };
+    get: operations["getPublicDiffVersion"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/public/contexts/{contextId}/diffs/{diffId}/files/{fileId}/patch": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+      };
+      cookie?: never;
+    };
+    get: operations["getPublicFilePatch"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/public/contexts/{contextId}/diffs/{diffId}/files/{fileId}/contents": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+      };
+      cookie?: never;
+    };
+    get: operations["getPublicFileContents"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/public/contexts/{contextId}/commits": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+      };
+      cookie?: never;
+    };
+    get: operations["listPublicCommits"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/public/contexts/{contextId}/commits/{oid}/diff": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        oid: components["parameters"]["CommitOid"];
+      };
+      cookie?: never;
+    };
+    get: operations["getPublicCommitDiff"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/public/contexts/{contextId}/commits/{oid}/files/{fileId}/patch": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        oid: components["parameters"]["CommitOid"];
+      };
+      cookie?: never;
+    };
+    get: operations["getPublicCommitFilePatch"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/public/contexts/{contextId}/commits/{oid}/files/{fileId}/contents": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        oid: components["parameters"]["CommitOid"];
+      };
+      cookie?: never;
+    };
+    get: operations["getPublicCommitFileContents"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -963,6 +1196,8 @@ export interface components {
       | {
           /** @enum {string} */
           mode: "remote";
+          /** @description Whether anyone, signed in or not, can open read-only previews of public GitHub pull requests. Admins turn it on in the console; it also needs the server's GitHub integration and public installation. */
+          publicPullRequests: boolean;
           /** @description Whether people can sign in with Google. */
           googleEnabled: boolean;
           /** @description Whether people can create accounts without an invite. Admins set it in the console; invites work either way. */
@@ -1012,6 +1247,35 @@ export interface components {
       harness: string;
       id: string;
       name?: string;
+    };
+    /** @description A public GitHub pull request's shared read-only preview. contextId names the newest ready snapshot, read through /api/v2/public/contexts; it can be set while a refresh is queued or fetching. */
+    PublicPullRequest: {
+      /** @description Base repository as owner/name, as GitHub names it. */
+      fullName: string;
+      number: number;
+      /**
+       * @description queued waits for a fetcher; fetching is being fetched or published; ready has a snapshot and nothing pending; failed has no new snapshot (see failure).
+       * @enum {string}
+       */
+      status: "queued" | "fetching" | "ready" | "failed";
+      /** @description Metadata GitHub reported when the preview was last requested; null before the first read. */
+      pullRequest: components["schemas"]["PullRequest"] | null;
+      contextId: string | null;
+      /**
+       * Format: int64
+       * @description Unix milliseconds when the snapshot named by contextId was fetched.
+       */
+      fetchedAt: number | null;
+      /** @description Why the latest request produced no snapshot. A failed fetch retries with backoff; refused repositories do not. */
+      failure: components["schemas"]["PublicPullRequestFailure"] | null;
+    };
+    PublicPullRequestFailure: {
+      /**
+       * @description not_found covers private and missing repositories and pull requests; too_large is a repository over the preview size limit.
+       * @enum {string}
+       */
+      code: "not_found" | "too_large" | "fetch_failed";
+      detail: string;
     };
     /** @description Hosted pull request a capture reviews. Authored only by the server's GitHub integration; public ingestion rejects it. A current stream head shows its winning submission's value, so edits and state changes appear without new content; older snapshots keep their captured value. */
     PullRequest: {
@@ -1561,6 +1825,16 @@ export interface components {
         "application/json": components["schemas"]["Probe"];
       };
     };
+    /** @description Fetch limit reached. Retry-After gives the seconds until another fetch is admitted. */
+    RateLimited: {
+      headers: {
+        "Retry-After": number;
+        [name: string]: unknown;
+      };
+      content: {
+        "application/problem+json": components["schemas"]["Problem"];
+      };
+    };
     /** @description Google authorization to navigate to. */
     GoogleAuthorization: {
       headers: {
@@ -1578,6 +1852,12 @@ export interface components {
     CsrfToken: string;
     UserId: string;
     ContextId: string;
+    /** @description GitHub repository owner. */
+    PublicOwner: string;
+    /** @description GitHub repository name. */
+    PublicRepo: string;
+    /** @description Pull request number. */
+    PublicNumber: number;
     Scope: components["schemas"]["DiffMode"];
     CommitOid: string;
     DiffId: string;
@@ -1682,7 +1962,13 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": Record<string, never>;
+        "application/json": {
+          /**
+           * @description App page the successful callback redirects to instead of `/`. Only listed pages are accepted.
+           * @enum {string}
+           */
+          next?: "/settings/github";
+        };
       };
     };
     responses: {
@@ -3262,6 +3548,351 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  getPublicPullRequest: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description GitHub repository owner. */
+        owner: components["parameters"]["PublicOwner"];
+        /** @description GitHub repository name. */
+        repo: components["parameters"]["PublicRepo"];
+        /** @description Pull request number. */
+        number: components["parameters"]["PublicNumber"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Preview status. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PublicPullRequest"];
+        };
+      };
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  putPublicPullRequest: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description GitHub repository owner. */
+        owner: components["parameters"]["PublicOwner"];
+        /** @description GitHub repository name. */
+        repo: components["parameters"]["PublicRepo"];
+        /** @description Pull request number. */
+        number: components["parameters"]["PublicNumber"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Preview status. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PublicPullRequest"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      429: components["responses"]["RateLimited"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  refreshPublicPullRequest: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description GitHub repository owner. */
+        owner: components["parameters"]["PublicOwner"];
+        /** @description GitHub repository name. */
+        repo: components["parameters"]["PublicRepo"];
+        /** @description Pull request number. */
+        number: components["parameters"]["PublicNumber"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Preview status. An unchanged contextId with status ready means the preview is up to date. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PublicPullRequest"];
+        };
+      };
+      404: components["responses"]["Problem"];
+      429: components["responses"]["RateLimited"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  getPublicContext: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Stable review target metadata and capabilities. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Context"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  getPublicSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Active diff source and capabilities. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Session"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  getPublicCurrentDiff: {
+    parameters: {
+      query: {
+        scope: components["parameters"]["Scope"];
+      };
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Current diff snapshot. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RepositoryDiff"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  getPublicDiffVersion: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        diffId: components["parameters"]["DiffId"];
+        versionId: components["parameters"]["VersionIdPath"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Retained immutable diff version. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RepositoryDiff"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  getPublicFilePatch: {
+    parameters: {
+      query: {
+        versionId: components["parameters"]["VersionId"];
+        scope: components["parameters"]["Scope"];
+        fileVersion: components["parameters"]["FileVersion"];
+      };
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        diffId: components["parameters"]["DiffId"];
+        fileId: components["parameters"]["FileId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description File patch. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FilePatch"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  getPublicFileContents: {
+    parameters: {
+      query: {
+        versionId: components["parameters"]["VersionId"];
+        scope: components["parameters"]["Scope"];
+        fileVersion: components["parameters"]["FileVersion"];
+      };
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        diffId: components["parameters"]["DiffId"];
+        fileId: components["parameters"]["FileId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Complete before and after contents. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FileContents"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  listPublicCommits: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Captured commits. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CommitList"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  getPublicCommitDiff: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        oid: components["parameters"]["CommitOid"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The commit's diff against its first parent. Merge commits have none. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RepositoryDiff"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  getPublicCommitFilePatch: {
+    parameters: {
+      query: {
+        fileVersion: components["parameters"]["FileVersion"];
+      };
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        oid: components["parameters"]["CommitOid"];
+        fileId: components["parameters"]["FileId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description File patch within the commit. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FilePatch"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  getPublicCommitFileContents: {
+    parameters: {
+      query: {
+        fileVersion: components["parameters"]["FileVersion"];
+      };
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        oid: components["parameters"]["CommitOid"];
+        fileId: components["parameters"]["FileId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Complete contents before and after the commit. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FileContents"];
+        };
       };
       default: components["responses"]["Problem"];
     };

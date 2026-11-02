@@ -2,6 +2,9 @@ package fetcher
 
 import (
 	"context"
+	"net/http"
+	"net/http/cgi"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -232,6 +235,93 @@ func assertNoToken(t *testing.T, root string) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// httpOrigin serves the origin over Git's smart HTTP protocol and records
+// every request's Authorization header.
+func httpOrigin(t *testing.T, origin origin) (remote, func() []string) {
+	t.Helper()
+	execPath := git(t, t.TempDir(), "--exec-path")
+	if _, err := os.Stat(filepath.Join(execPath, "git-http-backend")); err != nil {
+		t.Skipf("git http-backend unavailable: %v", err)
+	}
+	backend := &cgi.Handler{Path: filepath.Join(execPath, "git-http-backend"),
+		Env: []string{"GIT_PROJECT_ROOT=" + filepath.Dir(origin.bare), "GIT_HTTP_EXPORT_ALL=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull}}
+	var mu sync.Mutex
+	var authorizations []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		authorizations = append(authorizations, r.Header.Get("Authorization"))
+		mu.Unlock()
+		backend.ServeHTTP(w, r)
+	}))
+	t.Cleanup(server.Close)
+	url := server.URL + "/" + filepath.Base(origin.bare)
+	return remote{protocol: "http", url: func(fetchprotocol.Repository) (string, error) { return url, nil }}, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		seen := authorizations
+		authorizations = nil
+		return seen
+	}
+}
+
+func TestPublicJobFetchesAnonymously(t *testing.T) {
+	requireTestGit(t)
+	origin := newOrigin(t)
+	remote, authorizations := httpOrigin(t, origin)
+	server := &fakeServer{}
+	fetcher := newTestFetcher(t, server, origin, 1<<30)
+	fetcher.remote = remote
+	public := origin.job(1)
+	public.Public, public.Token = true, ""
+	fetcher.handle(t.Context(), public)
+	if len(server.failed) != 0 || len(server.completed) != 1 {
+		t.Fatalf("public job: completed %d failed %v", len(server.completed), server.failed)
+	}
+	if head := server.completed[0].Metadata.Head; head == nil || *head != origin.head {
+		t.Fatalf("public job captured %v, want %s", head, origin.head)
+	}
+	seen := authorizations()
+	if len(seen) == 0 {
+		t.Fatal("public job never reached the origin")
+	}
+	for _, header := range seen {
+		if header != "" {
+			t.Fatalf("public job sent a credential: %q", header)
+		}
+	}
+	// A followed repository's job still authenticates every request.
+	fetcher.handle(t.Context(), origin.job(2))
+	if len(server.failed) != 0 || len(server.completed) != 2 {
+		t.Fatalf("token job: completed %d failed %v", len(server.completed), server.failed)
+	}
+	for _, header := range authorizations() {
+		if header != "Basic "+basicCredential(testToken) {
+			t.Fatalf("token job sent %q", header)
+		}
+	}
+}
+
+func TestLeaseCredentialMatchesItsKind(t *testing.T) {
+	origin := origin{head: strings.Repeat("a", 40), base: strings.Repeat("b", 40)}
+	if err := validateJob(origin.job(1)); err != nil {
+		t.Fatalf("token job: %v", err)
+	}
+	public := origin.job(1)
+	public.Public, public.Token = true, ""
+	if err := validateJob(public); err != nil {
+		t.Fatalf("public job: %v", err)
+	}
+	missing := origin.job(1)
+	missing.Token = ""
+	if err := validateJob(missing); err == nil {
+		t.Fatal("accepted a non-public job without a token")
+	}
+	public.Token = testToken
+	if err := validateJob(public); err == nil {
+		t.Fatal("accepted a public job carrying a token")
 	}
 }
 

@@ -61,6 +61,7 @@ import {
   type CommentAnnotation,
 } from "./review-model.ts";
 import { ServerStatus } from "./ServerStatus.tsx";
+import { useShellPolicy } from "./use-shell-policy.ts";
 import { SettingsButton } from "./SettingsButton.tsx";
 import { WorkspaceFeedback } from "./WorkspaceFeedback.tsx";
 import { capabilityEnabled, useSession } from "./session-context.tsx";
@@ -198,6 +199,7 @@ export function DiffWorkspace() {
     requestedScope,
     changeMode,
     commit,
+    marking,
     retryCommits,
   } = useDiffSource();
   const session = useSession();
@@ -222,6 +224,7 @@ export function DiffWorkspace() {
     openInScope,
   } = useNavigation();
   const { isReviewed, pending } = useReviewedFilesState();
+  const { serverStatus } = useShellPolicy();
   const { draft } = useDraft();
   const review = useReviewState();
   // Commit views are read-only: no comments, marks or line selection.
@@ -861,38 +864,42 @@ export function DiffWorkspace() {
                       {outdated} outdated
                     </span>
                   )}
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          type="button"
-                          variant="outline-check"
-                          size="sm"
-                          aria-label={`Mark ${file.path} ${isReviewed(file) ? "unreviewed" : "reviewed"}`}
-                          aria-pressed={isReviewed(file)}
-                          disabled={pending.has(file.id) || pending.has("*")}
-                          aria-busy={pending.has(file.id)}
-                          onClick={() =>
-                            void toggleFileReviewed(file, { advance: false })
-                          }
-                        />
-                      }
-                    >
-                      <svg
-                        className="review-checkbox"
-                        viewBox="0 0 16 16"
-                        aria-hidden="true"
+                  {marking && (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="outline-check"
+                            size="sm"
+                            aria-label={`Mark ${file.path} ${isReviewed(file) ? "unreviewed" : "reviewed"}`}
+                            aria-pressed={isReviewed(file)}
+                            disabled={pending.has(file.id) || pending.has("*")}
+                            aria-busy={pending.has(file.id)}
+                            onClick={() =>
+                              void toggleFileReviewed(file, { advance: false })
+                            }
+                          />
+                        }
                       >
-                        <rect x="2" y="2" width="12" height="12" />
-                        {isReviewed(file) && <path d="m4.5 8 2.5 2.5 4.5-5" />}
-                      </svg>
-                      Reviewed
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Toggle selected file reviewed
-                      <Shortcut keys={{ alt: true, key: "M" }} />
-                    </TooltipContent>
-                  </Tooltip>
+                        <svg
+                          className="review-checkbox"
+                          viewBox="0 0 16 16"
+                          aria-hidden="true"
+                        >
+                          <rect x="2" y="2" width="12" height="12" />
+                          {isReviewed(file) && (
+                            <path d="m4.5 8 2.5 2.5 4.5-5" />
+                          )}
+                        </svg>
+                        Reviewed
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Toggle selected file reviewed
+                        <Shortcut keys={{ alt: true, key: "M" }} />
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
 
                   {commentsEnabled && (
                     <IconButton
@@ -988,7 +995,7 @@ export function DiffWorkspace() {
       </div>
       <footer className="main-footer">
         <DiffComparison />
-        {!commit && (
+        {marking && (
           <span
             className="mobile-review-progress"
             aria-label={`${reviewedCount} of ${allFiles.length} files reviewed`}
@@ -1004,9 +1011,11 @@ export function DiffWorkspace() {
                 <kbd>Alt+[</kbd> <kbd>Alt+]</kbd> commits{" "}
               </>
             ) : (
-              <>
-                <kbd>Alt+M</kbd> reviewed{" "}
-              </>
+              marking && (
+                <>
+                  <kbd>Alt+M</kbd> reviewed{" "}
+                </>
+              )
             )}
             <kbd>Alt+/</kbd> filter
             {refreshEnabled && (
@@ -1017,7 +1026,7 @@ export function DiffWorkspace() {
             )}
           </span>
           <span className="flex items-center gap-1">
-            <ServerStatus />
+            {serverStatus && <ServerStatus />}
             <SettingsButton />
           </span>
         </span>

@@ -27,6 +27,10 @@ type fakeGitHub struct {
 	listings     int
 	pulls        map[int]github.PullRequest
 	tokens       []tokenGrant
+	// public repositories by full name; pullReads records each pull
+	// request read's installation.
+	public    map[string]github.Repository
+	pullReads []int64
 }
 
 type tokenGrant struct {
@@ -66,9 +70,10 @@ func (f *fakeGitHub) UserRepositories(_ context.Context, token string) ([]github
 func (f *fakeGitHub) OpenPullRequests(_ context.Context, _ int64, fullName string) ([]github.PullRequest, error) {
 	return f.open[fullName], nil
 }
-func (f *fakeGitHub) PullRequest(_ context.Context, _ int64, _ string, number int) (github.PullRequest, error) {
+func (f *fakeGitHub) PullRequest(_ context.Context, installation int64, _ string, number int) (github.PullRequest, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.pullReads = append(f.pullReads, installation)
 	pull, ok := f.pulls[number]
 	if !ok {
 		return github.PullRequest{}, &github.Error{Status: 404, Message: "Not Found"}
@@ -80,6 +85,16 @@ func (f *fakeGitHub) InstallationToken(_ context.Context, installation int64, re
 	defer f.mu.Unlock()
 	f.tokens = append(f.tokens, tokenGrant{installation, repositories, permissions})
 	return github.Token{Value: "installation-token", ExpiresAt: time.Now().Add(time.Hour)}, nil
+}
+
+func (f *fakeGitHub) Repository(_ context.Context, _ int64, fullName string) (github.Repository, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	repository, ok := f.public[fullName]
+	if !ok {
+		return github.Repository{}, &github.Error{Status: 404, Message: "Not Found"}
+	}
+	return repository, nil
 }
 
 // refreshLog records refresh intent while delegating to the real store.
@@ -106,6 +121,10 @@ func (r *refreshLog) take() ([]githubsync.PullRequestRef, []string) {
 }
 
 var appRepo = github.Repository{ID: 10, FullName: "octo/app", InstallationID: 5}
+
+// publicInstallation reads public repositories for previews.
+const publicInstallation = 9
+
 var otherRepo = github.Repository{ID: 11, FullName: "octo/secret", InstallationID: 5}
 
 type fixture struct {
@@ -132,7 +151,7 @@ func newFixture(t *testing.T) *fixture {
 			users:        map[string]github.Account{"access-alice": {ID: 100, Login: "alice-gh"}, "access-bob": {ID: 200, Login: "bob-gh"}},
 		}}
 	f.log = &refreshLog{Store: store.GitHub()}
-	f.service, err = githubsync.New(f.log, f.github, githubsync.Options{PublicURL: "https://diffx.test", TokenKey: bytes.Repeat([]byte{7}, 32), Now: func() time.Time { return *f.clock }})
+	f.service, err = githubsync.New(f.log, f.github, githubsync.Options{PublicURL: "https://diffx.test", TokenKey: bytes.Repeat([]byte{7}, 32), PublicInstallationID: publicInstallation, Now: func() time.Time { return *f.clock }})
 	if err != nil {
 		t.Fatal(err)
 	}

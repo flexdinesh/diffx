@@ -66,7 +66,21 @@ type Settings struct {
 	// PasswordSignup lets new accounts choose a password, by signup or invite.
 	// Existing password accounts always sign in, whatever its value.
 	PasswordSignup bool
+	// PublicPullRequests lets anyone open read-only previews of public GitHub
+	// pull requests on servers able to read them.
+	PublicPullRequests bool
+	// PublicRetentionDays keeps each public preview after its fetch, from
+	// MinPublicRetentionDays to MaxPublicRetentionDays.
+	PublicRetentionDays int
 }
+
+const (
+	MinPublicRetentionDays = 1
+	MaxPublicRetentionDays = 30
+)
+
+// ErrInvalidSettings refuses a public retention outside its bounds.
+var ErrInvalidSettings = fmt.Errorf("%w: public retention must be %d-%d days", ErrInvalidInput, MinPublicRetentionDays, MaxPublicRetentionDays)
 
 // allows reports whether every setting required is on.
 func (settings Settings) allows(required Settings) bool {
@@ -202,6 +216,9 @@ func (service *Service) Settings() Settings {
 
 // PutSettings is an admin's change to the settings.
 func (service *Service) PutSettings(ctx context.Context, actorID string, settings Settings) error {
+	if settings.PublicRetentionDays < MinPublicRetentionDays || settings.PublicRetentionDays > MaxPublicRetentionDays {
+		return ErrInvalidSettings
+	}
 	if err := service.store.PutAppSettings(ctx, settings, actorID, service.now()); err != nil {
 		return err
 	}

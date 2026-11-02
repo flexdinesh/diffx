@@ -58,6 +58,8 @@ interface NavigationOptions {
   changeMode: (mode: DiffMode) => void;
   /** A read-only commit view replaces the scope's diff. */
   viewingCommit: boolean;
+  /** Whether reviewed-file marks apply (Alt+M); see `DiffSource.marking`. */
+  marking: boolean;
   stepCommit: (delta: -1 | 1) => boolean;
   setCollapsed: Dispatch<SetStateAction<Set<string>>>;
   isReviewed: (file: ChangedFile) => boolean;
@@ -80,6 +82,7 @@ export function useFileNavigation({
   refresh,
   changeMode,
   viewingCommit,
+  marking,
   stepCommit,
   setCollapsed,
   isReviewed,
@@ -462,8 +465,8 @@ export function useFileNavigation({
           ];
         if (file) selectFile(file.path);
       }
-      // Commit views are read-only.
-      if (!viewingCommit && event.code === "KeyM") {
+      // Commit views and public previews are read-only.
+      if (marking && event.code === "KeyM") {
         event.preventDefault();
         const file = files.find((entry) => entry.path === activePath);
         // A held key would flip the mark back and forth.
@@ -482,6 +485,7 @@ export function useFileNavigation({
     refreshEnabled,
     selectFile,
     viewingCommit,
+    marking,
     stepCommit,
     setFeedback,
     pending,

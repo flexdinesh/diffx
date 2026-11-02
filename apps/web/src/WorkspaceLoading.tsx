@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Skeleton } from "@diffx/ui/components/ui/skeleton";
 import { useAppearance } from "./appearance-context.tsx";
 import { SettingsButton } from "./SettingsButton.tsx";
@@ -101,7 +102,17 @@ export function ProjectsSkeleton() {
   );
 }
 
-export function WorkspaceLoading({ collecting }: { collecting: boolean }) {
+/**
+ * The loading review surface. Its status line names what is happening; the
+ * pulsing detail is optional.
+ */
+export function WorkspaceLoading({
+  title,
+  detail,
+}: {
+  title: ReactNode;
+  detail?: ReactNode;
+}) {
   return (
     <>
       <div className="loading-toolbar" aria-hidden="true">
@@ -112,10 +123,8 @@ export function WorkspaceLoading({ collecting }: { collecting: boolean }) {
       </div>
       <DiffSkeleton />
       <div className="loading-status">
-        <h1>{collecting ? "Collecting latest changes" : "Loading review"}</h1>
-        <p className="motion-safe:animate-status-pulse">
-          {collecting ? "Reading checkouts…" : "Reading stored changes…"}
-        </p>
+        <h1>{title}</h1>
+        {detail && <p className="motion-safe:animate-status-pulse">{detail}</p>}
         <span className="ml-auto flex items-center">
           <SettingsButton />
         </span>

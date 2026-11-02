@@ -20,16 +20,48 @@ export type ShellPolicy = {
   reviewColumn: "always" | "multiple";
   /** What Sync collects: one selected checkout or every discovered one. */
   collection: "checkout" | "checkouts" | null;
+  /**
+   * Reviewed-file marks: file header toggles, Alt+M, Hide reviewed files and
+   * review progress. A public pull request preview, read by anyone, has none.
+   */
+  reviewMarks: boolean;
+  /**
+   * The footer's server process status. Its metrics need an account on a
+   * remote server, so a signed-out reader of a public preview has none.
+   */
+  serverStatus: boolean;
 };
 
 export function shellPolicy(bootstrap: ApiBootstrap): ShellPolicy {
   if (bootstrap.mode === "remote")
-    return { reviewNavigation: true, reviewColumn: "always", collection: null };
+    return {
+      reviewNavigation: true,
+      reviewColumn: "always",
+      collection: null,
+      reviewMarks: true,
+      serverStatus: true,
+    };
   const collection = bootstrap.input === "capture" ? null : bootstrap.input;
   return {
     reviewNavigation: collection !== null,
     reviewColumn: "multiple",
     collection,
+    reviewMarks: true,
+    serverStatus: true,
+  };
+}
+
+/**
+ * A public pull request preview: one fixed, read-only snapshot with its file
+ * sidebar, for signed-in and signed-out readers alike.
+ */
+export function publicPreviewPolicy(bootstrap: ApiBootstrap): ShellPolicy {
+  return {
+    reviewNavigation: false,
+    reviewColumn: "multiple",
+    collection: null,
+    reviewMarks: false,
+    serverStatus: bootstrap.user !== null,
   };
 }
 

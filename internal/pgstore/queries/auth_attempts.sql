@@ -9,6 +9,22 @@ RETURNING attempts;
 
 -- name: PruneAuthAttempts :exec
 -- Skips rows other statements hold, so pruning never waits or deadlocks.
+-- Fetch counters have a longer window and prune themselves.
 DELETE FROM auth_attempts d WHERE d.client IN (
-  SELECT s.client FROM auth_attempts s WHERE s.window_start <= @expired::timestamptz FOR UPDATE SKIP LOCKED
+  SELECT s.client FROM auth_attempts s WHERE s.window_start <= @expired::timestamptz AND NOT starts_with(s.client, @fetch_prefix::text)
+  FOR UPDATE SKIP LOCKED
+);
+
+-- name: CountFetchAttempt :one
+-- CountAuthAttempt's fixed window, also returning when the window started.
+INSERT INTO auth_attempts AS a (client, window_start, attempts) VALUES (@client, @now, 1)
+ON CONFLICT (client) DO UPDATE SET
+  window_start = CASE WHEN a.window_start <= @expired::timestamptz THEN EXCLUDED.window_start ELSE a.window_start END,
+  attempts = CASE WHEN a.window_start <= @expired::timestamptz THEN 1 ELSE a.attempts + 1 END
+RETURNING attempts, window_start;
+
+-- name: PruneFetchAttempts :exec
+DELETE FROM auth_attempts d WHERE d.client IN (
+  SELECT s.client FROM auth_attempts s WHERE s.window_start <= @expired::timestamptz AND starts_with(s.client, @fetch_prefix::text)
+  FOR UPDATE SKIP LOCKED
 );

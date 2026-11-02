@@ -27,6 +27,7 @@ import {
 } from "./session-context.tsx";
 import type { SyncSummary } from "./use-collection.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
+import { useShellPolicy } from "./use-shell-policy.ts";
 import { useCommits } from "./use-commits.ts";
 import { useDiff } from "./use-diff.ts";
 import { useFileNavigation } from "./use-file-navigation.ts";
@@ -50,6 +51,11 @@ interface DiffSource {
   requestedScope: string;
   changeMode: (mode: DiffMode) => void;
   commit: CommitView | null;
+  /**
+   * Whether reviewed-file marks apply: the shell offers them and the view is
+   * a scope, not a read-only commit.
+   */
+  marking: boolean;
   /** Opens the commit view at the oldest commit. */
   openCommits: () => void;
   changeCommit: (commit: ApiCommitSummary) => void;
@@ -170,6 +176,8 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
     [commitList, commitOid, changeCommit],
   );
   const viewingCommit = commit !== null;
+  const { reviewMarks } = useShellPolicy();
+  const marking = reviewMarks && !viewingCommit;
   // Commit diffs exist only for captured non-merge commits.
   const commitTarget =
     commit?.summary && !commit.summary.merge ? commit.summary.oid : null;
@@ -209,10 +217,11 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (summary) setFeedback(syncFeedback(summary));
     });
   }, [collect, reload, setFeedback]);
-  // Review marks belong to scopes; a commit view has none.
+  // Review marks belong to scopes; a commit view and a public preview have
+  // none, so they are never requested.
   const reviewed = useReviewedFiles(
     contextId,
-    viewingCommit ? null : repository,
+    marking ? repository : null,
     mode,
     setCollapsed,
   );
@@ -227,6 +236,7 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
     refresh,
     changeMode,
     viewingCommit,
+    marking,
     stepCommit,
     setCollapsed,
     isReviewed: reviewed.isReviewed,
@@ -250,6 +260,7 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
       requestedScope,
       changeMode,
       commit,
+      marking,
       openCommits,
       changeCommit,
       stepCommit,
@@ -266,6 +277,7 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
       requestedScope,
       changeMode,
       commit,
+      marking,
       openCommits,
       changeCommit,
       stepCommit,

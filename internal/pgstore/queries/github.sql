@@ -99,14 +99,16 @@ FROM (
   ORDER BY pending.requested_at, pending.repository_id, pending.number LIMIT 1 FOR UPDATE SKIP LOCKED
 ) claimed
 WHERE p.repository_id = claimed.repository_id AND p.number = claimed.number
-RETURNING p.repository_id, p.installation_id, p.full_name, p.number, p.leased_generation, p.leased_run, p.attempt;
+RETURNING p.repository_id, p.installation_id, p.full_name, p.number, p.leased_generation, p.leased_run, p.attempt,
+  (p.public_generation > p.refreshed_generation)::boolean AS public;
 
 -- name: RecordGitHubLease :execrows
 UPDATE github_pull_requests SET leased = @leased
 WHERE repository_id = @repository_id AND number = @number AND lease_token = @token AND lease_until > @now;
 
 -- name: GitHubLeased :one
-SELECT repository_id, installation_id, full_name, number, leased_generation, leased_run, attempt, leased FROM github_pull_requests
+SELECT repository_id, installation_id, full_name, number, leased_generation, leased_run, attempt, leased,
+  (public_generation > refreshed_generation)::boolean AS public FROM github_pull_requests
 WHERE repository_id = @repository_id AND number = @number AND lease_token = @token AND lease_until > @now AND leased <> '';
 
 -- name: ReleaseGitHubRefresh :execrows
@@ -122,6 +124,53 @@ WHERE repository_id = @repository_id AND number = @number AND lease_token = @tok
 -- name: RecordGitHubPullRequestHead :exec
 INSERT INTO github_pr_heads(repository_id, number, head_sha) VALUES ($1, $2, $3)
 ON CONFLICT (repository_id, number) DO UPDATE SET head_sha = excluded.head_sha;
+
+-- name: RequestPublicGitHubRefresh :exec
+-- Public demand advances the generation like any refresh but never replaces
+-- a follower's installation; a new row reads through the public installation.
+INSERT INTO github_pull_requests(repository_id, number, installation_id, full_name, generation, retention_run, requested_at,
+  public_generation, public_pull, public_checked_at)
+VALUES (@repository_id, @number, @installation_id, @full_name, 1, @retention_run, @requested_at, 1, @public_pull, @requested_at)
+ON CONFLICT (repository_id, number) DO UPDATE SET full_name = excluded.full_name,
+  generation = github_pull_requests.generation + 1, retention_run = excluded.retention_run, requested_at = excluded.requested_at,
+  public_generation = github_pull_requests.generation + 1, public_pull = excluded.public_pull, public_checked_at = excluded.public_checked_at;
+
+-- name: RecordPublicGitHubCheck :exec
+UPDATE github_pull_requests SET public_pull = @public_pull, public_checked_at = @now
+WHERE repository_id = @repository_id AND number = @number;
+
+-- name: RetryPublicGitHubRefresh :exec
+-- Only a pending, unleased refresh waits for backoff.
+UPDATE github_pull_requests SET available_at = @now, detail = ''
+WHERE repository_id = @repository_id AND number = @number AND generation > refreshed_generation AND lease_until <= @now;
+
+-- name: RecordPublicGitHubSnapshot :exec
+UPDATE github_pull_requests SET public_job_id = @job_id, public_fetched_at = @now, public_head = @head
+WHERE repository_id = @repository_id AND number = @number;
+
+-- name: PublicGitHubPullRequest :one
+-- pending is a pending refresh that covers public demand; context_id is set
+-- only for a succeeded public job whose snapshot is unexpired.
+SELECT p.repository_id, p.installation_id, p.full_name, p.number, p.public_generation,
+  (p.public_generation > p.refreshed_generation)::boolean AS pending, (p.lease_until > @now::timestamptz)::boolean AS leased,
+  p.attempt, p.detail, p.public_pull, p.public_head, p.public_checked_at, p.public_fetched_at,
+  COALESCE(j.state, '')::text AS job_state,
+  COALESCE((SELECT o.context_id FROM observations o JOIN contexts c ON c.id = o.context_id JOIN diffs d ON d.id = c.anchor_diff_id
+    WHERE j.state = 'succeeded' AND o.owner_id = @owner_id::text AND o.context_id = j.context_id AND d.expires_at > @now::timestamptz), '')::text AS context_id
+FROM github_pull_requests p LEFT JOIN ingestion_jobs j ON j.id = p.public_job_id
+WHERE p.repository_id = @repository_id AND p.number = @number;
+
+-- name: PublicGitHubPullRequestNamed :one
+-- Names are case-insensitive; after renames the most recently requested row wins.
+SELECT p.repository_id, p.installation_id, p.full_name, p.number, p.public_generation,
+  (p.public_generation > p.refreshed_generation)::boolean AS pending, (p.lease_until > @now::timestamptz)::boolean AS leased,
+  p.attempt, p.detail, p.public_pull, p.public_head, p.public_checked_at, p.public_fetched_at,
+  COALESCE(j.state, '')::text AS job_state,
+  COALESCE((SELECT o.context_id FROM observations o JOIN contexts c ON c.id = o.context_id JOIN diffs d ON d.id = c.anchor_diff_id
+    WHERE j.state = 'succeeded' AND o.owner_id = @owner_id::text AND o.context_id = j.context_id AND d.expires_at > @now::timestamptz), '')::text AS context_id
+FROM github_pull_requests p LEFT JOIN ingestion_jobs j ON j.id = p.public_job_id
+WHERE lower(p.full_name) = lower(@full_name::text) AND p.number = @number
+ORDER BY p.requested_at DESC LIMIT 1;
 
 -- name: TryGitHubReconcileLock :one
 -- Session-level: held across reconciliation's GitHub calls without a transaction.

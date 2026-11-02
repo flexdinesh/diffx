@@ -243,6 +243,63 @@ a push, edit or state change is a fresh observation in the same stream. Every
 follower with verified access is admitted in one transaction with completing
 the lease; a refresh requested during the lease stays pending.
 
+#### Public pull requests
+
+Anyone, signed in or not, can open a read-only preview of a public GitHub pull
+request at `/{owner}/{repo}/pull/{number}`, the github.com path on the diffx
+host, because a shared link should show the diff before asking for an account.
+Previews need the GitHub integration, `DIFFX_SERVER_GITHUB_PUBLIC_INSTALLATION_ID`
+naming an installation whose token reads public repositories, and the console's
+"Public pull requests" setting (`app_settings`, default off). Bootstrap reports
+`publicPullRequests` only when all three hold; otherwise every public route is
+not found. Local composition has none of this.
+
+Snapshots belong to the reserved owner `github-public`: a `users` row without
+an account, so it never signs in, is never listed and is never notified. One
+snapshot per pull request head serves every reader. Its comments capability is
+disabled, and the public routes expose only reads of its contexts (metadata,
+session, diffs, file patches and contents, commits) under
+`/api/v2/public/contexts/`. Comments, marks, events, MCP and deletion have no
+public route, and account contexts are not found there.
+
+`PUT /api/v2/public/pull-requests/{owner}/{repo}/{number}` ensures a preview.
+`githubsync` reads the repository and pull request through the public
+installation; a private or missing one answers failure `not_found` and a
+repository over 500 MB `too_large`, neither persisted. A pending refresh or an
+unexpired snapshot is returned as is. Otherwise the request is admitted as a
+fetch and advances the pull request's refresh generation with public demand,
+without replacing the installation a follow recorded. The lease proceeds for
+public demand without followers; a pull request only the public demands
+fetches anonymously over HTTPS (`Job.Public`, no token), while followed ones
+keep their narrowed installation token. Completion admits the public owner,
+never with a notification, beside verified followers, and records the public
+job, fetch time and head. `GET` projects status from that state: `queued`,
+`fetching` (leased, or its admitted job still publishing), `failed` (backing
+off, or a failed job, with a generic `fetch_failed` detail) and `ready`; the
+newest ready context stays named while a refresh is pending. Expired previews
+with nothing pending are not found until ensured again.
+
+There is no polling and no webhook for these repositories. `POST …/refresh`
+joins a pending refresh, does nothing within a minute of the last public read
+of GitHub, rereads the pull request, and fetches only when its head changed or
+the snapshot expired. Refresh and ensure of a refresh backing off after a
+failure retry it now.
+
+Only fetch-admitting requests count toward the limit: five per client IP per
+hour from `DIFFX_SERVER_CLIENT_IP_HEADER`, or thirty per hour server-wide
+without that header, counted in the same Postgres fixed-window table as
+sign-in attempts so replicas share it. A refusal answers 429 with
+`Retry-After` until the window frees. Public routes need no CSRF token: they
+change no account state, and the same-origin check still applies. Public
+snapshots expire `public_retention_days` (console, 1–30, default 1) after
+their last fresh fetch, read in the ingesting transaction; accounts keep
+`retentionDays`.
+
+Sign-in links from a preview return to Settings > GitHub: the app allowlists
+`/settings/github` as `?next=`, and Google sign-in accepts the same allowlisted
+`next`, keeps it in an HttpOnly cookie scoped to the callback, and redirects
+there on success.
+
 #### Push notifications
 
 The remote server sends Web Push notifications of new pull request diffs to an

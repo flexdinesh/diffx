@@ -9,6 +9,7 @@ async function remote(page: Page) {
     route.fulfill({
       json: {
         mode: "remote",
+        publicPullRequests: false,
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,

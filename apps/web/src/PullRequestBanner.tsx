@@ -7,7 +7,7 @@ import {
   GitPullRequestIcon,
   type LucideIcon,
 } from "lucide-react";
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import { useSavedOpen } from "@diffx/ui/components/collapsible-section";
 import { DisclosureIcon } from "@diffx/ui/components/disclosure";
 import { IconButton } from "@diffx/ui/components/icon-button";
@@ -41,9 +41,22 @@ export function pullRequestStatus(pull: ApiPullRequest): Status {
 export function PullRequestBanner() {
   const session = useSession();
   const pull = pullRequestOf(session);
+  return pull ? <PullRequestSummary pull={pull} /> : null;
+}
+
+/**
+ * The pull request banner for a known pull request. `actions` follow "Open on
+ * GitHub", e.g. a public preview's refresh.
+ */
+export function PullRequestSummary({
+  pull,
+  actions,
+}: {
+  pull: ApiPullRequest;
+  actions?: ReactNode;
+}) {
   const [open, setOpen] = useSavedOpen("pull-request-description", false);
   const descriptionId = useId();
-  if (!pull) return null;
   const status = pullRequestStatus(pull);
   const body = pull.body.trim();
   return (
@@ -79,6 +92,7 @@ export function PullRequestBanner() {
           Open on GitHub
           <ExternalLinkIcon className="size-icon-sm" aria-hidden="true" />
         </LinkButton>
+        {actions}
         {body && (
           <IconButton
             size="icon-sm"

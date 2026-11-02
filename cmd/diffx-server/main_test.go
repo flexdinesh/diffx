@@ -136,6 +136,10 @@ func TestRemoteAuthRateLimitSettings(t *testing.T) {
 	if err != nil || settings.ClientIPHeader != "" {
 		t.Fatalf("disabled rate limit kept header: %+v %v", settings, err)
 	}
+	// Public fetch limits are per client whenever the ingress names the IP.
+	if settings.PublicClientIPHeader != "X-Real-IP" {
+		t.Fatalf("public fetch limits lost the header: %+v", settings)
+	}
 	t.Setenv("DIFFX_SERVER_AUTH_RATE_LIMIT", "true")
 	settings, _, err = parseSettings(nil, io.Discard)
 	if err != nil || settings.ClientIPHeader != "X-Real-IP" {
@@ -258,5 +262,27 @@ func TestRemovedSignInSettingsRefuseStartup(t *testing.T) {
 	t.Setenv("DIFFX_SERVER_PASSWORD_SIGNIN", "false")
 	if _, _, err := parseSettings(nil, io.Discard); err == nil || !strings.Contains(err.Error(), "DIFFX_SERVER_PASSWORD_SIGNIN was removed") {
 		t.Fatalf("removed variable accepted: %v", err)
+	}
+}
+
+func TestRemoteGitHubSettingsCarryPublicInstallation(t *testing.T) {
+	t.Setenv("DIFFX_SERVER_CONFIG", "")
+	withDatabaseURL(t)
+	for name, value := range map[string]string{
+		"DIFFX_SERVER_GITHUB_APP_ID": "12", "DIFFX_SERVER_GITHUB_CLIENT_ID": "client", "DIFFX_SERVER_GITHUB_PRIVATE_KEY_FILE": "/keys/app.pem",
+		"DIFFX_SERVER_GITHUB_PUBLIC_URL": "https://diffx.example.com", "DIFFX_SERVER_GITHUB_CLIENT_SECRET": "secret",
+		"DIFFX_SERVER_GITHUB_WEBHOOK_SECRET": "hook", "DIFFX_SERVER_GITHUB_TOKEN_KEY": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		"DIFFX_SERVER_FETCHER_SECRET": strings.Repeat("f", 32),
+	} {
+		t.Setenv(name, value)
+	}
+	settings, _, err := parseSettings(nil, io.Discard)
+	if err != nil || settings.GitHub == nil || settings.GitHub.PublicInstallationID != 0 {
+		t.Fatalf("GitHub without public installation: %+v %v", settings.GitHub, err)
+	}
+	t.Setenv("DIFFX_SERVER_GITHUB_PUBLIC_INSTALLATION_ID", "77")
+	settings, _, err = parseSettings(nil, io.Discard)
+	if err != nil || settings.GitHub == nil || settings.GitHub.PublicInstallationID != 77 {
+		t.Fatalf("GitHub with public installation: %+v %v", settings.GitHub, err)
 	}
 }

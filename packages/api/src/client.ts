@@ -26,6 +26,9 @@ export type ApiReviewMark = components["schemas"]["ReviewMark"];
 export type ApiCollectionResult = components["schemas"]["CollectionResult"];
 export type ApiCollectionFailure = components["schemas"]["CollectionFailure"];
 export type ApiPullRequest = components["schemas"]["PullRequest"];
+export type ApiPublicPullRequest = components["schemas"]["PublicPullRequest"];
+export type ApiPublicPullRequestFailure =
+  components["schemas"]["PublicPullRequestFailure"];
 export type ApiGitHubConnection = components["schemas"]["GitHubConnection"];
 export type ApiGitHubRepository = components["schemas"]["GitHubRepository"];
 export type ApiPushSettings = components["schemas"]["PushSettings"];
@@ -72,10 +75,12 @@ export function readBootstrap(value: unknown): ApiBootstrap {
     value.mode !== "remote" ||
     typeof value.googleEnabled !== "boolean" ||
     typeof value.signupEnabled !== "boolean" ||
-    typeof value.passwordSignupEnabled !== "boolean"
+    typeof value.passwordSignupEnabled !== "boolean" ||
+    typeof value.publicPullRequests !== "boolean"
   )
     throw new Error("Invalid server identity response");
   const methods = {
+    publicPullRequests: value.publicPullRequests,
     googleEnabled: value.googleEnabled,
     signupEnabled: value.signupEnabled,
     passwordSignupEnabled: value.passwordSignupEnabled,

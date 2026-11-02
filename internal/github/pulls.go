@@ -17,13 +17,16 @@ type Account struct {
 	HTMLURL string
 }
 
-// Repository.InstallationID is set only by installation-scoped listings and webhooks.
+// Repository.InstallationID is set only by installation-scoped listings and
+// webhooks; Visibility and Size (in KB) only by Repository.
 type Repository struct {
 	ID             int64
 	FullName       string
 	CloneURL       string
 	Private        bool
 	InstallationID int64
+	Visibility     string
+	Size           int64
 }
 
 type Ref struct {
@@ -59,15 +62,37 @@ func (account accountJSON) account() Account {
 }
 
 type repositoryJSON struct {
-	ID       int64  `json:"id"`
-	FullName string `json:"full_name"`
-	CloneURL string `json:"clone_url"`
-	Private  bool   `json:"private"`
+	ID         int64  `json:"id"`
+	FullName   string `json:"full_name"`
+	CloneURL   string `json:"clone_url"`
+	Private    bool   `json:"private"`
+	Visibility string `json:"visibility"`
+	Size       int64  `json:"size"`
 }
 
 func (repository repositoryJSON) repository(installationID int64) Repository {
 	return Repository{ID: repository.ID, FullName: repository.FullName, CloneURL: repository.CloneURL,
 		Private: repository.Private, InstallationID: installationID}
+}
+
+// Repository reads a repository through an installation-wide token. GitHub
+// answers 404 for repositories the token cannot read.
+func (c *Client) Repository(ctx context.Context, installationID int64, fullName string) (Repository, error) {
+	path, err := repositoryPath(fullName)
+	if err != nil {
+		return Repository{}, err
+	}
+	bearer, err := c.installationBearer(ctx, installationID)
+	if err != nil {
+		return Repository{}, err
+	}
+	var repository repositoryJSON
+	if _, err := c.get(ctx, c.apiURL+path, bearer, &repository); err != nil {
+		return Repository{}, c.forgetRejected(installationID, err)
+	}
+	result := repository.repository(0)
+	result.Visibility, result.Size = repository.Visibility, repository.Size
+	return result, nil
 }
 
 type refJSON struct {

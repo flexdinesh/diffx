@@ -13,6 +13,7 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/authhttp"
 	"github.com/flexdinesh/diffx/internal/contextservice"
+	"github.com/flexdinesh/diffx/internal/githubsync"
 	"github.com/flexdinesh/diffx/internal/google"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
@@ -40,6 +41,9 @@ type Settings struct {
 	// ClientIPHeader names the header a trusted ingress sets to the client IP.
 	// Non-empty enables authentication rate limiting shared by every replica.
 	ClientIPHeader string
+	// PublicClientIPHeader names the same header for public pull request
+	// fetch limits, which are per client with it and server-wide without.
+	PublicClientIPHeader string
 }
 
 type GoogleSettings struct {
@@ -88,6 +92,25 @@ func (registry *registry) get(account identityservice.Account) (application, err
 	service := contextservice.NewWithContext(registry.ctx, registry.store, reviewdata.User{ID: account.ID, Name: account.Email}, contextservice.ExternalEvents())
 	app := application{service, serverapp.Handler(registry.ctx, service, registry.store, registry.assets, "", serverapp.Options{Queue: registry.store.Queue()})}
 	registry.applications[account.ID] = app
+	return app, nil
+}
+
+// public is the shared public pull request snapshots' application: scoped
+// to the reserved public owner, with comments disabled and no admission.
+// Transports expose only its read routes.
+func (registry *registry) public() (application, error) {
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+	if registry.closed {
+		return application{}, context.Canceled
+	}
+	if app, ok := registry.applications[githubsync.PublicOwnerID]; ok {
+		return app, nil
+	}
+	service := contextservice.NewWithContext(registry.ctx, registry.store, reviewdata.User{ID: githubsync.PublicOwnerID, Name: "Public pull requests"},
+		contextservice.ExternalEvents(), contextservice.DisableComments())
+	app := application{service, serverapp.Handler(registry.ctx, service, registry.store, registry.assets, "")}
+	registry.applications[githubsync.PublicOwnerID] = app
 	return app, nil
 }
 
@@ -161,7 +184,8 @@ func compose(ctx context.Context, store *pgstore.Store, assets fs.FS, settings S
 		return nil, nil, nil, nil, err
 	}
 	applications := &registry{ctx: ctx, store: store, assets: assets, applications: make(map[string]application)}
-	remote := &transport{identity: identity, applications: applications, settings: settings, assets: assets, admission: authhttp.NewAdmission(store, settings.ClientIPHeader), github: github, push: push}
+	remote := &transport{identity: identity, applications: applications, settings: settings, assets: assets, admission: authhttp.NewAdmission(store, settings.ClientIPHeader),
+		fetches: authhttp.NewFetchLimiter(store, settings.PublicClientIPHeader), github: github, push: push}
 	// Listening starts before serving, so no commit after compose is missed.
 	feed, err := store.Listen(ctx)
 	if err != nil {
@@ -176,6 +200,15 @@ func compose(ctx context.Context, store *pgstore.Store, assets fs.FS, settings S
 	wake, reload := make(chan struct{}, 1), make(chan struct{}, 1)
 	worker := func(ctx context.Context) error {
 		return ingestionqueue.Run(ctx, store.Queue(), func(ctx context.Context, owner string, input ingestion.Request) (string, error) {
+			// Only the GitHub integration admits public snapshots.
+			if owner == githubsync.PublicOwnerID {
+				app, err := applications.public()
+				if err != nil {
+					return "", err
+				}
+				result, err := app.service.Ingest(ctx, input)
+				return result.Context.ID, err
+			}
 			accounts, err := identity.Accounts(ctx)
 			if err != nil {
 				return "", err
