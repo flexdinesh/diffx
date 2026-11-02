@@ -1,12 +1,26 @@
 ---
 title: diffx documentation
 description: Review Git changes in your browser with diffx.
+layout: minimal
+outline: false
 ---
 
-# diffx
+import { HomePage } from "vocs";
 
-Review Git changes in your browser with diffx. Read diffs, mark files reviewed,
-and leave comments without changing your working tree or index.
+<HomePage.Root>
+  <HomePage.Logo />
+  <HomePage.Tagline>Review Git changes in your browser.</HomePage.Tagline>
+  <HomePage.Description>
+    Read diffs, mark files reviewed, and leave comments without changing your
+    working tree or index.
+  </HomePage.Description>
+  <HomePage.Buttons>
+    <HomePage.Button href="/getting-started" variant="accent">
+      Get started
+    </HomePage.Button>
+    <HomePage.Button href="https://diffx.app">Open diffx.app</HomePage.Button>
+  </HomePage.Buttons>
+</HomePage.Root>
 
 ## Start here
 

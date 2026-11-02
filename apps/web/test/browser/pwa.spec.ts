@@ -328,6 +328,7 @@ test("signing out removes this device before ending the session", async ({
   ).toBeChecked();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await expect(page).toHaveURL(/\/signin$/);
   expect(calls.slice(-2)).toEqual([
     "DELETE /api/v2/push/subscriptions/this",
     "POST /api/v2/auth/logout",

@@ -104,7 +104,10 @@ async function publicServer(page: Page, contextId: string) {
 async function pasteAndOpen(page: Page) {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Review a pull request" }),
+    page.getByRole("heading", {
+      level: 1,
+      name: "Review the diff. Hand the fixes to your agent.",
+    }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Open" }).click();
   await expect(

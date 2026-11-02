@@ -165,7 +165,7 @@ test("a signed-up user syncs a checkout and reviews it on a Postgres server", as
     const context = await browser.newContext({ baseURL });
     try {
       const fresh = await context.newPage();
-      await fresh.goto("/");
+      await fresh.goto("/signin");
       await fresh.getByLabel("Email", { exact: true }).fill(account.email);
       await fresh
         .getByLabel("Password", { exact: true })

@@ -1,0 +1,447 @@
+/* Signed-out marketing home (Landing.tsx): the diffx world in a Persuade
+   register. One review session, shown on the real review surface. */
+
+.landing {
+  height: 100dvh;
+  overflow-y: auto;
+  scroll-padding-top: calc(var(--topbar-height) + var(--space-12));
+  background: var(--bg);
+}
+/* The app's flex <main> would shrink-wrap the centered bands. */
+.landing > main {
+  display: block;
+}
+/* One centered column shared by every band of the page. */
+.landing-frame {
+  max-width: var(--landing-width);
+  margin-inline: auto;
+  padding-inline: var(--page-gutter);
+}
+.landing ::selection {
+  background: var(--accent-bg);
+  color: var(--fg);
+}
+
+.landing-topbar-band {
+  background: var(--shell-canvas);
+}
+.landing-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: calc(var(--topbar-height) + var(--space-3));
+}
+.landing-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.landing-hero {
+  display: grid;
+  gap: var(--space-4);
+  padding-block: var(--space-8) var(--space-4);
+}
+.landing-display {
+  margin: 0;
+  font-size: var(--text-display);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-display);
+  letter-spacing: var(--tracking-display);
+  text-wrap: balance;
+}
+.landing-lede {
+  max-width: 40rem;
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+  line-height: var(--leading-copy);
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+.landing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.landing-address {
+  display: grid;
+  gap: var(--space-6) var(--space-12);
+  align-items: start;
+}
+.landing-address-field {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 36rem;
+}
+@media (min-width: 1012px) {
+  .landing-address {
+    grid-template-columns: minmax(0, 36rem) minmax(0, 1fr);
+  }
+}
+.landing-address .account-form {
+  max-width: none;
+}
+.landing-hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-copy);
+  color: var(--muted);
+}
+.landing-label {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+}
+
+/* Demo pull requests share one label grid: icon, repository, number, title. */
+.landing-pull-grid {
+  display: grid;
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border-muted);
+}
+.landing-pull-grid > li {
+  display: contents;
+}
+.landing-pull-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  column-gap: var(--space-3);
+  min-height: var(--control-height);
+  padding: var(--space-2) var(--space-1);
+  border-bottom: 1px solid var(--border-muted);
+  border-radius: var(--radius-control);
+  color: var(--fg);
+  text-decoration: none;
+}
+.landing-pull-row:hover {
+  background: var(--hover);
+}
+.landing-pull-row:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+.landing-pull-row svg {
+  width: var(--icon-base);
+  height: var(--icon-base);
+  color: var(--success);
+}
+.landing-pull-name,
+.landing-pull-number {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.landing-pull-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The stage: one review island on the shell canvas, like the app. */
+.landing-stage {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr);
+  column-gap: var(--space-6);
+  padding: var(--space-4) var(--space-6) var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--shell-canvas);
+}
+.landing-acts {
+  grid-row: 1 / span 3;
+  align-self: start;
+  position: sticky;
+  top: var(--space-6);
+  display: grid;
+  gap: var(--space-6);
+}
+.landing-acts ol {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.landing-acts a {
+  display: grid;
+  gap: var(--space-0-5);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.landing-acts a:hover {
+  background: var(--shell-hover);
+  color: var(--fg);
+}
+.landing-acts a:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+.landing-acts a[aria-current="step"] {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.landing-act-label {
+  font-weight: var(--weight-semibold);
+}
+.landing-act-caption {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.landing-diffstat {
+  display: grid;
+  gap: var(--space-1-5);
+  margin: 0;
+  padding-inline: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.landing-diffstat-bar {
+  display: flex;
+  gap: var(--space-0-5);
+}
+.landing-diffstat-bar > span {
+  flex: 1;
+  height: var(--space-2);
+  border-radius: var(--radius-xs);
+  background: var(--error);
+}
+.landing-diffstat-bar > span[data-kind="addition"] {
+  background: var(--success);
+}
+
+.landing-act {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding-block: var(--space-2) var(--space-6);
+}
+@media (min-width: 1012px) {
+  .landing-act-run {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 24rem);
+    align-items: center;
+    column-gap: var(--space-6);
+  }
+}
+.landing-act:last-child {
+  padding-bottom: 0;
+}
+.landing-act-intro {
+  max-width: var(--reading-width);
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: var(--leading-copy);
+  text-wrap: pretty;
+}
+.landing-demo-note {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.landing-command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  max-width: 40rem;
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: var(--text-code);
+}
+.landing-command code {
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.landing-prompt {
+  color: var(--muted);
+  user-select: none;
+}
+
+.landing-diff {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--diff-canvas);
+}
+.landing-comment {
+  max-width: var(--reading-width);
+  padding: var(--space-3);
+}
+
+.landing-agent {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+.landing-agent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--panel-header-height);
+  padding-inline: var(--space-3) var(--space-1);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.landing-agent-xml {
+  margin: 0;
+  padding: var(--space-3);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-code);
+  line-height: var(--leading-code);
+  white-space: pre-wrap;
+}
+@media (min-width: 768px) {
+  .landing-agent-xml {
+    white-space: pre;
+  }
+}
+/* The one authored moment: the export writes itself in once, top to bottom. */
+.landing-agent-xml[data-reveal="pending"] {
+  clip-path: inset(0 0 100% 0);
+}
+.landing-agent-xml[data-reveal="revealed"] {
+  animation: landing-write 1400ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes landing-write {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.landing-close {
+  max-width: var(--landing-width);
+  margin-inline: auto;
+  padding: var(--space-16) var(--page-gutter) 0;
+}
+.landing-heading {
+  margin: 0 0 var(--space-6);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-heading);
+}
+.landing-act-intro a {
+  color: var(--accent);
+  text-underline-offset: var(--space-1);
+}
+.landing-footer a {
+  color: var(--text-secondary);
+  text-underline-offset: var(--space-1);
+}
+.landing-footer a:hover {
+  color: var(--fg);
+}
+.landing-close {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-4);
+  padding-bottom: var(--space-16);
+}
+.landing-close .landing-heading {
+  margin-bottom: 0;
+}
+.landing-copy {
+  max-width: var(--reading-width);
+  margin: 0;
+  line-height: var(--leading-copy);
+  color: var(--text-secondary);
+}
+.landing-close .landing-command {
+  width: 100%;
+}
+.landing-footer-band {
+  border-top: 1px solid var(--border-muted);
+}
+.landing-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  padding-block: var(--space-6);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.landing-footer > span {
+  margin-right: auto;
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+}
+
+@media (max-width: 1011px) {
+  .landing-stage {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--space-3);
+  }
+  .landing-acts {
+    grid-row: auto;
+    z-index: 1;
+    top: 0;
+    margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-3)) 0;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--shell-canvas);
+  }
+  .landing-acts ol {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+  }
+  .landing-diffstat {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .landing-act-caption {
+    display: none;
+  }
+  .landing-acts a {
+    justify-items: center;
+  }
+  .landing-pull-grid {
+    grid-template-columns: auto auto minmax(0, 1fr);
+  }
+  .landing-pull-name {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-agent-xml[data-reveal] {
+    clip-path: none;
+    animation: none;
+  }
+  .landing-acts a {
+    transition: none;
+  }
+}
+
+/* The headline breaks at its sentence boundary at every width. */
+.landing-display > span {
+  display: block;
+}

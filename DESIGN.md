@@ -186,15 +186,16 @@ measured elements or replace the application tokens with framework defaults.
 Use `--font-sans` for UI and review prose; `--font-mono` for code, paths, counts,
 and captured context. Keep the root at `100%` to respect browser font preferences.
 
-| Style               | Size token (default px) | Weight / leading      | Use                                             |
-| ------------------- | ----------------------- | --------------------- | ----------------------------------------------- |
-| Page/overlay title  | `--text-xl` (20)        | semibold / UI         | Empty states and dialogs                        |
-| Workspace heading   | `--text-md` (14)        | semibold / UI         | Compact header title, future section headings   |
-| Review body         | `--text-md` (14)        | normal / copy         | Comments, explanations, editor text             |
-| UI body / label     | `--text-base` (14)      | normal or medium / UI | Buttons, tabs, file navigation                  |
-| Small body / action | `--text-sm` (13)        | normal or medium / UI | Toolbar actions, select labels, comment actions |
-| Metadata / caption  | `--text-xs` (12)        | normal / UI           | Paths, counts, footer, state labels             |
-| Code                | `--text-code` (13)      | normal / code         | Pierre rows; measured independently from UI     |
+| Style               | Size token (default px)         | Weight / leading                                     | Use                                                |
+| ------------------- | ------------------------------- | ---------------------------------------------------- | -------------------------------------------------- |
+| Page/overlay title  | `--text-xl` (20)                | semibold / UI                                        | Empty states and dialogs                           |
+| Workspace heading   | `--text-md` (14)                | semibold / UI                                        | Compact header title, future section headings      |
+| Review body         | `--text-md` (14)                | normal / copy                                        | Comments, explanations, editor text                |
+| UI body / label     | `--text-base` (14)              | normal or medium / UI                                | Buttons, tabs, file navigation                     |
+| Small body / action | `--text-sm` (13)                | normal or medium / UI                                | Toolbar actions, select labels, comment actions    |
+| Metadata / caption  | `--text-xs` (12)                | normal / UI                                          | Paths, counts, footer, state labels                |
+| Code                | `--text-code` (13)              | normal / code                                        | Pierre rows; measured independently from UI        |
+| Landing display     | `--text-display` (32–52, fluid) | semibold / `--leading-display`, `--tracking-display` | Signed-out landing headline only; never app chrome |
 
 - Weights: `--weight-normal`, `--weight-medium`, `--weight-semibold` (400/500/600).
   Do not introduce incidental 550/650 weights.
@@ -248,7 +249,9 @@ such detail into a token. New layout spacing must use the scale.
 ## Layout
 
 - Use a full-width application shell, not a centered marketing container.
-  The diff receives all width remaining after navigation.
+  The diff receives all width remaining after navigation. The signed-out
+  landing page is the one exception (see
+  [Signed-out landing page](#signed-out-landing-page)).
 - Inset the shell by `--shell-gutter` (6px). Use the same gutter between
   islands, `--radius-lg` outer corners, and a 1px neutral outline without
   elevation. The review column and file sidebar form one continuous navigation
@@ -734,13 +737,40 @@ at `/design.html` (see `docs/development.md`).
   username.
 - Pages for a method the server turned off render sign-in, like unknown paths.
   Link secrets come from the fragment and leave history before any request.
-- With public pull requests on, signed-out `/` is the landing page in the same
-  `auth-page` column: `h1` "Review a pull request", one prose line, a labeled
-  "Pull request URL" field with the one primary "Open" action and an inline
-  field error, a "Try one" list of demo pull requests (mono `owner/repo #n`
-  and title), a muted tip to replace github.com with the host, then "Have an
-  account? Sign in". Sign-in lives at `/signin`; with previews off `/` stays
-  sign-in. Sign-in accepts `?next=` only for `/settings/github`.
+- On a remote server, signed-out `/` is always the
+  [Signed-out landing page](#signed-out-landing-page); sign-in lives at
+  `/signin`, and `/?signin=` still reports Google sign-in outcomes. Sign-in
+  accepts `?next=` only for `/settings/github`.
+
+### Signed-out landing page
+
+The one Persuade surface: it tells what diffx does as one review session (Run,
+Review, Hand off) on the real review surface, in the same world as the app.
+
+- One centered column, `--landing-width`, with `--page-gutter` insets. Bands:
+  a `--shell-canvas` top bar (quiet brand; ghost Docs and GitHub links; outline
+  "Go to app" to `/signin`), the hero, the stage, a closing install band and a
+  neutral footer.
+- Hero: the `--text-display` headline breaks at its sentence boundary at every
+  width, then one `--text-lg` prose line. With public pull requests on, the
+  labeled "Pull request URL" field with the one primary "Open" action, its
+  inline error and the host tip sit beside the "Try one" grid: demo pull
+  requests in one subgrid of icon, mono `owner/repo`, mono `#n` and title.
+  With previews off, "Go to app" is the filled primary beside an outline
+  "Read the docs".
+- Stage: one `--shell-canvas` island (1px `--border`, `--radius-lg`). A sticky
+  act strip (labels plus mono captions, a proportional diffstat) marks the act
+  in view with the selected surface and accent text, and scrolls to an act on
+  click; below 1012px it becomes a top tab row. Run shows the `diffx` command
+  row; Review renders a synthetic demo diff with Pierre (unified, wrapped,
+  simple hunk separators) and one static inline comment card, labelled as a
+  demo; Hand off shows exactly what `formatComments` exports for it.
+- The comment card must stay fully visible in the first viewport at
+  1440x900. The Hand off export reveals once, top to bottom, as it enters view
+  (static under reduced motion).
+- Accent is limited to the primary action, the active act and inline prose
+  links. Claims come only from the user docs; there are no feature card grids,
+  kickers or decorative imagery.
 
 ### Public pull request previews
 

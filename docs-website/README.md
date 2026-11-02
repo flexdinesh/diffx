@@ -33,10 +33,25 @@ The pnpm workspace also exposes `pnpm --filter @diffx/docs dev`, `build`, and
 ## Edit
 
 - Pages: Markdown files in `src/pages/`. Keep them plain Markdown so GitHub
-  renders the files the README links to.
+  renders the files the README links to. `index.mdx` is the exception: it holds
+  the home page hero.
 - Link pages with relative `page.md` paths; Vocs rewrites them to routes.
-- Sidebar and site configuration: `vocs.config.ts`.
+- Sidebar, top nav and site configuration: `vocs.config.ts`.
 - Screenshots and other assets: add files under `public/`, then reference
   them with paths such as `/images/review.png`.
 
-Keep pages brief; no custom layout or deployment setup yet.
+Keep pages brief.
+
+## Deploy (Cloudflare Pages)
+
+- Root directory: repository root.
+- Build command: `pnpm build:docs`.
+- Output directory: `docs-website/dist/public`.
+- Node version: from `.node-version`.
+- Environment: `HUSKY=0`.
+
+`DIFFX_DOCS_URL` sets the site URL. Production leaves it unset, which defaults
+to `https://docs.diffx.app`. Staging sets
+`DIFFX_DOCS_URL=https://stagingdocs.diffx.app`; any non-production URL emits
+`noindex, nofollow`, points canonical links at production, and skips
+`sitemap.xml` and `robots.txt`.
