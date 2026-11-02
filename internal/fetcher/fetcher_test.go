@@ -338,6 +338,27 @@ func TestMovedHeadFailsForRefetch(t *testing.T) {
 	}
 }
 
+func TestMergedPullRequestFetchesItsFrozenBase(t *testing.T) {
+	requireTestGit(t)
+	origin := newOrigin(t)
+	// The pull request merged and main moved on; GitHub keeps reporting the
+	// base commit from when it closed.
+	write(t, origin.work, "later.txt", "after the merge\n")
+	git(t, origin.work, "add", ".")
+	git(t, origin.work, "commit", "--quiet", "-m", "main moves on")
+	git(t, origin.work, "push", "--quiet", origin.bare, "main:refs/heads/main")
+	server := &fakeServer{}
+	fetcher := newTestFetcher(t, server, origin, 1<<30)
+	fetcher.handle(t.Context(), origin.job(1))
+	if len(server.failed) != 0 || len(server.completed) != 1 {
+		t.Fatalf("completed %d failed %v", len(server.completed), server.failed)
+	}
+	request := server.completed[0]
+	if request.Metadata.Comparison == nil || request.Metadata.Comparison.BaseCommit != origin.base {
+		t.Fatalf("captured base: %+v", request.Metadata.Comparison)
+	}
+}
+
 func TestFailuresNeverExposeToken(t *testing.T) {
 	requireTestGit(t)
 	origin := newOrigin(t)

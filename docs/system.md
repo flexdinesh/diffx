@@ -228,8 +228,9 @@ credentials and hands out a token narrowed to that repository with
 `contents:read`; the fetcher never holds the app key, a user token or an
 account. A deleted pull request is recorded closed and a repository without
 active followers completes without a fetch. The fetcher keeps a partial-clone
-mirror per repository, fetches the leased head and base, and collects the
-branch comparison offline. A result is accepted only for the current lease
+mirror per repository, fetches the leased head from `refs/pull/N/head` and
+the leased base by its commit, because GitHub freezes a closed pull request's
+base while its branch moves on, and collects the branch comparison offline. A result is accepted only for the current lease
 token and only if it captures the leased head and base commits; failures retry
 with exponential backoff capped at an hour, and an expired lease is reclaimable.
 
