@@ -33,6 +33,8 @@ func run(ctx context.Context, arguments []string, stdin *os.File, stdout, stderr
 			return runStatus(ctx, arguments[1:], stdout, stderr)
 		case "mcp":
 			return runMCPProcess(ctx, arguments[1:], stdin, stdout, stderr)
+		case "connect":
+			return runConnect(ctx, arguments[1:], stdout, stderr)
 		case "hook":
 			return runHook(arguments[1:], stdin, stdout)
 		case "collector":

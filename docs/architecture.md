@@ -108,7 +108,8 @@ because a browser may sit behind the viewer or an SSH forward: Origin must
 match Host, cross-site requests are refused, and Host must name loopback on any
 port, which defeats DNS rebinding without knowing the forwarded port.
 `diffx status --json` reports the socket and viewer for scripts and remote
-clients. `diffx dev --fixture FILE` is isolated from personal lifecycle
+clients; `diffx connect ssh://HOST` reads it over SSH and forwards the socket,
+and its `--json` ready line is the contract for future desktop clients. `diffx dev --fixture FILE` is isolated from personal lifecycle
 discovery and serves only a viewer.
 
 Independent local sessions use distinct `DIFFX_RUNTIME_DIR` directories, which
@@ -177,7 +178,14 @@ owner. See [development.md](development.md) for isolated checkout commands.
 - `serverapp`: transport/task composition; `localserver`: local lifecycle;
   `controlapi`: its private control API, credential-free because composition
   mounts it only on the owner's socket; `unixsocket`: socket bind, dial and
-  peer credentials, with admission policy left to the listener's composition; `remoteserver`: remote
+  peer credentials, with admission policy left to the listener's composition;
+  `sshforward`: `diffx connect`, which runs the system `ssh` to read a remote
+  `diffx status --json` and forward its socket, or its viewer port when the SSH
+  server refuses socket forwarding, to a local loopback port; it holds no
+  credentials and serves nothing itself. A forwarded socket carries its
+  control API too, so any local process that can reach the forwarded port can
+  stop the remote instance; this is accepted alongside the existing read
+  exposure of loopback ports, and browsers stay refused; `remoteserver`: remote
   member authentication and worker composition; `authhttp`: browser
   authentication HTTP shared by remote transports (session cookie, CSRF,
   problem and identity error mapping, sign-in admission and rate limiting,

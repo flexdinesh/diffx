@@ -789,7 +789,7 @@ status/shutdown for foreground snapshots. The same socket serves the local REST,
 MCP and web application; a loopback viewer port serves it to browsers unless
 `--headless`. Local mode has no account identity, so it never binds a
 non-loopback address; another machine reaches it by forwarding the socket or
-viewer port over SSH. Collection in those sessions never uses HTTP.
+viewer port over SSH (`diffx connect ssh://HOST`). Collection in those sessions never uses HTTP.
 
 Remote credentials establish owner identity before review REST, MCP, ingestion
 jobs, job status or events can access data. Browser assets and mode/login bootstrap

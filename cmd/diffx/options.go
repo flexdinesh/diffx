@@ -134,6 +134,7 @@ func parseOptionsMode(arguments []string, stderr io.Writer, local bool) (options
 		fmt.Fprintln(stderr, "         diffx sync [--path DIRECTORY] [--print] [--debug] [--retry]")
 		fmt.Fprintln(stderr, "         diffx status [--json]")
 		fmt.Fprintln(stderr, "         diffx mcp")
+		fmt.Fprintln(stderr, "         diffx connect ssh://[USER@]HOST[:PORT] [--port N] [--json]")
 		fmt.Fprintln(stderr, "         diffx remote status [--config-file FILE]")
 		fmt.Fprintln(stderr, "         diffx config {set|get|remove} KEY [VALUE]")
 		fmt.Fprintln(stderr, "         diffx diagnostics export {REPORT_ID|--latest} --output FILE")

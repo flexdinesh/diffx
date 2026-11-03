@@ -145,7 +145,27 @@ browser: `127.0.0.1` on an available port from 7981–7990, or `--port`
 (`--port 0` chooses an OS-assigned port). `--headless` serves only the socket,
 with no viewer port and no browser. The viewer never binds a non-loopback
 address; `--host` was removed. To review a diffx running on another machine,
-forward its socket over SSH, then open the forwarded port:
+start it there (for example `diffx ~/work --headless` in tmux), then connect
+from your machine:
+
+```sh
+diffx connect ssh://devbox
+diffx connect ssh://dee@devbox:2222 --port 7995 --no-browser
+```
+
+`connect` runs your `ssh`, so `~/.ssh/config` aliases, agents and jump hosts
+apply. It reads the remote `diffx status --json`, forwards the remote socket to
+a local loopback port (the first free of 7991–8000, or `--port`), opens the
+browser, and stays in the foreground until Ctrl-C or ssh exits. When the SSH
+server refuses socket forwarding (`AllowStreamLocalForwarding no`), it forwards
+the remote viewer port instead, which requires the remote diffx to run without
+`--headless`. If non-interactive SSH cannot find diffx, pass
+`--remote-diffx /full/path/to/diffx`. `--json` prints one line,
+`{"url": …, "target": …, "transport": "unix" | "tcp"}`, once the forward
+serves diffx. The forwarded port is loopback but not per-user: while connected,
+any process on your machine that can reach it can read the remote reviews and,
+through the socket's control API, stop the remote diffx. Browsers cannot use
+the control API. The same forward works by hand:
 
 ```sh
 ssh devbox diffx status --json   # prints "socket" and "viewerUrl"

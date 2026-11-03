@@ -20,7 +20,7 @@ var allowed = map[string][]string{
 	"cmd/diffx": {
 		"internal/browser", "internal/collector", "internal/config", "internal/contextservice",
 		"internal/diagnostics", "internal/diffsource", "internal/hooks", "internal/ingestion", "internal/localserver",
-		"internal/mcpapi", "internal/review", "internal/reviewstore", "internal/submission", "internal/version",
+		"internal/mcpapi", "internal/review", "internal/reviewstore", "internal/sshforward", "internal/submission", "internal/version",
 	},
 	"cmd/diffx-fetcher": {"internal/config", "internal/fetcher", "internal/fetchprotocol", "internal/version"},
 	"cmd/diffx-server":  {"internal/config", "internal/identityservice", "internal/pgstore", "internal/remoteserver", "internal/version"},
@@ -85,6 +85,8 @@ var allowed = map[string][]string{
 		"internal/contextservice", "internal/httpapi", "internal/ingestion", "internal/ingestionqueue",
 		"internal/mcpapi", "internal/review", "internal/reviewdata", "internal/reviewservice", "internal/version",
 	},
+	// Remote access through the system ssh binary; it holds no credentials.
+	"internal/sshforward": {},
 	"internal/submission": {"internal/ingestion", "internal/processlock"},
 	// Unix socket mechanism: bind, dial and peer credentials. Admission policy
 	// belongs to the composition that listens.
@@ -137,6 +139,7 @@ func checkPackage(pkg listedPackage) []string {
 	for _, dependency := range pkg.Imports {
 		if dependency == "os/exec" && !slices.Contains([]string{
 			"internal/browser", "internal/diffsource", "internal/fetcher", "internal/hooks", "internal/localserver",
+			"internal/sshforward",
 		}, name) {
 			violations = append(violations, fmt.Sprintf("%s must not execute processes", name))
 		}
