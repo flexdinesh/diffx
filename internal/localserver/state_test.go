@@ -35,7 +35,7 @@ func startWithReset(t *testing.T, path string, reset StateReset) (bool, error) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	ready := false
-	err := Run(ctx, Settings{Host: "127.0.0.1", Port: 0, State: path}, "", nil, reset,
+	err := Run(ctx, Settings{Port: 0, State: path}, "", nil, reset,
 		func(Status, *contextservice.Publication) {
 			ready = true
 			cancel()

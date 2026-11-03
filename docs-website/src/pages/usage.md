@@ -35,7 +35,7 @@ Capture the checkouts under the selected paths in one foreground process:
 diffx
 diffx .
 diffx . --scan-worktrees
-diffx /path/to/repo --host 0.0.0.0
+diffx /path/to/repo --headless
 diffx ~/work --scan-depth 4
 diffx --path ~/work --path ~/oss --scan-depth 4
 diffx . --replace
@@ -122,24 +122,38 @@ separate sections, so a local review and a remote server can run side by side:
 
 ```json
 {
-  "local": { "host": "127.0.0.1", "port": null, "retentionDays": 7 },
+  "local": { "port": null, "retentionDays": 7 },
   "remote": { "url": "http://127.0.0.1:7980", "token": "…" }
 }
 ```
 
 `local.*` configures only `diffx [PATH]` and piped diffs; `remote.*` configures
 only `sync` and agent hooks. Environment overrides use the same namespaces:
-`DIFFX_LOCAL_HOST`, `DIFFX_LOCAL_PORT`, `DIFFX_LOCAL_STATE`, `DIFFX_LOCAL_WEB_DIR`,
+`DIFFX_LOCAL_PORT`, `DIFFX_LOCAL_STATE`, `DIFFX_LOCAL_WEB_DIR`,
 `DIFFX_LOCAL_RETENTION_DAYS`, `DIFFX_REMOTE_URL` and `DIFFX_REMOTE_TOKEN`.
 Precedence: defaults, JSON, environment, explicit flags. `diffx config
 {set|get|remove} KEY` edits persisted settings by dotted key, such as
 `local.port` or `remote.url`. Token reads are masked; `set remote.token -` reads
 stdin. Older flat config files are rejected with the key's new name; move each
-key into its section.
+key into its section. `local.host` and `DIFFX_LOCAL_HOST` were removed: delete
+`"host"` from the `local` section of an existing config file, and unset the
+variable.
 
-The default local listener binds to `127.0.0.1` on an available port from 7981–7990.
-`--port 0` chooses an OS-assigned port. A non-loopback listener exposes local
-reviews to reachable clients. The browser opens a loopback URL for wildcard binds.
+Each local process serves REST, MCP and the web UI on an owner-only Unix socket,
+`diffx.sock` in its private runtime directory, and on a viewer port for the
+browser: `127.0.0.1` on an available port from 7981–7990, or `--port`
+(`--port 0` chooses an OS-assigned port). `--headless` serves only the socket,
+with no viewer port and no browser. The viewer never binds a non-loopback
+address; `--host` was removed. To review a diffx running on another machine,
+forward its socket over SSH, then open the forwarded port:
+
+```sh
+ssh devbox diffx status --json   # prints "socket" and "viewerUrl"
+ssh -N -L 127.0.0.1:7991:/run/user/1000/diffx/diffx.sock devbox
+```
+
+`diffx status` reports the running instance's socket, viewer and observation
+count, and exits 3 when none is running; `--json` prints one JSON object.
 
 Use `diffx --help` for usage. Legacy `review`, `serve`, `service` and
 `capture` commands are removed. Development fixtures use `diffx dev --fixture`.

@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/controlapi"
 	"github.com/flexdinesh/diffx/internal/processlock"
+	"github.com/flexdinesh/diffx/internal/unixsocket"
 )
 
-var ErrUnavailable = errors.New("service unavailable; ownership held but control endpoint is unreachable")
+var ErrUnavailable = errors.New("service unavailable; another diffx, possibly an older version, owns the runtime directory but its socket does not answer. Stop it and retry")
 
 type Client struct {
 	RuntimeDirectory string
@@ -24,22 +26,29 @@ func NewClient() (*Client, error) {
 	return &Client{RuntimeDirectory: dir}, nil
 }
 
-func (client *Client) probe(ctx context.Context) (Descriptor, Status, error) {
+// HTTPClient reaches the running instance's socket. Any response there comes
+// from the ownership holder, because only it binds the socket.
+func (client *Client) HTTPClient() *http.Client {
+	return &http.Client{Transport: &http.Transport{DialContext: unixsocket.Dialer(SocketPath(client.RuntimeDirectory)), ResponseHeaderTimeout: 30 * time.Second}}
+}
+
+func (client *Client) control() *controlapi.Client {
+	return controlapi.NewClient(client.HTTPClient())
+}
+
+func (client *Client) probe(ctx context.Context) (Status, error) {
 	if err := ctx.Err(); err != nil {
-		return Descriptor{}, Status{State: "unavailable"}, err
+		return Status{State: "unavailable"}, err
 	}
-	d, readErr := ReadDescriptor(client.RuntimeDirectory)
-	if readErr == nil {
-		probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		defer cancel()
-		status, err := controlapi.NewClient(d.Endpoint, d.Token).Status(probeCtx)
-		if err == nil && status.InstanceID == d.Status.InstanceID {
-			status.Settings = normalizeSettings(status.Settings)
-			return d, status, nil
-		}
-		if err := ctx.Err(); err != nil {
-			return d, Status{State: "unavailable"}, err
-		}
+	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	status, controlErr := client.control().Status(probeCtx)
+	if controlErr == nil {
+		status.Settings = normalizeSettings(status.Settings)
+		return status, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return Status{State: "unavailable"}, err
 	}
 	// Another discovery probe can hold ownership briefly while proving stopped.
 	// Confirm contention persists before treating it as an unresponsive local server.
@@ -52,25 +61,24 @@ func (client *Client) probe(ctx context.Context) (Descriptor, Status, error) {
 		}
 		select {
 		case <-ctx.Done():
-			return d, Status{State: "unavailable"}, ctx.Err()
+			return Status{State: "unavailable"}, ctx.Err()
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
 	if errors.Is(err, processlock.ErrLocked) {
-		return d, Status{State: "unavailable"}, ErrUnavailable
+		return Status{State: "unavailable"}, ErrUnavailable
 	}
 	if err != nil {
-		return d, Status{State: "unavailable"}, err
+		return Status{State: "unavailable"}, err
 	}
 	if err := lock.Close(); err != nil {
-		return d, Status{State: "unavailable"}, err
+		return Status{State: "unavailable"}, err
 	}
-	return Descriptor{}, Status{State: "stopped"}, nil
+	return Status{State: "stopped"}, nil
 }
 
 func (client *Client) Status(ctx context.Context) (Status, error) {
-	_, status, err := client.probe(ctx)
-	return status, err
+	return client.probe(ctx)
 }
 
 func (client *Client) Stop(ctx context.Context) error {
@@ -110,7 +118,7 @@ func pause(ctx context.Context) error {
 }
 
 func (client *Client) stop(ctx context.Context) error {
-	d, status, err := client.probe(ctx)
+	status, err := client.probe(ctx)
 	if err != nil {
 		return err
 	}
@@ -119,14 +127,13 @@ func (client *Client) stop(ctx context.Context) error {
 	}
 	stopCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	if err := controlapi.NewClient(d.Endpoint, d.Token).Shutdown(stopCtx); err != nil {
+	if err := client.control().Shutdown(stopCtx); err != nil {
 		return err
 	}
 	for {
 		lock, err := processlock.TryAcquire(OwnershipPath(client.RuntimeDirectory))
 		if err == nil {
-			defer lock.Close()
-			return RemoveDescriptor(client.RuntimeDirectory, status.InstanceID)
+			return lock.Close()
 		}
 		if !errors.Is(err, processlock.ErrLocked) {
 			return err

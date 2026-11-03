@@ -188,8 +188,8 @@ Use `include_resolved: true` for review-history or auditing workflows.
 ## Security and scope
 
 The local endpoint is unauthenticated. Anyone who can reach the local server can
-read and resolve its comments. Keep its default loopback binding, or expose it
-only on a trusted network. Browser origin checks do not authenticate MCP clients.
+read and resolve its comments. The viewer binds loopback only; reach another
+machine's diffx through an SSH forward. Browser origin checks do not authenticate MCP clients.
 The remote `diffx-server` requires `Authorization: Bearer TOKEN` for MCP;
 configure that header in the MCP client. Credentials select an individual user;
 catalog results, diffs, comments and resolution are scoped to that user.

@@ -76,6 +76,7 @@ func TestLocalResetStateBacksUpOlderStateAndStarts(t *testing.T) {
 }
 
 func TestFixtureResetStateUsesFlagWithoutPrompt(t *testing.T) {
+	t.Setenv("DIFFX_RUNTIME_DIR", t.TempDir())
 	fixture, err := filepath.Abs(filepath.Join("..", "..", "test", "fixtures", "sample.diff"))
 	if err != nil {
 		t.Fatal(err)

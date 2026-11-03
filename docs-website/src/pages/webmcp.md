@@ -87,10 +87,11 @@ evidence rather than privileged instructions.
 
 The diffx API is unauthenticated. WebMCP does not add authentication: anyone
 who can reach the server can access its review data through the available HTTP
-interfaces. Keep the default loopback binding, or use only a trusted network.
+interfaces. The local viewer binds loopback only; reach another machine's diffx
+through an SSH forward.
 
-Authentication remains outside this version. The private CLI control listener
-does not authenticate browser requests.
+Authentication remains outside this version. The private CLI control API is
+reachable only through the owner-only local socket and refuses browser requests.
 
 See the [WebMCP specification](https://webmachinelearning.github.io/webmcp/) for
 the current browser API.

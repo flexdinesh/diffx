@@ -58,7 +58,7 @@ func TestCheckoutServerServesBeforeCollectionAndWaitsForCollectorShutdown(t *tes
 	stopped := make(chan struct{})
 	go func() {
 		defer close(stopped)
-		done <- runServer(ctx, cancel, Settings{Host: "127.0.0.1", Port: 0, State: state}, "", "async-test", Input{Selection: DiscoveredCheckouts,
+		done <- runServer(ctx, cancel, Settings{Port: 0, State: state}, "", "async-test", Input{Selection: DiscoveredCheckouts,
 			Collect: func(ctx context.Context, _ func(ingestion.Request) error) ([]CollectionFailure, error) {
 				<-ctx.Done()
 				close(collectionCanceled)
@@ -95,7 +95,7 @@ func TestCheckoutServerServesBeforeCollectionAndWaitsForCollectorShutdown(t *tes
 		{"/api/v2/bootstrap", `"input":"checkouts"`},
 		{"/api/v2/contexts", `"contexts":[]`},
 	} {
-		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, status.BrowserURL+expected.path, nil)
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, status.ViewerURL+expected.path, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -137,7 +137,7 @@ func TestRunForcesCloseWhenIdleConnectionExhaustsShutdownGrace(t *testing.T) {
 	ready := make(chan Status, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, Settings{Host: "127.0.0.1", Port: 0, State: "memory"}, "", nil, StateReset{},
+		done <- Run(ctx, Settings{Port: 0, State: "memory"}, "", nil, StateReset{},
 			func(status Status, _ *contextservice.Publication) { ready <- status })
 	}()
 	var status Status
@@ -148,7 +148,7 @@ func TestRunForcesCloseWhenIdleConnectionExhaustsShutdownGrace(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("startup timed out")
 	}
-	address, err := url.Parse(status.BrowserURL)
+	address, err := url.Parse(status.ViewerURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestDefaultPortExhaustionLeavesListenersRunning(t *testing.T) {
 			t.Cleanup(func() { _ = listener.Close() })
 		}
 	}
-	listener, err := listenWeb(Settings{Host: "127.0.0.1", Port: -1})
+	listener, err := listenViewer(-1)
 	if err == nil {
 		_ = listener.Close()
 		t.Fatal("all default ports should be occupied")

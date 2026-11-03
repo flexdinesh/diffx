@@ -23,6 +23,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/processlock"
 	"github.com/flexdinesh/diffx/internal/reviewstore"
 	"github.com/flexdinesh/diffx/internal/serverapp"
+	"github.com/flexdinesh/diffx/internal/unixsocket"
 	buildversion "github.com/flexdinesh/diffx/internal/version"
 	"github.com/flexdinesh/diffx/internal/webui"
 )
@@ -54,7 +55,6 @@ func Run(ctx context.Context, settings Settings, runtimeDir string, initial *ing
 			return fmt.Errorf("service ownership: %w", err)
 		}
 		defer owner.Close()
-		defer RemoveDescriptor(runtimeDir, instanceID)
 		output, err := OpenLog(runtimeDir)
 		if err != nil {
 			return err
@@ -176,26 +176,28 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 		settings.WebDir = absolute
 		assets = os.DirFS(absolute)
 	}
-	listener, err := listenWeb(settings)
-	if err != nil {
-		return err
+	if settings.Headless && runtimeDir == "" {
+		return errors.New("headless mode needs the local socket; it has no viewer otherwise")
 	}
-	defer listener.Close()
-	address, ok := listener.Addr().(*net.TCPAddr)
-	if !ok {
-		return errors.New("unexpected web listener address")
-	}
-	settings.Port = address.Port
-	browserHost := settings.Host
-	if ip := net.ParseIP(browserHost); ip != nil && ip.IsUnspecified() {
-		browserHost = "127.0.0.1"
-		if ip.To4() == nil {
-			browserHost = "::1"
+	status := Status{State: "running", StateID: user.ID, InstanceID: instanceID, PID: os.Getpid(), Version: buildversion.Number(), ProtocolVersion: controlapi.ProtocolVersion}
+	var viewer net.Listener
+	if !settings.Headless {
+		viewer, err = listenViewer(settings.Port)
+		if err != nil {
+			return err
 		}
+		defer viewer.Close()
+		address, ok := viewer.Addr().(*net.TCPAddr)
+		if !ok {
+			return errors.New("unexpected viewer address")
+		}
+		settings.Port = address.Port
+		status.ViewerURL = "http://" + net.JoinHostPort(viewerHost, strconv.Itoa(address.Port))
 	}
-	status := Status{State: "running", StateID: user.ID, InstanceID: instanceID, PID: os.Getpid(), Version: buildversion.Number(), ProtocolVersion: controlapi.ProtocolVersion,
-		URL:        "http://" + net.JoinHostPort(settings.Host, strconv.Itoa(settings.Port)),
-		BrowserURL: "http://" + net.JoinHostPort(browserHost, strconv.Itoa(settings.Port)), Settings: settings}
+	if runtimeDir != "" {
+		status.Socket = SocketPath(runtimeDir)
+	}
+	status.Settings = settings
 	statusFunc := func() (Status, error) {
 		value := status
 		var err error
@@ -218,33 +220,23 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 			}
 		}))
 	}
-	mux := serverapp.Handler(ctx, service, store, assets, defaultContextID, configuration)
-	webServer := &http.Server{Handler: publicRequests(mux, settings), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, ErrorLog: logger}
-	endpoints := []serverapp.Endpoint{{Server: webServer, Listener: listener}}
+	app := browserAccess(serverapp.Handler(ctx, service, store, assets, defaultContextID, configuration))
+	var endpoints []serverapp.Endpoint
+	if viewer != nil {
+		endpoints = append(endpoints, serverapp.Endpoint{Server: newServer(app, logger), Listener: viewer})
+	}
 	if runtimeDir != "" {
-		controlListener, err := net.Listen("tcp", "127.0.0.1:0")
+		// The caller holds ownership, so a socket file left here is stale.
+		socket, err := unixsocket.Listen(status.Socket)
 		if err != nil {
-			return err
+			return fmt.Errorf("local socket: %w", err)
 		}
-		defer controlListener.Close()
-		token := rand.Text() + rand.Text()
-		controlHandler := controlapi.New(token, statusFunc, cancel)
-		{
-			underlying := controlHandler
-			controlHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/control/v1/status" && r.URL.Path != "/control/v1/shutdown" {
-					http.NotFound(w, r)
-					return
-				}
-				underlying.ServeHTTP(w, r)
-			})
-		}
-		controlServer := &http.Server{Handler: controlHandler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 2 * time.Minute, IdleTimeout: 60 * time.Second, ErrorLog: logger}
-		endpoints = append(endpoints, serverapp.Endpoint{Server: controlServer, Listener: controlListener})
-		descriptor := Descriptor{Endpoint: "http://" + controlListener.Addr().String(), Token: token, Status: status}
-		if err := PublishDescriptor(runtimeDir, descriptor); err != nil {
-			return err
-		}
+		defer socket.Close()
+		// Control is reachable only through the owner's socket.
+		routes := http.NewServeMux()
+		routes.Handle("/control/v1/", controlapi.New(statusFunc, cancel))
+		routes.Handle("/", app)
+		endpoints = append(endpoints, serverapp.Endpoint{Server: newServer(routes, logger), Listener: sameUser{Listener: socket, uid: uint32(os.Getuid())}})
 	}
 	return serverapp.Run(ctx, endpoints, tasks, func() {
 		if ready != nil {
@@ -253,17 +245,20 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 	})
 }
 
-func listenWeb(settings Settings) (net.Listener, error) {
-	if settings.Port >= 0 {
-		return net.Listen("tcp", net.JoinHostPort(settings.Host, strconv.Itoa(settings.Port)))
+// viewerHost is the only viewer bind address. Other machines reach a viewer
+// or the socket through SSH forwarding, never a public listener.
+const viewerHost = "127.0.0.1"
+
+func newServer(handler http.Handler, logger *log.Logger) *http.Server {
+	return &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, ErrorLog: logger}
+}
+
+func listenViewer(port int) (net.Listener, error) {
+	if port >= 0 {
+		return net.Listen("tcp", net.JoinHostPort(viewerHost, strconv.Itoa(port)))
 	}
-	probe, err := net.Listen("tcp", net.JoinHostPort(settings.Host, "0"))
-	if err != nil {
-		return nil, fmt.Errorf("bind host %s: %w", settings.Host, err)
-	}
-	_ = probe.Close()
 	for port := 7981; port <= 7990; port++ {
-		listener, err := net.Listen("tcp", net.JoinHostPort(settings.Host, strconv.Itoa(port)))
+		listener, err := net.Listen("tcp", net.JoinHostPort(viewerHost, strconv.Itoa(port)))
 		if err == nil {
 			return listener, nil
 		}
@@ -271,7 +266,31 @@ func listenWeb(settings Settings) (net.Listener, error) {
 	return nil, errors.New("no available diffx port (7981-7990); choose --port")
 }
 
-func publicRequests(next http.Handler, settings Settings) http.Handler {
+// sameUser admits only connections from the owning user. The runtime
+// directory is private already; this also covers a socket exposed elsewhere.
+type sameUser struct {
+	net.Listener
+	uid uint32
+}
+
+func (listener sameUser) Accept() (net.Conn, error) {
+	for {
+		conn, err := listener.Listener.Accept()
+		if err != nil {
+			return nil, err
+		}
+		if uid, err := unixsocket.PeerUID(conn); err == nil && uid == listener.uid {
+			return conn, nil
+		}
+		_ = conn.Close()
+	}
+}
+
+// browserAccess is the one browser policy for every app transport. A browser
+// may sit behind the viewer, an SSH-forwarded socket or a forwarded viewer
+// port, so the port is not checked: Origin must match Host, cross-site requests
+// are refused, and Host must name loopback, which defeats DNS rebinding.
+func browserAccess(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+r.Host && origin != "https://"+r.Host {
 			publicProblem(w, 403, "cross_origin", "Cross-origin access denied")
@@ -281,17 +300,13 @@ func publicRequests(next http.Handler, settings Settings) http.Handler {
 			publicProblem(w, 403, "cross_site", "Cross-site access denied")
 			return
 		}
-		if ip := net.ParseIP(settings.Host); ip != nil && ip.IsLoopback() {
-			host, port, err := net.SplitHostPort(r.Host)
-			if err != nil {
-				host = r.Host
-				port = ""
-			}
-			clientIP := net.ParseIP(host)
-			if (host != "localhost" && (clientIP == nil || !clientIP.IsLoopback())) || (port != "" && port != strconv.Itoa(settings.Port)) {
-				publicProblem(w, 403, "invalid_host", "HTTP host denied")
-				return
-			}
+		host, _, err := net.SplitHostPort(r.Host)
+		if err != nil {
+			host = r.Host
+		}
+		if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+			publicProblem(w, 403, "invalid_host", "HTTP host denied")
+			return
 		}
 		next.ServeHTTP(w, r)
 	})

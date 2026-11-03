@@ -56,7 +56,7 @@ The home-directory database survives process termination, but each process
 serves only the checkouts it discovered (every branch and earlier run of them)
 or its own piped capture, so other checkouts' history reappears only when reopened.
 Only one local process owns the database; another invocation prompts before
-authenticated graceful replacement. Noninteractive callers use `--replace`.
+graceful replacement through the owner-only socket. Noninteractive callers use `--replace`.
 There is no collector daemon.
 
 `diffx sync` collects the selected checkout once,
@@ -784,8 +784,12 @@ is not a replay of a previous failed submission.
 ## Local and remote boundaries
 
 Local and remote deployment share application/storage contracts and the HTTP
-runtime. Local-only lifecycle discovery is authenticated, private and limited to
-status/shutdown for foreground snapshots. Collection in those sessions never uses HTTP.
+runtime. Local lifecycle discovery uses the owner-only socket and is limited to
+status/shutdown for foreground snapshots. The same socket serves the local REST,
+MCP and web application; a loopback viewer port serves it to browsers unless
+`--headless`. Local mode has no account identity, so it never binds a
+non-loopback address; another machine reaches it by forwarding the socket or
+viewer port over SSH. Collection in those sessions never uses HTTP.
 
 Remote credentials establish owner identity before review REST, MCP, ingestion
 jobs, job status or events can access data. Browser assets and mode/login bootstrap

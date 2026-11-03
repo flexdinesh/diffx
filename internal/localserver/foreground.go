@@ -48,7 +48,7 @@ func RunForeground(ctx context.Context, settings Settings, input Input, confirm 
 		return err
 	}
 	defer lifecycle.Close()
-	_, status, err := client.probe(ctx)
+	status, err := client.probe(ctx)
 	if err != nil {
 		return err
 	}
@@ -70,7 +70,6 @@ func RunForeground(ctx context.Context, settings Settings, input Input, confirm 
 	}
 	defer owner.Close()
 	id := rand.Text()
-	defer RemoveDescriptor(client.RuntimeDirectory, id)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	return runServer(ctx, cancel, settings, client.RuntimeDirectory, id, input, reset, func(status Status, published Published) {

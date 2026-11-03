@@ -22,20 +22,39 @@ func TestNormalizeArgumentsAllowsFlagsAfterPath(t *testing.T) {
 	}
 }
 
-func TestOptionsDefaultToLocalhostAndAutomaticPort(t *testing.T) {
-	values, err := parseOptionsMode([]string{".", "--host", "192.0.2.1", "--port", "8123"}, io.Discard, true)
+func TestOptionsDefaultToAutomaticPortWithViewer(t *testing.T) {
+	values, err := parseOptionsMode([]string{".", "--port", "8123"}, io.Discard, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if values.host != "192.0.2.1" || values.port != 8123 || !values.portSet || !values.repositorySet {
+	if values.port != 8123 || !values.portSet || !values.repositorySet || values.headless {
 		t.Fatalf("unexpected explicit options: %#v", values)
 	}
 	defaults, err := parseOptions([]string{"."}, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if defaults.host != "127.0.0.1" || defaults.portSet {
+	if defaults.portSet || defaults.headless || defaults.noBrowser {
 		t.Fatalf("unexpected defaults: %#v", defaults)
+	}
+}
+
+// The viewer binds loopback only; other machines connect over SSH.
+func TestHostRemovedAndHeadlessServesNoViewer(t *testing.T) {
+	for _, args := range [][]string{{".", "--host", "0.0.0.0"}, {"--host=127.0.0.1"}, {"-host", "::1"}} {
+		if _, err := parseOptionsMode(args, io.Discard, true); err == nil || !strings.Contains(err.Error(), "diffx connect ssh://HOST") {
+			t.Fatalf("%v: %v", args, err)
+		}
+	}
+	headless, err := parseOptionsMode([]string{".", "--headless"}, io.Discard, true)
+	if err != nil || !headless.headless || !headless.noBrowser {
+		t.Fatalf("headless: %#v %v", headless, err)
+	}
+	if _, err := parseOptionsMode([]string{".", "--headless", "--port", "0"}, io.Discard, true); err == nil || !strings.Contains(err.Error(), "remove --port") {
+		t.Fatalf("headless with port: %v", err)
+	}
+	if _, err := parseOptions([]string{".", "--headless"}, io.Discard); err == nil {
+		t.Fatal("headless accepted outside local mode")
 	}
 }
 
@@ -89,14 +108,14 @@ func TestOptionsTrackExplicitDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if omitted.hostSet || omitted.portSet || omitted.stateSet || omitted.webDirSet {
+	if omitted.portSet || omitted.stateSet || omitted.webDirSet {
 		t.Fatalf("omitted settings marked explicit: %#v", omitted)
 	}
-	explicit, err := parseOptionsMode([]string{".", "--host=127.0.0.1", "-p", "0", "--state=", "--web-dir="}, io.Discard, true)
+	explicit, err := parseOptionsMode([]string{".", "-p", "0", "--state=", "--web-dir="}, io.Discard, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !explicit.hostSet || !explicit.portSet || !explicit.stateSet || !explicit.webDirSet || explicit.port != 0 {
+	if !explicit.portSet || !explicit.stateSet || !explicit.webDirSet || explicit.port != 0 {
 		t.Fatalf("explicit defaults lost: %#v", explicit)
 	}
 }

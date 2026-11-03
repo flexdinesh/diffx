@@ -130,7 +130,7 @@ Local server and collector settings resolve in this order:
 1. Code defaults.
 2. JSON config at `~/.config/diffx/config.json`, with `local` and `remote`
    sections.
-3. Environment: `DIFFX_LOCAL_HOST`, `DIFFX_LOCAL_PORT`, `DIFFX_LOCAL_STATE`,
+3. Environment: `DIFFX_LOCAL_PORT`, `DIFFX_LOCAL_STATE`,
    `DIFFX_LOCAL_WEB_DIR`, `DIFFX_LOCAL_RETENTION_DAYS`, `DIFFX_REMOTE_URL`,
    `DIFFX_REMOTE_TOKEN`.
 4. Explicit command flags or start/restart inline JSON overrides.

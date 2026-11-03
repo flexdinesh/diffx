@@ -45,7 +45,7 @@ and broad pruning are forbidden.
 | Lifetime   | Foreground; authenticated singleton replacement                     | Foreground; graceful worker shutdown     |
 | Storage    | One owner of persistent SQLite                                      | Shared Postgres; stateless processes     |
 | Queries    | Selected checkout(s) or capture via REST/MCP                        | Same application services via REST/MCP   |
-| Access     | Public listener; private lifecycle credential                       | Account credentials wrap the application |
+| Access     | Owner-only socket; loopback viewer unless `--headless`              | Account credentials wrap the application |
 | Identity   | Automatic stable local owner; no account UI                         | Account sessions and scoped API tokens   |
 
 Source support and review policy resolve snapshot capabilities. A mode never
@@ -92,13 +92,29 @@ use it for current-work navigation; collection time and acceptance sequence stil
 choose the stream head. Workspace discovery and web-triggered collection remain
 local-only. There is no watcher or periodic collection.
 
-Private local control supports authenticated status/shutdown only. Replacement
-uses lifecycle locking, a validated descriptor and graceful shutdown; a PID
-alone is never authority. `diffx dev --fixture FILE` is isolated from
-personal lifecycle discovery.
+A local instance serves the application and its private control API on one
+owner-only Unix socket (`diffx.sock` in the 0700 runtime directory, mode 0600).
+Filesystem permissions and a peer user check (`SO_PEERCRED`/`LOCAL_PEERCRED`)
+are its authority; there is no lifecycle token or descriptor file. Only the
+holder of the ownership lock binds the socket, so whoever answers there is the
+running instance, and a socket file left by a crash is replaced under that
+lock. Control supports status/shutdown only and is mounted only on the socket.
+Replacement uses lifecycle locking and graceful shutdown; a PID alone is never
+authority. Browsers cannot reach a Unix socket, so the same process also serves
+the application on a loopback viewer port unless `--headless`. The viewer
+never binds a non-loopback address: other machines forward the socket, or the
+viewer port, over SSH. One browser policy covers every application transport,
+because a browser may sit behind the viewer or an SSH forward: Origin must
+match Host, cross-site requests are refused, and Host must name loopback on any
+port, which defeats DNS rebinding without knowing the forwarded port.
+`diffx status --json` reports the socket and viewer for scripts and remote
+clients. `diffx dev --fixture FILE` is isolated from personal lifecycle
+discovery and serves only a viewer.
 
-Independent local sessions use distinct `DIFFX_RUNTIME_DIR` directories and
-listeners (`--port 0` selects a free port). The runtime directory owns lifecycle
+Independent local sessions use distinct `DIFFX_RUNTIME_DIR` directories, which
+give each its own socket, and viewer ports (`--port 0` selects a free port).
+Socket paths are limited to 103 bytes on macOS and 107 on Linux, so runtime
+directories must stay short. The runtime directory owns lifecycle
 discovery and default config/state paths; explicit config or state overrides can
 still point sessions at shared state. Each SQLite database retains one process
 owner. See [development.md](development.md) for isolated checkout commands.
@@ -157,7 +173,9 @@ owner. See [development.md](development.md) for isolated checkout commands.
 - `httpapi`, `mcpapi`: transport parsing, projection and error mapping. Both
   reach review operations through `reviewservice.Catalog` and hold no store.
 - `serverapp`: transport/task composition; `localserver`: local lifecycle;
-  `controlapi`: its private authenticated control API; `remoteserver`: remote
+  `controlapi`: its private control API, credential-free because composition
+  mounts it only on the owner's socket; `unixsocket`: socket bind, dial and
+  peer credentials, with admission policy left to the listener's composition; `remoteserver`: remote
   member authentication and worker composition; `authhttp`: browser
   authentication HTTP shared by remote transports (session cookie, CSRF,
   problem and identity error mapping, sign-in admission and rate limiting,
@@ -407,12 +425,14 @@ code or the server contract.
 
 Personal CLI configuration keeps modes in separate namespaces so one machine runs
 both compositions at once: `local.*` and `DIFFX_LOCAL_*` configure only
-`diffx [PATH]` (ports 7981–7990), `remote.*` and `DIFFX_REMOTE_*` only sync and
+`diffx [PATH]` (viewer ports 7981–7990), `remote.*` and `DIFFX_REMOTE_*` only sync and
 hooks. Mode is chosen by the command, never by a config field: local commands
 reject remote flags, and sync, hooks and `remote status` fail without a complete
 remote destination. Hooks check that destination before discovery, so an
 unconfigured machine never enrolls identities or collects checkouts. Flat
 pre-namespace config files are rejected with each key's replacement and a nested
-JSON example. Misplaced keys name their target section and field; invalid values
+JSON example. `local.host`, `DIFFX_LOCAL_HOST` and `--host` are rejected with
+their fix, because the viewer binds loopback only and remote access goes
+through SSH. Misplaced keys name their target section and field; invalid values
 include accepted examples. Diagnostics never echo tokens or credential-bearing
 URLs, and rejected files remain unchanged.

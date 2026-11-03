@@ -19,31 +19,31 @@ func TestFirstUseOverridesAndRemoval(t *testing.T) {
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal(err)
 	}
-	host := "0.0.0.0"
-	if err := Edit("local.host", &host); err != nil {
+	state := "/saved/state.db"
+	if err := Edit("local.state", &state); err != nil {
 		t.Fatal(err)
 	}
 	saved, err := Load()
-	if err != nil || saved.Local.Host != host {
+	if err != nil || saved.Local.State != state {
 		t.Fatalf("saved config: %#v, %v", saved, err)
 	}
-	override, err := Merge(saved, `{"local":{"host":"127.0.0.1","port":4000,"state":"memory","webDir":"/assets"}}`)
+	override, err := Merge(saved, `{"local":{"port":4000,"state":"memory","webDir":"/assets"}}`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	settings, err := override.Settings()
-	if err != nil || settings.Host != "127.0.0.1" || settings.Port != 4000 || settings.State != "memory" || settings.WebDir != "/assets" {
+	if err != nil || settings.Port != 4000 || settings.State != "memory" || settings.WebDir != "/assets" || settings.Headless {
 		t.Fatalf("override: %#v, %v", settings, err)
 	}
 	unchanged, err := Load()
-	if err != nil || unchanged.Local.Host != host || unchanged.Local.Port != nil {
+	if err != nil || unchanged.Local.State != state || unchanged.Local.Port != nil {
 		t.Fatalf("override persisted: %#v, %v", unchanged, err)
 	}
-	if err := Edit("local.host", nil); err != nil {
+	if err := Edit("local.state", nil); err != nil {
 		t.Fatal(err)
 	}
 	restored, err := Load()
-	if err != nil || restored.Local.Host != defaults.Local.Host {
+	if err != nil || restored.Local.State != defaults.Local.State {
 		t.Fatalf("remove: %#v, %v", restored, err)
 	}
 }
@@ -54,11 +54,10 @@ func TestRuntimeEnvironmentOverridesFileWithoutPersisting(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	raw := `{"local":{"host":"127.0.0.2","port":4123,"state":"file.db","webDir":"file-assets"}}`
+	raw := `{"local":{"port":4123,"state":"file.db","webDir":"file-assets","retentionDays":3}}`
 	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("DIFFX_LOCAL_HOST", "::1")
 	t.Setenv("DIFFX_LOCAL_PORT", "5123")
 	t.Setenv("DIFFX_LOCAL_STATE", "memory")
 	t.Setenv("DIFFX_LOCAL_WEB_DIR", "")
@@ -67,10 +66,10 @@ func TestRuntimeEnvironmentOverridesFileWithoutPersisting(t *testing.T) {
 		t.Fatal(err)
 	}
 	local := values.Local
-	if local.Host != "::1" || local.Port == nil || *local.Port != 5123 || local.State != "memory" || local.WebDir != "" {
+	if local.Port == nil || *local.Port != 5123 || local.State != "memory" || local.WebDir != "" || local.RetentionDays != 3 {
 		t.Fatalf("environment precedence: %#v", values)
 	}
-	if err := EditFile(path, "local.host", nil); err != nil {
+	if err := EditFile(path, "local.retentionDays", nil); err != nil {
 		t.Fatal(err)
 	}
 	saved, err := ReadFile(path)
@@ -78,7 +77,7 @@ func TestRuntimeEnvironmentOverridesFileWithoutPersisting(t *testing.T) {
 		t.Fatal(err)
 	}
 	local = saved.Local
-	if local.Host != "127.0.0.1" || local.Port == nil || *local.Port != 4123 || local.State != "file.db" || local.WebDir != "file-assets" {
+	if local.RetentionDays != 7 || local.Port == nil || *local.Port != 4123 || local.State != "file.db" || local.WebDir != "file-assets" {
 		t.Fatalf("environment persisted during edit: %#v", saved)
 	}
 	if _, err := os.Stat(os.Getenv("DIFFX_CONFIG_PATH")); !os.IsNotExist(err) {
@@ -96,7 +95,7 @@ func TestServerEnvironmentNeverConfiguresLocalMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if values.Local.Host != "127.0.0.1" || values.Local.Port != nil || values.Local.RetentionDays != 7 || values.Remote != (RemoteValues{}) {
+	if values.Local.Port != nil || values.Local.RetentionDays != 7 || values.Remote != (RemoteValues{}) {
 		t.Fatalf("server or retired environment configured CLI: %#v", values)
 	}
 }
@@ -107,7 +106,7 @@ func TestMissingRuntimeFileCreatesPrivateDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if values.Local.Host != "127.0.0.1" || values.Local.Port != nil || values.Local.State == "" || values.Local.WebDir != "" || values.RemoteConfigured() {
+	if values.Local.Port != nil || values.Local.State == "" || values.Local.WebDir != "" || values.RemoteConfigured() {
 		t.Fatalf("defaults: %#v", values)
 	}
 	if runtime.GOOS != "windows" {
@@ -122,7 +121,7 @@ func TestMissingRuntimeFileCreatesPrivateDefaults(t *testing.T) {
 
 func TestInvalidEnvironmentAndFileFail(t *testing.T) {
 	for _, field := range []struct{ name, value string }{
-		{"DIFFX_LOCAL_HOST", "localhost"},
+		{"DIFFX_LOCAL_HOST", "127.0.0.1"},
 		{"DIFFX_LOCAL_PORT", ""},
 		{"DIFFX_LOCAL_PORT", "65536"},
 		{"DIFFX_LOCAL_PORT", "-1"},
@@ -211,7 +210,7 @@ func TestInvalidCollectorSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	partial, err := Merge(defaults, `{"local":{"host":"127.0.0.1","state":"memory"}}`)
+	partial, err := Merge(defaults, `{"local":{"state":"memory"}}`)
 	if err != nil || partial.Local.RetentionDays != 7 {
 		t.Fatalf("partial retention: %#v %v", partial, err)
 	}
@@ -236,7 +235,7 @@ func TestInvalidConfigNeverChangesSavedSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, raw := range []string{`null`, `[]`, `{"unknown":1}`, `{"local":{"host":null}}`, `{"local":{"state":""}}`, `{"local":{"host":"example.com"}}`, `{"local":{"port":-1}}`, `{"local":{"port":65536}}`, `{"local":{"port":"4000"}}`, `{} {}`} {
+	for _, raw := range []string{`null`, `[]`, `{"unknown":1}`, `{"local":{"host":"127.0.0.1"}}`, `{"local":{"state":""}}`, `{"local":{"port":-1}}`, `{"local":{"port":65536}}`, `{"local":{"port":"4000"}}`, `{} {}`} {
 		if _, err := Merge(values, raw); err == nil {
 			t.Fatalf("accepted %s", raw)
 		}
@@ -257,23 +256,22 @@ func TestInvalidConfigNeverChangesSavedSettings(t *testing.T) {
 
 func TestMalformedConfigFileErrorsNameFileAndFix(t *testing.T) {
 	for raw, want := range map[string][]string{
-		`{"host":"127.0.0.1","port":null,"server":"","token":""}`: {"retired flat format", "host → local.host", "port → local.port", "server → remote.url", "token → remote.token"},
-		`{"local":{"server":"https://example.com"}}`:              {`unknown config key "local.server"`, `move its value to "remote.url"`, `{"remote": {"url": "https://reviews.example.com"}}`},
-		`{"remote":{"server":"https://example.com"}}`:             {`move its value to "remote.url"`},
-		`{"local":{"token":"secret-token"}}`:                      {`move its value to "remote.token"`, `{"remote": {"token": "<existing token>"}}`},
-		`{"local":{"url":"https://example.com"}}`:                 {`move its value to "remote.url"`},
-		`{"remote":{"port":4000}}`:                                {`move its value to "local.port"`},
-		`{"local":{"prot":4000}}`:                                 {`unknown config key "local.prot"`, "local.port"},
-		`{"local":{"port":"4000"}}`:                               {"local.port must be a whole number or null", `{"local": {"port": null}}`},
-		`{"local":{"port":65536}}`:                                {"use 0 for an ephemeral port"},
-		`{"local":{"host":null}}`:                                 {"local.host cannot be null", "omit it to use the default", `{"local": {"host": "127.0.0.1"}}`},
-		`{"local":{"host":"localhost"}}`:                          {"local.host must be an IP address", `use "127.0.0.1"`},
-		`{"local":{"state":""}}`:                                  {"omit it to use the default persistent database"},
-		`{"local":{"retentionDays":0}}`:                           {"use 7 for one week"},
-		`{"remote":{"url":"https://user:password@example.com"}}`:  {`use "https://reviews.example.com"`, "remote.token"},
-		`{"remote":"https://example.com"}`:                        {"remote must be a JSON object"},
-		`{"servers":{}}`:                                          {`unknown config section "servers"`},
-		`{"local":`:                                               {"invalid config JSON"},
+		`{"port":null,"server":"","token":""}`:                   {"retired flat format", "port → local.port", "server → remote.url", "token → remote.token"},
+		`{"local":{"server":"https://example.com"}}`:             {`unknown config key "local.server"`, `move its value to "remote.url"`, `{"remote": {"url": "https://reviews.example.com"}}`},
+		`{"remote":{"server":"https://example.com"}}`:            {`move its value to "remote.url"`},
+		`{"local":{"token":"secret-token"}}`:                     {`move its value to "remote.token"`, `{"remote": {"token": "<existing token>"}}`},
+		`{"local":{"url":"https://example.com"}}`:                {`move its value to "remote.url"`},
+		`{"remote":{"port":4000}}`:                               {`move its value to "local.port"`},
+		`{"local":{"prot":4000}}`:                                {`unknown config key "local.prot"`, "local.port"},
+		`{"local":{"port":"4000"}}`:                              {"local.port must be a whole number or null", `{"local": {"port": null}}`},
+		`{"local":{"port":65536}}`:                               {"use 0 for an ephemeral port"},
+		`{"local":{"host":"127.0.0.1","port":null}}`:             {"local.host was removed", `Delete "host" from the "local" section`, "diffx connect ssh://HOST"},
+		`{"local":{"state":""}}`:                                 {"omit it to use the default persistent database"},
+		`{"local":{"retentionDays":0}}`:                          {"use 7 for one week"},
+		`{"remote":{"url":"https://user:password@example.com"}}`: {`use "https://reviews.example.com"`, "remote.token"},
+		`{"remote":"https://example.com"}`:                       {"remote must be a JSON object"},
+		`{"servers":{}}`:                                         {`unknown config section "servers"`},
+		`{"local":`:                                              {"invalid config JSON"},
 	} {
 		path := filepath.Join(t.TempDir(), "config.json")
 		if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
@@ -305,7 +303,7 @@ func TestFlatConfigErrorProvidesValidNestedExample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = Merge(values, `{"host":"127.0.0.1","server":"https://user:password@example.com","token":"secret-token"}`)
+	_, err = Merge(values, `{"port":null,"server":"https://user:password@example.com","token":"secret-token"}`)
 	if err == nil {
 		t.Fatal("accepted flat config")
 	}
@@ -323,7 +321,7 @@ func TestFlatConfigErrorProvidesValidNestedExample(t *testing.T) {
 	if _, err := Merge(values, example); err != nil {
 		t.Fatalf("example rejected by config loader: %v", err)
 	}
-	if document.Local.Host != "127.0.0.1" || document.Remote.URL == "" || document.Remote.Token == "" {
+	if document.Local.RetentionDays != 7 || document.Remote.URL == "" || document.Remote.Token == "" {
 		t.Fatalf("example missing local/remote structure: %+v", document)
 	}
 	if strings.Contains(message, "secret-token") || strings.Contains(message, "user:password") {
@@ -355,5 +353,24 @@ func TestRuntimeDirectoryIsolatesEveryDefaultStatePath(t *testing.T) {
 	}
 	if path, err := Path(); err != nil || filepath.Dir(path) != runtime {
 		t.Fatalf("config path = %q %v", path, err)
+	}
+}
+
+// The viewer binds loopback only. Every earlier config file was written with
+// local.host, so its removal must name the fix rather than ignore the key.
+func TestRemovedHostNamesItsReplacement(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	value := "127.0.0.1"
+	if err := EditFile(path, "local.host", &value); err == nil || !strings.Contains(err.Error(), "diffx connect ssh://HOST") {
+		t.Fatalf("host edit: %v", err)
+	}
+	t.Setenv("DIFFX_LOCAL_HOST", "127.0.0.1")
+	if _, err := LoadFile(path); err == nil || !strings.Contains(err.Error(), "DIFFX_LOCAL_HOST was removed") || !strings.Contains(err.Error(), "Unset it") {
+		t.Fatalf("host environment: %v", err)
+	}
+	for _, key := range Keys {
+		if strings.HasSuffix(key, ".host") {
+			t.Fatalf("removed key still listed: %s", key)
+		}
 	}
 }

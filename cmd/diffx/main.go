@@ -29,6 +29,8 @@ func run(ctx context.Context, arguments []string, stdin *os.File, stdout, stderr
 			return runSync(ctx, arguments[1:], stdin, stdout, stderr)
 		case "remote":
 			return runRemote(ctx, arguments[1:], stdout)
+		case "status":
+			return runStatus(ctx, arguments[1:], stdout, stderr)
 		case "hook":
 			return runHook(arguments[1:], stdin, stdout)
 		case "collector":
@@ -56,6 +58,9 @@ func runFixture(ctx context.Context, arguments []string, stdin *os.File, stdout,
 	}
 	if values.fixture == "" {
 		return errors.New("dev requires --fixture")
+	}
+	if values.headless {
+		return errors.New("dev serves its fixture to a viewer; --headless applies only to diffx [PATH]")
 	}
 	if err := values.singleCheckout(); err != nil {
 		return err
@@ -86,7 +91,7 @@ func runFixture(ctx context.Context, arguments []string, stdin *os.File, stdout,
 	}
 	started := time.Now()
 	return withResetHint(localserver.Run(ctx, settings, "", &request, reset, func(status localserver.Status, submitted *contextservice.Publication) {
-		address := status.BrowserURL + "/contexts/" + url.PathEscape(submitted.Context.ID)
+		address := status.ViewerURL + "/contexts/" + url.PathEscape(submitted.Context.ID)
 		writeStartup(stdout, publicationInput(*submitted, time.Since(started)), address)
 		openBrowser(values, address, stderr)
 	}))
@@ -95,9 +100,6 @@ func resolvedServerSettings(values options) (localserver.Settings, error) {
 	saved, err := config.LoadFile(values.configFile)
 	if err != nil {
 		return localserver.Settings{}, err
-	}
-	if values.hostSet {
-		saved.Local.Host = values.host
 	}
 	if values.portSet {
 		saved.Local.Port = &values.port
@@ -119,6 +121,7 @@ func resolvedServerSettings(values options) (localserver.Settings, error) {
 		saved.Local.RetentionDays = values.retentionDays
 	}
 	settings, err := saved.Settings()
+	settings.Headless = values.headless
 	return settings, err
 }
 
@@ -134,7 +137,17 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
+		var exit exitStatus
+		if errors.As(err, &exit) {
+			os.Exit(int(exit))
+		}
 		fmt.Fprintf(os.Stderr, "  diffx: %v\n", err)
 		os.Exit(1)
 	}
 }
+
+// exitStatus ends the process with its code after the command already wrote
+// its own output, such as status reporting a stopped instance.
+type exitStatus int
+
+func (code exitStatus) Error() string { return fmt.Sprintf("exit status %d", int(code)) }

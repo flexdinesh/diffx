@@ -2,17 +2,30 @@ package localserver
 
 import (
 	"context"
-	"errors"
+	"net"
 	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
 
+// runtimeDir stays short: test names would push t.TempDir past sun_path.
+func runtimeDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "dx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	path, err := prepareRuntime(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func testClient(t *testing.T) *Client {
 	t.Helper()
-	client := &Client{RuntimeDirectory: t.TempDir()}
+	client := &Client{RuntimeDirectory: runtimeDir(t)}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -23,28 +36,27 @@ func testClient(t *testing.T) *Client {
 	return client
 }
 
-func TestStaleDescriptorReportsStopped(t *testing.T) {
-	client := testClient(t)
-	d := Descriptor{Endpoint: "http://127.0.0.1:1", Token: strings.Repeat("x", 64), Status: Status{InstanceID: "stale", PID: os.Getpid(), State: "running"}}
-	if err := PublishDescriptor(client.RuntimeDirectory, d); err != nil {
+// leaveStaleSocket simulates an owner that crashed without removing its socket.
+func leaveStaleSocket(t *testing.T, dir string) {
+	t.Helper()
+	stale, err := net.ListenUnix("unix", &net.UnixAddr{Name: SocketPath(dir), Net: "unix"})
+	if err != nil {
 		t.Fatal(err)
 	}
+	stale.SetUnlinkOnClose(false)
+	if err := stale.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStaleSocketReportsStopped(t *testing.T) {
+	client := testClient(t)
+	leaveStaleSocket(t, client.RuntimeDirectory)
 	status, err := client.Status(context.Background())
 	if err != nil || status.State != "stopped" {
 		t.Fatalf("status = %+v %v", status, err)
 	}
-	if _, err := os.Stat(DescriptorPath(client.RuntimeDirectory)); err != nil {
-		t.Fatal("status mutated stale descriptor")
-	}
-}
-
-func TestDescriptorRejectsRemoteEndpoint(t *testing.T) {
-	dir := t.TempDir()
-	d := Descriptor{Endpoint: "http://192.0.2.1:4000", Token: strings.Repeat("x", 64), Status: Status{InstanceID: "x"}}
-	if err := PublishDescriptor(dir, d); err == nil {
-		t.Fatal("remote endpoint accepted")
-	}
-	if _, err := os.Stat(filepath.Join(dir, "daemon.json")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("invalid descriptor written: %v", err)
+	if _, err := os.Lstat(SocketPath(client.RuntimeDirectory)); err != nil {
+		t.Fatal("status removed the stale socket without ownership")
 	}
 }

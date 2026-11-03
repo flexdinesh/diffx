@@ -10,11 +10,10 @@ import (
 
 func TestServerConfigPrecedenceAndSnapshotIsolation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
-	if err := os.WriteFile(path, []byte(`{"local":{"host":"127.0.0.2","port":4123,"state":"file.db","webDir":"file-assets"}}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"local":{"port":4123,"state":"file.db","webDir":"file-assets"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("DIFFX_CONFIG_PATH", filepath.Join(t.TempDir(), "unused.json"))
-	t.Setenv("DIFFX_LOCAL_HOST", "::1")
 	t.Setenv("DIFFX_LOCAL_PORT", "5123")
 	t.Setenv("DIFFX_LOCAL_STATE", "memory")
 	t.Setenv("DIFFX_LOCAL_WEB_DIR", "env-assets")
@@ -23,15 +22,15 @@ func TestServerConfigPrecedenceAndSnapshotIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	settings, err := resolvedServerSettings(values)
-	if err != nil || settings.Host != "::1" || settings.Port != 5123 || settings.State != "memory" || filepath.Base(settings.WebDir) != "env-assets" {
+	if err != nil || settings.Headless || settings.Port != 5123 || settings.State != "memory" || filepath.Base(settings.WebDir) != "env-assets" {
 		t.Fatalf("environment resolution: %#v %v", settings, err)
 	}
-	values, err = parseOptionsMode([]string{"--config-file", path, "--host", "127.0.0.1", "--port", "7123", "--state", "flags.db", "--web-dir", "flags-assets"}, io.Discard, true)
+	values, err = parseOptionsMode([]string{"--config-file", path, "--port", "7123", "--state", "flags.db", "--web-dir", "flags-assets"}, io.Discard, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	settings, err = resolvedServerSettings(values)
-	if err != nil || settings.Host != "127.0.0.1" || settings.Port != 7123 || filepath.Base(settings.State) != "flags.db" || filepath.Base(settings.WebDir) != "flags-assets" {
+	if err != nil || settings.Port != 7123 || filepath.Base(settings.State) != "flags.db" || filepath.Base(settings.WebDir) != "flags-assets" {
 		t.Fatalf("flag resolution: %#v %v", settings, err)
 	}
 
@@ -40,16 +39,16 @@ func TestServerConfigPrecedenceAndSnapshotIsolation(t *testing.T) {
 func TestConfigCommandExplicitFileAndEnvironmentIsolation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "custom", "config.json")
 	t.Setenv("DIFFX_CONFIG_PATH", filepath.Join(t.TempDir(), "unused.json"))
-	t.Setenv("DIFFX_LOCAL_HOST", "::1")
+	t.Setenv("DIFFX_LOCAL_RETENTION_DAYS", "3")
 	var output bytes.Buffer
-	if err := runConfig([]string{"set", "local.host", "127.0.0.2", "--config-file", path}, &output); err != nil {
+	if err := runConfig([]string{"set", "local.retentionDays", "14", "--config-file", path}, &output); err != nil {
 		t.Fatal(err)
 	}
 	output.Reset()
-	if err := runConfig([]string{"--config-file", path, "get", "local.host"}, &output); err != nil {
+	if err := runConfig([]string{"--config-file", path, "get", "local.retentionDays"}, &output); err != nil {
 		t.Fatal(err)
 	}
-	if output.String() != "\"127.0.0.2\"\n" {
+	if output.String() != "14\n" {
 		t.Fatalf("get read environment: %s", output.String())
 	}
 	if _, err := os.Stat(os.Getenv("DIFFX_CONFIG_PATH")); !os.IsNotExist(err) {
