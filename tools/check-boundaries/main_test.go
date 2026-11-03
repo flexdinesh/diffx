@@ -42,6 +42,7 @@ func TestPackageBoundaries(t *testing.T) {
 		{name: "hook scheduler executes finite producer", pkg: "internal/hooks", imports: []string{"os/exec"}},
 		{name: "lifecycle inspects processes", pkg: "internal/localserver", imports: []string{"os/exec"}},
 		{name: "browser launches platform opener", pkg: "internal/browser", imports: []string{"os/exec"}},
+		{name: "remote access runs the system ssh", pkg: "internal/sshforward", imports: []string{"os/exec"}},
 		{name: "service cannot bypass atomic storage contract", pkg: "internal/contextservice", imports: []string{"database/sql"}, want: "internal/contextservice must not access SQL storage directly"},
 		{name: "composition cannot query sqlite directly", pkg: "internal/remoteserver", imports: []string{"modernc.org/sqlite"}, want: "internal/remoteserver must not access SQL storage directly"},
 		{name: "sqlite subpackages preserve storage boundary", pkg: "internal/review", imports: []string{"modernc.org/sqlite/lib"}, want: "internal/review must not access SQL storage directly"},
