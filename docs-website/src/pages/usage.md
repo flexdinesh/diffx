@@ -162,7 +162,10 @@ the remote viewer port instead, which requires the remote diffx to run without
 `--headless`. If non-interactive SSH cannot find diffx, pass
 `--remote-diffx /full/path/to/diffx`. `--json` prints one line,
 `{"url": …, "target": …, "transport": "unix" | "tcp"}`, once the forward
-serves diffx. The same forward works by hand:
+serves diffx. The forwarded port is loopback but not per-user: while connected,
+any process on your machine that can reach it can read the remote reviews and,
+through the socket's control API, stop the remote diffx. Browsers cannot use
+the control API. The same forward works by hand:
 
 ```sh
 ssh devbox diffx status --json   # prints "socket" and "viewerUrl"

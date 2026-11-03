@@ -182,7 +182,10 @@ owner. See [development.md](development.md) for isolated checkout commands.
   `sshforward`: `diffx connect`, which runs the system `ssh` to read a remote
   `diffx status --json` and forward its socket, or its viewer port when the SSH
   server refuses socket forwarding, to a local loopback port; it holds no
-  credentials and serves nothing itself; `remoteserver`: remote
+  credentials and serves nothing itself. A forwarded socket carries its
+  control API too, so any local process that can reach the forwarded port can
+  stop the remote instance; this is accepted alongside the existing read
+  exposure of loopback ports, and browsers stay refused; `remoteserver`: remote
   member authentication and worker composition; `authhttp`: browser
   authentication HTTP shared by remote transports (session cookie, CSRF,
   problem and identity error mapping, sign-in admission and rate limiting,
