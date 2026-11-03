@@ -18,7 +18,7 @@ func TestBrowserCommandSupportsDesktopEnvironments(t *testing.T) {
 		{"X11", "linux", map[string]string{"DISPLAY": ":0"}, "xdg-open", []string{url}},
 		{"Wayland", "linux", map[string]string{"WAYLAND_DISPLAY": "wayland-0"}, "xdg-open", []string{url}},
 		{"headless", "linux", nil, "", nil},
-		{"Windows", "windows", nil, "rundll32.exe", []string{"url.dll,FileProtocolHandler", url}},
+		{"unsupported Windows", "windows", nil, "", nil},
 		{"unsupported", "plan9", nil, "", nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -31,7 +31,7 @@ func TestBrowserCommandSupportsDesktopEnvironments(t *testing.T) {
 }
 
 func TestBrowserSkipsSSHIncludingForwardedDisplays(t *testing.T) {
-	for _, platform := range []string{"darwin", "linux", "windows"} {
+	for _, platform := range []string{"darwin", "linux"} {
 		for _, sshKey := range []string{"SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"} {
 			t.Run(platform+"/"+sshKey, func(t *testing.T) {
 				env := map[string]string{sshKey: "connected", "DISPLAY": ":10", "WAYLAND_DISPLAY": "wayland-0"}

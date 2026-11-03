@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 
 	"github.com/flexdinesh/diffx/internal/controlapi"
@@ -39,9 +38,6 @@ func RuntimeDir() (string, error) {
 		return prepareRuntime(filepath.Join(dir, "diffx"))
 	}
 	state := os.Getenv("XDG_STATE_HOME")
-	if runtime.GOOS == "windows" && state == "" {
-		state = os.Getenv("LOCALAPPDATA")
-	}
 	if state == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
