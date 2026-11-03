@@ -57,7 +57,9 @@ func runStatus(ctx context.Context, arguments []string, stdout, stderr io.Writer
 	}
 	if status.State == "stopped" {
 		if *asJSON {
-			if err := json.NewEncoder(stdout).Encode(statusReport{State: status.State}); err != nil {
+			if err := json.NewEncoder(stdout).Encode(struct {
+				State string `json:"state"`
+			}{status.State}); err != nil {
 				return err
 			}
 		} else {

@@ -33,7 +33,7 @@ func TestStatusReportsStoppedWithExitCode(t *testing.T) {
 	if !errors.As(err, &exit) || exit != 3 {
 		t.Fatalf("stopped exit: %v", err)
 	}
-	if output.String() != "{\"state\":\"stopped\",\"viewerUrl\":\"\",\"observations\":0}\n" {
+	if output.String() != "{\"state\":\"stopped\"}\n" {
 		t.Fatalf("stopped report: %s", output.String())
 	}
 }
