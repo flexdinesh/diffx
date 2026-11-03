@@ -36,8 +36,6 @@ func browserCommand(platform string, getenv func(string) string, url string) (st
 		if getenv("DISPLAY") != "" || getenv("WAYLAND_DISPLAY") != "" {
 			return "xdg-open", []string{url}
 		}
-	case "windows":
-		return "rundll32.exe", []string{"url.dll,FileProtocolHandler", url}
 	}
 	return "", nil
 }

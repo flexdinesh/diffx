@@ -16,7 +16,7 @@ go install github.com/flexdinesh/diffx/cmd/diffx@edge
 - [mise](https://mise.jdx.dev) 2026.8.6 or later
 - C compiler for Go race tests
 - Git
-- Bash (included with Git for Windows)
+- Bash
 - Docker on Linux x64 for isolated local checks
 
 Mise manages Go 1.27, Node from `.node-version`, and pnpm from `package.json`.

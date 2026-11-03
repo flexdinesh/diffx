@@ -41,8 +41,8 @@ Required repository secret:
 5. Merge the tap pull request after its Homebrew checks pass.
 
 Each release contains checksums plus Linux and macOS archives for amd64 and
-arm64. Windows archives are also published. Archives include the native binary,
-README, and license. The embedded web application needs no installed Node.js
+arm64; Windows is not supported. Archives include the native binary, README,
+and license. The embedded web application needs no installed Node.js
 runtime.
 
 Stop running binaries before upgrading. Local schema 11 through 15 state upgrades in place to
