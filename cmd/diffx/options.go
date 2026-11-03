@@ -5,12 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"strings"
 )
 
 var errHelp = errors.New("help requested")
+
+// errHostRemoved explains the removed bind flag: the viewer is loopback only.
+var errHostRemoved = errors.New("--host was removed: local diffx serves its viewer on loopback only; reach diffx on another machine with diffx connect ssh://HOST")
 
 type options struct {
 	replace          bool
@@ -20,8 +22,7 @@ type options struct {
 	retry            bool
 	progress         func(string, string)
 	diagnosticWriter io.Writer
-	host             string
-	hostSet          bool
+	headless         bool
 	port             int
 	portSet          bool
 	directory        string
@@ -83,10 +84,20 @@ func parseOptions(arguments []string, stderr io.Writer) (options, error) {
 	return parseOptionsMode(arguments, stderr, false)
 }
 
-func parseOptionsMode(arguments []string, stderr io.Writer, allowHost bool) (options, error) {
+// parseOptionsMode parses every command's options; local enables the flags
+// only local serving accepts.
+func parseOptionsMode(arguments []string, stderr io.Writer, local bool) (options, error) {
+	for _, argument := range arguments {
+		if argument == "--" {
+			break
+		}
+		if name, _, _ := strings.Cut(argument, "="); name == "--host" || name == "-host" {
+			return options{}, errHostRemoved
+		}
+	}
 	flags := flag.NewFlagSet("diffx", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	values := options{host: "127.0.0.1", directory: ".", trigger: "manual"}
+	values := options{directory: ".", trigger: "manual"}
 	flags.Var(pathList{&values.paths}, "path", "checkout path to collect; local mode accepts it repeatedly and discovers checkouts and their worktrees below each")
 	flags.IntVar(&values.scanDepth, "scan-depth", 8, "local mode: directory levels searched below each path for repositories")
 	flags.BoolVar(&values.scanWorktrees, "scan-worktrees", false, "local mode: also collect the other worktrees of a checkout path's repository")
@@ -100,8 +111,8 @@ func parseOptionsMode(arguments []string, stderr io.Writer, allowHost bool) (opt
 	flags.StringVar(&values.sourceID, "source-id", "", "source identity; defaults to persistent local identity")
 	flags.StringVar(&values.base, "base", "", "comparison baseline: auto (default), HEAD, or Git ref")
 	flags.StringVar(&values.branch, "branch", "", "recover committed branch from Git objects; defaults base to auto")
-	if allowHost {
-		flags.StringVar(&values.host, "host", values.host, "IP address to bind")
+	if local {
+		flags.BoolVar(&values.headless, "headless", false, "serve only the local socket: no viewer port and no browser")
 	}
 	flags.StringVar(&values.configFile, "config-file", "", "machine JSON config path; defaults to DIFFX_CONFIG_PATH")
 	flags.IntVar(&values.port, "port", 0, "HTTP port; defaults to the first available port from 7981 to 7990")
@@ -117,10 +128,11 @@ func parseOptionsMode(arguments []string, stderr io.Writer, allowHost bool) (opt
 	flags.BoolVar(&values.noBrowser, "no-browser", false, "do not open a browser")
 	flags.BoolVar(&values.version, "version", false, "print version and exit")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "  Usage: diffx [PATH] [--scan-worktrees] [--host IP] [--replace] [--reset-state]")
+		fmt.Fprintln(stderr, "  Usage: diffx [PATH] [--scan-worktrees] [--headless] [--replace] [--reset-state]")
 		fmt.Fprintln(stderr, "         diffx --path DIR [--path DIR...] [--scan-depth N]")
 		fmt.Fprintln(stderr, "         git diff | diffx [options]")
 		fmt.Fprintln(stderr, "         diffx sync [--path DIRECTORY] [--print] [--debug] [--retry]")
+		fmt.Fprintln(stderr, "         diffx status [--json]")
 		fmt.Fprintln(stderr, "         diffx remote status [--config-file FILE]")
 		fmt.Fprintln(stderr, "         diffx config {set|get|remove} KEY [VALUE]")
 		fmt.Fprintln(stderr, "         diffx diagnostics export {REPORT_ID|--latest} --output FILE")
@@ -138,11 +150,6 @@ func parseOptionsMode(arguments []string, stderr io.Writer, allowHost bool) (opt
 	if values.port < 0 || values.port > 65535 {
 		return options{}, errors.New("port must be between 0 and 65535")
 	}
-	host := net.ParseIP(values.host)
-	if host == nil {
-		return options{}, errors.New("host must be an IP address")
-	}
-	values.host = host.String()
 	if flags.NArg() > 1 {
 		return options{}, errors.New("expected at most one repository directory")
 	}
@@ -177,9 +184,6 @@ func parseOptionsMode(arguments []string, stderr io.Writer, allowHost bool) (opt
 		values.paths = []string{values.directory}
 	}
 	flags.Visit(func(value *flag.Flag) {
-		if value.Name == "host" {
-			values.hostSet = true
-		}
 		if value.Name == "state" {
 			values.stateSet = true
 		}
@@ -190,12 +194,18 @@ func parseOptionsMode(arguments []string, stderr io.Writer, allowHost bool) (opt
 			values.portSet = true
 		}
 	})
+	if values.headless && values.portSet {
+		return options{}, errors.New("--headless serves no viewer; remove --port")
+	}
+	if values.headless {
+		values.noBrowser = true
+	}
 	return values, nil
 }
 
 func normalizeArguments(arguments []string) []string {
 	valueOptions := map[string]bool{
-		"-p": true, "--port": true, "--host": true, "--fixture": true,
+		"-p": true, "--port": true, "--fixture": true,
 		"--config-file": true, "--path": true, "--server": true, "--token": true, "--trigger": true, "--harness": true, "--run-id": true, "--source-id": true,
 		"--state": true, "--web-dir": true,
 		"--base": true, "--branch": true, "--session-name": true, "--retention-days": true, "--scan-depth": true,

@@ -26,7 +26,7 @@ func TestForegroundPipedPatchAndPersistentHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	port := 0
-	configuration, err := json.Marshal(config.Values{Local: config.LocalValues{Host: "127.0.0.1", State: harness.state, Port: &port, RetentionDays: 7}, Remote: config.RemoteValues{URL: "http://127.0.0.1:1", Token: "remote-token"}})
+	configuration, err := json.Marshal(config.Values{Local: config.LocalValues{State: harness.state, Port: &port, RetentionDays: 7}, Remote: config.RemoteValues{URL: "http://127.0.0.1:1", Token: "remote-token"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestForegroundPipedPatchAndPersistentHistory(t *testing.T) {
 			}
 			// Each process serves only its own capture; history stays stored.
 			var catalog contextservice.Page
-			requestJSON(t, status.BrowserURL+"/api/v2/contexts", &catalog)
+			requestJSON(t, status.ViewerURL+"/api/v2/contexts", &catalog)
 			if len(catalog.Contexts) != 1 {
 				t.Fatalf("patch duplicated, lost or mixed with other captures: %+v", catalog)
 			}
@@ -106,7 +106,7 @@ func TestForegroundPipedPatchAndPersistentHistory(t *testing.T) {
 				t.Fatalf("incorrect patch identity/capabilities: %+v", entry)
 			}
 			var diff review.RepositoryDiff
-			requestJSON(t, status.BrowserURL+"/api/v2/contexts/"+entry.ID+"/diffs/current?scope=all", &diff)
+			requestJSON(t, status.ViewerURL+"/api/v2/contexts/"+entry.ID+"/diffs/current?scope=all", &diff)
 			files := 12
 			if source == "other" {
 				files = 1
@@ -122,7 +122,7 @@ func TestForegroundPipedPatchAndPersistentHistory(t *testing.T) {
 					t.Fatalf("restart lost patch identity: before=%+v after=%+v", original, diff)
 				}
 			default:
-				if entry.ID == originalID || statusOf(t, http.MethodGet, status.BrowserURL+"/api/v2/contexts/"+originalID) != http.StatusNotFound {
+				if entry.ID == originalID || statusOf(t, http.MethodGet, status.ViewerURL+"/api/v2/contexts/"+originalID) != http.StatusNotFound {
 					t.Fatalf("another capture visible to this process: %+v", entry)
 				}
 			}
@@ -130,11 +130,11 @@ func TestForegroundPipedPatchAndPersistentHistory(t *testing.T) {
 				Collect *bool  `json:"collect"`
 				Input   string `json:"input"`
 			}
-			requestJSON(t, status.BrowserURL+"/api/v2/bootstrap", &bootstrap)
-			if bootstrap.Collect == nil || *bootstrap.Collect || bootstrap.Input != "capture" || statusOf(t, http.MethodPost, status.BrowserURL+"/api/v2/collections") != http.StatusNotFound {
+			requestJSON(t, status.ViewerURL+"/api/v2/bootstrap", &bootstrap)
+			if bootstrap.Collect == nil || *bootstrap.Collect || bootstrap.Input != "capture" || statusOf(t, http.MethodPost, status.ViewerURL+"/api/v2/collections") != http.StatusNotFound {
 				t.Fatalf("piped capture exposed checkout collection: %+v", bootstrap)
 			}
-			response, err := http.Post(status.BrowserURL+"/api/v2/ingestions", "application/json", strings.NewReader("{}"))
+			response, err := http.Post(status.ViewerURL+"/api/v2/ingestions", "application/json", strings.NewReader("{}"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -158,7 +158,7 @@ func TestForegroundPipedPatchAndPersistentHistory(t *testing.T) {
 				t.Fatal("patch server did not exit gracefully")
 			}
 			output, err = os.ReadFile(logPath)
-			if err != nil || !strings.Contains(string(output), status.BrowserURL+"/contexts/"+entry.ID) || !strings.Contains(string(output), "mode:               pipe") || !strings.Contains(string(output), "ctrl-c to stop") {
+			if err != nil || !strings.Contains(string(output), status.ViewerURL+"/contexts/"+entry.ID) || !strings.Contains(string(output), "mode:               pipe") || !strings.Contains(string(output), "ctrl-c to stop") {
 				t.Fatalf("incorrect startup output: %s %v", output, err)
 			}
 		})
@@ -174,7 +174,7 @@ func TestForegroundRejectsPathAndPipedStdinBeforeStartup(t *testing.T) {
 			t.Fatalf("accepted conflicting input %v: %s %v", args, output, err)
 		}
 	}
-	if _, err := localserver.ReadDescriptor(harness.runtimeDir); !os.IsNotExist(err) {
+	if _, err := os.Lstat(localserver.SocketPath(harness.runtimeDir)); !os.IsNotExist(err) {
 		t.Fatalf("invalid input started a service: %v", err)
 	}
 }
@@ -215,7 +215,7 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 			if err == nil && status.State == "running" && status.InstanceID != previous {
 				// Readiness precedes collection. Join the initial live-page request
 				// before asserting snapshots or making a later explicit Sync.
-				response, err := http.Post(status.BrowserURL+"/api/v2/collections?initial=true", "application/json", nil)
+				response, err := http.Post(status.ViewerURL+"/api/v2/collections?initial=true", "application/json", nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -235,8 +235,18 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 	if status.PID != original.Process.Pid {
 		t.Fatalf("wrong foreground owner: %+v", status)
 	}
+	// The binary reports the running instance's endpoints over its socket.
+	var report struct {
+		State     string `json:"state"`
+		PID       int    `json:"pid"`
+		Socket    string `json:"socket"`
+		ViewerURL string `json:"viewerUrl"`
+	}
+	if err := json.Unmarshal(harness.requireRun(t, nil, "status", "--json"), &report); err != nil || report.State != "running" || report.PID != original.Process.Pid || report.Socket != localserver.SocketPath(harness.runtimeDir) || report.ViewerURL != status.ViewerURL {
+		t.Fatalf("status report: %+v %v", report, err)
+	}
 	var initial contextservice.Page
-	requestJSON(t, status.BrowserURL+"/api/v2/contexts", &initial)
+	requestJSON(t, status.ViewerURL+"/api/v2/contexts", &initial)
 	byRoot := func(page contextservice.Page, root string) contextservice.Context {
 		t.Helper()
 		for _, item := range page.Contexts {
@@ -261,16 +271,16 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 		t.Fatalf("linked checkout metadata lost: %+v", linked)
 	}
 	var snapshot review.RepositoryDiff
-	requestJSON(t, status.BrowserURL+"/api/v2/contexts/"+entry.ID+"/diffs/current?scope=all", &snapshot)
+	requestJSON(t, status.ViewerURL+"/api/v2/contexts/"+entry.ID+"/diffs/current?scope=all", &snapshot)
 	var health struct {
 		IngestionEnabled bool `json:"ingestionEnabled"`
 		QueuedIngestion  bool `json:"queuedIngestion"`
 	}
-	requestJSON(t, status.BrowserURL+"/api/v2/health", &health)
+	requestJSON(t, status.ViewerURL+"/api/v2/health", &health)
 	if health.IngestionEnabled || health.QueuedIngestion {
 		t.Fatalf("foreground advertised external ingestion: %+v", health)
 	}
-	response, err := http.Post(status.BrowserURL+"/api/v2/ingestions", "application/json", strings.NewReader("{}"))
+	response, err := http.Post(status.ViewerURL+"/api/v2/ingestions", "application/json", strings.NewReader("{}"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,14 +298,14 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 	deadline := time.Now().Add(1500 * time.Millisecond)
 	for time.Now().Before(deadline) {
 		var catalog contextservice.Page
-		requestJSON(t, status.BrowserURL+"/api/v2/contexts", &catalog)
+		requestJSON(t, status.ViewerURL+"/api/v2/contexts", &catalog)
 		if len(catalog.Contexts) != 2 || byRoot(catalog, first).ID != entry.ID {
 			t.Fatalf("foreground recollected checkout: %+v", catalog)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	var retained review.RepositoryDiff
-	requestJSON(t, status.BrowserURL+"/api/v2/contexts/"+entry.ID+"/diffs/current?scope=all", &retained)
+	requestJSON(t, status.ViewerURL+"/api/v2/contexts/"+entry.ID+"/diffs/current?scope=all", &retained)
 	if retained.Revision != snapshot.Revision || retained.Branch != snapshot.Branch {
 		t.Fatalf("snapshot followed edits or branch switch: %+v", retained)
 	}
@@ -303,12 +313,12 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 		Collect *bool  `json:"collect"`
 		Input   string `json:"input"`
 	}
-	requestJSON(t, status.BrowserURL+"/api/v2/bootstrap", &bootstrap)
+	requestJSON(t, status.ViewerURL+"/api/v2/bootstrap", &bootstrap)
 	if bootstrap.Collect == nil || !*bootstrap.Collect || bootstrap.Input != "checkouts" {
 		t.Fatalf("checkout process cannot collect: %+v", bootstrap)
 	}
 	// Only an explicit request collects the selected checkouts again.
-	response, err = http.Post(status.BrowserURL+"/api/v2/collections", "application/json", nil)
+	response, err = http.Post(status.ViewerURL+"/api/v2/collections", "application/json", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,11 +340,11 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 		t.Fatalf("unchanged worktree created a new review: %+v", result.Contexts)
 	}
 	var collected contextCatalog
-	requestJSON(t, status.BrowserURL+"/api/v2/contexts", &collected)
+	requestJSON(t, status.ViewerURL+"/api/v2/contexts", &collected)
 	if len(collected.Contexts) != 3 {
 		t.Fatalf("explicit collection catalog: %+v", collected)
 	}
-	requestJSON(t, status.BrowserURL+"/api/v2/contexts/"+entry.ID+"/diffs/current?scope=all", &retained)
+	requestJSON(t, status.ViewerURL+"/api/v2/contexts/"+entry.ID+"/diffs/current?scope=all", &retained)
 	if retained.Revision != snapshot.Revision || retained.Branch != snapshot.Branch {
 		t.Fatalf("collection replaced stored snapshot: %+v", retained)
 	}
@@ -343,10 +353,10 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 	if err := os.Mkdir(subdir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	_, replacementDone := start(subdir, "--replace", "--host", "0.0.0.0")
+	_, replacementDone := start(subdir, "--replace", "--retention-days", "3")
 	replacement := await(status.InstanceID)
-	if replacement.Settings.Host != "0.0.0.0" {
-		t.Fatal("host flag ignored")
+	if replacement.Settings.RetentionDays != 3 {
+		t.Fatal("replacement ignored its flags")
 	}
 	select {
 	case err := <-done:
@@ -358,7 +368,7 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 	}
 	// The replacement serves only its own discovered checkouts.
 	var catalog contextservice.Page
-	requestJSON(t, replacement.BrowserURL+"/api/v2/contexts", &catalog)
+	requestJSON(t, replacement.ViewerURL+"/api/v2/contexts", &catalog)
 	if len(catalog.Contexts) != 1 {
 		t.Fatalf("replacement showed another checkout: %+v", catalog)
 	}
@@ -367,7 +377,7 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 		t.Fatalf("nested path did not resolve to its checkout: %+v", nested)
 	}
 	for _, id := range []string{entry.ID, refreshed.ID, linkedEntry.ID} {
-		if code := statusOf(t, http.MethodGet, replacement.BrowserURL+"/api/v2/contexts/"+id); code != http.StatusNotFound {
+		if code := statusOf(t, http.MethodGet, replacement.ViewerURL+"/api/v2/contexts/"+id); code != http.StatusNotFound {
 			t.Fatalf("other checkout context %s visible: %d", id, code)
 		}
 	}
@@ -384,7 +394,7 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 		t.Fatal("replacement survived reopening")
 	}
 	var history contextCatalog
-	requestJSON(t, reopened.BrowserURL+"/api/v2/contexts", &history)
+	requestJSON(t, reopened.ViewerURL+"/api/v2/contexts", &history)
 	found := map[string]bool{}
 	for _, item := range history.Contexts {
 		if item.Root == nil || *item.Root != first {
@@ -395,12 +405,12 @@ func TestForegroundSnapshotReplacementAndPersistentHistory(t *testing.T) {
 	if !found[entry.ID] || !found[refreshed.ID] {
 		t.Fatalf("reopened checkout lost history: %+v", history)
 	}
-	requestJSON(t, reopened.BrowserURL+"/api/v2/bootstrap", &bootstrap)
+	requestJSON(t, reopened.ViewerURL+"/api/v2/bootstrap", &bootstrap)
 	if bootstrap.Input != "checkout" {
 		t.Fatalf("single checkout process input: %+v", bootstrap)
 	}
 	// The server may use its five-second shutdown grace before forcing a
-	// connection closed; leave time for descriptor and ownership cleanup too.
+	// connection closed; leave time for socket and ownership cleanup too.
 	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
 	defer cancel()
 	if err := client.Stop(ctx); err != nil {

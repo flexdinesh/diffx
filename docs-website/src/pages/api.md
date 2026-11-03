@@ -50,6 +50,6 @@ databases are refused unchanged. Servers never reset automatically: to start
 fresh, stop the server, back up its state directory, and explicitly choose a new
 database path.
 Legacy commands and pending producer payloads are retired.
-Stop older processes before upgrading. Local service lifecycle uses a private
-authenticated loopback control listener; its token does not authenticate the
-local public API.
+Stop older processes before upgrading. Local service lifecycle uses the
+owner-only local socket, which also serves this API; the loopback viewer port
+serves it to browsers.

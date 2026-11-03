@@ -55,7 +55,7 @@ var allowed = map[string][]string{
 	"internal/ingestionqueue":  {"internal/review", "internal/ingestion"},
 	"internal/localserver": {
 		"internal/config", "internal/contextservice", "internal/controlapi", "internal/ingestion", "internal/processlock",
-		"internal/reviewstore", "internal/serverapp", "internal/version", "internal/webui",
+		"internal/reviewstore", "internal/serverapp", "internal/unixsocket", "internal/version", "internal/webui",
 	},
 	"internal/mcpapi": {"internal/review", "internal/contextservice", "internal/reviewservice", "internal/ingestion"},
 	// Server Postgres persistence; pgdb holds its generated queries.
@@ -86,6 +86,9 @@ var allowed = map[string][]string{
 		"internal/mcpapi", "internal/review", "internal/reviewdata", "internal/reviewservice", "internal/version",
 	},
 	"internal/submission": {"internal/ingestion", "internal/processlock"},
+	// Unix socket mechanism: bind, dial and peer credentials. Admission policy
+	// belongs to the composition that listens.
+	"internal/unixsocket": {},
 	// Test helpers are classified, but production packages cannot import them.
 	// The store contract sees only the consumer interfaces it verifies.
 	"internal/storetest": {"internal/contextservice", "internal/ingestion", "internal/review", "internal/reviewdata", "internal/reviewservice"},

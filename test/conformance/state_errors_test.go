@@ -20,7 +20,7 @@ import (
 
 func TestLocalPreservesIncompatibleStateAndAcceptsFreshPath(t *testing.T) {
 	start := func(ctx context.Context, path string, ready func()) error {
-		return localserver.Run(ctx, localserver.Settings{Host: "127.0.0.1", Port: 0, State: path}, "", nil, localserver.StateReset{},
+		return localserver.Run(ctx, localserver.Settings{Port: 0, State: path}, "", nil, localserver.StateReset{},
 			func(localserver.Status, *contextservice.Publication) { ready() })
 	}
 	path := filepath.Join(t.TempDir(), "state.db")

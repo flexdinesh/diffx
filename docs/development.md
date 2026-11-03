@@ -262,7 +262,7 @@ env -u DIFFX_CONFIG_PATH -u DIFFX_LOCAL_STATE DIFFX_RUNTIME_DIR="$(mktemp -d)" .
 ```
 
 Use the URL printed by each process; Ctrl-C stops only that session. A unique
-`DIFFX_RUNTIME_DIR` isolates lifecycle discovery, default config, SQLite state,
+`DIFFX_RUNTIME_DIR` isolates the local socket, lifecycle discovery, default config, SQLite state,
 producer identity and pending delivery state. Its database persists after exit;
 reuse the directory to retain that session's history, or remove it after stopping
 the process when no longer needed. Choosing a port alone does not isolate state.
@@ -270,6 +270,10 @@ Explicit `DIFFX_CONFIG_PATH` can select shared config, and its `local.state`,
 `DIFFX_LOCAL_STATE` or `--state` can select a shared database despite distinct
 runtime directories. Unset those overrides, as above, or give each session a
 distinct state path. SQLite still permits only one owner per database.
+Socket paths are limited to 103 bytes on macOS and 107 on Linux; macOS
+`mktemp -d` paths under `/var/folders` fit, but deeper runtime directories may
+not. Tests that start a local instance create short runtime directories with
+`os.MkdirTemp("", "dx")` rather than `t.TempDir()`.
 
 `dev --fixture` collects its fixture before starting in the foreground and does
 not use personal lifecycle discovery. `sync` collects only the selected checkout

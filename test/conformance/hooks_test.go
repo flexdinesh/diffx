@@ -84,7 +84,7 @@ func TestAgentHooksPublishLatestCheckoutAndCompleteFileContents(t *testing.T) {
 
 	harness.environment = append(harness.environment, "XDG_CONFIG_HOME="+filepath.Join(t.TempDir(), "config"))
 	configFile := filepath.Join(t.TempDir(), "machine.json")
-	config, err := json.Marshal(map[string]interface{}{"local": map[string]interface{}{"state": harness.state, "port": 0, "host": "0.0.0.0"}})
+	config, err := json.Marshal(map[string]interface{}{"local": map[string]interface{}{"state": harness.state, "port": 0}})
 	if err != nil || os.WriteFile(configFile, config, 0600) != nil {
 		t.Fatal("write isolated config")
 	}

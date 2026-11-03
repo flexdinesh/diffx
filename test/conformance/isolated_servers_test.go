@@ -58,7 +58,7 @@ func TestIsolatedCheckoutServers(t *testing.T) {
 				if status.PID != command.Process.Pid || status.Settings.State != filepath.Join(harness.runtimeDir, "state.db") {
 					t.Fatalf("wrong process or runtime-derived state: %+v", status)
 				}
-				if code := statusOf(t, http.MethodPost, status.BrowserURL+"/api/v2/collections?initial=true"); code != http.StatusOK {
+				if code := statusOf(t, http.MethodPost, status.ViewerURL+"/api/v2/collections?initial=true"); code != http.StatusOK {
 					t.Fatalf("initial collection: %d", code)
 				}
 				return instance{client: client, status: status, done: done, root: root}
@@ -78,7 +78,7 @@ func TestIsolatedCheckoutServers(t *testing.T) {
 	readCheckout := func(server instance) string {
 		t.Helper()
 		var page contextservice.Page
-		requestJSON(t, server.status.BrowserURL+"/api/v2/contexts", &page)
+		requestJSON(t, server.status.ViewerURL+"/api/v2/contexts", &page)
 		if len(page.Contexts) != 1 || page.Contexts[0].Observation == nil || page.Contexts[0].Observation.Root != server.root {
 			t.Fatalf("wrong checkout collected: %+v", page)
 		}
@@ -105,7 +105,7 @@ func TestIsolatedCheckoutServers(t *testing.T) {
 	}
 
 	first, second := start("first-isolated"), start("second-isolated")
-	if first.status.BrowserURL == second.status.BrowserURL || first.status.Settings.State == second.status.Settings.State {
+	if first.status.ViewerURL == second.status.ViewerURL || first.status.Settings.State == second.status.Settings.State {
 		t.Fatal("servers share a listener or database")
 	}
 	firstID, secondID := readCheckout(first), readCheckout(second)
@@ -113,7 +113,7 @@ func TestIsolatedCheckoutServers(t *testing.T) {
 		server instance
 		other  string
 	}{{first, secondID}, {second, firstID}} {
-		if code := statusOf(t, http.MethodGet, pair.server.status.BrowserURL+"/api/v2/contexts/"+pair.other); code != http.StatusNotFound {
+		if code := statusOf(t, http.MethodGet, pair.server.status.ViewerURL+"/api/v2/contexts/"+pair.other); code != http.StatusNotFound {
 			t.Fatalf("other server's context visible: %d", code)
 		}
 	}
@@ -122,7 +122,7 @@ func TestIsolatedCheckoutServers(t *testing.T) {
 	if err != nil || status.InstanceID != second.status.InstanceID || status.State != "running" {
 		t.Fatalf("stopping first affected second: %+v %v", status, err)
 	}
-	if code := statusOf(t, http.MethodPost, second.status.BrowserURL+"/api/v2/collections"); code != http.StatusOK {
+	if code := statusOf(t, http.MethodPost, second.status.ViewerURL+"/api/v2/collections"); code != http.StatusOK {
 		t.Fatalf("surviving server cannot collect: %d", code)
 	}
 	if id := readCheckout(second); id != secondID {

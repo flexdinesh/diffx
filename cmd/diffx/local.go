@@ -74,8 +74,14 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 		return askYes(ctx, stdin, stderr, fmt.Sprintf("diffx is running (PID %d).\nStop it and open %s? [y/N] ", status.PID, label))
 	}, reset, func(status localserver.Status, published localserver.Published) {
 		if input.Kind == "worktree" {
-			address := status.BrowserURL + "/"
-			writeStartup(stdout, loadedInput{mode: "git", directory: label, collecting: true, processed: time.Since(started), mcpURL: status.BrowserURL + "/mcp"}, address)
+			loaded := loadedInput{mode: "git", directory: label, collecting: true, processed: time.Since(started), socket: status.Socket}
+			if status.ViewerURL == "" {
+				writeStartup(stdout, loaded)
+				return
+			}
+			address := status.ViewerURL + "/"
+			loaded.mcpURL = status.ViewerURL + "/mcp"
+			writeStartup(stdout, loaded, address)
 			openBrowser(values, address, stderr)
 			return
 		}
@@ -83,13 +89,18 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 		if !ok {
 			return
 		}
-		address := status.BrowserURL + "/contexts/" + url.PathEscape(submitted.Context.ID)
 		loaded := publicationInput(submitted, time.Since(started))
-		loaded.mode, loaded.directory = "pipe", ""
+		loaded.mode, loaded.directory, loaded.socket = "pipe", "", status.Socket
 		for _, failure := range published.Failures {
 			fmt.Fprintf(stderr, "  diffx: %s: %s\n", failure.Path, failure.Detail)
 		}
-		loaded.contextID, loaded.mcpURL = submitted.Context.ID, status.BrowserURL+"/mcp"
+		loaded.contextID = submitted.Context.ID
+		if status.ViewerURL == "" {
+			writeStartup(stdout, loaded)
+			return
+		}
+		address := status.ViewerURL + "/contexts/" + url.PathEscape(submitted.Context.ID)
+		loaded.mcpURL = status.ViewerURL + "/mcp"
 		writeStartup(stdout, loaded, address)
 		openBrowser(values, address, stderr)
 	}))

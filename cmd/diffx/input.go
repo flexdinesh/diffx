@@ -28,6 +28,7 @@ type loadedInput struct {
 	captureID  string
 	contextID  string
 	mcpURL     string
+	socket     string
 	remote     bool
 	collecting bool
 }

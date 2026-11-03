@@ -1,7 +1,6 @@
 package controlapi
 
 import (
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -11,24 +10,21 @@ import (
 )
 
 type handler struct {
-	token    string
 	status   func() (Status, error)
 	shutdown func()
 	draining atomic.Bool
 }
 
-func New(token string, status func() (Status, error), shutdown func()) http.Handler {
-	return &handler{token: token, status: status, shutdown: shutdown}
+// New serves status and shutdown. Mount it only on a transport that already
+// admits just the owning user; browser requests are refused regardless.
+func New(status func() (Status, error), shutdown func()) http.Handler {
+	return &handler{status: status, shutdown: shutdown}
 }
 func (handler *handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Cache-Control", "no-store")
 	response.Header().Set("X-Content-Type-Options", "nosniff")
 	if request.Header.Get("Origin") != "" || request.Header.Get("Sec-Fetch-Site") != "" || request.Header.Get("Sec-Fetch-Mode") != "" {
 		writeProblem(response, http.StatusForbidden, "browser_request", "Browser access to service control denied")
-		return
-	}
-	if handler.token == "" || subtle.ConstantTimeCompare([]byte(request.Header.Get("Authorization")), []byte("Bearer "+handler.token)) != 1 {
-		writeProblem(response, http.StatusUnauthorized, "unauthorized", "Service control authentication failed")
 		return
 	}
 	if request.Method == http.MethodGet && request.URL.Path == "/control/v1/status" {

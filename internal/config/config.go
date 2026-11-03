@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -18,9 +17,11 @@ import (
 	"github.com/flexdinesh/diffx/internal/processlock"
 )
 
+// ServerSettings are the resolved local server settings. The viewer always
+// binds loopback; Headless is chosen per invocation and never persisted.
 type ServerSettings struct {
-	Host          string `json:"host"`
 	Port          int    `json:"port"`
+	Headless      bool   `json:"headless"`
 	State         string `json:"state"`
 	WebDir        string `json:"webDir"`
 	RetentionDays int    `json:"retentionDays"`
@@ -28,7 +29,6 @@ type ServerSettings struct {
 
 // LocalValues configure the foreground `diffx [PATH]` server only.
 type LocalValues struct {
-	Host          string `json:"host"`
 	Port          *int   `json:"port"`
 	State         string `json:"state"`
 	WebDir        string `json:"webDir"`
@@ -49,15 +49,19 @@ type Values struct {
 }
 
 // Keys lists persisted settings by dotted path.
-var Keys = []string{"local.host", "local.port", "local.state", "local.webDir", "local.retentionDays", "remote.url", "remote.token"}
+var Keys = []string{"local.port", "local.state", "local.webDir", "local.retentionDays", "remote.url", "remote.token"}
 
 // legacyKeys maps retired flat keys to their namespaced replacement.
-var legacyKeys = map[string]string{"host": "local.host", "port": "local.port", "state": "local.state", "webDir": "local.webDir", "retentionDays": "local.retentionDays", "server": "remote.url", "token": "remote.token"}
+var legacyKeys = map[string]string{"port": "local.port", "state": "local.state", "webDir": "local.webDir", "retentionDays": "local.retentionDays", "server": "remote.url", "token": "remote.token"}
+
+// errHostRemoved explains the removed bind address: the local viewer is
+// loopback only, and other machines reach it through SSH.
+var errHostRemoved = errors.New(`local.host was removed: local diffx serves its viewer on loopback only. Delete "host" from the "local" section; reach diffx on another machine with diffx connect ssh://HOST`)
 
 func (values *Values) field(key string) (interface{}, error) {
 	switch key {
 	case "local.host":
-		return &values.Local.Host, nil
+		return nil, errHostRemoved
 	case "local.port":
 		return &values.Local.Port, nil
 	case "local.state":
@@ -92,8 +96,6 @@ func keyExample(key string) string {
 	section, name, _ := strings.Cut(key, ".")
 	value := `""`
 	switch key {
-	case "local.host":
-		value = `"127.0.0.1"`
 	case "local.port":
 		value = "null"
 	case "local.state":
@@ -127,7 +129,7 @@ func (values Values) Get(key string) (interface{}, error) {
 
 func Default() (Values, error) {
 	state, err := DefaultStatePath()
-	return Values{Local: LocalValues{Host: "127.0.0.1", State: state, RetentionDays: 7}}, err
+	return Values{Local: LocalValues{State: state, RetentionDays: 7}}, err
 }
 
 // StateDir is the private root for the default database, manual sync outboxes
@@ -199,11 +201,13 @@ func LoadFile(path string) (Values, error) {
 	if err != nil {
 		return values, err
 	}
+	if _, exists := os.LookupEnv("DIFFX_LOCAL_HOST"); exists {
+		return values, errors.New("DIFFX_LOCAL_HOST was removed: local diffx serves its viewer on loopback only. Unset it; reach diffx on another machine with diffx connect ssh://HOST")
+	}
 	for _, field := range []struct {
 		name   string
 		target *string
 	}{
-		{"DIFFX_LOCAL_HOST", &values.Local.Host},
 		{"DIFFX_LOCAL_STATE", &values.Local.State},
 		{"DIFFX_LOCAL_WEB_DIR", &values.Local.WebDir},
 		{"DIFFX_REMOTE_URL", &values.Remote.URL},
@@ -283,7 +287,7 @@ func Merge(values Values, raw string) (Values, error) {
 		return values, fmt.Errorf(`uses the retired flat format; move each key into its "local" or "remote" section (%s).
   Use nested JSON, keeping your existing values (omit settings you do not need):
   {
-    "local": {"host": "127.0.0.1", "port": null, "state": "/path/to/state.db", "webDir": "", "retentionDays": 7},
+    "local": {"port": null, "state": "/path/to/state.db", "webDir": "", "retentionDays": 7},
     "remote": {"url": "https://reviews.example.com", "token": "<existing token>"}
   }
   "server" becomes "url" inside "remote"; "token" also belongs inside "remote".`, strings.Join(moves, ", "))
@@ -329,9 +333,6 @@ func expectedType(target interface{}) string {
 
 func (values Values) Validate() error {
 	local := values.Local
-	if net.ParseIP(local.Host) == nil {
-		return errors.New(`local.host must be an IP address; use "127.0.0.1" for this machine or "0.0.0.0" to listen on all IPv4 interfaces`)
-	}
 	if local.Port != nil && (*local.Port < 0 || *local.Port > 65535) {
 		return errors.New("local.port must be null (automatic) or between 0 and 65535; use 0 for an ephemeral port, or omit the setting for automatic selection")
 	}
@@ -360,7 +361,7 @@ func (values Values) Settings() (ServerSettings, error) {
 		return ServerSettings{}, err
 	}
 	local := values.Local
-	settings := ServerSettings{Host: net.ParseIP(local.Host).String(), Port: -1, State: local.State, WebDir: local.WebDir, RetentionDays: local.RetentionDays}
+	settings := ServerSettings{Port: -1, State: local.State, WebDir: local.WebDir, RetentionDays: local.RetentionDays}
 	if local.Port != nil {
 		settings.Port = *local.Port
 	}

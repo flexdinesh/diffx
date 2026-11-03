@@ -80,6 +80,9 @@ func writeStartup(writer io.Writer, input loadedInput, urls ...string) {
 	if input.mcpURL != "" {
 		fmt.Fprintf(writer, "  MCP:                %s\n", input.mcpURL)
 	}
+	if input.socket != "" {
+		fmt.Fprintf(writer, "  %s             %s\n", color.paint(color.dim, "socket:"), input.socket)
+	}
 	fmt.Fprintln(writer, "  ")
 	if input.collecting {
 		fmt.Fprintln(writer, "  Collecting checkout snapshots in the background…")
