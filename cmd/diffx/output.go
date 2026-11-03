@@ -82,6 +82,7 @@ func writeStartup(writer io.Writer, input loadedInput, urls ...string) {
 	}
 	if input.socket != "" {
 		fmt.Fprintf(writer, "  %s             %s\n", color.paint(color.dim, "socket:"), input.socket)
+		fmt.Fprintf(writer, "  %s        %s\n", color.paint(color.dim, "MCP (stdio):"), "diffx mcp")
 	}
 	fmt.Fprintln(writer, "  ")
 	if input.collecting {

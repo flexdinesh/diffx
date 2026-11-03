@@ -172,6 +172,8 @@ owner. See [development.md](development.md) for isolated checkout commands.
 - `hooks`: finite scheduling, coalescing and session-aware suppression.
 - `httpapi`, `mcpapi`: transport parsing, projection and error mapping. Both
   reach review operations through `reviewservice.Catalog` and hold no store.
+  `mcpapi` also owns the stdio bridge (`diffx mcp`), which relays MCP messages
+  unchanged to an HTTP endpoint its caller dials, here the local socket.
 - `serverapp`: transport/task composition; `localserver`: local lifecycle;
   `controlapi`: its private control API, credential-free because composition
   mounts it only on the owner's socket; `unixsocket`: socket bind, dial and

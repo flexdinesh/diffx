@@ -52,6 +52,22 @@ diffx web-page URL alone is not enough; a coding harness connects to the
 MCP endpoint as an MCP client. In local mode MCP stops when the foreground
 command exits. Context IDs remain stable across persistent-service restarts.
 
+### Stdio
+
+`diffx mcp` serves the running local instance's global `/mcp` over stdio
+through its owner-only socket, so agent configuration names a command instead
+of a port that changes between runs. It works with a `--headless` instance and,
+over SSH, with another machine's instance (`ssh devbox diffx mcp`). It exits
+when the agent closes stdin, and fails if no local diffx is running. For
+example, in Claude Code:
+
+```sh
+claude mcp add diffx -- diffx mcp
+```
+
+The client must still support MCP `2026-07-28`; the bridge relays messages
+unchanged.
+
 Global `/mcp` supports multiple contexts without ambiguity. Supply `context_id`
 for its diff, patch and comment tools. Scoped endpoints supply their URL's
 context ID when omitted and reject a conflicting ID. `list_contexts` searches

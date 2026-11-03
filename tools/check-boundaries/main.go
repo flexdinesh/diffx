@@ -20,7 +20,7 @@ var allowed = map[string][]string{
 	"cmd/diffx": {
 		"internal/browser", "internal/collector", "internal/config", "internal/contextservice",
 		"internal/diagnostics", "internal/diffsource", "internal/hooks", "internal/ingestion", "internal/localserver",
-		"internal/review", "internal/reviewstore", "internal/submission", "internal/version",
+		"internal/mcpapi", "internal/review", "internal/reviewstore", "internal/submission", "internal/version",
 	},
 	"cmd/diffx-fetcher": {"internal/config", "internal/fetcher", "internal/fetchprotocol", "internal/version"},
 	"cmd/diffx-server":  {"internal/config", "internal/identityservice", "internal/pgstore", "internal/remoteserver", "internal/version"},

@@ -154,6 +154,8 @@ ssh -N -L 127.0.0.1:7991:/run/user/1000/diffx/diffx.sock devbox
 
 `diffx status` reports the running instance's socket, viewer and observation
 count, and exits 3 when none is running; `--json` prints one JSON object.
+`diffx mcp` serves the running instance's MCP tools over stdio for agents; see
+[MCP](mcp.md).
 
 Use `diffx --help` for usage. Legacy `review`, `serve`, `service` and
 `capture` commands are removed. Development fixtures use `diffx dev --fixture`.
