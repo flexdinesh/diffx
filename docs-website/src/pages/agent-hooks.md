@@ -72,7 +72,7 @@ create an account; signup and password signup are on by default. No default
 account/password is generated. Compose explicitly enables insecure
 cookies for loopback HTTP development; set `DIFFX_SERVER_INSECURE_COOKIES=false`
 and deploy behind HTTPS for remote access.
-See [server development](https://github.com/flexdinesh/diffx/blob/main/docs/development.md#server-development) for configuration
+See [server development](https://github.com/flexdinesh/diffx/blob/main/docs/server.md) for configuration
 and persistence details. Deploy behind HTTPS when exposing the server remotely.
 
 Or build and run the image directly against your own PostgreSQL 18+:

@@ -514,7 +514,7 @@ with a semantic variant instead of overriding it.
 
 Feature files may not render raw `<button>`, `<input>`, `<select>` or
 `<textarea>`; lint points to the component. Review every variant in both themes
-at `/design.html` (see `docs/development.md`).
+at `/design.html` (see `docs/frontend.md`).
 
 ### Buttons and toggles
 

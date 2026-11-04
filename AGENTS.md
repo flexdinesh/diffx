@@ -26,12 +26,12 @@ contract and release tests in `test/`.
 - Keep all checks and test suites local through explicit PR validation. GitHub Actions publishes edge and stable releases; it does not validate PRs. Release compilation, checksums and Homebrew formula validation remain in publishing workflows.
 - Use only the explicitly managed `diffx-validation-engine-v0.21.11` engine. Run `mise run check:engine:setup` once. Never stop, restart, remove or prune another task's engine or volumes; cancellation closes only this invocation's session. Keep `DAGGER_LEAVE_OLD_ENGINE=true` and never fall back to automatic provisioning.
 - `internal/webui/dist` and `internal/consoleui/dist` are ignored on `main`; run `mise run web:stage` and `mise run console:stage` (or `mise run build`) before Go builds/tests. CI commits only the web assets, on release tags and `edge`.
-- See `docs/development.md` and `docs/release.md` for workflows.
+- See `docs/development.md` (commands), `docs/validation.md` and `docs/release.md` for workflows.
 
 ## Design and architecture
 
 - Before editing, read `docs/architecture.md` and relevant `docs/system.md` sections.
-- For frontend changes, also read `DESIGN.md` and frontend conventions in `docs/development.md`.
+- For frontend changes, also read `DESIGN.md` and `docs/frontend.md`.
 - Identify the behavior owner, affected contracts, and applicable invariants before choosing an implementation.
 - Extend the owning module; encapsulate behavior behind its public contract.
 - Share semantic rules, not merely similar code. Avoid speculative abstractions.
