@@ -19,3 +19,6 @@ test-results/
 mise.local.toml
 .env
 /.scratch/
+/apps/desktop/.mygo/
+/apps/desktop/build/
+/apps/desktop/test-results/

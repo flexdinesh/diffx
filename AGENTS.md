@@ -8,6 +8,12 @@ system in `packages/ui/`; agent plugins in `packages/plugin-*`; user docs site
 in `docs-website/`; maintainer docs in `docs/`; cross-package conformance,
 contract and release tests in `test/`.
 
+Experimental MyGo native client in `apps/desktop/` is a separate Go module.
+It consumes public REST/SSE and local-session contracts, never root internals.
+Generate its design tokens from canonical UI sources; keep MyGo out of root
+server packages. `mise run check:native` owns its headless/controller/session
+tests; root `go test ./...` does not discover nested modules.
+
 - Keep changes minimal. Follow existing patterns.
 - Preserve TypeScript type safety: no `any`, type assertions, or non-null assertions.
 - Use pnpm. Install dependencies with `pnpm install --frozen-lockfile`.

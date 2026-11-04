@@ -39,7 +39,7 @@ func TestGroupFingerprintInputsAndHistory(t *testing.T) {
 	if err != nil || baseline != afterDocs {
 		t.Fatalf("docs/history invalidated Go: %v", err)
 	}
-	for _, name := range []string{"internal/review/change.go", "pnpm-lock.yaml", "mise.toml", "unknown-contract.txt"} {
+	for _, name := range []string{"internal/review/change.go", "pnpm-lock.yaml", "mise.toml", "apps/desktop/go.mod", "apps/desktop/go.sum", "apps/desktop/mygo.json", "unknown-contract.txt"} {
 		snapshotTestWrite(t, root, name, "changed")
 		next, err := groupFingerprint(root, goGroup)
 		if err != nil || next == baseline {
@@ -69,11 +69,14 @@ func TestPRGroupsPreserveSuiteCoverage(t *testing.T) {
 		if group.Name == "browser" && (!group.Build || !group.Database || !group.Browser) {
 			t.Fatal("browser checks missing fixture preparation")
 		}
+		if group.Name == "native" && (!group.Native || !group.Build || group.Host || group.Database || group.Browser || !slices.Equal(group.Commands[1], []string{"mise", "run", "test:exec:native:race"})) {
+			t.Fatal("native checks must exercise their nested module and real sidecar with isolated race coverage")
+		}
 		if group.Host != (group.Name == "static") {
 			t.Fatalf("unexpected execution boundary for %s", group.Name)
 		}
 	}
-	for _, name := range []string{"static", "contracts", "go", "unit", "browser", "conformance", "docs", "release", "generated"} {
+	for _, name := range []string{"static", "contracts", "go", "unit", "browser", "conformance", "docs", "release", "generated", "native"} {
 		if !slices.Contains(names, name) {
 			t.Errorf("missing required group %s", name)
 		}

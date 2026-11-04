@@ -42,6 +42,23 @@ mise run plugins:build                      # agent plugin adapters
 
 ## Frontend
 
+The experimental native app has its own Go module and pinned MyGo tool:
+
+```sh
+mise run native:build
+apps/desktop/build/dev/diffx-native /path/to/checkout
+mise run native:dev
+mise run check:native
+mise run generate:native:tokens
+```
+
+The build places a matching private `diffx` beside `diffx-native`. Development
+passes that sidecar's absolute path to MyGo; the app never searches `PATH` for
+another server. Native UI needs no Node runtime or webview. Its development
+build still uses the existing server build, including staged web assets for
+browser coexistence. Native checks run through the managed Dagger engine and
+include headless view tests and real Unix-socket session integration.
+
 ```sh
 mise run dev                                    # Vite HMR + fixture server
 mise run dev -- --port 5181 --strictPort        # distinct port per worktree

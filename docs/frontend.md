@@ -1,5 +1,37 @@
 # Frontend conventions
 
+## Experimental native desktop
+
+`apps/desktop` is a Go module using MyGo native content windows. It renders no
+webviews, HTML or JavaScript. Its `session` adapter starts a bundled matching
+CLI or attaches to the existing compatible local scope; `workspace` owns
+REST/SSE request lifetimes, cancellation and immutable presentation snapshots.
+The server remains the owner of observations, review state, anchors and export.
+
+`diffview` adapts stored patches to MyGo without recalculating their change
+runs. Sparse old/new coordinate maps translate native buffer indices to stored
+one-based lines. Context expansion inserts only verified unchanged captured
+contents, then remaps selections and server-resolved annotations. Missing
+contents stay unavailable. Editor mutation actions remain private and disabled.
+Commit lenses disable review ranges while retaining native text copy.
+
+The file list owns scrolling across files; individual native diff content does
+not create nested vertical scrolling. Inline comment heights come from native
+layout. Range selection uses click/Shift-click and keyboard controls. Unified
+comment actions follow selection because MyGo's unified hover gutter cannot
+reliably identify deletion-side lines. Horizontal offsets are retained while
+mounted but cannot be restored across editor reconstruction through MyGo's
+current public API.
+
+Native primitives consume generated semantic tokens and palettes. Preferences
+live in a versioned, atomically written app configuration file, independent of
+browser localStorage. Server comments and reviewed-file marks are shared with
+the web UI. Native tests use MyGo's headless tester; actual native-window
+automation is a separate platform check. No memory or performance benchmarks
+are part of the experimental port.
+
+## Web application
+
 Follow [DESIGN.md](../DESIGN.md). The shared design system lives in
 `packages/ui` (`@diffx/ui`). Semantic tokens in `packages/ui/src/tokens.css`
 are exposed as same-name Tailwind utilities (`bg-panel`, `border-control`,

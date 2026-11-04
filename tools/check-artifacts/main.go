@@ -36,12 +36,12 @@ func checkArtifacts(root string) error {
 }
 
 func builtArtifact(name string) bool {
-	for _, directory := range []string{"dist/", "apps/web/dist/", "apps/console/dist/", "internal/webui/dist/", "internal/consoleui/dist/", "docs-website/dist/"} {
+	for _, directory := range []string{"dist/", "apps/web/dist/", "apps/console/dist/", "internal/webui/dist/", "internal/consoleui/dist/", "docs-website/dist/", "apps/desktop/build/", "apps/desktop/.mygo/", "apps/desktop/test-results/"} {
 		if strings.HasPrefix(name, directory) {
 			return true
 		}
 	}
-	for _, binary := range []string{"diffx", "diffx-server", "diffx-console", "diffx-fetcher"} {
+	for _, binary := range []string{"diffx", "diffx-server", "diffx-console", "diffx-fetcher", "diffx-native", "apps/desktop/diffx-native"} {
 		if name == binary || name == binary+".exe" {
 			return true
 		}

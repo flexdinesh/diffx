@@ -1,0 +1,272 @@
+package session
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/flexdinesh/diffx/packages/localprotocol"
+)
+
+// The test binary is the temporary sidecar. No shell, PATH or server internals.
+func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == localprotocol.Command {
+		os.Exit(fakeSidecar())
+	}
+	os.Exit(m.Run())
+}
+func fakeSidecar() int {
+	args := os.Args[2:]
+	if len(args) < 3 || args[0] != "--parent-fd" || args[1] != "3" {
+		return 21
+	}
+	lease := os.NewFile(3, "lease")
+	defer lease.Close()
+	if args[2] == "--fail" {
+		return 22
+	}
+	if args[2] == "--hang" {
+		_, _ = io.Copy(io.Discard, lease)
+		return 0
+	}
+	if args[2] == "--oversized" {
+		_, _ = io.WriteString(os.Stdout, strings.Repeat("x", 70*1024)+"\n")
+		_, _ = io.Copy(io.Discard, lease)
+		return 0
+	}
+	socket := args[2]
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		return 23
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v2/bootstrap", func(w http.ResponseWriter, r *http.Request) {
+		if r.Host != "localhost" {
+			w.WriteHeader(400)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"mode":"local","input":"checkout","collect":false,"user":null,"csrfToken":null,"googleEnabled":false}`)
+	})
+	mux.HandleFunc("/redirect", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "http://example.com/escaped", 302) })
+	mux.HandleFunc("/stream", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, ": connected\n\n")
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	})
+	server := &http.Server{Handler: mux}
+	go server.Serve(listener)
+	ready := localprotocol.Readiness{ProtocolVersion: localprotocol.Version, Socket: socket, InstanceID: "instance", ScopeID: "scope", ViewerURL: "http://127.0.0.1:7981", Owned: true, Input: localprotocol.Input{Kind: "checkout", Selection: "checkout", Paths: []string{"/captured"}}}
+	if len(args) > 3 && args[3] == "--bad-version" {
+		ready.ProtocolVersion++
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(ready); err != nil {
+		return 24
+	}
+	_, _ = io.Copy(io.Discard, lease)
+	server.Close()
+	return 0
+}
+
+func fakeOptions(t *testing.T, args ...string) Options {
+	t.Helper()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Options{SidecarPath: executable, Args: args, Stderr: os.Stderr}
+}
+
+func TestSessionOwnsSocketLeaseCancellationAndReaping(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "sidecar.sock")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := Start(ctx, fakeOptions(t, socket))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	if !s.Ready.Owned || s.HTTP.Timeout != 0 {
+		t.Fatal("lost ownership or SSE uses total timeout")
+	}
+	r, err := s.Client.GetBootstrapWithResponse(ctx)
+	if err != nil || r.JSON200 == nil {
+		t.Fatalf("generated client: %v, %#v", err, r)
+	}
+	stream, err := s.HTTP.Get(Authority + "/stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := bufio.NewReader(stream.Body)
+	if _, err = reader.ReadString('\n'); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = io.ReadAll(reader); err == nil {
+		t.Fatal("session close did not cancel SSE")
+	}
+	stream.Body.Close()
+	select {
+	case err := <-s.Done():
+		if err != nil {
+			t.Fatal(err)
+		}
+	default:
+		t.Fatal("Close returned without process reaping")
+	}
+	if _, err = os.Stat(socket); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("sidecar socket survived shutdown: %v", err)
+	}
+}
+
+func TestTransportRejectsRedirectAndAuthorityEscape(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := Start(ctx, fakeOptions(t, filepath.Join(t.TempDir(), "sidecar.sock")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if response, err := s.HTTP.Get(Authority + "/redirect"); err == nil {
+		response.Body.Close()
+		t.Fatal("followed redirect")
+	} else if response != nil {
+		response.Body.Close()
+	}
+	for _, target := range []string{"http://example.com/api/v2/bootstrap", "http://localhost:80/api/v2/bootstrap", "https://localhost/api/v2/bootstrap", "http://user@localhost/api/v2/bootstrap"} {
+		if response, err := s.HTTP.Get(target); err == nil {
+			response.Body.Close()
+			t.Fatalf("accepted %s", target)
+		}
+	}
+}
+
+func TestStartupFailuresAreBoundedAndReaped(t *testing.T) {
+	for _, arg := range []string{"--fail", "--oversized", "--hang"} {
+		t.Run(arg, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+			defer cancel()
+			s, err := Start(ctx, fakeOptions(t, arg))
+			if err == nil {
+				s.Close()
+				t.Fatal("expected startup failure")
+			}
+		})
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := Start(ctx, fakeOptions(t, filepath.Join(t.TempDir(), "sidecar.sock"), "--bad-version"))
+	if err == nil {
+		s.Close()
+		t.Fatal("accepted unsupported protocol")
+	}
+}
+
+func TestRejectsEveryFlagSpellingForParentLease(t *testing.T) {
+	for _, argument := range []string{"--parent-fd", "--parent-fd=4", "-parent-fd", "-parent-fd=4"} {
+		t.Run(argument, func(t *testing.T) {
+			_, err := Start(t.Context(), Options{SidecarPath: "/must-not-start", Args: []string{argument}})
+			if err == nil || !strings.Contains(err.Error(), "reserved desktop-session argument") {
+				t.Fatalf("caller could override the owned lifetime descriptor: %v", err)
+			}
+		})
+	}
+}
+
+func TestResolveOnlyMatchingInstallation(t *testing.T) {
+	dir := t.TempDir()
+	app := filepath.Join(dir, "diffx-native")
+	sibling := filepath.Join(dir, "diffx")
+	if err := os.WriteFile(app, []byte("app"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveSidecar(app); err == nil {
+		t.Fatal("missing bundled sidecar accepted")
+	}
+	if err := os.WriteFile(sibling, []byte("sidecar"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ResolveSidecar(app)
+	if err != nil || got != sibling {
+		t.Fatalf("resolved %q: %v", got, err)
+	}
+	for _, ready := range []localprotocol.Readiness{
+		{ProtocolVersion: localprotocol.Version, Socket: "relative", ScopeID: "s", InstanceID: "i"},
+		{ProtocolVersion: localprotocol.Version, Socket: "/socket", ScopeID: "s", InstanceID: "i", ViewerURL: "http://example.com", Input: localprotocol.Input{Kind: "capture", ContextID: "c"}},
+		{ProtocolVersion: localprotocol.Version, Socket: "/socket", ScopeID: "s", InstanceID: "i", ViewerURL: "http://127.0.0.1", Input: localprotocol.Input{Kind: "capture"}},
+	} {
+		if validate(ready) == nil {
+			t.Fatalf("accepted malformed readiness %#v", ready)
+		}
+	}
+}
+
+// The parent acceptance runner builds the matching root binary and injects its
+// absolute path. This verifies the real public process/REST boundary without
+// importing the root module's private test helpers or application packages.
+func TestRealBundledSidecarCaptureAndAttachment(t *testing.T) {
+	path := os.Getenv("DIFFX_NATIVE_SIDECAR")
+	if path == "" {
+		if os.Getenv("DIFFX_CHECK_RUNNER") == "1" {
+			t.Fatal("native validation must inject the matching sidecar binary")
+		}
+		t.Skip("DIFFX_NATIVE_SIDECAR must name the built matching root binary")
+	}
+	runtime, err := os.MkdirTemp("", "dxn-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(runtime)
+	t.Setenv("DIFFX_RUNTIME_DIR", runtime)
+	input, err := os.CreateTemp(t.TempDir(), "capture-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
+	patch := "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-before\n+after\n"
+	if _, err = input.WriteString(patch); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = input.Seek(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	owner, err := Start(ctx, Options{SidecarPath: path, Stdin: input, Args: []string{"--port=0", "--state=memory"}, Stderr: os.Stderr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	if !owner.Ready.Owned || owner.Ready.Input.Kind != "capture" || owner.Ready.Input.ContextID == "" {
+		t.Fatalf("capture readiness %#v", owner.Ready)
+	}
+	attached, err := Start(ctx, Options{SidecarPath: path, Args: []string{"--attach"}, Stderr: os.Stderr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attached.Ready.Owned || attached.Ready.InstanceID != owner.Ready.InstanceID {
+		t.Fatal("attachment transferred ownership")
+	}
+	if err = attached.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r, err := owner.Client.GetContextWithResponse(ctx, owner.Ready.Input.ContextID)
+	if err != nil || r.JSON200 == nil {
+		t.Fatalf("attachment quit stopped owner: %v %#v", err, r)
+	}
+	if err = owner.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
