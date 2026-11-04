@@ -4,23 +4,19 @@
 
 set -euo pipefail
 : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
+: "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 
 git fetch --tags --force
 release_version="$(go run ./tools/release-version)"
 tag_exists=false
 if git rev-parse --verify --quiet "refs/tags/$release_version" >/dev/null; then
-  # Release tags point at an asset commit whose first parent is main.
-  tag_parent="$(git rev-parse --verify "$release_version^1")"
-  head_commit="$(git rev-parse HEAD)"
-  if [[ "$tag_parent" != "$head_commit" ]]; then
-    echo "$release_version was released from $tag_parent, not current main $head_commit" >&2
-    exit 1
-  fi
+  # The selector recognizes direct tags and historical asset-only child commits.
   tag_exists=true
 fi
 
 release_exists=false
-if gh release view "$release_version" >/dev/null 2>&1; then
+published_tags="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.draft == false) | .tag_name')"
+if grep -Fxq -- "$release_version" <<< "$published_tags"; then
   release_exists=true
 fi
 
@@ -29,4 +25,5 @@ fi
   echo "number=${release_version#v}"
   echo "tag_exists=$tag_exists"
   echo "release_exists=$release_exists"
+  echo "source_sha=$(git rev-parse HEAD)"
 } >> "$GITHUB_OUTPUT"

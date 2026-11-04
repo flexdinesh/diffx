@@ -96,12 +96,13 @@ an unprivileged user. SIGTERM drains HTTP and stops the worker; durable
 unfinished jobs recover after their leases expire. Back up the database with
 your Postgres tooling.
 
-Build/install the remote server with Go:
+Or build the remote server from a configured checkout. The shell installers
+install only the CLI:
 
 ```sh
-go install github.com/flexdinesh/diffx/cmd/diffx-server@edge
+mise run build
 DIFFX_SERVER_DATABASE_URL=postgres://diffx:diffx@127.0.0.1:5432/diffx?sslmode=disable \
-  DIFFX_SERVER_INSECURE_COOKIES=true diffx-server
+  DIFFX_SERVER_INSECURE_COOKIES=true ./dist/diffx-server
 ```
 
 Open the app and create an account. Open signup and password signup are on by

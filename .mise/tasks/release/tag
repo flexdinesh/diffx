@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-#MISE description="Create and push the selected release tag on an asset commit"
+#MISE description="Create and push the selected release tag on the main source commit"
 
 set -euo pipefail
 : "${RELEASE_TAG:?RELEASE_TAG is required}"
-release_commit="$(tools/asset-commit.sh "release: $RELEASE_TAG" HEAD)"
-git tag "$RELEASE_TAG" "$release_commit"
+git tag "$RELEASE_TAG" HEAD
 git push --no-verify origin "refs/tags/$RELEASE_TAG"

@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -31,7 +32,7 @@ func TestSelectTagReusesReleaseAtHead(t *testing.T) {
 	}
 }
 
-func TestReleaseTagsFromMatchesFirstParent(t *testing.T) {
+func TestReleaseTagsFromRecognizesDirectAndHistoricalTags(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
@@ -44,14 +45,48 @@ func TestReleaseTagsFromMatchesFirstParent(t *testing.T) {
 	git(t, "init", "--quiet")
 	git(t, "commit", "--quiet", "--allow-empty", "--message", "main")
 	git(t, "tag", "v0.1.0")
-	release := git(t, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "release: v0.1.1")
-	git(t, "tag", "v0.1.1", release)
-	tags, err := releaseTagsFrom("HEAD", []string{"v0.1.0", "v0.1.1"})
+	git(t, "tag", "--annotate", "v0.1.1", "--message", "direct annotated release")
+	assets := filepath.Join("internal", "webui", "dist")
+	if err := os.MkdirAll(assets, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(assets, "index.html"), []byte("embedded UI"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(t, "add", assets)
+	tree := git(t, "write-tree")
+	release := git(t, "commit-tree", tree, "-p", "HEAD", "-m", "release: v0.1.2")
+	git(t, "tag", "v0.1.2", release)
+	git(t, "reset", "--quiet")
+	if err := os.WriteFile("source.go", []byte("package example"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(t, "add", "source.go")
+	sourceTree := git(t, "write-tree")
+	git(t, "tag", "source-tree", sourceTree)
+	sourceChild := git(t, "commit-tree", sourceTree, "-p", "HEAD", "-m", "next main source")
+	git(t, "tag", "v0.1.3", sourceChild)
+	emptyChild := git(t, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "unrelated empty child")
+	git(t, "tag", "v0.1.4", emptyChild)
+	git(t, "tag", "edge", sourceChild)
+	allTags := []string{"v0.1.0", "v0.1.1", "v0.1.2", "v0.1.3", "v0.1.4", "edge", "source-tree"}
+	tags, err := releaseTagsFrom("HEAD", allTags)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"v0.1.1"}; !slices.Equal(tags, want) {
+	if want := []string{"v0.1.0", "v0.1.1", "v0.1.2"}; !slices.Equal(tags, want) {
 		t.Fatalf("releaseTagsFrom() = %q, want %q", tags, want)
+	}
+	if got := selectedTag(t, mustParseSeries(t, "0.1"), allTags, tags); got != "v0.1.2" {
+		t.Fatalf("historical rerun selected %q, want v0.1.2", got)
+	}
+	git(t, "update-ref", "refs/heads/new-main", sourceChild)
+	tags, err = releaseTagsFrom("new-main", allTags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := selectedTag(t, mustParseSeries(t, "0.1"), allTags, tags); got != "v0.1.3" {
+		t.Fatalf("direct rerun selected %q, want v0.1.3", got)
 	}
 }
 

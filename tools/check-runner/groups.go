@@ -17,7 +17,7 @@ func groups(race bool) []checkGroup {
 		goTask = "test:exec:race"
 	}
 	return []checkGroup{
-		{"static", [][]string{{"mise", "run", "check:exec:static"}, {"mise", "run", "check:format:go"}, {"mise", "run", "check:boundaries"}, {"mise", "run", "check:design"}}, false, false, false, true},
+		{"static", [][]string{{"mise", "run", "check:exec:static"}, {"mise", "run", "check:format:go"}, {"mise", "run", "check:boundaries"}, {"mise", "run", "check:design"}, {"mise", "run", "check:artifacts"}}, false, false, false, true},
 		{"contracts", [][]string{{"mise", "run", "check:exec:contracts"}}, true, false, false, false},
 		{"go", [][]string{{"go", "vet", "./..."}, {"mise", "run", goTask}}, true, true, false, false},
 		{"unit", [][]string{{"pnpm", "--filter", "@diffx/web", "test:unit"}, {"pnpm", "--filter", "@diffx/console", "test:dom"}, {"pnpm", "--recursive", "--filter", "@diffx/plugin-*", "test"}}, false, false, false, false},

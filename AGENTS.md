@@ -14,7 +14,7 @@ contract and release tests in `test/`.
 - Use mise tasks or pnpm scripts for project commands; toolchain and orchestration live in `mise.toml`.
 - While iterating, run only the checks for what changed:
   - Go tests and vet: `mise run check:go`
-  - TypeScript, lint, formatting: `mise run check:static`
+  - TypeScript, lint, formatting, tracked build outputs: `mise run check:static`
   - Web/console unit, DOM and plugins: `mise run check:unit`
   - Web/console browser: `mise run check:browser`
   - API contract: `mise run check:conformance`; boundaries and design tokens: `mise run check:contracts`
@@ -23,9 +23,9 @@ contract and release tests in `test/`.
 - Development, formatting, format verification, lint, type checking and read-only architecture guards stay on the host. Static aggregate checks use a private temporary snapshot and dependencies, without Docker. Go vet stays with Go tests because it requires embedded build assets.
 - Before creating or updating a PR, commit changes and run `mise run check:pr` on clean HEAD. Matching successful group results are reused; use `mise run check:pr --force` to execute checks again.
 - Run long checks in the background and wait for their completion notification; never poll logs or `sleep`.
-- Keep all checks and test suites local through explicit PR validation. GitHub Actions publishes edge and stable releases; it does not validate PRs. Release compilation, checksums and Homebrew formula validation remain in publishing workflows.
+- Keep all checks and test suites local through explicit PR validation. GitHub Actions publishes edge and stable releases; it does not validate PRs. Release compilation and checksums remain in publishing workflows.
 - Use only the explicitly managed `diffx-validation-engine-v0.21.11` engine. Run `mise run check:engine:setup` once. Never stop, restart, remove or prune another task's engine or volumes; cancellation closes only this invocation's session. Keep `DAGGER_LEAVE_OLD_ENGINE=true` and never fall back to automatic provisioning.
-- `internal/webui/dist` and `internal/consoleui/dist` are ignored on `main`; run `mise run web:stage` and `mise run console:stage` (or `mise run build`) before Go builds/tests. CI commits only the web assets, on release tags and `edge`.
+- Never commit application binaries or web build outputs. `mise run check:artifacts`, included in static validation, rejects tracked build outputs. Built plugin distributions and generated API/SQL source remain committed. Run `mise run web:stage` and `mise run console:stage` (or `mise run build`) before Go builds/tests. Publishing stages embedded assets only in its workspace and tags `main` directly; it creates no asset commits.
 - See `docs/development.md` (commands), `docs/validation.md` and `docs/release.md` for workflows.
 
 ## Design and architecture

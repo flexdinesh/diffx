@@ -18,7 +18,6 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint .",
-    "generate:homebrew": "node tools/generate-homebrew-formula.ts",
     "check:static": "pnpm typecheck && pnpm lint && pnpm format:check"
   },
   "devDependencies": {

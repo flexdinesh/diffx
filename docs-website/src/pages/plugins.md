@@ -20,9 +20,11 @@ Install the diffx executable separately. For the current plugin contract,
 use the latest development version:
 
 ```sh
-go install github.com/flexdinesh/diffx/cmd/diffx@edge
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-edge.sh | sh
 ```
 
+The CLI installs into `~/.local/bin`; no Go or Node.js required. See
+[install options](getting-started.md) for stable versions and a custom directory.
 For CLI development, use `mise run install` instead. Ensure `diffx` is on
 the harness's PATH, including GUI sessions, or set `DIFFX_BINARY` to its
 absolute path in the harness environment. All four adapters read that override

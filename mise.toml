@@ -253,6 +253,10 @@ run = [
   { task = "check:release" },
 ]
 
+[tasks."check:artifacts"]
+description = "Reject tracked application binaries and web build outputs"
+run = "go run ./tools/check-artifacts"
+
 [tasks."check:exec:generated"]
 description = "Reject uncommitted generated API types, Postgres queries and plugins"
 hide = true
@@ -370,26 +374,6 @@ run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group release"
 description = "Regenerate and check API, SQL and plugin outputs in isolation"
 tools = { "aqua:dagger/dagger" = "0.21.11" }
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group generated"
-
-[tasks."release:publish"]
-description = "Publish the checked-out release tag with GoReleaser"
-tools = { "aqua:goreleaser/goreleaser" = "2.18.2" }
-shell = "bash -e -o pipefail -c"
-run = '''
-: "${RELEASE_TAG:?RELEASE_TAG is required}"
-# Release commits are off main, so Git describe cannot find the previous release.
-previous_tag=$(git tag --list 'v[0-9]*' --sort=-v:refname | awk -v tag="$RELEASE_TAG" 'found && !previous { previous = $0 } $0 == tag { found = 1 } END { print previous }')
-export GORELEASER_CURRENT_TAG="$RELEASE_TAG"
-if [ -n "$previous_tag" ]; then
-  export GORELEASER_PREVIOUS_TAG="$previous_tag"
-fi
-goreleaser release --clean
-'''
-
-[tasks."release:homebrew:check"]
-description = "Validate the generated Homebrew formula syntax"
-run = "ruby -c homebrew-tap/Formula/diffx.rb"
-
 
 [tasks."docker:build"]
 description = "Build the remote server image with staged embedded assets"
