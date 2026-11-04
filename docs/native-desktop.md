@@ -54,6 +54,9 @@ target preview. Commit views permit text copying but no review mutations.
   is unavailable through the current MyGo API. Stored ranges remain contiguous,
   side-specific and limited to 200 lines.
 - Unified comments require selecting a line/range before using its gutter action.
+- Creating or editing comments opens the native Comments pane or compact drawer.
+  This supplies keyboard and assistive access outside MyGo's code-editor leaf;
+  inline annotations retain placement context.
 - Native font geometry, controls and syntax categories differ from web. Themes
   derive from canonical tokens and licensed source palettes.
 - Vertical context/comment changes preserve measured stored-line anchors in the

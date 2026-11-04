@@ -315,7 +315,9 @@ func (w *window) find(role, label string) driver.Node {
 				matches = append(matches, n)
 			}
 		}
-		if len(matches) != 1 {
+		// Saved text can appear in both the sidebar and its file annotation.
+		// Interactive targets remain unique so automation cannot act ambiguously.
+		if len(matches) == 0 || len(matches) > 1 && role != "text" {
 			return fmt.Errorf("found %d matching nodes; tree: %s", len(matches), treeJSON(w.tree))
 		}
 		found = matches[0]
