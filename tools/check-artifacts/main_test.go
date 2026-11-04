@@ -9,7 +9,7 @@ import (
 )
 
 func TestRejectsTrackedBuildOutputs(t *testing.T) {
-	for _, name := range []string{"dist/diffx", "apps/web/dist/index.html", "apps/console/dist/index.html", "internal/webui/dist/index.html", "internal/consoleui/dist/index.html", "docs-website/dist/public/index.html", "diffx", "diffx-server", "diffx-console.exe", "diffx-fetcher"} {
+	for _, name := range []string{"dist/diffx", "apps/web/dist/index.html", "apps/console/dist/index.html", "internal/webui/dist/index.html", "internal/consoleui/dist/index.html", "docs-website/dist/public/index.html", "diffx", "diffx-server", "diffx-console.exe", "diffx-fetcher", "diffx-native", "apps/desktop/diffx-native", "apps/desktop/build/Diffx.app/Contents/MacOS/diffx-native", "apps/desktop/.mygo/app", "apps/desktop/test-results/capture.png"} {
 		t.Run(name, func(t *testing.T) {
 			root := artifactRepository(t)
 			artifactFile(t, root, name)
@@ -23,7 +23,7 @@ func TestRejectsTrackedBuildOutputs(t *testing.T) {
 
 func TestAllowsGeneratedContractsPluginsAndUntrackedBuilds(t *testing.T) {
 	root := artifactRepository(t)
-	for _, name := range []string{"packages/plugin-opencode/dist/index.js", "packages/plugin-pi/dist/index.js", "packages/api/src/schema.d.ts", "internal/pgstore/pgdb/models.go", "install.sh", "cmd/diffx/main.go"} {
+	for _, name := range []string{"packages/plugin-opencode/dist/index.js", "packages/plugin-pi/dist/index.js", "packages/api/src/schema.d.ts", "internal/pgstore/pgdb/models.go", "install.sh", "cmd/diffx/main.go", "apps/desktop/internal/design/tokens_generated.go", "apps/desktop/internal/preferences/themes_generated.go"} {
 		artifactFile(t, root, name)
 		artifactGit(t, root, "add", "--", name)
 	}

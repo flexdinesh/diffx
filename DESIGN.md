@@ -41,6 +41,13 @@ chrome competing with additions, deletions, syntax, or selected lines.
 `packages/ui` (`@diffx/ui`) is the shared design system; apps import it and
 never fork it.
 
+The experimental native desktop uses Go primitives in
+`apps/desktop/internal/design`. `tools/native-tokens` generates its semantic
+palette, metrics and theme registry from the canonical CSS and web registry
+below. Native code consumes generated values; it does not maintain another
+palette. Native control geometry and font rasterization may differ while
+preserving this compact visual direction and semantic roles.
+
 - `packages/ui/src/tokens.css`: semantic colors, spacing, geometry, elevation,
   responsive gutters, light/dark equivalents, and theme palettes.
 - `apps/web/src/theme.ts`: the theme registry (id, label, kind, mode and

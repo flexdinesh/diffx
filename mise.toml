@@ -37,6 +37,7 @@ description = "Generate API clients, Postgres queries and agent plugin adapters"
 run = [
   "pnpm generate:api",
   { task = "generate:api:go" },
+  { task = "generate:native:tokens" },
   { task = "generate:sql" },
   { task = "plugins:build" },
 ]
@@ -44,6 +45,24 @@ run = [
 [tasks."generate:api:go"]
 description = "Generate the Go REST client from the canonical OpenAPI contract"
 run = "go generate ./packages/api/goclient"
+
+[tasks."generate:native:tokens"]
+description = "Generate native palettes and preferences from canonical design sources"
+run = "go run ./tools/native-tokens"
+
+[tasks."native:build"]
+description = "Build the experimental native app with its matching private server"
+depends = ["build"]
+run = [
+  "go -C apps/desktop build -mod=readonly -trimpath -tags mygo_noinspector -o build/dev/diffx-native ./cmd/diffx-native",
+  "go build -trimpath -o apps/desktop/build/dev/diffx ./cmd/diffx",
+]
+
+[tasks."native:dev"]
+description = "Develop the Go-only native app with the pinned MyGo tool"
+depends = ["native:build"]
+env = { DIFFX_NATIVE_SIDECAR = "{{config_root}}/apps/desktop/build/dev/diffx" }
+run = "go -C apps/desktop tool mygo dev"
 
 [tasks."generate:sql"]
 description = "Generate typed Go Postgres queries from internal/pgstore SQL"
@@ -229,6 +248,21 @@ description = "Internal Go race tests; use test:race for isolation"
 hide = true
 run = "go test -race -timeout 5m ./..."
 
+[tasks."test:exec:native"]
+description = "Internal native tests; use check:native for isolation"
+hide = true
+run = "go -C apps/desktop test -json -mod=readonly -timeout 3m ./..."
+
+[tasks."test:exec:native:race"]
+description = "Internal native race tests; use check:native for isolation"
+hide = true
+run = "go -C apps/desktop test -json -mod=readonly -race -timeout 5m ./..."
+
+[tasks."test:exec:native:release"]
+description = "Internal production-tag native interactions; use check:native for isolation"
+hide = true
+run = "go -C apps/desktop test -json -mod=readonly -tags mygo_noinspector -timeout 3m ./internal/app ./cmd/diffx-native"
+
 [tasks."test:conformance"]
 description = "Run isolated API conformance tests"
 run = [{ task = "check:conformance" }]
@@ -271,7 +305,7 @@ if ! sqlc diff -f internal/pgstore/sqlc.yaml; then
   echo 'Run `mise run generate:sql` and commit internal/pgstore/pgdb.' >&2
   exit 1
 fi
-generated_changes=$(git status --porcelain --untracked-files=all -- packages/api/src/schema.d.ts packages/api/goclient/client.gen.go packages/console-api/src/schema.d.ts packages/plugin-opencode/dist packages/plugin-pi/dist)
+generated_changes=$(git status --porcelain --untracked-files=all -- packages/api/src/schema.d.ts packages/api/goclient/client.gen.go packages/console-api/src/schema.d.ts packages/plugin-opencode/dist packages/plugin-pi/dist apps/desktop/internal/design/tokens_generated.go apps/desktop/internal/design/code_generated.go apps/desktop/internal/preferences/themes_generated.go)
 if [ -n "$generated_changes" ]; then
   printf '%s\n' "$generated_changes"
   echo 'Commit generated API types and built plugins before pushing.' >&2
@@ -344,6 +378,11 @@ run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group static"
 description = "Run Go tests in an isolated snapshot"
 tools = { "aqua:dagger/dagger" = "0.21.11" }
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group go"
+
+[tasks."check:native"]
+description = "Run native view, controller and real local-session tests in isolation"
+tools = { "aqua:dagger/dagger" = "0.21.11" }
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group native"
 
 [tasks."check:contracts"]
 description = "Run architecture and shared-rule contracts in isolation"

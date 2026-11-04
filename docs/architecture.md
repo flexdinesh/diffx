@@ -5,6 +5,14 @@ canonical record of package boundaries and architectural decisions.
 [System semantics](system.md) covers identities and durability;
 [development](development.md) covers commands and checks.
 
+The experimental MyGo desktop is another client of the local composition,
+not another deployment mode. `apps/desktop` is a separate Go module consuming
+public REST/SSE and local-session wire contracts. It has no dependency on
+root `internal/` packages and never owns SQLite, Git collection or review rules.
+Only its native presentation packages import MyGo. Its session adapter alone
+executes the bundled matching CLI. Web and distributed compositions retain
+their existing entry points.
+
 ## Local validation
 
 `tools/check-runner` owns immutable source capture, group selection, successful
@@ -327,12 +335,20 @@ production imports of `testsupport` fail. Process execution and SQL access stay
 with their explicit owners. The checker inspects production imports for the
 current build platform; tests may import adapters to exercise their contracts.
 
-The same guard classifies public Go packages under `packages/`. The generated
+The same guard classifies public Go packages under `packages/` and the separate
+desktop module. The generated
 Go REST client and local readiness DTOs depend on wire concerns only, never
 server internals. Root Go packages cannot import MyGo: native UI belongs to the
 separate desktop application module. OpenAPI remains the source of REST wire
 types for both TypeScript and Go; named components share capabilities without
 changing the JSON contract.
+
+The native check group runs headless MyGo view/controller tests and real local
+session integration in its own Linux container. Its source identity includes
+the desktop module's manifests, framework pin and generated palettes. GTK and
+fonts belong only to native preparation; web/server groups do not gain desktop
+runtime requirements. Static architecture and formatting guards remain on the
+host. Actual platform-window checks are distinct from headless view tests.
 
 ## Making changes
 

@@ -108,6 +108,18 @@ var allowed = map[string][]string{
 	"packages/api/goclient":  {},
 	"packages/console-api":   {},
 	"packages/localprotocol": {},
+	// Desktop is an independent client module. Only native presentation owners
+	// import MyGo; only its session adapter executes the bundled server.
+	"apps/desktop/cmd/diffx-native": {"apps/desktop/internal/app"},
+	"apps/desktop/internal/app": {
+		"apps/desktop/internal/design", "apps/desktop/internal/diffview", "apps/desktop/internal/preferences",
+		"apps/desktop/internal/session", "apps/desktop/internal/workspace", "packages/api/goclient", "packages/localprotocol",
+	},
+	"apps/desktop/internal/design":      {},
+	"apps/desktop/internal/diffview":    {"packages/api/goclient"},
+	"apps/desktop/internal/preferences": {},
+	"apps/desktop/internal/session":     {"packages/api/goclient", "packages/localprotocol"},
+	"apps/desktop/internal/workspace":   {"packages/api/goclient", "packages/localprotocol"},
 }
 
 // postgresOwners hold every Postgres driver and migration dependency.
@@ -145,11 +157,14 @@ func checkPackage(pkg listedPackage) []string {
 	var violations []string
 	for _, dependency := range pkg.Imports {
 		if dependency == "github.com/egoist/mygo" || strings.HasPrefix(dependency, "github.com/egoist/mygo/") {
-			violations = append(violations, fmt.Sprintf("%s must not import desktop UI; keep MyGo in apps/desktop", name))
+			if !slices.Contains([]string{"apps/desktop/internal/app", "apps/desktop/internal/design", "apps/desktop/internal/diffview"}, name) {
+				violations = append(violations, fmt.Sprintf("%s must not import desktop UI; keep MyGo in apps/desktop presentation packages", name))
+			}
 		}
 		if dependency == "os/exec" && !slices.Contains([]string{
 			"internal/browser", "internal/diffsource", "internal/fetcher", "internal/hooks", "internal/localserver",
 			"internal/sshforward",
+			"apps/desktop/internal/session",
 		}, name) {
 			violations = append(violations, fmt.Sprintf("%s must not execute processes", name))
 		}
@@ -190,20 +205,25 @@ func checkPackages(input io.Reader, diagnostics io.Writer) (bool, error) {
 }
 
 func main() {
-	command := exec.Command("go", "list", "-e", "-json", "./cmd/...", "./internal/...", "./packages/...")
-	command.Stderr = os.Stderr
-	output, err := command.Output()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	passed, err := checkPackages(bytes.NewReader(output), os.Stderr)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	if !passed {
-		os.Exit(1)
+	for _, arguments := range [][]string{
+		{"list", "-e", "-json", "./cmd/...", "./internal/...", "./packages/..."},
+		{"-C", "apps/desktop", "list", "-mod=readonly", "-e", "-json", "./..."},
+	} {
+		command := exec.Command("go", arguments...)
+		command.Stderr = os.Stderr
+		output, err := command.Output()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		passed, err := checkPackages(bytes.NewReader(output), os.Stderr)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if !passed {
+			os.Exit(1)
+		}
 	}
 	fmt.Println("Architecture boundaries passed")
 }

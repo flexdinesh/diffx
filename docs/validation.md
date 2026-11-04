@@ -90,8 +90,8 @@ changed since validation. PR creation remains separate. There is no full-suite p
 commands and validation records are bypassable and are not remote enforcement.
 
 Use `mise run check:<group>` for targeted checks. Groups are `static`,
-`contracts`, `go`, `unit`, `browser`, `conformance`, `docs`, `release`, and
-`generated`. They cover the existing static checks, architecture guards, Go
+`contracts`, `go`, `unit`, `browser`, `conformance`, `docs`, `release`,
+`generated`, and `native`. They cover the existing static checks, architecture guards, Go
 tests, web/console unit and DOM tests, plugins, browser suites, API contracts,
 docs build, release tooling, and generated API/SQL/plugin consistency. PR
 validation uses Go's race detector. Public mise `test:*` tasks route through
@@ -99,6 +99,15 @@ these isolated groups. mise is the only task runner: package.json scripts wrap
 JS tooling (build, typecheck, lint, format, raw test runners) and never call
 mise. Groups invoke those scripts and hidden mise `exec` tasks inside
 containers; running them directly, like direct `go test`, bypasses isolation.
+
+`native` additionally validates the separate `apps/desktop` Go module with vet,
+race tests, MyGo headless interactions, production-tag app interactions and the built matching CLI over its real
+local socket. The runner supplies `DIFFX_NATIVE_SIDECAR`, so session integration
+does not silently skip. The group's private container supplies GTK3 and fonts;
+it uses MyGo's CPU renderer without WebKitGTK. Root/server and browser groups
+do not install native runtime dependencies. Nested Go manifests, framework pin,
+token sources and generated native palettes participate in source fingerprints.
+Generation checks include the Go REST client and native palette outputs.
 
 The `static` group runs on the host: type checking, lint, format verification,
 Go formatting, read-only architecture/design guards and `check:artifacts`, which
