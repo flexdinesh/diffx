@@ -41,3 +41,8 @@ if grep -Fxq edge <<< "$release_tags"; then
 else
   gh release create edge dist/*.tar.gz dist/checksums.txt --verify-tag --title Edge --notes "$notes" --prerelease --latest=false
 fi
+
+# Native publishing runs separately only after this candidate actually ships.
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+  printf 'native_source=%s\n' "$candidate" >> "$GITHUB_OUTPUT"
+fi

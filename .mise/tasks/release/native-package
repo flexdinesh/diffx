@@ -1,0 +1,10 @@
+#!/bin/sh
+#MISE description="Build experimental native archive and checksum without publishing"
+set -eu
+: "${DIFFX_RELEASE_VERSION:?DIFFX_RELEASE_VERSION is required}"
+: "${DIFFX_SOURCE_SHA:?DIFFX_SOURCE_SHA is required}"
+[ -z "$(git status --porcelain)" ] || {
+  printf '%s\n' 'native release source must be clean; use native:package for local working files' >&2
+  exit 1
+}
+exec sh scripts/native-package.sh

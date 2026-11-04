@@ -30,6 +30,8 @@ func groups(race bool) []checkGroup {
 		{"release", [][]string{{"pnpm", "test:release"}}, false, false, false, false, false},
 		{"generated", [][]string{{"mise", "run", "generate"}, {"mise", "run", "check:exec:generated"}}, false, false, false, false, false},
 		{"native", [][]string{{"go", "-C", "apps/desktop", "vet", "-mod=readonly", "./..."}, {"mise", "run", nativeTask}, {"mise", "run", "test:exec:native:release"}}, true, false, false, false, true},
+		{Name: "native-window", Commands: [][]string{{"mise", "run", "test:exec:native:window"}}, Build: true, Native: true},
+		{Name: "native-package", Commands: [][]string{{"mise", "run", "test:exec:native:package"}}, Build: true, Native: true},
 	}
 }
 
@@ -49,7 +51,7 @@ func groupExclusions(group string) []string {
 	if group != "docs" && group != "static" {
 		excluded = append(excluded, "docs-website")
 	}
-	if group != "static" && group != "contracts" {
+	if group != "static" && group != "contracts" && group != "native-package" {
 		excluded = append(excluded, "docs", "README.md")
 	}
 	if group == "docs" {
