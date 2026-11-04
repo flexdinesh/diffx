@@ -21,6 +21,11 @@ func TestGroupInputContracts(t *testing.T) {
 	if !groupInput("docs", "docs-website/src/index.mdx") || !groupInput("static", "docs/development.md") {
 		t.Fatal("documentation changes have no owning check")
 	}
+	for _, name := range []string{"docs/release.md", "LICENSE", "apps/desktop/resources/NOTICE.txt", "tools/native-tokens/themes/LICENSE-theme-2.0.0"} {
+		if !groupInput("native-package", name) {
+			t.Errorf("native archives omit required notice source %s", name)
+		}
+	}
 }
 
 func TestGroupFingerprintInputsAndHistory(t *testing.T) {
@@ -72,11 +77,17 @@ func TestPRGroupsPreserveSuiteCoverage(t *testing.T) {
 		if group.Name == "native" && (!group.Native || !group.Build || group.Host || group.Database || group.Browser || len(group.Commands) != 3 || !slices.Equal(group.Commands[1], []string{"mise", "run", "test:exec:native:race"}) || !slices.Equal(group.Commands[2], []string{"mise", "run", "test:exec:native:release"})) {
 			t.Fatal("native checks must exercise their nested module and real sidecar with isolated race coverage")
 		}
+		if group.Name == "native-window" && (!group.Native || !group.Build || group.Host || group.Database || group.Browser || !slices.Equal(group.Commands[0], []string{"mise", "run", "test:exec:native:window"})) {
+			t.Fatal("real native windows require an isolated native container and actual acceptance task")
+		}
+		if group.Name == "native-package" && (!group.Native || !group.Build || group.Host || group.Database || group.Browser || !slices.Equal(group.Commands[0], []string{"mise", "run", "test:exec:native:package"})) {
+			t.Fatal("native package checks must build and inspect real target archives in isolation")
+		}
 		if group.Host != (group.Name == "static") {
 			t.Fatalf("unexpected execution boundary for %s", group.Name)
 		}
 	}
-	for _, name := range []string{"static", "contracts", "go", "unit", "browser", "conformance", "docs", "release", "generated", "native"} {
+	for _, name := range []string{"static", "contracts", "go", "unit", "browser", "conformance", "docs", "release", "generated", "native", "native-window", "native-package"} {
 		if !slices.Contains(names, name) {
 			t.Errorf("missing required group %s", name)
 		}

@@ -1,0 +1,5 @@
+#!/bin/sh
+#MISE description="Build and verify native archive, versions, notices and release flags locally"
+#MISE depends=["native:package"]
+set -eu
+exec sh scripts/native-verify-package.sh

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Diffx Native Experimental
+Comment=Review local changes with the experimental native client
+Exec=diffx-native --desktop-launch
+Terminal=false
+Categories=Development;
+StartupNotify=true

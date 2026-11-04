@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      native_source: ${{ steps.publish.outputs.native_source }}
     concurrency:
       group: edge
       cancel-in-progress: false
@@ -37,5 +39,16 @@ jobs:
       - run: mise run deps
       - run: mise run web:stage
       - run: mise run release:edge
+        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
+
+  native:
+    needs: edge
+    if: needs.edge.outputs.native_source != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/native.yml
+    with:
+      tag: edge
+      source: ${{ needs.edge.outputs.native_source }}

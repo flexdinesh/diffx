@@ -91,7 +91,7 @@ commands and validation records are bypassable and are not remote enforcement.
 
 Use `mise run check:<group>` for targeted checks. Groups are `static`,
 `contracts`, `go`, `unit`, `browser`, `conformance`, `docs`, `release`,
-`generated`, and `native`. They cover the existing static checks, architecture guards, Go
+`generated`, `native`, `native-window`, and `native-package`. They cover the existing static checks, architecture guards, Go
 tests, web/console unit and DOM tests, plugins, browser suites, API contracts,
 docs build, release tooling, and generated API/SQL/plugin consistency. PR
 validation uses Go's race detector. Public mise `test:*` tasks route through
@@ -108,6 +108,21 @@ it uses MyGo's CPU renderer without WebKitGTK. Root/server and browser groups
 do not install native runtime dependencies. Nested Go manifests, framework pin,
 token sources and generated native palettes participate in source fingerprints.
 Generation checks include the Go REST client and native palette outputs.
+
+`native-window` builds a test-only automation executable and runs actual GTK
+content windows under Xvfb and a private D-Bus session. It verifies review
+interaction, focus, geometry, clipboard export, cross-client writes and owned
+versus attached shutdown against the matching real local server. The container
+installs no WebKitGTK or browser. Missing display, tools or binaries fail this
+opted-in group. Automation builds use `nativeautomation`; MyGo disables its
+automation plugin under `mygo_noinspector`, which remains mandatory for release
+builds. Automation and inspector code never ship in experimental archives.
+
+`native-package` builds real macOS/Linux amd64/arm64 release archives, verifies
+checksums, layouts, licenses, framework pin and release tags, and executes the
+host-compatible app/server version pair. Cross-compiled targets are inspected
+without claiming native runtime acceptance. The separate `release` group covers
+installer failure preservation, atomic pair upgrades and CLI coexistence.
 
 The `static` group runs on the host: type checking, lint, format verification,
 Go formatting, read-only architecture/design guards and `check:artifacts`, which
@@ -158,7 +173,11 @@ streamed logs and completed artifacts; a browser killed mid-trace may not leave
 a usable trace. Results distinguish executed checks from reused validation.
 
 Validation containers currently support Linux x64 only. They do not validate
-native macOS behavior; direct native checks remain optional. `mise run setup`
+native macOS behavior. Run `mise run native:platform-smoke` on a real macOS
+desktop before claiming macOS runtime verification. This explicit platform
+supplement runs on its host to exercise the actual OS rather than a Linux
+container. Cross-compilation proves build support only.
+`mise run setup`
 still installs host dependencies, Playwright Chromium and staged assets for
 development. Reinstall Chromium after upgrading Playwright.
 

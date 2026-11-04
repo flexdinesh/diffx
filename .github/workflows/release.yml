@@ -17,6 +17,9 @@ jobs:
   release:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      source: ${{ steps.version.outputs.source_sha }}
     steps:
       - name: Check out main
         uses: actions/checkout@v4
@@ -65,3 +68,11 @@ jobs:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
           DIFFX_SOURCE_SHA: ${{ steps.version.outputs.source_sha }}
         run: mise run release:publish
+
+  native:
+    needs: release
+    if: needs.release.outputs.tag != ''
+    uses: ./.github/workflows/native.yml
+    with:
+      tag: ${{ needs.release.outputs.tag }}
+      source: ${{ needs.release.outputs.source }}

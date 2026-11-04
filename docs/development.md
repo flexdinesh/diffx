@@ -49,6 +49,9 @@ mise run native:build
 apps/desktop/build/dev/diffx-native /path/to/checkout
 mise run native:dev
 mise run check:native
+mise run check:native:window
+mise run check:native:package
+mise run native:platform-smoke  # actual macOS/Linux desktop session
 mise run generate:native:tokens
 ```
 
@@ -57,7 +60,12 @@ passes that sidecar's absolute path to MyGo; the app never searches `PATH` for
 another server. Native UI needs no Node runtime or webview. Its development
 build still uses the existing server build, including staged web assets for
 browser coexistence. Native checks run through the managed Dagger engine and
-include headless view tests and real Unix-socket session integration.
+include headless view tests, real Unix-socket session integration and actual
+Linux GTK window automation under Xvfb. `native:platform-smoke` supplements the
+isolated suite on a real macOS or Linux desktop, exercising native focus,
+clipboard and lifecycle. It builds a private automation executable solely for
+acceptance; production builds exclude that plugin and inspector. The smoke task
+uses temporary review/config/state directories and never a personal server.
 
 ```sh
 mise run dev                                    # Vite HMR + fixture server

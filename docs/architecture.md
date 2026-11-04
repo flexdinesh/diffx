@@ -350,6 +350,16 @@ fonts belong only to native preparation; web/server groups do not gain desktop
 runtime requirements. Static architecture and formatting guards remain on the
 host. Actual platform-window checks are distinct from headless view tests.
 
+The required `native-window` group runs real GTK content windows in a private
+Xvfb/D-Bus session, exercising native interactions and the same local server.
+Only its test binary enables MyGo automation. The required `native-package`
+group compiles and inspects all four macOS/Linux archives, including private
+server pairing, notices and inspector exclusion. Production archives never
+include the automation plugin. Actual macOS acceptance uses the explicit host
+`native:platform-smoke` supplement; Linux containers cannot certify macOS
+runtime behavior. The experimental client's parity and interaction compromises
+are recorded in [native-desktop.md](native-desktop.md).
+
 ## Making changes
 
 Before implementation, identify the behavior's owner, consuming contract and

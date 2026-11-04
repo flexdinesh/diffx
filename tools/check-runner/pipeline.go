@@ -81,6 +81,10 @@ func (p *pipeline) execute(ctx context.Context, group checkGroup, invocation, ar
 		container = container.WithExec([]string{"mise", "run", "--force", "build"}).
 			WithExec([]string{"mise", "run", "--force", "plugins:build"})
 	}
+	if group.Name == "native-window" {
+		container = container.WithExec([]string{"sh", "-ec", "apt-get update && apt-get install -y --no-install-recommends xvfb xauth dbus dbus-x11 libx11-6 libxtst6 xclip && rm -rf /var/lib/apt/lists/*"}).
+			WithEnvVariable("GDK_BACKEND", "x11")
+	}
 	if group.Browser {
 		container = container.WithExec([]string{"mise", "exec", "--", "pnpm", "--filter", "@diffx/web", "exec", "playwright", "install", "--with-deps", "chromium"})
 	}
