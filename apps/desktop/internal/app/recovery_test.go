@@ -116,7 +116,7 @@ func TestSessionReplacementSettlesOldDraftOperations(t *testing.T) {
 				if d != nil {
 					t.Fatal("acknowledged save retained draft")
 				}
-			} else if d == nil || d.Saving != 0 || d.Error == "" || d.Body != "preserve my review" {
+			} else if d == nil || d.Saving != 0 || !strings.Contains(d.Error, "Check the original review") || d.Body != "preserve my review" {
 				t.Fatalf("draft stranded: %+v", d)
 			}
 			// A fresh controller may reuse ID 1. It cannot settle an old draft.

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -148,14 +149,22 @@ func (a *application) start(args []string) {
 		return
 	}
 	if a.controller != nil {
+		pendingBeforeClose := maps.Clone(a.pending)
 		a.controller.Close()
 		// Close joins admitted writes. Consume their final outcomes before a new
 		// controller can reuse operation IDs or discard the queued notification.
-		a.receive(a.controller.Snapshot())
-		for _, pending := range a.pending {
+		final := a.controller.Snapshot()
+		a.receive(final)
+		for id, pending := range pendingBeforeClose {
 			if d := a.drafts[pending.draftKey]; d != nil {
-				d.Saving = 0
-				d.Error = "Session ended before save was confirmed. Check the original review before retrying."
+				result := final.Results[id]
+				if !result.Done || result.Error != "" {
+					d.Saving = 0
+					d.Error = "Session ended before save was confirmed. Check the original review before retrying."
+					if result.Error != "" {
+						d.Error += " " + result.Error
+					}
+				}
 			}
 		}
 		clear(a.pending)
