@@ -554,6 +554,17 @@ func TestNativeWindowOwnedReview(t *testing.T) {
 		}
 		return nil
 	}))
+	must(t, driver.Until(w.ctx, "native reviewed control acknowledged", func(ctx context.Context) error {
+		if err := w.refresh(ctx); err != nil {
+			return err
+		}
+		for _, n := range w.tree.Nodes {
+			if n.Role == "button" && n.Label == "Toggle reviewed review.txt" && slices.Contains(n.States, "checked") {
+				return nil
+			}
+		}
+		return errors.New("native reviewed control has not acknowledged the mark")
+	}))
 	_, err = request(w.ctx, s, true, "DELETE", base+"/review-marks/"+file.Id+"?scope=uncommitted", nil, nil)
 	must(t, err)
 	must(t, driver.Until(w.ctx, "viewer mark deletion reaches native automatically", func(ctx context.Context) error {
@@ -561,12 +572,15 @@ func TestNativeWindowOwnedReview(t *testing.T) {
 			return err
 		}
 		for _, n := range w.tree.Nodes {
-			if n.Role == "button" && n.Label == "Toggle reviewed review.txt" && !slices.Contains(n.States, "selected") {
+			if n.Role == "button" && n.Label == "Toggle reviewed review.txt" && !slices.Contains(n.States, "checked") {
 				return nil
 			}
 		}
 		return errors.New("native file remains reviewed")
 	}))
+	// Marking collapses the file. Clearing shared review state does not override
+	// the user's local collapse state; reopen it before measuring its editor.
+	w.press("button", "Expand review.txt")
 	w.theme()
 	w.assertNoWebviews()
 	// Native read-only review operations never mutate the fixture checkout.
