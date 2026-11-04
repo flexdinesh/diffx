@@ -278,6 +278,16 @@ func TestNativeCommentResolveCarryDeleteAndExport(t *testing.T) {
 	}
 }
 
+func TestNativeReviewExportShortcutUsesCanonicalClipboard(t *testing.T) {
+	a, f := fixture(t)
+	tt := nativeTester(t, a, 1280, 800)
+	tt.SetClipboard("previous clipboard")
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyC)
+	if tt.Clipboard() != f.exportText || len(f.exportOptions) != 1 || a.feedback != "Review copied" {
+		t.Fatalf("export shortcut: clipboard=%q requests=%v feedback=%q", tt.Clipboard(), f.exportOptions, a.feedback)
+	}
+}
+
 func TestReviewedShortcutWaitsForSuccessThenAdvances(t *testing.T) {
 	a, f := fixture(t)
 	tt := nativeTester(t, a, 1280, 800)

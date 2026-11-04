@@ -69,7 +69,7 @@ func TestPRGroupsPreserveSuiteCoverage(t *testing.T) {
 		if group.Name == "browser" && (!group.Build || !group.Database || !group.Browser) {
 			t.Fatal("browser checks missing fixture preparation")
 		}
-		if group.Name == "native" && (!group.Native || !group.Build || group.Host || group.Database || group.Browser || !slices.Equal(group.Commands[1], []string{"mise", "run", "test:exec:native:race"})) {
+		if group.Name == "native" && (!group.Native || !group.Build || group.Host || group.Database || group.Browser || len(group.Commands) != 3 || !slices.Equal(group.Commands[1], []string{"mise", "run", "test:exec:native:race"}) || !slices.Equal(group.Commands[2], []string{"mise", "run", "test:exec:native:release"})) {
 			t.Fatal("native checks must exercise their nested module and real sidecar with isolated race coverage")
 		}
 		if group.Host != (group.Name == "static") {

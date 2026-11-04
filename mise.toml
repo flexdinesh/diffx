@@ -258,6 +258,11 @@ description = "Internal native race tests; use check:native for isolation"
 hide = true
 run = "go -C apps/desktop test -json -mod=readonly -race -timeout 5m ./..."
 
+[tasks."test:exec:native:release"]
+description = "Internal production-tag native interactions; use check:native for isolation"
+hide = true
+run = "go -C apps/desktop test -json -mod=readonly -tags mygo_noinspector -timeout 3m ./internal/app ./cmd/diffx-native"
+
 [tasks."test:conformance"]
 description = "Run isolated API conformance tests"
 run = [{ task = "check:conformance" }]

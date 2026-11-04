@@ -101,7 +101,7 @@ mise. Groups invoke those scripts and hidden mise `exec` tasks inside
 containers; running them directly, like direct `go test`, bypasses isolation.
 
 `native` additionally validates the separate `apps/desktop` Go module with vet,
-race tests, MyGo headless interactions and the built matching CLI over its real
+race tests, MyGo headless interactions, production-tag app interactions and the built matching CLI over its real
 local socket. The runner supplies `DIFFX_NATIVE_SIDECAR`, so session integration
 does not silently skip. The group's private container supplies GTK3 and fonts;
 it uses MyGo's CPU renderer without WebKitGTK. Root/server and browser groups

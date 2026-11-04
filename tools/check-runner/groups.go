@@ -29,7 +29,7 @@ func groups(race bool) []checkGroup {
 		{"docs", [][]string{{"mise", "run", "--force", "docs:check"}}, false, false, false, false, false},
 		{"release", [][]string{{"pnpm", "test:release"}}, false, false, false, false, false},
 		{"generated", [][]string{{"mise", "run", "generate"}, {"mise", "run", "check:exec:generated"}}, false, false, false, false, false},
-		{"native", [][]string{{"go", "-C", "apps/desktop", "vet", "-mod=readonly", "./..."}, {"mise", "run", nativeTask}}, true, false, false, false, true},
+		{"native", [][]string{{"go", "-C", "apps/desktop", "vet", "-mod=readonly", "./..."}, {"mise", "run", nativeTask}, {"mise", "run", "test:exec:native:release"}}, true, false, false, false, true},
 	}
 }
 
