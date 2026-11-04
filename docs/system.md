@@ -784,8 +784,8 @@ is not a replay of a previous failed submission.
 ## Local and remote boundaries
 
 Local and remote deployment share application/storage contracts and the HTTP
-runtime. Local lifecycle discovery uses the owner-only socket and is limited to
-status/shutdown for foreground snapshots. The same socket serves the local REST,
+runtime. Local lifecycle discovery uses the owner-only socket for foreground
+status, shutdown and instance-bound lifetime notification. The same socket serves the local REST,
 MCP and web application; a loopback viewer port serves it to browsers unless
 `--headless`. Local mode has no account identity, so it never binds a
 non-loopback address; another machine reaches it by forwarding the socket or

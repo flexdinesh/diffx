@@ -107,7 +107,8 @@ Filesystem permissions and a peer user check (`SO_PEERCRED`/`LOCAL_PEERCRED`)
 are its authority; there is no lifecycle token or descriptor file. Only the
 holder of the ownership lock binds the socket, so whoever answers there is the
 running instance, and a socket file left by a crash is replaced under that
-lock. Control supports status/shutdown only and is mounted only on the socket.
+lock. Control supports status, shutdown and an instance-bound lifetime stream,
+and is mounted only on the socket.
 Replacement uses lifecycle locking and graceful shutdown; a PID alone is never
 authority. Browsers cannot reach a Unix socket, so the same process also serves
 the application on a loopback viewer port unless `--headless`. The viewer
