@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Monochrome notification badge: Android draws only its alpha. -->
+  <g stroke="#fff" transform="translate(256 256) scale(1.45) translate(-256 -256)">
+    <g fill="none" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="184" cy="288" r="64"/>
+      <path d="M248 144V352"/>
+      <path d="M300 224l92 128M392 224l-92 128"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,1 @@
+Run `mise run web:stage` before building diffx.

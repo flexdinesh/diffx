@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Full-bleed "dx" monogram for maskable and Apple touch icons; the
+       glyphs stay inside the central 80% safe zone. -->
+  <rect width="512" height="512" fill="#edeef2"/>
+  <g stroke="#5957d2" transform="translate(256 256) scale(0.9) translate(-256 -256)">
+    <g fill="none" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="184" cy="288" r="64"/>
+      <path d="M248 144V352"/>
+      <path d="M300 224l92 128M392 224l-92 128"/>
+    </g>
+  </g>
+</svg>
