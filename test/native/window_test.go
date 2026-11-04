@@ -523,7 +523,10 @@ func TestNativeWindowOwnedReview(t *testing.T) {
 	if len(page.Contexts) != 1 || page.Contexts[0].Id != contextID {
 		t.Fatalf("mutable-state refresh collected Git: %+v", page.Contexts)
 	}
-	w.key("CmdOrCtrl+Shift+C")
+	// v0.7.4 automation requires the inspector, which reserves this export
+	// chord before app dispatch. Exercise the actual native action here; the
+	// native group tests the chord with production's mygo_noinspector tag.
+	w.press("button", "Copy review")
 	w.find("text", "Review copied")
 	exported, err := request(w.ctx, s, true, "GET", base+"/comments/export?scope=uncommitted", nil, nil)
 	must(t, err)

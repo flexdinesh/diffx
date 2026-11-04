@@ -117,6 +117,10 @@ installs no WebKitGTK or browser. Missing display, tools or binaries fail this
 opted-in group. Automation builds use `nativeautomation`; MyGo disables its
 automation plugin under `mygo_noinspector`, which remains mandatory for release
 builds. Automation and inspector code never ship in experimental archives.
+MyGo's automation build reserves the app's export chord for its element picker;
+window acceptance exercises the native Copy review action and OS clipboard.
+The `native` group separately verifies the export chord with production's
+`mygo_noinspector` tag.
 
 `native-package` builds real macOS/Linux amd64/arm64 release archives, verifies
 checksums, layouts, licenses, framework pin and release tags, and executes the
