@@ -1,50 +1,27 @@
 # diffx
 
-Review local Git changes in your browser without modifying your working tree or
+Review local Git changes in your browser without touching your working tree or
 index.
 
 ## Install
 
-With Homebrew:
-
 ```sh
-brew install flexdinesh/tap/diffx
+brew install flexdinesh/tap/diffx                         # Homebrew
+go install github.com/flexdinesh/diffx/cmd/diffx@latest   # Go 1.27.3+, stable
+go install github.com/flexdinesh/diffx/cmd/diffx@edge     # latest main
 ```
 
-Or with Go 1.27.3 or later:
+## Use
 
 ```sh
-go install github.com/flexdinesh/diffx/cmd/diffx@latest
+diffx                              # review current checkout
+diffx /path/to/repo                # review another checkout
+git diff | diffx                   # review a patch
+diffx connect ssh://devbox         # review diffx on a remote machine
 ```
 
-See [Getting started](https://github.com/flexdinesh/diffx/blob/main/docs-website/src/pages/getting-started.md) for pinned and
-`edge` versions.
+## Docs
 
-## Quick start
-
-From your Git repository, run:
-
-```sh
-diffx
-```
-
-Your browser opens the captured changes. Review a fixed patch instead with
-`git diff | diffx`. Use `diffx --help` for usage.
-
-## Documentation
-
-User documentation lives in [`docs-website/`](https://github.com/flexdinesh/diffx/blob/main/docs-website/README.md):
-
-- [Getting started](https://github.com/flexdinesh/diffx/blob/main/docs-website/src/pages/getting-started.md)
-- [Usage](https://github.com/flexdinesh/diffx/blob/main/docs-website/src/pages/usage.md)
-- [Reviewing changes](https://github.com/flexdinesh/diffx/blob/main/docs-website/src/pages/reviewing-changes.md)
-- [Piped diffs](https://github.com/flexdinesh/diffx/blob/main/docs-website/src/pages/piped-diffs.md)
-- [Agent hooks and remote ingestion](https://github.com/flexdinesh/diffx/blob/main/docs-website/src/pages/agent-hooks.md)
-- [Agent plugins](https://github.com/flexdinesh/diffx/blob/main/docs-website/src/pages/plugins.md)
-- [MCP](https://github.com/flexdinesh/diffx/blob/main/docs-website/src/pages/mcp.md)
-- [WebMCP](https://github.com/flexdinesh/diffx/blob/main/docs-website/src/pages/webmcp.md)
-- [API and data](https://github.com/flexdinesh/diffx/blob/main/docs-website/src/pages/api.md)
-
-For development and architecture, see [docs/development.md](docs/development.md)
-and [docs/architecture.md](docs/architecture.md). Publishing instructions:
-[docs/release.md](docs/release.md).
+- [CLI](docs/cli.md)
+- [User docs](https://github.com/flexdinesh/diffx/blob/main/docs-website/README.md)
+- [Development](docs/development.md), [architecture](docs/architecture.md), [releases](docs/release.md)
