@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const root = new URL("../../", import.meta.url);
@@ -10,8 +10,9 @@ function manifests(): string[] {
     for (const entry of readdirSync(new URL(`${parent}/`, root), {
       withFileTypes: true,
     })) {
-      if (entry.isDirectory())
-        paths.push(`${parent}/${entry.name}/package.json`);
+      if (!entry.isDirectory()) continue;
+      const manifest = `${parent}/${entry.name}/package.json`;
+      if (existsSync(new URL(manifest, root))) paths.push(manifest);
     }
   }
   return paths;

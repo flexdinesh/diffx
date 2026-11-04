@@ -2580,7 +2580,7 @@ components:
           type: boolean
           description: A newer collection superseded this snapshot for the same owner, source, repository, checkout, branch, and comparison policy. Collection time determines freshness; arrival order breaks ties. Freshness survives snapshot expiry and pruning. False for ungrouped piped observations.
         capabilities:
-          $ref: "#/components/schemas/Session/properties/capabilities"
+          $ref: "#/components/schemas/SessionCapabilities"
         observation:
           $ref: "#/components/schemas/ObservationMetadata"
         sessions:
@@ -2705,35 +2705,37 @@ components:
         root:
           type: string
         capabilities:
+          $ref: "#/components/schemas/SessionCapabilities"
+    SessionCapabilities:
+      type: object
+      additionalProperties: false
+      required: [diff, files, review]
+      properties:
+        diff:
           type: object
           additionalProperties: false
-          required: [diff, files, review]
+          required: [scopes, refresh, stagingMetadata]
           properties:
-            diff:
-              type: object
-              additionalProperties: false
-              required: [scopes, refresh, stagingMetadata]
-              properties:
-                scopes:
-                  $ref: "#/components/schemas/ScopesCapability"
-                refresh:
-                  $ref: "#/components/schemas/Capability"
-                stagingMetadata:
-                  $ref: "#/components/schemas/Capability"
-            files:
-              type: object
-              additionalProperties: false
-              required: [contents]
-              properties:
-                contents:
-                  $ref: "#/components/schemas/Capability"
-            review:
-              type: object
-              additionalProperties: false
-              required: [comments]
-              properties:
-                comments:
-                  $ref: "#/components/schemas/Capability"
+            scopes:
+              $ref: "#/components/schemas/ScopesCapability"
+            refresh:
+              $ref: "#/components/schemas/Capability"
+            stagingMetadata:
+              $ref: "#/components/schemas/Capability"
+        files:
+          type: object
+          additionalProperties: false
+          required: [contents]
+          properties:
+            contents:
+              $ref: "#/components/schemas/Capability"
+        review:
+          type: object
+          additionalProperties: false
+          required: [comments]
+          properties:
+            comments:
+              $ref: "#/components/schemas/Capability"
     ChangedFile:
       type: object
       additionalProperties: false

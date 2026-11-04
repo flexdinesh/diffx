@@ -107,7 +107,8 @@ Filesystem permissions and a peer user check (`SO_PEERCRED`/`LOCAL_PEERCRED`)
 are its authority; there is no lifecycle token or descriptor file. Only the
 holder of the ownership lock binds the socket, so whoever answers there is the
 running instance, and a socket file left by a crash is replaced under that
-lock. Control supports status/shutdown only and is mounted only on the socket.
+lock. Control supports status, shutdown and an instance-bound lifetime stream,
+and is mounted only on the socket.
 Replacement uses lifecycle locking and graceful shutdown; a PID alone is never
 authority. Browsers cannot reach a Unix socket, so the same process also serves
 the application on a loopback viewer port unless `--headless`. The viewer
@@ -120,6 +121,16 @@ port, which defeats DNS rebinding without knowing the forwarded port.
 clients; `diffx connect ssh://HOST` reads it over SSH and forwards the socket,
 and its `--json` ready line is the contract for future desktop clients. `diffx dev --fixture FILE` is isolated from personal lifecycle
 discovery and serves only a viewer.
+
+Experimental desktop session composition reuses the same local application and
+database owner. Its private CLI entry emits the public `packages/localprotocol`
+readiness contract and keeps a parent-lifetime pipe open. A compatible existing
+instance with the requested canonical scope can be attached; another scope
+requires explicit replacement. Attachment never transfers server ownership.
+Closing the parent pipe cancels and joins only an owned server. Scope identity,
+replacement, collection and state-reset decisions remain in the CLI/localserver
+composition, rather than in a desktop client. Clients use REST/SSE over the
+owner-only socket; the loopback viewer remains available for web coexistence.
 
 Independent local sessions use distinct `DIFFX_RUNTIME_DIR` directories, which
 give each its own socket, and viewer ports (`--port 0` selects a free port).
@@ -315,6 +326,13 @@ using `tools/check-boundaries`. Unclassified packages, forbidden dependencies an
 production imports of `testsupport` fail. Process execution and SQL access stay
 with their explicit owners. The checker inspects production imports for the
 current build platform; tests may import adapters to exercise their contracts.
+
+The same guard classifies public Go packages under `packages/`. The generated
+Go REST client and local readiness DTOs depend on wire concerns only, never
+server internals. Root Go packages cannot import MyGo: native UI belongs to the
+separate desktop application module. OpenAPI remains the source of REST wire
+types for both TypeScript and Go; named components share capabilities without
+changing the JSON contract.
 
 ## Making changes
 

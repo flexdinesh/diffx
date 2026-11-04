@@ -104,7 +104,7 @@ func (p *pipeline) execute(ctx context.Context, group checkGroup, invocation, ar
 	}
 	// Preserve the original baseline: builds/generators must not silently change
 	// checked-in generated artifacts, even in a successful consumer group.
-	script.WriteString("git status --porcelain --untracked-files=all -- packages/api/src/schema.d.ts packages/console-api/src/schema.d.ts packages/plugin-opencode/dist packages/plugin-pi/dist internal/pgstore/pgdb > /artifacts/generated-drift.log\nif [ -s /artifacts/generated-drift.log ]; then cat /artifacts/generated-drift.log; status=1; fi\n")
+	script.WriteString("git status --porcelain --untracked-files=all -- packages/api/src/schema.d.ts packages/api/goclient/client.gen.go packages/console-api/src/schema.d.ts packages/plugin-opencode/dist packages/plugin-pi/dist internal/pgstore/pgdb > /artifacts/generated-drift.log\nif [ -s /artifacts/generated-drift.log ]; then cat /artifacts/generated-drift.log; status=1; fi\n")
 	script.WriteString("for app in web console; do if [ -d apps/$app/test-results ]; then cp -R apps/$app/test-results /artifacts/$app; fi; done\nexit \"$status\"\n")
 	result := container.WithExec([]string{"bash", "-c", script.String()}, dagger.ContainerWithExecOpts{Expect: dagger.ReturnTypeAny})
 	code, err := result.ExitCode(ctx)

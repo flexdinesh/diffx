@@ -1,6 +1,7 @@
 package controlapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -12,13 +13,20 @@ import (
 type handler struct {
 	status   func() (Status, error)
 	shutdown func()
+	lifetime context.Context
 	draining atomic.Bool
 }
 
 // New serves status and shutdown. Mount it only on a transport that already
 // admits just the owning user; browser requests are refused regardless.
 func New(status func() (Status, error), shutdown func()) http.Handler {
-	return &handler{status: status, shutdown: shutdown}
+	return NewWithLifetime(context.Background(), status, shutdown)
+}
+
+// NewWithLifetime additionally exposes a private stream which closes when this
+// instance stops. It carries no application state and performs no periodic work.
+func NewWithLifetime(ctx context.Context, status func() (Status, error), shutdown func()) http.Handler {
+	return &handler{status: status, shutdown: shutdown, lifetime: ctx}
 }
 func (handler *handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Cache-Control", "no-store")
@@ -37,6 +45,27 @@ func (handler *handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 			value.State = "draining"
 		}
 		writeJSON(response, http.StatusOK, value)
+		return
+	}
+	if request.Method == http.MethodGet && request.URL.Path == "/control/v1/lifetime" {
+		status, err := handler.status()
+		if err != nil {
+			writeError(response, err)
+			return
+		}
+		if status.InstanceID != request.URL.Query().Get("instanceId") || status.State != "running" || handler.draining.Load() {
+			writeProblem(response, http.StatusConflict, "instance_changed", "Local instance stopped or was replaced")
+			return
+		}
+		response.Header().Set("Content-Type", "application/octet-stream")
+		response.WriteHeader(http.StatusOK)
+		if flusher, ok := response.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		select {
+		case <-request.Context().Done():
+		case <-handler.lifetime.Done():
+		}
 		return
 	}
 	if request.Method != http.MethodPost {

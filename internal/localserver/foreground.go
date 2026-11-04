@@ -5,11 +5,13 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 
 	"github.com/flexdinesh/diffx/internal/processlock"
 	"github.com/flexdinesh/diffx/internal/serverapp"
+	"github.com/flexdinesh/diffx/packages/localprotocol"
 )
 
 // Collection, CollectionFailure and Published describe local collections of
@@ -34,11 +36,29 @@ type Input struct {
 	Collection Collection
 	Collect    Collect
 	Selection  Selection
+	Session    *localprotocol.Session
 }
 
 // RunForeground serializes discovery, replacement and publication. Shutdown
 // uses the authenticated control endpoint, never an unverified operating-system PID.
 func RunForeground(ctx context.Context, settings Settings, input Input, confirm func(Status) (bool, error), reset StateReset, ready func(Status, Published)) error {
+	return runForeground(ctx, settings, input, func(status Status) (bool, error) {
+		accepted, err := confirm(status)
+		if err == nil && !accepted {
+			err = errors.New("local instance kept running")
+		}
+		return false, err
+	}, false, reset, func(status Status, published Published, _ bool) error {
+		if ready != nil {
+			ready(status, published)
+		}
+		return nil
+	}, os.Stderr)
+}
+
+// runForeground keeps discovery, attachment, replacement and ownership under
+// the same lifecycle lock. Attached callers never acquire database ownership.
+func runForeground(ctx context.Context, settings Settings, input Input, decide func(Status) (bool, error), requireRunning bool, reset StateReset, ready func(Status, Published, bool) error, stderr io.Writer) error {
 	client, err := NewClient()
 	if err != nil {
 		return err
@@ -53,16 +73,22 @@ func RunForeground(ctx context.Context, settings Settings, input Input, confirm 
 		return err
 	}
 	if status.State != "stopped" {
-		accepted, err := confirm(status)
+		attach, err := decide(status)
 		if err != nil {
 			return err
 		}
-		if !accepted {
-			return errors.New("local instance kept running")
+		if attach {
+			if err := ready(status, Published{}, false); err != nil {
+				return err
+			}
+			_ = lifecycle.Close()
+			return client.waitInstance(ctx, status.InstanceID)
 		}
 		if err := client.stop(ctx); err != nil {
 			return fmt.Errorf("existing instance could not stop safely: %w", err)
 		}
+	} else if requireRunning {
+		return errors.New("no running local instance to attach")
 	}
 	owner, err := processlock.TryAcquire(OwnershipPath(client.RuntimeDirectory))
 	if err != nil {
@@ -72,10 +98,13 @@ func RunForeground(ctx context.Context, settings Settings, input Input, confirm 
 	id := rand.Text()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	return runServer(ctx, cancel, settings, client.RuntimeDirectory, id, input, reset, func(status Status, published Published) {
+	var readinessError error
+	err = runServer(ctx, cancel, settings, client.RuntimeDirectory, id, input, reset, func(status Status, published Published) {
 		_ = lifecycle.Close()
-		if ready != nil {
-			ready(status, published)
+		readinessError = ready(status, published, true)
+		if readinessError != nil {
+			cancel()
 		}
-	}, log.New(os.Stderr, "diffx: ", log.LstdFlags))
+	}, log.New(stderr, "diffx: ", log.LstdFlags))
+	return errors.Join(readinessError, err)
 }

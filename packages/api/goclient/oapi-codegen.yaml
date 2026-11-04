@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/v2.8.2/configuration-schema.json
+package: goclient
+generate:
+  models: true
+  client: true
+output: client.gen.go
+output-options:
+  nullable-type: true
+  type-mapping:
+    number:
+      default:
+        type: float64
+  overlay:
+    path: names.overlay.yaml
+allow-remote-refs-from: []

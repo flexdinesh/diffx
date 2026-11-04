@@ -21,6 +21,7 @@ var allowed = map[string][]string{
 		"internal/browser", "internal/collector", "internal/config", "internal/contextservice",
 		"internal/diagnostics", "internal/diffsource", "internal/hooks", "internal/ingestion", "internal/localserver",
 		"internal/mcpapi", "internal/review", "internal/reviewstore", "internal/sshforward", "internal/submission", "internal/version",
+		"packages/localprotocol",
 	},
 	"cmd/diffx-fetcher": {"internal/config", "internal/fetcher", "internal/fetchprotocol", "internal/version"},
 	"cmd/diffx-server":  {"internal/config", "internal/identityservice", "internal/pgstore", "internal/remoteserver", "internal/version"},
@@ -34,7 +35,7 @@ var allowed = map[string][]string{
 	"internal/consoleserver":  {"internal/authhttp", "internal/consoleui", "internal/google", "internal/identityservice", "internal/pgstore", "internal/serverapp"},
 	"internal/consoleui":      {},
 	"internal/contextservice": {"internal/review", "internal/reviewdata", "internal/reviewsession", "internal/ingestion"},
-	"internal/controlapi":     {"internal/config", "internal/review"},
+	"internal/controlapi":     {"internal/config", "internal/review", "packages/localprotocol"},
 	"internal/diffsource":     {"internal/processlock", "internal/review"},
 	"internal/diagnostics":    {"internal/processlock"},
 	// GitHub wire adapter; integration policy lives in githubsync.
@@ -56,6 +57,7 @@ var allowed = map[string][]string{
 	"internal/localserver": {
 		"internal/config", "internal/contextservice", "internal/controlapi", "internal/ingestion", "internal/processlock",
 		"internal/reviewstore", "internal/serverapp", "internal/unixsocket", "internal/version", "internal/webui",
+		"packages/localprotocol",
 	},
 	"internal/mcpapi": {"internal/review", "internal/contextservice", "internal/reviewservice", "internal/ingestion"},
 	// Server Postgres persistence; pgdb holds its generated queries.
@@ -101,6 +103,11 @@ var allowed = map[string][]string{
 	"internal/testsupport/pgtest": {"internal/pgstore"},
 	"internal/version":            {},
 	"internal/webui":              {},
+	// Public wire contracts have no dependency on server implementation packages.
+	"packages/api":           {},
+	"packages/api/goclient":  {},
+	"packages/console-api":   {},
+	"packages/localprotocol": {},
 }
 
 // postgresOwners hold every Postgres driver and migration dependency.
@@ -137,6 +144,9 @@ func checkPackage(pkg listedPackage) []string {
 	}
 	var violations []string
 	for _, dependency := range pkg.Imports {
+		if dependency == "github.com/egoist/mygo" || strings.HasPrefix(dependency, "github.com/egoist/mygo/") {
+			violations = append(violations, fmt.Sprintf("%s must not import desktop UI; keep MyGo in apps/desktop", name))
+		}
 		if dependency == "os/exec" && !slices.Contains([]string{
 			"internal/browser", "internal/diffsource", "internal/fetcher", "internal/hooks", "internal/localserver",
 			"internal/sshforward",
@@ -180,7 +190,7 @@ func checkPackages(input io.Reader, diagnostics io.Writer) (bool, error) {
 }
 
 func main() {
-	command := exec.Command("go", "list", "-e", "-json", "./cmd/...", "./internal/...")
+	command := exec.Command("go", "list", "-e", "-json", "./cmd/...", "./internal/...", "./packages/...")
 	command.Stderr = os.Stderr
 	output, err := command.Output()
 	if err != nil {

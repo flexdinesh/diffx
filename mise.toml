@@ -33,12 +33,17 @@ run = [
 ]
 
 [tasks.generate]
-description = "Generate TypeScript API types, Postgres queries and agent plugin adapters"
+description = "Generate API clients, Postgres queries and agent plugin adapters"
 run = [
   "pnpm generate:api",
+  { task = "generate:api:go" },
   { task = "generate:sql" },
   { task = "plugins:build" },
 ]
+
+[tasks."generate:api:go"]
+description = "Generate the Go REST client from the canonical OpenAPI contract"
+run = "go generate ./packages/api/goclient"
 
 [tasks."generate:sql"]
 description = "Generate typed Go Postgres queries from internal/pgstore SQL"
@@ -266,7 +271,7 @@ if ! sqlc diff -f internal/pgstore/sqlc.yaml; then
   echo 'Run `mise run generate:sql` and commit internal/pgstore/pgdb.' >&2
   exit 1
 fi
-generated_changes=$(git status --porcelain --untracked-files=all -- packages/api/src/schema.d.ts packages/console-api/src/schema.d.ts packages/plugin-opencode/dist packages/plugin-pi/dist)
+generated_changes=$(git status --porcelain --untracked-files=all -- packages/api/src/schema.d.ts packages/api/goclient/client.gen.go packages/console-api/src/schema.d.ts packages/plugin-opencode/dist packages/plugin-pi/dist)
 if [ -n "$generated_changes" ]; then
   printf '%s\n' "$generated_changes"
   echo 'Commit generated API types and built plugins before pushing.' >&2
