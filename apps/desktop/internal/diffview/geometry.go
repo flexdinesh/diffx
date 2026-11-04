@@ -38,7 +38,8 @@ func (v *ReadOnlyView) Focus()                     { v.handle.Focus() }
 func (v *ReadOnlyView) Focused(c *ui.Context) bool { return v.handle.FocusWithin(c) }
 
 func (v *ReadOnlyView) Position() Position {
-	p := Position{X: v.scroll.X, Y: v.scroll.Y, Focus: v.focused, raw: v.presentation.raw, anchor: v.closestAnchor(), sourceY: v.scroll.Y}
+	scroll := v.scrollState()
+	p := Position{X: scroll.X, Y: scroll.Y, Focus: v.focused, raw: v.presentation.raw, anchor: v.closestAnchor(), sourceY: scroll.Y}
 	if v.selection != nil {
 		copy := *v.selection
 		p.Selection = &copy
@@ -63,7 +64,8 @@ func (v *ReadOnlyView) Restore(p Position) error {
 	} else {
 		v.ClearSelection()
 	}
-	v.scroll.X, v.scroll.Y = p.X, p.Y
+	scroll := v.scrollState()
+	scroll.X, scroll.Y = p.X, p.Y
 	v.pendingAnchor = nil
 	if p.anchor != nil {
 		copy := *p.anchor
@@ -116,6 +118,10 @@ func (v *ReadOnlyView) geometryFor(key string) *geometryAnchor {
 }
 
 func (v *ReadOnlyView) closestAnchor() *scrollAnchor {
+	if v.parentScroll != nil && !v.visible {
+		return nil
+	}
+	scroll := v.scrollState()
 	var best *scrollAnchor
 	distance := float32(math.MaxFloat32)
 	bestRank := 5
@@ -127,15 +133,15 @@ func (v *ReadOnlyView) closestAnchor() *scrollAnchor {
 		if strings.HasPrefix(key, "hunk:") {
 			rank = 1
 		}
-		if g.y < v.scroll.Y || g.y > v.scroll.Y+v.viewportHeight {
+		if g.y < scroll.Y || g.y > scroll.Y+v.viewportHeight {
 			rank += 2
 		}
 		if rank > bestRank {
 			continue
 		}
-		d := float32(math.Abs(float64(g.y - v.scroll.Y)))
+		d := float32(math.Abs(float64(g.y - scroll.Y)))
 		if rank < bestRank || d < distance || d == distance && (best == nil || key < best.key) {
-			bestRank, distance, best = rank, d, &scrollAnchor{key: key, offset: g.y - v.scroll.Y}
+			bestRank, distance, best = rank, d, &scrollAnchor{key: key, offset: g.y - scroll.Y}
 		}
 	}
 	return best
@@ -150,6 +156,7 @@ func (v *ReadOnlyView) captureAnchor() {
 // updateGeometry runs after native layout and painting. Only public Handle
 // bounds and ScrollState are read; MyGo's editor buffers/geometry stay private.
 func (v *ReadOnlyView) updateGeometry(c *ui.Context, p *ui.Painter, viewport ui.Rect) {
+	scroll := v.scrollState()
 	v.viewportHeight = viewport.H
 	for key, g := range v.geometry {
 		if !v.activeGeometry[key] {
@@ -163,10 +170,10 @@ func (v *ReadOnlyView) updateGeometry(c *ui.Context, p *ui.Painter, viewport ui.
 		g.width, g.height = r.W, r.H
 		g.valid = r.W > 0
 		if g.valid {
-			g.y = r.Y - viewport.Y + v.scroll.Y
+			g.y = r.Y - viewport.Y + scroll.Y
 		}
 	}
-	target := v.scroll.Y
+	target := scroll.Y
 	if v.reveal != nil {
 		if g := v.geometry[rangeKey(*v.reveal)]; g != nil && g.valid {
 			if g.y < target {
@@ -192,9 +199,9 @@ func (v *ReadOnlyView) updateGeometry(c *ui.Context, p *ui.Painter, viewport ui.
 			}
 		}
 	}
-	target = max(0, min(target, v.scroll.MaxY))
+	target = max(0, min(target, scroll.MaxY))
 	if v.pendingAnchor != nil {
-		if math.Abs(float64(target-v.scroll.Y)) <= 0.25 {
+		if math.Abs(float64(target-scroll.Y)) <= 0.25 {
 			v.pendingAnchor.stable++
 		} else {
 			v.pendingAnchor.stable = 0
@@ -205,8 +212,8 @@ func (v *ReadOnlyView) updateGeometry(c *ui.Context, p *ui.Painter, viewport ui.
 			p.AnimationFrame()
 		}
 	}
-	if math.Abs(float64(target-v.scroll.Y)) > 0.25 {
-		v.scroll.Y = target
+	if math.Abs(float64(target-scroll.Y)) > 0.25 {
+		scroll.Y = target
 		p.AnimationFrame()
 	}
 }
@@ -227,7 +234,7 @@ func (v *ReadOnlyView) drawAnnotation(c *ui.Context, a editor.DiffAnnotation) {
 		box.Bind(&v.geometryFor(note.key).handle)
 	}
 	if note.anchor {
-		if v.externalScroll && v.reveal != nil && note.server == *v.reveal {
+		if v.externalScroll && v.parentScroll == nil && v.reveal != nil && note.server == *v.reveal {
 			box.ScrollIntoView()
 			v.reveal = nil
 		}

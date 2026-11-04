@@ -23,6 +23,20 @@ reliably identify deletion-side lines. Horizontal offsets are retained while
 mounted but cannot be restored across editor reconstruction through MyGo's
 current public API.
 
+Inline and file annotations require the selected comparison scope. The Comments
+sidebar retains cross-scope comments with scope labels; navigation switches to
+that scope and retains its line target until the preview mounts. The outer file
+list restores measured stored-line anchors during context and annotation changes.
+Session replacement joins the old controller and settles its drafts before
+accepting new operation IDs. Unconfirmed drafts remain editable with recovery
+instructions. Comments and reviewed marks refresh every three seconds, coalesced
+with selected reads and writes, because ingestion events do not cover review
+mutations. This never collects Git or replaces the selected snapshot.
+
+Alt+M marks reviewed and advances after acknowledgement. In-flight repeats are
+ignored; a held chord can mark successive files, but cannot unreview the final
+file. Use the file's Reviewed control to toggle an existing mark.
+
 Native primitives consume generated semantic tokens and palettes. Preferences
 live in a versioned, atomically written app configuration file, independent of
 browser localStorage. Server comments and reviewed-file marks are shared with

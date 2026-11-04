@@ -184,6 +184,9 @@ func (a *application) commentCard(c *ui.Context, comment goclient.ReviewComment,
 				role = design.StatusSuccess
 			}
 			design.Status(c, label, role)
+			if sidebar {
+				design.Text(c, "Comparison: "+string(comment.Scope), design.Muted)
+			}
 			if commentOutdated(comment) {
 				design.Status(c, "Outdated", design.StatusWarning)
 			} else if comment.Placement != nil && comment.Placement.Applicability == "moved" {
@@ -331,26 +334,44 @@ func (a *application) commentsPanel(c *ui.Context) {
 }
 
 func (a *application) navigateComment(comment goclient.ReviewComment) {
-	if a.state.Diff == nil {
+	if a.state.Current == nil || a.state.Session == nil || a.state.CommitID != "" || a.controller == nil {
+		return
+	}
+	if !workspace.ScopeAvailable(a.state.Session.Capabilities, comment.Scope) {
+		a.actionError = "Comment comparison is unavailable in this snapshot. Original code remains in Comments."
+		return
+	}
+	target := &commentTarget{owner: reviewOwner{ContextID: contextID(a.state), Scope: comment.Scope}, path: comment.Path}
+	if comment.Placement != nil && !commentAtFile(comment) {
+		r := commentRange(comment)
+		target.rangeTarget = &r
+	}
+	a.commentTarget = target
+	if comment.Scope != a.state.Scope {
+		a.controller.SetScope(comment.Scope)
+		return
+	}
+	a.resolveCommentTarget()
+}
+
+func (a *application) resolveCommentTarget() {
+	target := a.commentTarget
+	if target == nil || target.owner != a.snapshotKey || a.state.Diff == nil {
 		return
 	}
 	for _, file := range a.state.Diff.Files {
-		if file.Path == comment.Path || stringValue(file.OldPath) == comment.Path {
+		if file.Path == target.path || stringValue(file.OldPath) == target.path {
 			if a.prefs.HideReviewed {
 				a.prefs.HideReviewed = false
 				a.persist()
 			}
 			a.fileFilter = ""
 			a.selectFile(file.Id)
-			if view := a.fileViews[file.Id]; view != nil && view.view != nil && comment.Placement != nil && !commentAtFile(comment) {
-				r := commentRange(comment)
-				if err := view.view.ScrollTo(r); err != nil {
-					a.actionError = err.Error()
-				}
-			}
+			a.commentTarget = target
 			return
 		}
 	}
+	a.commentTarget = nil
 	a.actionError = "Comment file is outside this captured comparison. Original code remains in Comments."
 }
 

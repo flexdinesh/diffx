@@ -42,6 +42,7 @@ func TestRoundTripDefaultsAndRecovery(t *testing.T) {
 	p.Wrap = true
 	p.Layout = "unified"
 	p.Seen["opaque-stream"] = "opaque-context"
+	p.SeenInitialized = true
 	p.Scopes["opaque-stream"] = "committed"
 	p.FontFamily = "JetBrains Mono"
 	p.FilePaneWidth = 400

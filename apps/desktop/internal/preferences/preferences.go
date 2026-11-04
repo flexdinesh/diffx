@@ -40,6 +40,7 @@ type Preferences struct {
 	ProjectPaneCollapsed bool              `json:"projectPaneCollapsed"`
 	FilePaneCollapsed    bool              `json:"filePaneCollapsed"`
 	Seen                 map[string]string `json:"seen"`
+	SeenInitialized      bool              `json:"seenInitialized"`
 	Scopes               map[string]string `json:"scopes"`
 }
 

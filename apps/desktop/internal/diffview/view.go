@@ -56,6 +56,8 @@ type ReadOnlyView struct {
 	pendingContext    func() error
 	lastError         error
 	externalScroll    bool
+	parentScroll      *ui.ScrollState
+	visible           bool
 	selectionDisabled bool
 }
 
@@ -103,6 +105,23 @@ func (v *ReadOnlyView) Draw(c *ui.Context) ui.Element {
 // not create another scroll container or compete for wheel input.
 func (v *ReadOnlyView) DrawContent(c *ui.Context) ui.Element {
 	return v.draw(c, true)
+}
+
+// SetScrollContainer gives DrawContent the owning list's measured viewport and
+// offset. It restores native line anchors by moving that container, without
+// introducing a nested vertical scroll surface.
+func (v *ReadOnlyView) SetScrollContainer(parent *ui.ScrollState) {
+	if v.parentScroll != parent {
+		v.parentScroll = parent
+		v.bindAnnotations()
+	}
+}
+
+func (v *ReadOnlyView) scrollState() *ui.ScrollState {
+	if v.parentScroll != nil {
+		return v.parentScroll
+	}
+	return &v.scroll
 }
 
 func (v *ReadOnlyView) draw(c *ui.Context, external bool) ui.Element {
@@ -158,8 +177,15 @@ func (v *ReadOnlyView) draw(c *ui.Context, external bool) ui.Element {
 			_ = v.MoveSelection(delta, true)
 		}
 	}
-	if !external {
-		root.DrawOver(func(p *ui.Painter, r ui.Rect) { v.updateGeometry(c, p, r) })
+	if !external || v.parentScroll != nil {
+		root.DrawOver(func(p *ui.Painter, r ui.Rect) {
+			viewport := r
+			if external {
+				viewport = v.parentScroll.Bounds(c)
+			}
+			v.visible = r.Y < viewport.Y+viewport.H && r.Y+r.H > viewport.Y
+			v.updateGeometry(c, p, viewport)
+		})
 	}
 	return root
 }
@@ -313,6 +339,18 @@ func (v *ReadOnlyView) rebind() {
 
 func (v *ReadOnlyView) bindAnnotations() {
 	v.state.Annotations = nil
+	if v.parentScroll != nil {
+		// Zero-height native markers provide stable stored-line geometry even in
+		// long hunks without comments. Sampling bounds marker allocation.
+		for side, index := range v.presentation.indices {
+			for compact, line := range index.lines {
+				if line%16 == 0 {
+					r := ServerRange{Side: editor.DiffSide(side), Start: line, End: line}
+					v.state.Annotations = append(v.state.Annotations, editor.DiffAnnotation{Side: r.Side, Line: compact, Key: viewNote{key: rangeKey(r), anchor: true, server: r}})
+				}
+			}
+		}
+	}
 	if v.reveal != nil {
 		v.addRangeAnchor(*v.reveal)
 	}

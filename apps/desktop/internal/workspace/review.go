@@ -37,6 +37,7 @@ func (c *Controller) replaceOwnerLocked(id string, scope goclient.DiffMode, comm
 	c.selected, c.selectCancel = context.WithCancel(c.ctx)
 	c.generation++
 	c.reviewEpoch++
+	c.reviewActive, c.reviewAgain = false, false
 	c.selectedID = id
 	c.state.Scope = scope
 	c.state.CommitID = commit
@@ -255,11 +256,20 @@ func (c *Controller) reloadReview() {
 		c.mu.Unlock()
 		return
 	}
-	id, scope, ctx, generation := c.state.Current.Id, c.state.Scope, c.selected, c.generation
-	if c.reviewCancel != nil {
-		c.reviewCancel()
+	writePending := false
+	for _, result := range c.state.Results {
+		if !result.Done && result.ContextID == c.state.Current.Id {
+			writePending = true
+			break
+		}
 	}
-	ctx, c.reviewCancel = context.WithCancel(ctx)
+	if c.reviewActive || writePending {
+		c.reviewAgain = true
+		c.mu.Unlock()
+		return
+	}
+	c.reviewActive = true
+	id, scope, ctx, generation := c.state.Current.Id, c.state.Scope, c.selected, c.generation
 	commentsEnabled := c.state.Session.Capabilities.Review.Comments.State == "enabled"
 	c.reviewEpoch++
 	epoch := c.reviewEpoch
@@ -287,8 +297,16 @@ func (c *Controller) reloadReview() {
 			e2 = errors.New("review marks response missing")
 		}
 		c.mu.Lock()
-		if !c.ownsLocked(generation) || epoch != c.reviewEpoch {
+		if !c.ownsLocked(generation) {
 			c.mu.Unlock()
+			return
+		}
+		c.reviewActive = false
+		again := c.reviewAgain || epoch != c.reviewEpoch
+		c.reviewAgain = false
+		if epoch != c.reviewEpoch {
+			c.mu.Unlock()
+			c.reloadReview()
 			return
 		}
 		c.state.ReviewError = ""
@@ -307,6 +325,9 @@ func (c *Controller) reloadReview() {
 		}
 		c.mu.Unlock()
 		c.emit()
+		if again {
+			c.reloadReview()
+		}
 	})
 	c.mu.Unlock()
 }

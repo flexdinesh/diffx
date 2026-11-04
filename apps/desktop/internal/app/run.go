@@ -149,6 +149,16 @@ func (a *application) start(args []string) {
 	}
 	if a.controller != nil {
 		a.controller.Close()
+		// Close joins admitted writes. Consume their final outcomes before a new
+		// controller can reuse operation IDs or discard the queued notification.
+		a.receive(a.controller.Snapshot())
+		for _, pending := range a.pending {
+			if d := a.drafts[pending.draftKey]; d != nil {
+				d.Saving = 0
+				d.Error = "Session ended before save was confirmed. Check the original review before retrying."
+			}
+		}
+		clear(a.pending)
 		a.controller = nil
 	}
 	if a.launch != nil {
@@ -204,15 +214,20 @@ func (a *application) start(args []string) {
 			}
 			a.starting, a.needsFolder, a.startupError = false, false, ""
 			a.ready = &s.Ready
-			c := a.newController(s.Client, func() {
+			var c controller
+			c = a.newController(s.Client, func() {
 				a.dispatch(func() {
-					if !a.closed && a.launch == l && a.controller != nil {
-						a.receive(a.controller.Snapshot())
+					if !a.closed && a.launch == l && a.controller == c {
+						a.receive(c.Snapshot())
 					}
 				})
 			})
 			a.controller = c
-			c.RestoreSeen(a.prefs.Seen)
+			seen := a.prefs.Seen
+			if !a.prefs.SeenInitialized && len(seen) == 0 {
+				seen = nil
+			}
+			c.RestoreSeen(seen)
 			scopes := make(map[string]goclient.DiffMode, len(a.prefs.Scopes))
 			for stream, scope := range a.prefs.Scopes {
 				scopes[stream] = goclient.DiffMode(scope)

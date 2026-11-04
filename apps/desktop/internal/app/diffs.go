@@ -24,7 +24,7 @@ func (a *application) drawDiffs(c *ui.Context, files []goclient.ChangedFile) {
 	ui.List(c.Key("diff-files"), &a.diffList, len(files), func(i int) {
 		file := files[i]
 		ui.Column(c.Key(file.Id)).FillWidth().Shrink(0).Padding(0, 12, 12).Children(func() { a.drawFile(c, file) })
-	}).Label("File diffs").Grow(1).MinHeight(0).FillWidth()
+	}).Label("File diffs").Grow(1).MinHeight(0).FillWidth().TrackScroll(&a.diffScroll)
 	first, _ := a.diffList.Visible()
 	if first >= 0 && first < len(files) && first != a.lastVisibleFirst {
 		a.lastVisibleFirst = first
@@ -131,6 +131,15 @@ func (a *application) drawFile(c *ui.Context, file goclient.ChangedFile) {
 			return
 		}
 		v := fv.view
+		v.SetScrollContainer(&a.diffScroll)
+		if target := a.commentTarget; target != nil && target.owner == a.snapshotKey && (file.Path == target.path || stringValue(file.OldPath) == target.path) {
+			if target.rangeTarget != nil {
+				if err := v.ScrollTo(*target.rangeTarget); err != nil {
+					a.actionError = "Comment line is outside the captured patch. Original code remains in Comments."
+				}
+			}
+			a.commentTarget = nil
+		}
 		options := a.renderOptions(c, file.Path)
 		if err := v.SetOptions(options); err != nil {
 			design.Status(c, err.Error(), design.StatusError)
@@ -237,6 +246,9 @@ func (a *application) renderOptions(c *ui.Context, path string) diffview.Options
 
 func (a *application) fileAnnotations(c *ui.Context, file goclient.ChangedFile) {
 	for _, comment := range a.visibleComments() {
+		if comment.Scope != a.state.Scope {
+			continue
+		}
 		if comment.Path != file.Path && comment.Path != stringValue(file.OldPath) {
 			continue
 		}
@@ -263,7 +275,7 @@ func (a *application) bindAnnotations(v *diffview.ReadOnlyView, file goclient.Ch
 	placements := []diffview.Placement{}
 	if a.commentsEnabled() {
 		for _, comment := range a.visibleComments() {
-			if (comment.Path == file.Path || comment.Path == stringValue(file.OldPath)) && !commentAtFile(comment) {
+			if comment.Scope == a.state.Scope && (comment.Path == file.Path || comment.Path == stringValue(file.OldPath)) && !commentAtFile(comment) {
 				r := commentRange(comment)
 				if _, err := v.Presentation().Remap(r); err == nil {
 					placements = append(placements, diffview.Placement{Key: comment.Id, Label: comment.Body, Range: r, Height: 120})

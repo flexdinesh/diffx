@@ -79,7 +79,8 @@ type Controller struct {
 	selectedID          string
 	generation          uint64
 	reviewEpoch         uint64
-	reviewCancel        context.CancelFunc
+	reviewActive        bool
+	reviewAgain         bool
 	searchGeneration    uint64
 	searchCancel        context.CancelFunc
 	catalogActive       bool
@@ -154,6 +155,7 @@ func (c *Controller) Start(ctx context.Context, input localprotocol.Input) {
 	c.taskLocked(c.writeLoop)
 	c.taskLocked(c.bootstrap)
 	c.taskLocked(c.events)
+	c.taskLocked(c.refreshReviews)
 	c.mu.Unlock()
 }
 

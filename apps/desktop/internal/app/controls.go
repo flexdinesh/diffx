@@ -282,7 +282,7 @@ func (a *application) overlays(c *ui.Context, width, height float32) {
 	ui.Modal(c.Key("shortcuts"), &a.shortcuts, func() {
 		ui.Column(c).Width(min(560, width-48)).Gap(8).Children(func() {
 			design.Text(c, "Keyboard shortcuts", design.Heading)
-			for _, line := range []string{"Cmd/Ctrl+K  Search reviews", "Cmd/Ctrl+Shift+F  Filter files", "Alt+J / Alt+K  Next / previous file", "Alt+M  Toggle reviewed and advance", "Alt+R  Sync checkouts", "Alt+[ / Alt+]  Older / newer commit", "Alt+Up / Alt+Down  Select adjacent line", "Alt+Shift+Up / Down  Extend line selection", "Cmd/Ctrl+Enter  Save active comment", "Cmd/Ctrl+Shift+C  Copy review", "Cmd/Ctrl+,  Settings", "Escape  Close dialog"} {
+			for _, line := range []string{"Cmd/Ctrl+K  Search reviews", "Cmd/Ctrl+Shift+F  Filter files", "Alt+J / Alt+K  Next / previous file", "Alt+M  Mark reviewed and advance", "Alt+R  Sync checkouts", "Alt+[ / Alt+]  Older / newer commit", "Alt+Up / Alt+Down  Select adjacent line", "Alt+Shift+Up / Down  Extend line selection", "Cmd/Ctrl+Enter  Save active comment", "Cmd/Ctrl+Shift+C  Copy review", "Cmd/Ctrl+,  Settings", "Escape  Close dialog"} {
 				design.Text(c, line, design.Body)
 			}
 			design.Text(c, "Select line ranges with click then Shift-click. Ranges must be contiguous and at most 200 lines.", design.Secondary)
@@ -475,7 +475,7 @@ func (a *application) keyboard(c *ui.Context) {
 	}
 	if c.Shortcut(ui.Alt, ui.KeyM) && a.mutableReview() {
 		for _, file := range a.visibleFiles() {
-			if file.Id == a.selectedFile {
+			if file.Id == a.selectedFile && !a.reviewed(file) {
 				a.markFile(file, true)
 				break
 			}

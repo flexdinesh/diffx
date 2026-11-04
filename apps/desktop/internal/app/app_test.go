@@ -300,6 +300,17 @@ func TestReviewedShortcutWaitsForSuccessThenAdvances(t *testing.T) {
 	if a.selectedFile != "file-two" {
 		t.Fatalf("mark success did not advance: %q", a.selectedFile)
 	}
+	tt.Key(ui.Alt, ui.KeyM)
+	f.state.Marks = append(f.state.Marks, goclient.ReviewMark{DiffId: "diff-one", VersionId: "version-one", Scope: "all", FileId: "file-two", FileVersion: "fingerprint-two"})
+	finish(t, a, f, 3, "")
+	tt.Frame()
+	tt.Key(ui.Alt, ui.KeyM)
+	if len(f.marks) != 3 {
+		t.Fatal("repeated mark shortcut unreviewed the final file")
+	}
+	f.state.Marks = f.state.Marks[:1]
+	a.receive(f.state)
+	tt.Frame()
 	click(t, tt, "Hide reviewed")
 	if got := a.visibleFiles(); len(got) != 1 || got[0].Id != "file-two" {
 		t.Fatalf("hidden reviewed=%v", got)

@@ -84,6 +84,12 @@ type reviewOwner struct {
 	CommitID  string
 }
 
+type commentTarget struct {
+	owner       reviewOwner
+	path        string
+	rangeTarget *diffview.ServerRange
+}
+
 type application struct {
 	ctx                                                                          context.Context
 	cancel                                                                       context.CancelFunc
@@ -126,10 +132,12 @@ type application struct {
 	fileCollapsed, folderCollapsed, repositoryCollapsed                          map[string]bool
 	commentExpanded                                                              map[string]bool
 	diffList                                                                     ui.ListState
+	diffScroll                                                                   ui.ScrollState
 	fileScroll, projectScroll, commentScroll, settingsScroll, pickerScroll       ui.ScrollState
 	fileFocus, searchFocus                                                       ui.Handle
 	pickerProject                                                                string
 	revealFile                                                                   string
+	commentTarget                                                                *commentTarget
 	ignoreStdin                                                                  bool
 	jumpFile                                                                     string
 	lastVisibleFirst                                                             int
@@ -161,6 +169,9 @@ func (a *application) receive(s workspace.State) {
 		key = reviewOwner{ContextID: s.Current.Id, Scope: s.Scope, CommitID: s.CommitID}
 	}
 	if key != a.snapshotKey {
+		if a.commentTarget != nil && key != a.commentTarget.owner {
+			a.commentTarget = nil
+		}
 		a.snapshotKey = key
 		a.feedback, a.actionError = "", ""
 		a.selectedFile, a.jumpFile = "", ""
@@ -168,6 +179,7 @@ func (a *application) receive(s workspace.State) {
 		a.lineSelections = map[string]diffview.ServerRange{}
 		a.fileCollapsed = map[string]bool{}
 		a.diffList = ui.ListState{}
+		a.diffScroll = ui.ScrollState{}
 		a.lastVisibleFirst = -1
 		a.activeDraft = ""
 	}
@@ -214,8 +226,9 @@ func (a *application) receive(s workspace.State) {
 	if len(slices.DeleteFunc(slices.Clone(s.Contexts), func(c goclient.Context) bool { return !workspace.CurrentWork(c) })) > 1 {
 		a.showProjects = true
 	}
-	if !maps.Equal(a.prefs.Seen, s.Seen) && s.Seen != nil {
+	if s.Seen != nil && (!a.prefs.SeenInitialized || !maps.Equal(a.prefs.Seen, s.Seen)) {
 		a.prefs.Seen = maps.Clone(s.Seen)
+		a.prefs.SeenInitialized = true
 		a.persistMetadata()
 	}
 	if s.SavedScopes != nil {
@@ -236,6 +249,7 @@ func (a *application) receive(s workspace.State) {
 			a.selectedFile = ""
 		}
 	}
+	a.resolveCommentTarget()
 }
 
 func (a *application) persist() {
@@ -334,6 +348,7 @@ func (a *application) orderedFiles() []goclient.ChangedFile {
 }
 
 func (a *application) selectFile(id string) {
+	a.commentTarget = nil
 	a.selectedFile, a.jumpFile = id, id
 	a.fileDrawer = false
 	a.fileCollapsed[id] = false

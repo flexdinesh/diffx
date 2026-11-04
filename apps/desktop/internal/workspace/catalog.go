@@ -342,6 +342,22 @@ func (c *Controller) events() {
 	}
 }
 
+// Comments and review marks have no ingestion event. Refresh only these small
+// durable reads, matching the web client's cadence, without collecting Git or
+// replacing the selected immutable snapshot. Close cancels the timer and reads.
+func (c *Controller) refreshReviews() {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-ticker.C:
+			c.reloadReview()
+		}
+	}
+}
+
 func (c *Controller) LoadMetrics() {
 	c.mu.Lock()
 	if !c.aliveLocked() || c.state.MetricsLoading {
