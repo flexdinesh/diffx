@@ -180,6 +180,14 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 		return errors.New("headless mode needs the local socket; it has no viewer otherwise")
 	}
 	status := Status{State: "running", StateID: user.ID, InstanceID: instanceID, PID: os.Getpid(), Version: buildversion.Number(), ProtocolVersion: controlapi.ProtocolVersion}
+	if input.Session != nil {
+		metadata := *input.Session
+		metadata.Input.Paths = append([]string(nil), metadata.Input.Paths...)
+		if defaultContextID != "" && metadata.Input.Kind == "capture" {
+			metadata.Input.ContextID = defaultContextID
+		}
+		status.Session = &metadata
+	}
 	var viewer net.Listener
 	if !settings.Headless {
 		viewer, err = listenViewer(settings.Port)
@@ -234,7 +242,7 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 		defer socket.Close()
 		// Control is reachable only through the owner's socket.
 		routes := http.NewServeMux()
-		routes.Handle("/control/v1/", controlapi.New(statusFunc, cancel))
+		routes.Handle("/control/v1/", controlapi.NewWithLifetime(ctx, statusFunc, cancel))
 		routes.Handle("/", app)
 		endpoints = append(endpoints, serverapp.Endpoint{Server: newServer(routes, logger), Listener: sameUser{Listener: socket, uid: uint32(os.Getuid())}})
 	}

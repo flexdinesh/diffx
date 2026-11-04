@@ -15,6 +15,8 @@ var errHelp = errors.New("help requested")
 var errHostRemoved = errors.New("--host was removed: local diffx serves its viewer on loopback only; reach diffx on another machine with diffx connect ssh://HOST")
 
 type options struct {
+	parentFD         int
+	attach           bool
 	replace          bool
 	resetState       bool
 	print            bool
@@ -87,6 +89,10 @@ func parseOptions(arguments []string, stderr io.Writer) (options, error) {
 // parseOptionsMode parses every command's options; local enables the flags
 // only local serving accepts.
 func parseOptionsMode(arguments []string, stderr io.Writer, local bool) (options, error) {
+	return parseOptionsSession(arguments, stderr, local, false)
+}
+
+func parseOptionsSession(arguments []string, stderr io.Writer, local, session bool) (options, error) {
 	for _, argument := range arguments {
 		if argument == "--" {
 			break
@@ -98,6 +104,10 @@ func parseOptionsMode(arguments []string, stderr io.Writer, local bool) (options
 	flags := flag.NewFlagSet("diffx", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	values := options{directory: ".", trigger: "manual"}
+	if session {
+		flags.IntVar(&values.parentFD, "parent-fd", -1, "inherited readable parent lifetime pipe")
+		flags.BoolVar(&values.attach, "attach", false, "attach to the running local scope")
+	}
 	flags.Var(pathList{&values.paths}, "path", "checkout path to collect; local mode accepts it repeatedly and discovers checkouts and their worktrees below each")
 	flags.IntVar(&values.scanDepth, "scan-depth", 8, "local mode: directory levels searched below each path for repositories")
 	flags.BoolVar(&values.scanWorktrees, "scan-worktrees", false, "local mode: also collect the other worktrees of a checkout path's repository")
@@ -202,6 +212,19 @@ func parseOptionsMode(arguments []string, stderr io.Writer, local bool) (options
 	if values.headless {
 		values.noBrowser = true
 	}
+	if session && values.attach {
+		var conflict string
+		flags.Visit(func(value *flag.Flag) {
+			switch value.Name {
+			case "attach", "parent-fd", "config-file", "debug", "no-browser":
+			default:
+				conflict = value.Name
+			}
+		})
+		if conflict != "" || flags.NArg() != 0 {
+			return options{}, errors.New("--attach accepts no input, scope, configuration override, reset or replacement flags")
+		}
+	}
 	return values, nil
 }
 
@@ -211,6 +234,7 @@ func normalizeArguments(arguments []string) []string {
 		"--config-file": true, "--path": true, "--server": true, "--token": true, "--trigger": true, "--harness": true, "--run-id": true, "--source-id": true,
 		"--state": true, "--web-dir": true,
 		"--base": true, "--branch": true, "--session-name": true, "--retention-days": true, "--scan-depth": true,
+		"--parent-fd": true,
 	}
 	options, positionals := make([]string, 0, len(arguments)), make([]string, 0, 1)
 	for index := 0; index < len(arguments); index++ {

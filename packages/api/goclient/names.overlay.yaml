@@ -1,0 +1,8 @@
+overlay: 1.0.0
+info:
+  title: Go names for distinct comparison enums
+  version: 1.0.0
+actions:
+  - target: $.components.schemas.Comparison.properties.kind
+    update:
+      x-go-type-name: ComparisonPolicyKind

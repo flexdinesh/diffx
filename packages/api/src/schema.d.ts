@@ -1536,7 +1536,7 @@ export interface components {
       availability: "unchecked" | "available" | "unavailable";
       /** @description A newer collection superseded this snapshot for the same owner, source, repository, checkout, branch, and comparison policy. Collection time determines freshness; arrival order breaks ties. Freshness survives snapshot expiry and pruning. False for ungrouped piped observations. */
       stale?: boolean;
-      capabilities: components["schemas"]["Session"]["capabilities"];
+      capabilities: components["schemas"]["SessionCapabilities"];
       observation?: components["schemas"]["ObservationMetadata"];
       /** @description Sessions that observed this snapshot, including collections deduplicated into the same review. Names reflect latest supplied session metadata; no authorship is implied. */
       sessions?: components["schemas"]["SessionAssociation"][];
@@ -1609,18 +1609,19 @@ export interface components {
       source: "local" | "stdin";
       name: string;
       root: string;
-      capabilities: {
-        diff: {
-          scopes: components["schemas"]["ScopesCapability"];
-          refresh: components["schemas"]["Capability"];
-          stagingMetadata: components["schemas"]["Capability"];
-        };
-        files: {
-          contents: components["schemas"]["Capability"];
-        };
-        review: {
-          comments: components["schemas"]["Capability"];
-        };
+      capabilities: components["schemas"]["SessionCapabilities"];
+    };
+    SessionCapabilities: {
+      diff: {
+        scopes: components["schemas"]["ScopesCapability"];
+        refresh: components["schemas"]["Capability"];
+        stagingMetadata: components["schemas"]["Capability"];
+      };
+      files: {
+        contents: components["schemas"]["Capability"];
+      };
+      review: {
+        comments: components["schemas"]["Capability"];
       };
     };
     ChangedFile: {

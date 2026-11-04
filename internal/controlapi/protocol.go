@@ -3,7 +3,10 @@
 // socket, whose filesystem permissions and peer user check are its authority.
 package controlapi
 
-import "github.com/flexdinesh/diffx/internal/config"
+import (
+	"github.com/flexdinesh/diffx/internal/config"
+	"github.com/flexdinesh/diffx/packages/localprotocol"
+)
 
 // ProtocolVersion 6 moved control to the local socket and replaced the
 // status URLs with the socket path and optional viewer URL.
@@ -21,9 +24,10 @@ type Status struct {
 	// Socket is the owner-only API, MCP and control endpoint.
 	Socket string `json:"socket"`
 	// ViewerURL is the loopback browser endpoint; empty when headless.
-	ViewerURL    string   `json:"viewerUrl"`
-	Settings     Settings `json:"settings"`
-	Observations int      `json:"observations"`
+	ViewerURL    string                 `json:"viewerUrl"`
+	Settings     Settings               `json:"settings"`
+	Observations int                    `json:"observations"`
+	Session      *localprotocol.Session `json:"session,omitempty"`
 }
 
 // Problem is a local server rejection, distinct from an interrupted transport.

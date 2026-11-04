@@ -16,11 +16,14 @@ import (
 	"github.com/flexdinesh/diffx/internal/contextservice"
 	"github.com/flexdinesh/diffx/internal/localserver"
 	buildversion "github.com/flexdinesh/diffx/internal/version"
+	"github.com/flexdinesh/diffx/packages/localprotocol"
 )
 
 func run(ctx context.Context, arguments []string, stdin *os.File, stdout, stderr io.Writer) error {
 	if len(arguments) > 0 {
 		switch arguments[0] {
+		case localprotocol.Command:
+			return runDesktopSession(ctx, arguments[1:], stdin, stdout, stderr)
 		case "diagnostics":
 			return runDiagnostics(arguments[1:], stdout)
 		case "config":

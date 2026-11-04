@@ -46,19 +46,12 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 	}
 	started := time.Now()
 	label := "Piped diff"
-	var selected localserver.Input
+	selected, err := prepareLocalSession(ctx, &values, input, stderr)
+	if err != nil {
+		return err
+	}
 	if input.Kind == "worktree" {
 		label = strings.Join(input.Paths, ", ")
-		collect := func(ctx context.Context, publish func(ingestion.Request) error) ([]localserver.CollectionFailure, error) {
-			return collectWorkspaces(ctx, values, input, stderr, publish)
-		}
-		selected = localserver.Input{Collect: collect, Selection: input.Selection}
-	} else {
-		request, err := collectInitialInput(ctx, values, input)
-		if err != nil {
-			return err
-		}
-		selected = localserver.Input{Collection: localserver.Collection{Requests: []ingestion.Request{request}}}
 	}
 	reset, err := localStateReset(ctx, values, settings, stdin, stderr)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 )
 
 // baseURL addresses the server over whatever transport the client dials;
@@ -33,6 +34,25 @@ func (client *Client) Status(ctx context.Context) (Status, error) {
 func (client *Client) Shutdown(ctx context.Context) error {
 	var result struct{}
 	return client.do(ctx, http.MethodPost, "/control/v1/shutdown", &result)
+}
+
+// WaitInstance waits for the instance's lifetime stream to close. Headers are
+// flushed immediately; only caller cancellation or server loss ends the body.
+func (client *Client) WaitInstance(ctx context.Context, instanceID string) error {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/control/v1/lifetime?instanceId="+url.QueryEscape(instanceID), nil)
+	if err != nil {
+		return err
+	}
+	response, err := client.http.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("local instance lifetime rejected: HTTP %d", response.StatusCode)
+	}
+	_, err = io.Copy(io.Discard, response.Body)
+	return err
 }
 
 func (client *Client) do(ctx context.Context, method, path string, result interface{}) error {
