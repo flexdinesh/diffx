@@ -185,11 +185,7 @@
   "semanticHighlighting": true,
   "tokenColors": [
     {
-      "scope": [
-        "comment",
-        "punctuation.definition.comment",
-        "string.comment"
-      ],
+      "scope": ["comment", "punctuation.definition.comment", "string.comment"],
       "settings": {
         "foreground": "#6a737d"
       }
@@ -207,10 +203,7 @@
       }
     },
     {
-      "scope": [
-        "entity",
-        "entity.name"
-      ],
+      "scope": ["entity", "entity.name"],
       "settings": {
         "foreground": "#6f42c1"
       }
@@ -234,10 +227,7 @@
       }
     },
     {
-      "scope": [
-        "storage",
-        "storage.type"
-      ],
+      "scope": ["storage", "storage.type"],
       "settings": {
         "foreground": "#d73a49"
       }
@@ -336,10 +326,7 @@
       }
     },
     {
-      "scope": [
-        "source.regexp",
-        "string.regexp"
-      ],
+      "scope": ["source.regexp", "string.regexp"],
       "settings": {
         "foreground": "#032f62"
       }
@@ -387,10 +374,7 @@
       }
     },
     {
-      "scope": [
-        "markup.heading",
-        "markup.heading entity.name"
-      ],
+      "scope": ["markup.heading", "markup.heading entity.name"],
       "settings": {
         "fontStyle": "bold",
         "foreground": "#005cc5"
@@ -417,17 +401,13 @@
       }
     },
     {
-      "scope": [
-        "markup.underline"
-      ],
+      "scope": ["markup.underline"],
       "settings": {
         "fontStyle": "underline"
       }
     },
     {
-      "scope": [
-        "markup.strikethrough"
-      ],
+      "scope": ["markup.strikethrough"],
       "settings": {
         "fontStyle": "strikethrough"
       }
@@ -461,20 +441,14 @@
       }
     },
     {
-      "scope": [
-        "markup.changed",
-        "punctuation.definition.changed"
-      ],
+      "scope": ["markup.changed", "punctuation.definition.changed"],
       "settings": {
         "background": "#ffebda",
         "foreground": "#e36209"
       }
     },
     {
-      "scope": [
-        "markup.ignored",
-        "markup.untracked"
-      ],
+      "scope": ["markup.ignored", "markup.untracked"],
       "settings": {
         "background": "#005cc5",
         "foreground": "#f6f8fa"
@@ -526,10 +500,7 @@
       }
     },
     {
-      "scope": [
-        "constant.other.reference.link",
-        "string.other.link"
-      ],
+      "scope": ["constant.other.reference.link", "string.other.link"],
       "settings": {
         "fontStyle": "underline",
         "foreground": "#032f62"
