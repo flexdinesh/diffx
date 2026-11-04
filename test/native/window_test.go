@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -528,7 +529,7 @@ func TestNativeWindowOwnedReview(t *testing.T) {
 	// native group tests the chord with production's mygo_noinspector tag.
 	w.press("button", "Copy review")
 	w.find("text", "Review copied")
-	exported, err := request(w.ctx, s, true, "GET", base+"/comments/export?scope=uncommitted", nil, nil)
+	exported, err := request(w.ctx, s, true, "GET", base+"/comments/export?scope=uncommitted&revision="+url.QueryEscape(diff.Revision), nil, nil)
 	must(t, err)
 	clip := exec.CommandContext(w.ctx, "xclip", "-selection", "clipboard", "-o")
 	if runtime.GOOS == "darwin" {
