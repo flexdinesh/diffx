@@ -79,6 +79,7 @@ func (a *application) beginDraft(file goclient.ChangedFile, selection *diffview.
 	}
 	a.activeDraft = key
 	a.selectedFile = file.Id
+	a.showCommentEditor()
 	a.drafts[key].Focus.Focus()
 }
 
@@ -88,7 +89,16 @@ func (a *application) editComment(comment goclient.ReviewComment) {
 		a.drafts[key] = &draft{ContextID: contextID(a.state), Body: comment.Body, EditingID: comment.Id, Request: goclient.CreateComment{Scope: comment.Scope, DiffId: comment.DiffId, VersionId: comment.VersionId}}
 	}
 	a.activeDraft = key
+	a.showCommentEditor()
 	a.drafts[key].Focus.Focus()
+}
+
+func (a *application) showCommentEditor() {
+	// MyGo's accessibility tree treats Code as a leaf and omits its annotation
+	// controls. Open the normal native pane for an accessible keyboard editor.
+	a.sidebarTab = "Comments"
+	a.fileDrawer = a.viewportWidth > 0 && a.viewportWidth < 1012 || a.prefs.FilePaneCollapsed
+	a.projectDrawer = false
 }
 
 func (a *application) saveDraft(key string) {
@@ -203,7 +213,7 @@ func (a *application) commentCard(c *ui.Context, comment goclient.ReviewComment,
 			}
 			return
 		}
-		if d := a.drafts["edit:"+comment.Id]; d != nil && (sidebar || !a.draftsInSidebar()) {
+		if d := a.drafts["edit:"+comment.Id]; d != nil && !sidebar && !a.draftsInSidebar() {
 			a.draftEditor(c, "edit:"+comment.Id)
 			return
 		}
@@ -286,10 +296,7 @@ func (a *application) commentsPanel(c *ui.Context) {
 		}
 		slices.Sort(keys)
 		for _, key := range keys {
-			d := a.drafts[key]
-			if d.EditingID == "" || d.ContextID != contextID(a.state) {
-				a.draftEditor(c, key)
-			}
+			a.draftEditor(c, key)
 		}
 		comments := a.visibleComments()
 		outdatedHeading := false

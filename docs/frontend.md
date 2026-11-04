@@ -27,6 +27,10 @@ Inline and file annotations require the selected comparison scope. The Comments
 sidebar retains cross-scope comments with scope labels; navigation switches to
 that scope and retains its line target until the preview mounts. The outer file
 list restores measured stored-line anchors during context and annotation changes.
+Creating or editing a comment opens the normal native Comments pane (a drawer
+at compact widths). MyGo's accessibility tree treats code editors as leaves,
+so annotation controls alone cannot provide accessible comment editing. All
+drafts remain visible in that pane independently of the saved-comment filter.
 Session replacement joins the old controller and settles its drafts before
 accepting new operation IDs. Unconfirmed drafts remain editable with recovery
 instructions. Comments and reviewed marks refresh every three seconds, coalesced

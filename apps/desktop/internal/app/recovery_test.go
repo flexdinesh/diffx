@@ -232,3 +232,39 @@ func TestNativeFileListPreservesMeasuredAnchor(t *testing.T) {
 		})
 	}
 }
+
+func TestRangeDraftOpensNormalNativeCommentPane(t *testing.T) {
+	for _, width := range []int{960, 1280} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			a, f := fixture(t)
+			tt := nativeTester(t, a, width, 800)
+			r := diffview.ServerRange{Side: editor.DiffNew, Start: 2, End: 3}
+			a.beginDraft(f.state.Diff.Files[0], &r)
+			tt.Frame()
+			if a.sidebarTab != "Comments" || !a.draftsInSidebar() {
+				t.Fatal("range comment editor remained inside native code accessibility leaf")
+			}
+			click(t, tt, "Comment body")
+			tt.Type("Accessible native review")
+			tt.Key(ui.Cmd, ui.KeyEnter)
+			if len(f.created) != 1 || f.created[0].Start != 2 || f.created[0].End != 3 {
+				t.Fatalf("normal pane lost range/focus: %+v", f.created)
+			}
+		})
+	}
+}
+
+func TestEditDraftRemainsVisibleWhenCommentFilterExcludesIt(t *testing.T) {
+	a, f := fixture(t)
+	tt := nativeTester(t, a, 1280, 800)
+	a.commentFilter = "Open"
+	a.editComment(goclient.ReviewComment{Id: "resolved-comment", Body: "Resolved body", Status: "resolved", Scope: "all"})
+	tt.Frame()
+	click(t, tt, "Comment body")
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Type("Corrected resolved body")
+	tt.Key(ui.Cmd, ui.KeyEnter)
+	if len(f.updated) != 1 || f.updateIDs[0] != "resolved-comment" {
+		t.Fatal("filtered comment stranded its edit draft")
+	}
+}
