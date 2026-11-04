@@ -1,6 +1,9 @@
 version: 2
 project_name: diffx
 
+snapshot:
+  version_template: "{{ .Env.DIFFX_RELEASE_VERSION }}"
+
 release:
   prerelease: false
   make_latest: true
@@ -15,7 +18,7 @@ builds:
       - >-
         -s -w
         -X github.com/flexdinesh/diffx/internal/version.Version={{.Version}}
-        -X github.com/flexdinesh/diffx/internal/version.Commit={{.Commit}}
+        -X github.com/flexdinesh/diffx/internal/version.Commit={{.Env.DIFFX_SOURCE_SHA}}
         -X github.com/flexdinesh/diffx/internal/version.Date={{.Date}}
     goos: [linux, darwin]
     goarch: [amd64, arm64]
@@ -28,7 +31,7 @@ builds:
       - >-
         -s -w
         -X github.com/flexdinesh/diffx/internal/version.Version={{.Version}}
-        -X github.com/flexdinesh/diffx/internal/version.Commit={{.Commit}}
+        -X github.com/flexdinesh/diffx/internal/version.Commit={{.Env.DIFFX_SOURCE_SHA}}
         -X github.com/flexdinesh/diffx/internal/version.Date={{.Date}}
     goos: [linux, darwin]
     goarch: [amd64, arm64]

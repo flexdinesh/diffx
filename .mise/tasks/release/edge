@@ -1,27 +1,43 @@
 #!/usr/bin/env bash
-#MISE description="Publish a main commit plus embedded web assets to the edge branch"
+#MISE description="Publish the current main source as the rolling edge prerelease"
+#MISE tools={ "aqua:cli/cli" = "2.103.0" }
 
 set -euo pipefail
 : "${GITHUB_SHA:?GITHUB_SHA is required}"
+: "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 
-git fetch --force --tags origin '+refs/heads/*:refs/remotes/origin/*'
 candidate="$(git rev-parse --verify "$GITHUB_SHA^{commit}")"
-
-current_edge=""
-if current_edge="$(git rev-parse --verify --quiet refs/remotes/origin/edge)"; then
-  if git merge-base --is-ancestor "$candidate" "$current_edge^1"; then
-    echo "edge already includes $candidate"
-    exit 0
-  fi
+if [[ "$(git rev-parse HEAD)" != "$candidate" ]]; then
+  echo "edge checkout does not match $candidate" >&2
+  exit 1
 fi
 
-# Release commits are not ancestors of main. Adding the latest one as a parent
-# makes Go derive edge pseudo-versions that sort after that release.
-parents=("$candidate")
-latest_release="$(git tag --list 'v[0-9]*' --sort=-v:refname | sed -n 1p)"
-if [[ -n "$latest_release" ]] && ! git merge-base --is-ancestor "$latest_release" "$candidate"; then
-  parents+=("$latest_release")
+git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+if [[ "$(git rev-parse refs/remotes/origin/main)" != "$candidate" ]]; then
+  echo "skip stale edge build $candidate"
+  exit 0
 fi
 
-edge_commit="$(tools/asset-commit.sh "edge: $candidate" "${parents[@]}")"
-git push --no-verify --force-with-lease="refs/heads/edge:$current_edge" origin "$edge_commit:refs/heads/edge"
+export DIFFX_RELEASE_VERSION=edge
+export DIFFX_SOURCE_SHA="$candidate"
+mise run release:package
+
+# Main can advance during compilation. Reject a stale build before publication.
+git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+if [[ "$(git rev-parse refs/remotes/origin/main)" != "$candidate" ]]; then
+  echo "skip stale edge publication $candidate"
+  exit 0
+fi
+
+release_tags="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[].tag_name')"
+current_edge="$(git ls-remote --tags origin refs/tags/edge | cut -f1)"
+git push --no-verify --force-with-lease="refs/tags/edge:$current_edge" origin "$candidate:refs/tags/edge"
+
+notes="Rolling edge build. Source commit: $candidate"
+if grep -Fxq edge <<< "$release_tags"; then
+  gh release upload edge dist/*.tar.gz --clobber
+  gh release upload edge dist/checksums.txt --clobber
+  gh release edit edge --title Edge --notes "$notes" --target "$candidate" --prerelease --latest=false --draft=false
+else
+  gh release create edge dist/*.tar.gz dist/checksums.txt --verify-tag --title Edge --notes "$notes" --prerelease --latest=false
+fi

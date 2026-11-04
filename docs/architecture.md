@@ -29,6 +29,15 @@ binary digests. Unknown inputs invalidate conservatively; failed and cancelled r
 never become successful validation records. Generated-file checks compare
 explicit generator outputs with the submitted baseline.
 
+Application binaries and web build outputs are never committed. The host static
+group includes `mise run check:artifacts` to reject tracked build outputs.
+Built plugin distributions and generated API/SQL source remain committed.
+Stable publishing tags `main` directly and stages embedded web assets only in
+the workflow workspace. Main pushes publish a rolling `edge` prerelease/tag;
+the legacy edge branch is no longer updated. Neither channel creates asset
+commits. Shell installers distribute the CLI only; Go source installs are
+unsupported because source refs lack embedded assets. See [release.md](release.md).
+
 One explicitly managed, version-pinned engine and dedicated cache volume serve
 this repository's worktrees. Engine lifetime is independent of invocation
 lifetime: cancellation releases the session, never the shared engine. Setup
@@ -299,7 +308,7 @@ reusable. Public mise test tasks use Dagger; package.json test scripts and hidde
 `test:contracts:rules` holds only the non-Go guards, because aggregate checks run every Go
 package; no hand-maintained package list can miss a new boundary test. All static
 checks, generated-file verification and test suites stay local. Publishing retains
-the builds, checksums and formula validation needed to produce release artifacts.
+the builds and checksums needed to produce release artifacts.
 
 `mise run check:boundaries` classifies every package under `cmd/` and `internal/`
 using `tools/check-boundaries`. Unclassified packages, forbidden dependencies and

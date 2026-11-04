@@ -18,12 +18,7 @@ jobs:
       contents: write
     concurrency:
       group: edge
-      cancel-in-progress: true
-    env:
-      GIT_AUTHOR_NAME: github-actions[bot]
-      GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-      GIT_COMMITTER_NAME: github-actions[bot]
-      GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,3 +37,5 @@ jobs:
       - run: mise run deps
       - run: mise run web:stage
       - run: mise run release:edge
+        env:
+          GH_TOKEN: ${{ github.token }}

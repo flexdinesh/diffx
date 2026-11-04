@@ -5,40 +5,39 @@
 Only the manual **Release** workflow creates stable version tags and GitHub
 Releases. It checks out the latest `main` when the run starts and marks the
 release as GitHub's latest stable release. Dispatches from other branches are
-skipped. Releases publish the CLI only; they never deploy servers (see
+skipped. Releases publish downloadable binaries; they never deploy servers (see
 [Homelab container images](#homelab-container-images)).
 
 Checks and test suites run locally through explicit `mise run check:pr` before
 creating or updating PRs, including after rebasing onto changed upstream content.
 GitHub Actions does not validate PRs.
-Workflows set `HUSKY=0`, and the `release:edge` and `release:tag` pushes pass
-`--no-verify`. Publishing stages embedded web assets, compiles release binaries
-with GoReleaser, generates checksums, and validates the Homebrew formula syntax.
+Workflows set `HUSKY=0`. Publishing stages embedded web assets in the workflow
+workspace, compiles release binaries with GoReleaser, and generates checksums.
 It does not repeat lint, type checks, generated-file verification or test suites.
-Release steps run through `release:*` mise tasks and pnpm scripts; GoReleaser
-is installed only by `mise run release:publish`.
+Release steps run through `release:*` mise tasks. Stable and edge publishing share
+`mise run release:package`, which installs GoReleaser and builds archives without
+publishing. The channel tasks upload those archives to GitHub.
 
 Install the latest stable release or a specific version:
 
 ```sh
-go install github.com/flexdinesh/diffx/cmd/diffx@latest
-go install github.com/flexdinesh/diffx/cmd/diffx@v0.2.0
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install.sh | sh -s -- --version v0.2.0
 ```
 
-Required repository secret:
-
-- `HOMEBREW_TAP_TOKEN`: fine-grained token with contents write and pull request
-  write access to `flexdinesh/homebrew-tap`.
+Both stable and edge installers support `--bin-dir DIR`, defaulting to
+`~/.local/bin`. They install only `diffx`, verify SHA-256 using `checksums.txt`,
+and replace the binary atomically after verification. A failed download or
+checksum preserves an existing binary. No Go or Node.js is required, no sudo is
+used, and shell profiles are unchanged. Ensure the destination is on `PATH`.
+See [install options](../docs-website/src/pages/getting-started.md).
 
 1. Merge release-ready code to `main`. When the release changes a protocol that
    servers must accept first, promote that commit to prod before continuing.
 2. Run the **Release** workflow with `main` selected. It requires no inputs.
-3. The workflow builds and commits the embedded web assets on top
-   of the `main` tip as `release: vX.Y.Z`, pushes only the tag, and publishes
-   the GitHub Release with GoReleaser from that release commit.
-4. It generates `Formula/diffx.rb` and opens or updates a pull request in
-   `flexdinesh/homebrew-tap`.
-5. Merge the tap pull request after its Homebrew checks pass.
+3. The workflow tags that `main` commit directly, stages the embedded web assets
+   locally, and publishes the GitHub Release with GoReleaser. It commits no
+   build outputs.
 
 Each release contains checksums plus Linux and macOS archives for amd64 and
 arm64; Windows is not supported. Archives include the native binary, README,
@@ -57,37 +56,37 @@ before running **Release**): new producers send
 optional activity metadata that older servers reject. Existing protocol 4
 submissions without that metadata still replay unchanged and need no reset. In-memory state lasts only for one process.
 
-The tap branch is a single rolling `diffx-homebrew`. Every release force-pushes the
-regenerated formula to it with a lease and retitles the open pull request, so a
-release that lands before the previous request is merged updates that request
-instead of opening a superseded one. Merging the request may delete the branch;
-the next release recreates it. Rerunning a release whose tag's first parent is
-still current `main` reuses the existing GitHub artifacts. Published artifacts
-are not rebuilt or replaced.
+Rerunning a release for the same `main` commit reuses its tag and existing
+GitHub artifacts. Published stable artifacts are not rebuilt or replaced.
+Version selection also recognizes historical tags whose asset commit's first
+parent is that `main` commit.
 
-The tap repository owns Homebrew style, strict audit, install, and formula test
-checks before merge.
+Homebrew publishing is retired. The external tap and historical releases are
+left untouched; shell installation is the supported distribution path.
 
 ## Development installs
 
 Install the latest `main` commit published to edge, including unreleased changes:
 
 ```sh
-go install github.com/flexdinesh/diffx/cmd/diffx@edge
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-edge.sh | sh
 ```
 
-On a push to `main`, the **Edge** workflow builds the web
-assets, commits them on top of that `main` commit, and force-pushes the result to
-the `edge` branch with a lease. Runs are serialized and superseded runs are
-cancelled; a run whose commit `edge` already includes is skipped. When the latest
-release commit is not an ancestor, it becomes a second parent so Go derives
-`edge` pseudo-versions that sort after that release. Stable `@latest` installs
-remain on the highest stable version tag. Module proxies may briefly cache branch
-lookups; use `GOPROXY=direct` when an immediate refresh is needed.
+On a push to `main`, the **Edge** workflow stages web assets locally and
+publishes a rolling GitHub prerelease with tag `edge` pointing to that `main`
+commit. It embeds the main SHA in the binary. Assets use fixed names
+`diffx_edge_<os>_<arch>.tar.gz` plus `checksums.txt`. Edge is excluded from
+GitHub's latest stable release and from `install.sh`'s default selection.
+The legacy `edge` branch is no longer updated.
 
-`@main`, `@<sha>` and feature branches do not build: they lack the embedded
-assets. Tags created before this policy point at `main` commits that still
-contain them and remain installable.
+Downloads can fail or encounter a checksum mismatch while rolling assets are
+being replaced. Retry after publication finishes; the installer preserves any
+existing binary on failure. Use `--bin-dir DIR` to override `~/.local/bin`.
+
+Go source installs (`@latest`, `@edge`, `@<sha>` and branch refs) are unsupported
+because source refs lack embedded assets. Historical binary releases remain
+installable separately with `install.sh --version vX.Y.Z`. For development from
+a configured checkout, use `mise run install`.
 
 ## Version series
 
@@ -103,26 +102,20 @@ series' patch number.
 
 ## Embedded assets
 
-`go install` builds module source exactly as it is at the ref and runs no
-frontend build, so the binary embeds `internal/webui/dist` from that ref. The
-directory is ignored on `main`, which avoids recommitting the bundle on every UI
-change. CI commits it only on installable refs, each one commit on top of `main`
-created with `tools/asset-commit.sh`:
+Application binaries and web build outputs are never committed. Publishing
+builds and stages `internal/webui/dist` only in its workspace before compiling
+archives from the tagged main commit. It creates no asset commits. The CI
+identity must be allowed to push version tags and update the rolling `edge` tag.
 
-| Ref      | Trigger                     | Commit                                        |
-| -------- | --------------------------- | --------------------------------------------- |
-| `vX.Y.Z` | Manual **Release** workflow | `release: vX.Y.Z`: `main` tip plus assets     |
-| `edge`   | Push to `main`              | `edge: <sha>`: that `main` commit plus assets |
-
-Release archives are built from the release commit, so archives and source
-installs share commit identity. Version selection and reruns compare a tag's
-first parent (`<tag>^1`) with the `main` tip. The CI identity must be allowed to
-push the `edge` branch and version tags.
+`mise run check:artifacts`, included in host static validation, rejects tracked
+application binaries and web build outputs. Built plugin distributions and
+generated API/SQL source remain committed.
 
 Stage assets locally before Go builds and tests:
 
 ```sh
 mise run web:stage
+mise run console:stage
 ```
 
 ## Licensing

@@ -114,7 +114,7 @@ func gitTags(arguments ...string) ([]string, error) {
 	return strings.Split(value, "\n"), nil
 }
 
-// releaseTagsFrom returns tags whose release commit adds assets on top of commit.
+// releaseTagsFrom recognizes direct source tags and historical asset-only child commits.
 func releaseTagsFrom(commit string, tags []string) ([]string, error) {
 	head, err := gitRevision(commit)
 	if err != nil {
@@ -122,8 +122,35 @@ func releaseTagsFrom(commit string, tags []string) ([]string, error) {
 	}
 	var released []string
 	for _, tag := range tags {
-		parent, err := gitRevision(tag + "^1")
-		if err == nil && parent == head {
+		tagCommit, err := gitRevision("refs/tags/" + tag)
+		if err != nil {
+			// Unrelated tags can point at trees or blobs rather than commits.
+			continue
+		}
+		if tagCommit == head {
+			released = append(released, tag)
+			continue
+		}
+		parents, err := exec.Command("git", "show", "--no-patch", "--format=%P", tagCommit).Output()
+		if err != nil {
+			return nil, fmt.Errorf("read release parents: %w", err)
+		}
+		if strings.TrimSpace(string(parents)) != head {
+			continue
+		}
+		changes, err := exec.Command("git", "diff", "--name-only", "--no-renames", "-z", head, tagCommit, "--").Output()
+		if err != nil {
+			return nil, fmt.Errorf("read historical release changes: %w", err)
+		}
+		paths := strings.Split(strings.TrimSuffix(string(changes), "\x00"), "\x00")
+		assetOnly := len(changes) > 0
+		for _, path := range paths {
+			if !strings.HasPrefix(path, "internal/webui/dist/") {
+				assetOnly = false
+				break
+			}
+		}
+		if assetOnly {
 			released = append(released, tag)
 		}
 	}

@@ -6,10 +6,22 @@ index.
 ## Install
 
 ```sh
-brew install flexdinesh/tap/diffx                         # Homebrew
-go install github.com/flexdinesh/diffx/cmd/diffx@latest   # Go 1.27.3+, stable
-go install github.com/flexdinesh/diffx/cmd/diffx@edge     # latest main
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install.sh | sh
 ```
+
+Installs the latest stable CLI into `~/.local/bin` on macOS/Linux amd64/arm64.
+No Go or Node.js required. Verifies SHA-256 before replacing an existing binary;
+uses no sudo and leaves shell profiles unchanged. Ensure `~/.local/bin` is on `PATH`.
+
+For the latest `main` build:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-edge.sh | sh
+```
+
+See [install options](docs-website/src/pages/getting-started.md) for pinned versions
+and a custom binary directory. For a developer checkout, use `mise run install`.
+Go source installs are unsupported because source refs lack embedded web assets.
 
 ## Use
 

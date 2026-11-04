@@ -1,5 +1,12 @@
 node_modules/
 /diffx
+/diffx-server
+/diffx-console
+/diffx-fetcher
+/diffx.exe
+/diffx-server.exe
+/diffx-console.exe
+/diffx-fetcher.exe
 /data/
 /test-data/
 dist/

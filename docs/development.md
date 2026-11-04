@@ -6,13 +6,20 @@ compiler, and Docker (Linux x64) for isolated checks.
 ## Install from main
 
 ```sh
-go install github.com/flexdinesh/diffx/cmd/diffx@edge                 # latest main (edge channel)
-GOPROXY=direct go install github.com/flexdinesh/diffx/cmd/diffx@edge  # bypass proxy cache
-mise run install                                                       # current checkout into $GOBIN
-diffx --version                                                        # confirm installed build
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-edge.sh | sh
+diffx --version  # confirm installed build
 ```
 
-`@main`, `@<sha>` and feature branches do not build; use `@edge` or a checkout.
+Installs the rolling edge CLI into `~/.local/bin`; ensure it is on `PATH`.
+Use `install.sh` for stable releases; see [release.md](release.md) for options.
+Go source installs (`@latest`, `@edge`, `@<sha>` and branch refs) are unsupported
+because source refs lack embedded web assets.
+
+After checkout setup, install your current changes:
+
+```sh
+mise run install  # builds embedded assets, installs into $GOBIN or $GOPATH/bin
+```
 
 ## Setup
 
@@ -104,7 +111,8 @@ ssh -N -L 127.0.0.1:7991:/run/user/1000/diffx/diffx.sock devbox  # manual forwar
 ## Checks
 
 ```sh
-mise run check:static       # types, lint, format (host)
+mise run check:static       # types, lint, format, tracked build outputs (host)
+mise run check:artifacts    # tracked application binaries and web build outputs (host)
 mise run check:go           # Go tests + vet
 mise run check:unit         # web/console unit, DOM, plugins
 mise run check:browser      # Playwright

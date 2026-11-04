@@ -101,7 +101,8 @@ mise. Groups invoke those scripts and hidden mise `exec` tasks inside
 containers; running them directly, like direct `go test`, bypasses isolation.
 
 The `static` group runs on the host: type checking, lint, format verification,
-Go formatting and read-only architecture/design guards. It installs locked
+Go formatting, read-only architecture/design guards and `check:artifacts`, which
+rejects tracked application binaries and web build outputs. It installs locked
 dependencies into a disposable source snapshot, with its own temporary directory;
 it never writes build outputs or dependencies into the working tree. It needs no
 Docker or Dagger CLI. Installed Go, Node and pnpm binary digests participate in
@@ -158,9 +159,11 @@ content. `main` requires no hosted validation status. This workflow relies on de
 agent compliance; GitHub does not enforce local validation.
 
 Hosted workflows publish edge builds on pushes to `main` and stable releases on
-manual dispatch. They stage embedded assets and retain release compilation,
-checksums and Homebrew formula syntax validation without repeating the general
-check suite. Deployment workflows remain separate.
+manual dispatch. They stage embedded assets and retain release compilation
+and checksums without repeating the general check suite. Stable tags point directly
+to `main`; main pushes update a rolling `edge` prerelease/tag, excluded from
+latest stable. Neither workflow commits build outputs. Deployment workflows
+remain separate.
 
 ## Embedded assets
 
@@ -173,9 +176,12 @@ build into `internal/consoleui/dist`; both are ignored on `main`. Go builds,
 tests and vet embed them, so run `mise run web:stage` and
 `mise run console:stage` (or `mise run build`) after a fresh checkout or
 frontend change; without them Go fails with
-`pattern all:dist: no matching files found`. CI commits the web assets only on
-release tags and the `edge` branch; see [release.md](release.md). The console
-ships only as a container, built by the deploy pipeline.
+`pattern all:dist: no matching files found`. Application binaries and web build
+outputs are never committed; publishing stages them only in its workspace.
+Built plugin distributions and generated API/SQL source remain committed.
+Shell installers use published CLI archives; Go source installs are unsupported
+because source refs lack embedded assets. See [release.md](release.md).
+The console ships only as a container, built by the deploy pipeline.
 
 ## Build pipeline
 
