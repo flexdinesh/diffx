@@ -4,12 +4,15 @@ package version
 import (
 	"runtime/debug"
 	"strings"
+
+	"github.com/flexdinesh/diffx/packages/buildmeta"
 )
 
 var (
-	Version = "dev"
-	Commit  = ""
-	Date    = ""
+	Version       = "dev"
+	Commit        = ""
+	Date          = ""
+	BuildIdentity = ""
 
 	readBuildInfo = debug.ReadBuildInfo
 )
@@ -33,6 +36,9 @@ func Number() string {
 	return version
 }
 
+// Explicit is the package label shared with the desktop installation guard.
+func Explicit() string { return buildmeta.Resolve(BuildIdentity, "cli", Version, Commit).Version }
+
 // BuildInfo includes VCS facts from local development builds, whose CLI version
 // deliberately remains "dev". Release linker metadata takes precedence.
 type BuildInfo struct {
@@ -54,6 +60,10 @@ func Build() BuildInfo {
 }
 
 func metadata() (string, string, string) {
+	if BuildIdentity != "" {
+		identity := buildmeta.Resolve(BuildIdentity, "cli", Version, Commit)
+		return identity.Version, identity.Source, Date
+	}
 	version := Version
 	commit := Commit
 	date := Date

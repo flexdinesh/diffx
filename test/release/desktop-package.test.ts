@@ -130,12 +130,12 @@ for (const failure of ["app-version", "cli-version", "cli-source"]) {
   test(`desktop cross-target verifier refuses mismatched ${failure}`, async (t) => {
     const fixture = await createFixture(t);
     const target = "darwin/arm64";
-    await packageDesktop(fixture, { DIFFX_DESKTOP_TARGET: target });
+    await packageDesktop(fixture, {
+      DIFFX_DESKTOP_TARGET: target,
+      STUB_METADATA_FAILURE: failure,
+    });
     await assert.rejects(
-      verifyDesktop(fixture, {
-        DIFFX_DESKTOP_TARGET: target,
-        STUB_METADATA_FAILURE: failure,
-      }),
+      verifyDesktop(fixture, { DIFFX_DESKTOP_TARGET: target }),
       /binary metadata mismatch/,
     );
   });
@@ -363,7 +363,11 @@ async function createFixture(t: TestContext): Promise<Fixture> {
     join(repository, "scripts/desktop-verify-package.sh"),
     join(root, "scripts/desktop-verify-package.sh"),
   );
-  for (const name of ["desktop-assets.mjs", "desktop-web-licenses.mjs"])
+  for (const name of [
+    "desktop-assets.mjs",
+    "desktop-web-licenses.mjs",
+    "desktop-build-metadata.mjs",
+  ])
     await cp(join(repository, "scripts", name), join(root, "scripts", name));
   await cp(
     join(repository, "apps/desktop/resources"),
@@ -441,17 +445,16 @@ if (args[0] === "list") {
 } else if (args[0] === "version") {
   const output = args.at(-1);
   const app = output.endsWith("/diffx-desktop");
-  let flags = readFileSync(output, "utf8").match(/^# fixture-build-flags (.*)$/m)?.[1];
-  if (!flags) process.exit(2);
-  if (env.STUB_METADATA_FAILURE === (app ? "app-version" : "cli-version")) flags = flags.replace("Version=1.2.3", "Version=1.2.30");
-  if (!app && env.STUB_METADATA_FAILURE === "cli-source") flags = flags.replace("Commit=" + env.STUB_SOURCE, "Commit=" + "b".repeat(40));
   const [os, arch] = env.DIFFX_DESKTOP_TARGET.split("/");
-  console.log('\\tbuild\\t-ldflags="' + flags + '"\\n\\tbuild\\t-tags=mygo_noinspector\\n\\tbuild\\tGOOS=' + os + '\\n\\tbuild\\tGOARCH=' + arch);
+  // Real Go omits -ldflags for -trimpath builds.
+  console.log('\\tbuild\\t-trimpath=true\\n\\tbuild\\t-tags=mygo_noinspector\\n\\tbuild\\tGOOS=' + os + '\\n\\tbuild\\tGOARCH=' + arch);
   if (app) console.log("\\tdep\\tgithub.com/egoist/mygo\\tv0.7.4");
 }
 else if (args[0] === "build") {
   if (env.STUB_FAILURE === (desktop ? "desktop-build" : "sidecar-build")) { console.error("build failed"); process.exit(1); }
-  const flags = args[args.indexOf("-ldflags") + 1];
+  let flags = args[args.indexOf("-ldflags") + 1];
+  if (env.STUB_METADATA_FAILURE === (desktop ? "app-version" : "cli-version")) flags = flags.replace("|1.2.3|", "|1.2.30|");
+  if (!desktop && env.STUB_METADATA_FAILURE === "cli-source") flags = flags.replace("|" + env.STUB_SOURCE + "|end", "|" + "b".repeat(40) + "|end");
   const version = flags.match(/Version=([^ ]+)/)?.[1];
   if (!version) process.exit(2);
   const output = args[args.indexOf("-o") + 1];

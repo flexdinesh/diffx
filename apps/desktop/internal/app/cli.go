@@ -7,10 +7,14 @@ import (
 	"os"
 
 	"github.com/flexdinesh/diffx/apps/desktop/internal/session"
+	"github.com/flexdinesh/diffx/packages/buildmeta"
 	"github.com/flexdinesh/diffx/packages/localprotocol"
 )
 
 var Version = "dev"
+var BuildIdentity = ""
+
+func buildLabel() string { return buildmeta.Resolve(BuildIdentity, "desktop", Version, "").Version }
 
 // HandleCommand runs before platform initialization.
 func HandleCommand(args []string, output io.Writer) (bool, error) {
@@ -30,9 +34,9 @@ func HandleCommand(args []string, output io.Writer) (bool, error) {
 				return true, err
 			}
 		}
-		return true, json.NewEncoder(output).Encode(localprotocol.DesktopContract{ProtocolVersion: localprotocol.Version, Build: Version, Sidecar: sidecar})
+		return true, json.NewEncoder(output).Encode(localprotocol.DesktopContract{ProtocolVersion: localprotocol.Version, Build: buildLabel(), Sidecar: sidecar})
 	case "--version":
-		_, err := fmt.Fprintln(output, "diffx-desktop "+Version)
+		_, err := fmt.Fprintln(output, "diffx-desktop "+buildLabel())
 		return true, err
 	case "--help", "-h":
 		_, err := fmt.Fprint(output, `Usage: diffx-desktop [PATH] [LOCAL OPTIONS]

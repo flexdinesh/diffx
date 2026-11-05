@@ -423,6 +423,13 @@ the full suite, and local validation is not remote enforcement.
 
 ## Adapter and schema evolution
 
+`packages/buildmeta` owns desktop package identity records shared by the CLI and
+independent desktop module. Packaged executables use the retained role/version/
+source record for runtime version reporting; cross-target verification inspects
+that same record. Go omits linker settings with `-trimpath`, so linker-flag output
+cannot establish a matching pair. Standalone CLI publishing keeps its existing
+version metadata, and development pairing compares explicit build labels.
+
 New adapters must preserve ownership, atomic publication, retention, replay,
 lease fencing and commit-before-ack recovery. External brokers require atomic
 scheduling intent (an outbox). The server and local mode do not share a storage

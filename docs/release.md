@@ -92,6 +92,11 @@ a configured checkout, use `mise run install`.
 
 ## Experimental desktop webview
 
+Desktop archives retain a role/version/source identity in each executable.
+Runtime version reporting and cross-target verification consume the same record;
+verification does not depend on linker settings, which Go omits with `-trimpath`.
+Host-compatible binaries also execute their informational version commands.
+
 `diffx-desktop` is a separate macOS/Linux MyGo v0.7.4 webview host. It
 embeds the shared React review app and uses a private matching CLI as its local server.
 Normal `install.sh`, `install-edge.sh`, CLI assets and their `checksums.txt`

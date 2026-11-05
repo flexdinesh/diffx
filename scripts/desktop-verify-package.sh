@@ -53,22 +53,9 @@ grep -Fq -- '-tags=mygo_noinspector' "$stage/app-build" || fail 'inspector exclu
 grep -Fxq "Version: $version" "$resources/BUILD-INFO.txt" || fail 'version metadata mismatch'
 grep -Fxq "Source: $source_sha" "$resources/BUILD-INFO.txt" || fail 'source metadata mismatch'
 grep -Fxq "Target: $target" "$resources/BUILD-INFO.txt" || fail 'target metadata mismatch'
-# Verify link-time versions on every target, including archives that cannot run
-# on this host. Build provenance alone does not establish a matching pair.
-for contract in \
-  "$stage/app-build|github.com/flexdinesh/diffx/apps/desktop/internal/app.Version=$version" \
-  "$stage/server-build|github.com/flexdinesh/diffx/internal/version.Version=$version" \
-  "$stage/server-build|github.com/flexdinesh/diffx/internal/version.Commit=$source_sha"; do
-  build=${contract%%|*}
-  setting=${contract#*|}
-  awk -v setting="$setting" '
-    $1 == "build" && $2 ~ /^-ldflags=/ {
-      count = split($0, fields, /[[:space:]\"]+/)
-      for (i = 1; i <= count; i++) if (fields[i] == setting) found = 1
-    }
-    END { exit !found }
-  ' "$build" || fail "binary metadata mismatch: $setting"
-done
+# -trimpath deliberately omits linker settings from Go build info. Inspect the
+# retained records that both executables also use as their runtime authority.
+node scripts/desktop-build-metadata.mjs "$app" "$sidecar" "$version" "$source_sha"
 awk '$1 == "dep" && $2 == "github.com/egoist/mygo" && $3 == "v0.7.4" { found = 1 } END { exit !found }' "$stage/app-build" || fail 'MyGo v0.7.4 pin missing'
 for build in "$stage/app-build" "$stage/server-build"; do
   grep -Fq "GOOS=${target%/*}" "$build" || fail 'wrong target OS'

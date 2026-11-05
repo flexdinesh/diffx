@@ -105,7 +105,7 @@ var allowed = map[string][]string{
 		"internal/reviewservice", "internal/serverapp", "internal/webui",
 	},
 	"internal/testsupport/pgtest": {"internal/pgstore"},
-	"internal/version":            {},
+	"internal/version":            {"packages/buildmeta"},
 	"internal/webui":              {},
 	// Public wire contracts have no dependency on server implementation packages.
 	"packages/api":           {},
@@ -113,12 +113,13 @@ var allowed = map[string][]string{
 	"packages/console-api":   {},
 	"packages/localprotocol": {"packages/connection"},
 	"packages/connection":    {},
+	"packages/buildmeta":     {},
 	// Desktop is an independent webview host. Only its app imports MyGo;
 	// only the session adapter executes the bundled matching server.
 	"apps/desktop/cmd/diffx-desktop": {"apps/desktop/internal/app"},
 	"apps/desktop/internal/app": {
 		"apps/desktop/internal/assets", "apps/desktop/internal/host", "apps/desktop/internal/launcher",
-		"apps/desktop/internal/session", "packages/localprotocol", "packages/connection",
+		"apps/desktop/internal/session", "packages/localprotocol", "packages/connection", "packages/buildmeta",
 	},
 	"apps/desktop/internal/assets":     {},
 	"apps/desktop/internal/launcher":   {"apps/desktop/internal/session", "packages/localprotocol", "packages/connection"},

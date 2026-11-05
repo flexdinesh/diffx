@@ -190,7 +190,7 @@ func Run(args []string, stdin *os.File, stderr io.Writer) error {
 		return err
 	}
 	mygo.App.SetName("Diffx Desktop")
-	mygo.App.SetVersion(Version)
+	mygo.App.SetVersion(buildLabel())
 	dataDir, err := mygo.App.Path(mygo.PathUserData)
 	if err != nil {
 		return err

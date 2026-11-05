@@ -53,7 +53,7 @@ func Open(ctx context.Context, arguments []string, stdin *os.File, stderr io.Wri
 	// Both executables receive the same explicit package label (or "dev").
 	// Number may instead infer a source pseudo-version from this Go module;
 	// the independent desktop module does not share that inferred version.
-	if json.Unmarshal(data, &contract) != nil || contract.ProtocolVersion != localprotocol.Version || contract.Build != version.Version || !sameFile(contract.Sidecar, executable) {
+	if json.Unmarshal(data, &contract) != nil || contract.ProtocolVersion != localprotocol.Version || contract.Build != version.Explicit() || !sameFile(contract.Sidecar, executable) {
 		return false, errors.New("desktop and CLI installation do not match")
 	}
 	directory, err := os.Getwd()
