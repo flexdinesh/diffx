@@ -1,7 +1,7 @@
 {
-  "name": "Diffx Desktop Experimental",
+  "name": "Diffx Desktop",
   "slug": "diffx-desktop",
-  "identifier": "dev.diffx.desktop.experimental",
+  "identifier": "dev.diffx.desktop",
   "version": "0.2.0",
   "main": "./cmd/diffx-desktop",
   "out": "build"

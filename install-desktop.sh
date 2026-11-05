@@ -41,7 +41,7 @@ elif command -v shasum >/dev/null 2>&1; then hash_tool=shasum
 else fail 'required tool not found: sha256sum or shasum'; fi
 case "$(uname -s)" in
   Linux) os=linux; executable=diffx-desktop/diffx-desktop ;;
-  Darwin) os=darwin; executable='Diffx Desktop Experimental.app/Contents/MacOS/diffx-desktop' ;;
+  Darwin) os=darwin; executable='Diffx Desktop.app/Contents/MacOS/diffx-desktop' ;;
   *) fail 'unsupported operating system: only Linux and Darwin are supported' ;;
 esac
 case "$(uname -m)" in
@@ -135,7 +135,7 @@ awk 'substr($0,1,1) != "-" && substr($0,1,1) != "d" { exit 1 }' "$work_dir/types
 mkdir "$work_dir/payload"
 tar -xzf "$work_dir/$archive" -C "$work_dir/payload" || fail 'could not extract desktop archive'
 if [ "$os" = darwin ]; then
-  sidecar=$work_dir/payload/Diffx\ Desktop\ Experimental.app/Contents/Resources/diffx
+  sidecar=$work_dir/payload/Diffx\ Desktop.app/Contents/Resources/diffx
 else sidecar=$work_dir/payload/diffx-desktop/diffx; fi
 for binary in "$app" "$sidecar"; do
   [ -s "$binary" ] && [ -f "$binary" ] && [ ! -L "$binary" ] || fail 'archive requires regular app and matching private server'

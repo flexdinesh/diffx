@@ -449,10 +449,10 @@ async function createFixture(
     await mkdir(directory, { recursive: true });
   const darwin = options.os === "Darwin";
   const app = darwin
-    ? "Diffx Desktop Experimental.app/Contents/MacOS/diffx-desktop"
+    ? "Diffx Desktop.app/Contents/MacOS/diffx-desktop"
     : "diffx-desktop/diffx-desktop";
   const sidecar = darwin
-    ? "Diffx Desktop Experimental.app/Contents/Resources/diffx"
+    ? "Diffx Desktop.app/Contents/Resources/diffx"
     : "diffx-desktop/diffx";
   await mkdir(dirname(join(source, app)), { recursive: true });
   await mkdir(dirname(join(source, sidecar)), { recursive: true });

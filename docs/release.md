@@ -140,7 +140,7 @@ versions, rather than requiring identical builds.
 
 Desktop archives are `diffx-desktop_<version>_<os>_<arch>.tar.gz` for macOS
 (`darwin`) and Linux, each amd64/arm64. macOS contains
-`Diffx Desktop Experimental.app`, with the desktop executable in `Contents/MacOS`
+`Diffx Desktop.app`, with the desktop executable in `Contents/MacOS`
 and private `diffx` in `Contents/Resources`. Its bundle launcher passes
 `--desktop-launch` to attach or choose a folder. Linux contains a
 `diffx-desktop/` directory with sibling `diffx-desktop` and private `diffx`, plus
