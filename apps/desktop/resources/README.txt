@@ -1,4 +1,4 @@
-Diffx Desktop Experimental
+Diffx Desktop
 
 This archive contains the MyGo webview host, embedded shared React review app
 and its private matching Diffx CLI. Keep both executables together.

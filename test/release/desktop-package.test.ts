@@ -48,7 +48,7 @@ for (const target of targets) {
     const darwin = target.startsWith("darwin/");
     const payload = join(
       extracted,
-      darwin ? "Diffx Desktop Experimental.app" : "diffx-desktop",
+      darwin ? "Diffx Desktop.app" : "diffx-desktop",
     );
     const app = join(
       payload,

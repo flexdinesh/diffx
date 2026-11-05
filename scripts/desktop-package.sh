@@ -20,7 +20,7 @@ stage=$(mktemp -d "$out/.package.XXXXXXXXXX")
 trap 'rm -rf "$stage"' 0
 trap 'exit 1' 1 2 3 15
 if [ "$GOOS" = darwin ]; then
-  payload=$stage/Diffx\ Desktop\ Experimental.app
+  payload=$stage/Diffx\ Desktop.app
   app_dir=$payload/Contents/MacOS
   resources=$payload/Contents/Resources
   mkdir -p "$app_dir" "$resources"

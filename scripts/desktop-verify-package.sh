@@ -26,7 +26,7 @@ awk 'substr($0,1,1) != "-" && substr($0,1,1) != "d" { exit 1 }' "$stage/types" |
 tar -xzf "$out/$archive" -C "$stage"
 case "$target" in
   darwin/*)
-    payload=$stage/Diffx\ Desktop\ Experimental.app
+    payload=$stage/Diffx\ Desktop.app
     app=$payload/Contents/MacOS/diffx-desktop
     resources=$payload/Contents/Resources
     [ -x "$payload/Contents/MacOS/launch" ] || fail 'missing bundle launcher'
