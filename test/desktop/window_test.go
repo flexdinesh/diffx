@@ -60,6 +60,22 @@ func start(t *testing.T, path string, env []string, args ...string) *process {
 	}
 	go func() { p.err = p.cmd.Wait(); close(p.done) }()
 	t.Cleanup(func() {
+		if t.Failed() {
+			// Command invitations are one-time secrets. Keep failure diagnostics
+			// useful without exporting them in retained test logs.
+			output := p.output.String()
+			for _, arg := range args {
+				if strings.HasPrefix(arg, "diffx1_") {
+					output = strings.ReplaceAll(output, arg, "[invitation]")
+				}
+			}
+			for _, field := range strings.Fields(output) {
+				if strings.HasPrefix(field, "diffx1_") {
+					output = strings.ReplaceAll(output, field, "[invitation]")
+				}
+			}
+			t.Logf("child process %s: %s", filepath.Base(path), output)
+		}
 		select {
 		case <-p.done:
 			return
@@ -847,7 +863,7 @@ func acceptedCLI(t *testing.T, ctx context.Context, process *process) {
 	select {
 	case <-process.done:
 		if process.err != nil {
-			t.Fatal("public CLI handoff failed")
+			t.Fatalf("public CLI handoff failed: %v", process.err)
 		}
 		if strings.Contains(process.output.String(), "desktop unavailable") {
 			t.Fatal("public CLI started foreground fallback")
