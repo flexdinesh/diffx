@@ -197,6 +197,33 @@ test("edge rejects --version", async (t) => {
   assert.deepEqual(await requests(workspace), [helperURL]);
 });
 
+test("edge refuses macOS Intel before release downloads", async (t) => {
+  const workspace = await createWorkspace(t, {
+    os: "Darwin",
+    machine: "x86_64",
+  });
+  await assert.rejects(
+    runInstaller(workspace, "edge"),
+    /edge does not support macOS Intel; use install.sh for stable/,
+  );
+  assert.deepEqual(await requests(workspace), [helperURL]);
+  await assertClean(workspace);
+});
+
+test("edge installs on macOS Apple Silicon", async (t) => {
+  const workspace = await createWorkspace(t, {
+    os: "Darwin",
+    machine: "arm64",
+  });
+  await runInstaller(workspace, "edge");
+  assert.ok(
+    (await requests(workspace)).includes(
+      `${releases}/download/edge/diffx_edge_darwin_arm64.tar.gz`,
+    ),
+  );
+  await assertClean(workspace);
+});
+
 for (const missingTool of ["curl", "tar", "mktemp", "awk", "mv"]) {
   test(`reports missing ${missingTool}`, async (t) => {
     const workspace = await createWorkspace(t, { missingTool });

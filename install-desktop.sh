@@ -49,6 +49,9 @@ case "$(uname -m)" in
   arm64|aarch64) arch=arm64 ;;
   *) fail 'unsupported architecture: only amd64 and arm64 are supported' ;;
 esac
+if [ "$version" = edge ] && [ "$os" = darwin ] && [ "$arch" = amd64 ]; then
+  fail 'edge does not support macOS Intel; use --version vX.Y.Z'
+fi
 tag=v$version
 [ "$version" != edge ] || tag=edge
 archive=diffx-desktop_${version}_${os}_${arch}.tar.gz

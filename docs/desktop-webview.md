@@ -12,7 +12,8 @@ diffx-desktop /path/to/checkout
 git diff | diffx-desktop
 ```
 
-The installer defaults to experimental edge. It verifies checksums and atomically
+The installer defaults to experimental edge. Edge omits macOS Intel; use
+`--version vX.Y.Z` there. It verifies checksums and atomically
 selects the app plus matching private CLI without replacing `diffx`. See
 [release.md](release.md) for version selection, upgrades, licensing and removal.
 

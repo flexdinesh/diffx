@@ -257,6 +257,19 @@ test("desktop edge publisher clobbers only desktop assets and publishes manifest
     "--clobber",
   ]);
   assert.equal(calls.length, 3);
+  const manifest = await readFile(
+    join(fixture.out, "desktop-checksums.txt"),
+    "utf8",
+  );
+  assert.equal(manifest.trim().split("\n").length, 3);
+  assert.doesNotMatch(manifest, /darwin_amd64/);
+});
+
+test("desktop stable publisher requires the macOS Intel archive", async (t) => {
+  const fixture = await publishFixture(t);
+  await rm(join(fixture.out, "diffx-desktop_1.2.3_darwin_amd64.tar.gz"));
+  await assert.rejects(publish(fixture), /missing .*darwin_amd64/);
+  assert.equal(await readFile(fixture.calls, "utf8"), "");
 });
 
 async function publishFixture(
@@ -266,6 +279,7 @@ async function publishFixture(
   const fixture = await createFixture(t);
   await mkdir(fixture.out, { recursive: true });
   for (const target of targets) {
+    if (version === "edge" && target === "darwin/amd64") continue;
     const name = `diffx-desktop_${version}_${target.replace("/", "_")}.tar.gz`;
     await writeFile(join(fixture.out, name), "archive payload");
     const digest = createHash("sha256").update("archive payload").digest("hex");

@@ -245,7 +245,9 @@ test("packaging refuses changed source and mismatched provenance", async (t) => 
 
 function expectedAssets(version: string): string[] {
   return [
-    ...targets.map((target) => `diffx_${version}_${target}.tar.gz`),
+    ...targets
+      .filter((target) => version !== "edge" || target !== "darwin_amd64")
+      .map((target) => `diffx_${version}_${target}.tar.gz`),
     "checksums.txt",
   ];
 }
@@ -496,7 +498,7 @@ if (tool === "mise") {
   const source = process.env.DIFFX_SOURCE_SHA;
   state.builds.push({ version, source });
   mkdirSync("dist", { recursive: true });
-  const targets = ["darwin_amd64", "darwin_arm64", "linux_amd64", "linux_arm64"];
+  const targets = ["darwin_amd64", "darwin_arm64", "linux_amd64", "linux_arm64"].filter((target) => version !== "edge" || target !== "darwin_amd64");
   for (const target of targets) writeFileSync("dist/diffx_" + version + "_" + target + ".tar.gz", source);
   writeFileSync("dist/checksums.txt", "checksums for " + source);
   save();

@@ -49,7 +49,6 @@ interface Fixture {
 for (const { os, machine, target } of [
   { os: "Linux", machine: "x86_64", target: "linux_amd64" },
   { os: "Linux", machine: "aarch64", target: "linux_arm64" },
-  { os: "Darwin", machine: "x86_64", target: "darwin_amd64" },
   { os: "Darwin", machine: "arm64", target: "darwin_arm64" },
 ]) {
   test(`desktop ${target}: installs private pair, preserves CLI and user files`, async (t) => {
@@ -92,6 +91,33 @@ for (const { os, machine, target } of [
     await assertClean(fixture, 1);
   });
 }
+
+test("desktop edge refuses macOS Intel before downloads", async (t) => {
+  const fixture = await createFixture(t, { os: "Darwin", machine: "x86_64" });
+  await assert.rejects(
+    install(fixture),
+    /edge does not support macOS Intel; use --version vX.Y.Z/,
+  );
+  assert.equal(await readFile(fixture.requests, "utf8"), "");
+  assert.ok(!(await readdir(fixture.bin)).includes("diffx-desktop"));
+});
+
+test("desktop stable version installs on macOS Intel", async (t) => {
+  const fixture = await createFixture(t, { os: "Darwin", machine: "x86_64" });
+  await install(fixture, ["--version", "v1.2.3"]);
+  assert.deepEqual(
+    (await readFile(fixture.requests, "utf8")).trim().split("\n"),
+    [
+      `${releases}/v1.2.3/desktop-checksums.txt`,
+      `${releases}/v1.2.3/diffx-desktop_1.2.3_darwin_amd64.tar.gz`,
+    ],
+  );
+  assert.equal(
+    (await execute(join(fixture.bin, "diffx-desktop"))).stdout,
+    "desktop old\n",
+  );
+  await assertClean(fixture, 1);
+});
 
 test("desktop upgrade switches whole pair and retains old executable/server paths", async (t) => {
   const fixture = await createFixture(t);
