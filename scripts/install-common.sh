@@ -81,6 +81,9 @@ case "$(uname -m)" in
   arm64|aarch64) arch=arm64 ;;
   *) fail 'unsupported architecture: only amd64 and arm64 are supported' ;;
 esac
+if [ "$channel" = edge ] && [ "$os" = darwin ] && [ "$arch" = amd64 ]; then
+  fail 'edge does not support macOS Intel; use install.sh for stable'
+fi
 
 releases=https://github.com/flexdinesh/diffx/releases
 if [ "$channel" = edge ]; then

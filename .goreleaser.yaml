@@ -9,7 +9,8 @@ release:
   make_latest: true
 
 builds:
-  - id: diffx
+  - &diffx
+    id: diffx
     main: ./cmd/diffx
     binary: diffx
     env:
@@ -22,7 +23,11 @@ builds:
         -X github.com/flexdinesh/diffx/internal/version.Date={{.Date}}
     goos: [linux, darwin]
     goarch: [amd64, arm64]
-  - id: diffx-server
+    ignore: &macos-intel
+      - goos: darwin
+        goarch: amd64
+  - &diffx-server
+    id: diffx-server
     main: ./cmd/diffx-server
     binary: diffx-server
     env:
@@ -35,6 +40,20 @@ builds:
         -X github.com/flexdinesh/diffx/internal/version.Date={{.Date}}
     goos: [linux, darwin]
     goarch: [amd64, arm64]
+    ignore: *macos-intel
+  # Stable only: `ignore` is not templated, so macOS Intel needs its own builds.
+  - <<: *diffx
+    id: diffx-darwin-amd64
+    goos: [darwin]
+    goarch: [amd64]
+    ignore: []
+    skip: '{{ eq .Env.DIFFX_RELEASE_VERSION "edge" }}'
+  - <<: *diffx-server
+    id: diffx-server-darwin-amd64
+    goos: [darwin]
+    goarch: [amd64]
+    ignore: []
+    skip: '{{ eq .Env.DIFFX_RELEASE_VERSION "edge" }}'
 
 archives:
   - name_template: >-

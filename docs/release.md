@@ -75,7 +75,9 @@ curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-edge.
 On a push to `main`, the **Edge** workflow stages web assets locally and
 publishes a rolling GitHub prerelease with tag `edge` pointing to that `main`
 commit. It embeds the main SHA in the binary. Assets use fixed names
-`diffx_edge_<os>_<arch>.tar.gz` plus `checksums.txt`. Edge is excluded from
+`diffx_edge_<os>_<arch>.tar.gz` plus `checksums.txt`. Edge omits macOS Intel
+(`darwin_amd64`) for both CLI and desktop archives; its installers refuse that
+platform before downloading. Stable releases keep it. Edge is excluded from
 GitHub's latest stable release and from `install.sh`'s default selection.
 The legacy `edge` branch is no longer updated.
 

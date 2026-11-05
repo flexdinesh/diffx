@@ -25,7 +25,8 @@ Or install the latest `main` changes published to edge:
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-edge.sh | sh
 ```
 
-Supports macOS and Linux on amd64 and arm64. No Go or Node.js required.
+Supports macOS and Linux on amd64 and arm64; edge omits macOS Intel, so use the
+stable installer there. No Go or Node.js required.
 Requires `curl`, `tar`, and either `sha256sum` or `shasum`.
 Both installers default to `~/.local/bin`, verify SHA-256 before replacing the
 binary, and preserve an existing binary on failure. They use no sudo and leave
