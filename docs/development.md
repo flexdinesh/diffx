@@ -81,9 +81,10 @@ mise run docs:dev                               # docs site at localhost:5173
 ## Local experiments
 
 ```sh
-./dist/diffx                                   # review cwd, opens browser
-./dist/diffx . --no-browser                    # print URL only
-./dist/diffx . --port 7995                     # fixed viewer port
+./dist/diffx                                   # desktop; returns after acceptance
+./dist/diffx . --browser                       # foreground browser viewer
+./dist/diffx . --no-browser                    # foreground viewer, print URL
+./dist/diffx . --port 7995                     # desktop plus fixed viewer port
 ./dist/diffx . --headless                      # socket only, no viewer
 ./dist/diffx . --state memory                  # no persisted state
 ./dist/diffx . --replace                       # replace running instance
@@ -94,7 +95,31 @@ git diff | ./dist/diffx                        # piped patch
 env -u DIFFX_CONFIG_PATH -u DIFFX_LOCAL_STATE DIFFX_RUNTIME_DIR="$(mktemp -d)" ./dist/diffx . --port 0 --no-browser  # isolated session
 ```
 
-## Remote server
+Desktop requires a matching pair from `install-desktop.sh` or `desktop:build`.
+A CLI-only install falls back to foreground browser serving when desktop cannot
+accept the launch. A desktop session otherwise needs no viewer port. Use explicit
+`--browser`, `--no-browser` or `--headless` for foreground experiments.
+
+## Personal TLS server
+
+```sh
+./dist/diffx remote ~/work                     # foreground TLS on :7981
+./dist/diffx remote ~/work --listen :8443 --advertise devbox:8443
+./dist/diffx remote pair --advertise devbox:8443 # rotate unused invitation
+./dist/diffx connect STRING                    # copy printed diffx1_ invitation
+./dist/diffx connect STRING --browser          # foreground loopback gateway
+./dist/diffx remote -- status                   # directory named status
+```
+
+Invitations are one-use, expire after ten minutes and pin a per-run TLS identity.
+Owner-only native credentials allow reconnect using the original command during
+that run; restarting requires a fresh invitation. No external address discovery
+runs. The listener uses the same personal SQLite/runtime singleton, with explicit
+network review/collection policy and no private control, MCP, accounts or ingestion.
+`diffx remote status` still checks the distributed sync destination below;
+pairing state does not use `remote.url` or `remote.token`.
+
+## Distributed server
 
 ```sh
 mise run dev:remote                  # diffx-server + dev Postgres + Vite at localhost:5173
@@ -121,13 +146,18 @@ DIFFX_REMOTE_URL=http://127.0.0.1:7980 DIFFX_REMOTE_TOKEN=... ./dist/diffx sync 
 
 ```sh
 ssh devbox 'diffx ~/work --headless'                  # start remote (use tmux)
-./dist/diffx connect ssh://devbox                     # forward + open browser
+./dist/diffx connect ssh://devbox                     # forward + desktop
+./dist/diffx connect ssh://devbox --browser           # foreground browser gateway
 ./dist/diffx connect ssh://dee@devbox:2222 --port 7995 --no-browser
 ./dist/diffx connect ssh://devbox --remote-diffx ~/go/bin/diffx  # remote binary path
-./dist/diffx connect ssh://devbox --json              # print forward URL as JSON
+./dist/diffx connect ssh://devbox --json              # foreground gateway URL as JSON
 ssh devbox diffx status --json                        # remote socket and viewer
 ssh -N -L 127.0.0.1:7991:/run/user/1000/diffx/diffx.sock devbox  # manual forward
 ```
+
+SSH still uses system aliases, agents and jump hosts. Browser/JSON connections
+expose a filtered gateway; a manual raw socket forward also carries private
+control routes. The remote headless server remains running after disconnect.
 
 ## MCP
 

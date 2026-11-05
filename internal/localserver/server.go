@@ -115,7 +115,7 @@ func resetState(path string, reset StateReset) error {
 
 // runServer scopes reads to the capture or discovered checkouts. Checkout
 // discovery and collection start after serving, with an initially empty scope.
-func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings, runtimeDir, instanceID string, input Input, reset StateReset, ready func(Status, Published), logger *log.Logger) error {
+func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings, runtimeDir, instanceID string, input Input, reset StateReset, ready func(Status, Published), logger *log.Logger, networks ...*networkAccess) error {
 	initial, collect := input.Collection, input.Collect
 	settings = normalizeSettings(settings)
 	if settings.RetentionDays < 1 || settings.RetentionDays > 106751 {
@@ -228,8 +228,15 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 			}
 		}))
 	}
-	app := browserAccess(serverapp.Handler(ctx, service, store, assets, defaultContextID, configuration))
+	application := serverapp.Handler(ctx, service, store, assets, defaultContextID, configuration)
+	app := browserAccess(application)
 	var endpoints []serverapp.Endpoint
+	var rotate func(string) ([]string, error)
+	if len(networks) > 0 && networks[0] != nil {
+		network := networks[0]
+		rotate = network.rotate
+		endpoints = append(endpoints, serverapp.Endpoint{Server: newServer(network.pairing.Handler(application), logger), Listener: network.listener})
+	}
 	if viewer != nil {
 		endpoints = append(endpoints, serverapp.Endpoint{Server: newServer(app, logger), Listener: viewer})
 	}
@@ -242,7 +249,7 @@ func runServer(ctx context.Context, cancel context.CancelFunc, settings Settings
 		defer socket.Close()
 		// Control is reachable only through the owner's socket.
 		routes := http.NewServeMux()
-		routes.Handle("/control/v1/", controlapi.NewWithLifetime(ctx, statusFunc, cancel))
+		routes.Handle("/control/v1/", controlapi.NewWithPairing(ctx, statusFunc, cancel, rotate))
 		routes.Handle("/", app)
 		endpoints = append(endpoints, serverapp.Endpoint{Server: newServer(routes, logger), Listener: sameUser{Listener: socket, uid: uint32(os.Getuid())}})
 	}

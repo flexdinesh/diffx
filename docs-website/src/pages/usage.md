@@ -29,12 +29,14 @@ and reference the diagnostic ID in their activity log.
 
 ## Local collection
 
-Capture the checkouts under the selected paths in one foreground process:
+Open the selected checkouts in desktop by default:
 
 ```sh
 diffx
 diffx .
 diffx . --scan-worktrees
+diffx . --browser
+diffx . --no-browser
 diffx /path/to/repo --headless
 diffx ~/work --scan-depth 4
 diffx --path ~/work --path ~/oss --scan-depth 4
@@ -42,8 +44,13 @@ diffx . --replace
 diffx . --base HEAD --no-browser
 ```
 
-Collection and ingestion run in-process. The same process serves the web UI,
-REST and MCP until Ctrl-C. The path defaults to the current directory. When
+The CLI returns after desktop accepts the launch. Desktop owns a socket-only
+personal server; explicit `--port` adds a browser viewer. `--browser` instead
+opens a foreground browser viewer, `--no-browser` serves that viewer without
+opening a client, and `--headless` serves only the socket in the foreground.
+If desktop cannot accept startup, diffx falls back to foreground browser serving.
+Later server failures remain visible in desktop. Collection and ingestion run
+in the personal server process. The path defaults to the current directory. When
 that path, or one positional path, is inside a repository, diffx collects only
 that checkout; add `--scan-worktrees` to also collect the repository's other
 worktrees (`--scan-depth` does not apply there). With `--path` (repeat it for
@@ -51,7 +58,7 @@ several) or a directory outside a repository, a path inside a repository
 resolves to its checkout; otherwise diffx searches up to `--scan-depth` levels
 (default 8) below it, stopping at each repository and skipping hidden,
 `node_modules` and `vendor` directories. Every registered worktree of each
-repository found is collected, including worktrees outside the paths. Once collection finishes, the browser
+repository found is collected, including worktrees outside the paths. Once collection finishes, the client
 opens the changed checkout containing the path, otherwise the most recently
 active changed snapshot; later edits and branch switches do not change it until you sync, which
 collects the same scope again and captures a new snapshot of every checkout in it. A
@@ -60,12 +67,16 @@ substitutes an empty diff. Observations and comments persist across restarts in
 the shared local database; each process shows only its discovered checkouts or
 piped diff.
 
-Only one local instance runs. Starting another prompts before replacing it;
-scripts must pass `--replace`. Replacement requests authenticated graceful
-shutdown and waits for database ownership. Unreachable instances are not killed
-using an unverified PID.
+Only one local instance owns the database. Desktop uses one window: the same
+target focuses it, and changing workspace or connection requires confirmation.
+Cancel preserves the current session. A compatible scope can attach without
+transferring ownership. Foreground scope replacement prompts; scripts must pass
+`--replace`. Replacement uses owner-only socket control and waits for database
+ownership. Unreachable instances are not killed using an unverified PID.
+Quitting desktop stops only an owned local server; attached and remote servers
+keep running.
 
-Publish once to a remote server, including every registered worktree:
+Publish the selected checkout once to a distributed server:
 
 ```sh
 diffx config set remote.url https://reviews.example.com
@@ -118,7 +129,7 @@ last fresh submission; retries do not extend it.
 
 Defaults live in `~/.config/diffx/config.json`; `--config-file` or
 `DIFFX_CONFIG_PATH` overrides the location. One file configures both modes in
-separate sections, so a local review and a remote server can run side by side:
+separate sections for personal serving and the distributed sync destination:
 
 ```json
 {
@@ -127,7 +138,7 @@ separate sections, so a local review and a remote server can run side by side:
 }
 ```
 
-`local.*` configures only `diffx [PATH]` and piped diffs; `remote.*` configures
+`local.*` configures personal checkout and piped-diff serving; `remote.*` configures
 only `sync` and agent hooks. Environment overrides use the same namespaces:
 `DIFFX_LOCAL_PORT`, `DIFFX_LOCAL_STATE`, `DIFFX_LOCAL_WEB_DIR`,
 `DIFFX_LOCAL_RETENTION_DAYS`, `DIFFX_REMOTE_URL` and `DIFFX_REMOTE_TOKEN`.
@@ -139,36 +150,89 @@ key into its section. `local.host` and `DIFFX_LOCAL_HOST` were removed: delete
 `"host"` from the `local` section of an existing config file, and unset the
 variable.
 
-Each local process serves REST, MCP and the web UI on an owner-only Unix socket,
-`diffx.sock` in its private runtime directory, and on a viewer port for the
-browser: `127.0.0.1` on an available port from 7981–7990, or `--port`
-(`--port 0` chooses an OS-assigned port). `--headless` serves only the socket,
-with no viewer port and no browser. The viewer never binds a non-loopback
-address; `--host` was removed. To review a diffx running on another machine,
-start it there (for example `diffx ~/work --headless` in tmux), then connect
-from your machine:
+Personal REST, MCP and web assets are served on an owner-only Unix socket,
+`diffx.sock` in the private runtime directory. Default desktop sessions use that
+socket directly. Foreground browser serving uses `127.0.0.1` on an available
+port from 7981–7990, or `--port` (`--port 0` chooses an OS-assigned port).
+`--headless` serves only the socket. Viewer and desktop/browser gateway origins
+remain loopback; `--host` was removed.
+
+## Personal TLS connections
+
+On the machine containing your checkouts, run a foreground personal server
+(use tmux when needed):
 
 ```sh
+diffx remote ~/work
+diffx remote ~/work --listen :8443 --advertise devbox:8443
+```
+
+The default TLS listener is `:7981`, binding network interfaces. `--listen`
+chooses a bind address and `--advertise HOST:PORT` sets the address in invitations.
+Without explicit advertisement, a concrete bind address is used; wildcard binds
+prefer the SSH session server IP, otherwise print non-loopback candidate
+addresses. No external address discovery runs. The command uses the same
+personal SQLite database and local singleton; it never silently exposes an
+already-running local process. Use `--replace` for explicit replacement.
+`diffx remote -- status` serves a directory named `status`.
+
+Copy one printed `diffx connect diffx1_…` command to your client machine:
+
+```sh
+diffx connect STRING
+diffx connect STRING --browser
+diffx connect STRING --no-browser
+diffx connect STRING --json
+```
+
+`STRING` is the full encoded `diffx1_` invitation. It pins the per-run TLS
+identity, expires after ten minutes and can be consumed once. Alternative
+addresses printed together share that one use. The client saves a run-scoped
+credential in owner-only native state, so the original command reconnects
+without pairing again during that server run. Restarting the server requires
+a fresh invitation. To pair another client or replace an expired invitation,
+run `diffx remote pair` on the server machine; optional `--advertise HOST:PORT`
+overrides the invitation address. Rotation preserves already-paired credentials.
+Pairing state is separate from distributed `remote.url` and `remote.token`;
+`diffx remote status` still checks the distributed sync destination.
+
+`connect` defaults to desktop and returns after acceptance. Browser, no-browser
+and JSON variants stay foreground until Ctrl-C, serving a filtered loopback
+gateway on the first free port from 7991–8000, or `--port`. JSON prints one ready
+line with `url`, `target` and `transport` (`tls` for invitations). Native code
+holds credentials; they never enter React or browser URLs. The TLS listener
+allows pairing and public review/collection routes, excluding private controls,
+MCP, accounts and ingestion. Desktop and browser gateways expose the same public
+review allowlist. Desktop reconnects transient remote failures with backoff capped
+at 15 seconds for two minutes, then offers Retry; mutations are never replayed
+automatically. Disconnecting leaves the remote server running.
+
+## SSH connections
+
+Start a personal server on the remote machine, then connect:
+
+```sh
+ssh devbox 'diffx ~/work --headless'  # keep running, for example in tmux
 diffx connect ssh://devbox
+diffx connect ssh://devbox --browser
 diffx connect ssh://dee@devbox:2222 --port 7995 --no-browser
 ```
 
-`connect` runs your `ssh`, so `~/.ssh/config` aliases, agents and jump hosts
-apply. It reads the remote `diffx status --json`, forwards the remote socket to
-a local loopback port (the first free of 7991–8000, or `--port`), opens the
-browser, and stays in the foreground until Ctrl-C or ssh exits. When the SSH
-server refuses socket forwarding (`AllowStreamLocalForwarding no`), it forwards
-the remote viewer port instead, which requires the remote diffx to run without
-`--headless`. If non-interactive SSH cannot find diffx, pass
-`--remote-diffx /full/path/to/diffx`. `--json` prints one line,
-`{"url": …, "target": …, "transport": "unix" | "tcp"}`, once the forward
-serves diffx. The forwarded port is loopback but not per-user: while connected,
-any process on your machine that can reach it can read the remote reviews and,
-through the socket's control API, stop the remote diffx. Browsers cannot use
-the control API. The same forward works by hand:
+`connect` runs your system `ssh`, so `~/.ssh/config` aliases, agents and jump
+hosts apply. It reads remote `diffx status --json`, forwards the socket to a
+native loopback endpoint and opens desktop by default. Browser and JSON
+variants stay foreground through the filtered gateway described above. When the
+SSH server refuses socket forwarding (`AllowStreamLocalForwarding no`), it
+forwards the remote viewer port instead; start that server with `--no-browser`
+to provide a viewer. If non-interactive SSH cannot find diffx, pass
+`--remote-diffx /full/path/to/diffx`. `--json` retains its `url`, `target` and
+`transport` fields (`unix` or `tcp` for SSH), with `url` naming the filtered
+gateway. Loopback ports are not per-user; processes able to reach the gateway
+can use its review routes. A manual raw socket forward also carries private
+control routes, including shutdown:
 
 ```sh
-ssh devbox diffx status --json   # prints "socket" and "viewerUrl"
+ssh devbox diffx status --json   # socket and optional viewerUrl
 ssh -N -L 127.0.0.1:7991:/run/user/1000/diffx/diffx.sock devbox
 ```
 

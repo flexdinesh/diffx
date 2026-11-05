@@ -19,18 +19,22 @@ const modulePrefix = "github.com/flexdinesh/diffx/"
 var allowed = map[string][]string{
 	"cmd/diffx": {
 		"internal/browser", "internal/collector", "internal/config", "internal/contextservice",
-		"internal/diagnostics", "internal/diffsource", "internal/hooks", "internal/ingestion", "internal/localserver",
-		"internal/mcpapi", "internal/review", "internal/reviewstore", "internal/sshforward", "internal/submission", "internal/version",
-		"packages/localprotocol",
+		"internal/diagnostics", "internal/diffsource", "internal/desktoplaunch", "internal/clientgateway", "internal/hooks", "internal/ingestion", "internal/localserver", "internal/processlock",
+		"internal/mcpapi", "internal/review", "internal/reviewstore", "internal/sshforward", "internal/submission", "internal/version", "internal/webui",
+		"packages/localprotocol", "packages/connection",
 	},
 	"cmd/diffx-fetcher": {"internal/config", "internal/fetcher", "internal/fetchprotocol", "internal/version"},
 	"cmd/diffx-server":  {"internal/config", "internal/identityservice", "internal/pgstore", "internal/remoteserver", "internal/version"},
 	"cmd/diffx-console": {"internal/config", "internal/consoleserver", "internal/identityservice", "internal/version"},
 	// HTTP rules shared by the remote server and the console transports.
-	"internal/authhttp":  {"internal/identityservice"},
-	"internal/browser":   {},
-	"internal/collector": {"internal/diffsource", "internal/ingestion", "internal/review"},
-	"internal/config":    {"internal/processlock"},
+	"internal/authhttp": {"internal/identityservice"},
+	"internal/browser":  {},
+	// Native launch and browser connection adapters own no application behavior.
+	"internal/desktoplaunch": {"internal/version", "packages/localprotocol"},
+	"internal/clientgateway": {"packages/api", "packages/connection"},
+	"internal/pairing":       {"packages/api", "packages/connection"},
+	"internal/collector":     {"internal/diffsource", "internal/ingestion", "internal/review"},
+	"internal/config":        {"internal/processlock"},
 	// Admin console transport and composition over the server's database.
 	"internal/consoleserver":  {"internal/authhttp", "internal/consoleui", "internal/google", "internal/identityservice", "internal/pgstore", "internal/serverapp"},
 	"internal/consoleui":      {},
@@ -57,7 +61,7 @@ var allowed = map[string][]string{
 	"internal/localserver": {
 		"internal/config", "internal/contextservice", "internal/controlapi", "internal/ingestion", "internal/processlock",
 		"internal/reviewstore", "internal/serverapp", "internal/unixsocket", "internal/version", "internal/webui",
-		"packages/localprotocol",
+		"packages/localprotocol", "packages/connection", "internal/pairing",
 	},
 	"internal/mcpapi": {"internal/review", "internal/contextservice", "internal/reviewservice", "internal/ingestion"},
 	// Server Postgres persistence; pgdb holds its generated queries.
@@ -107,18 +111,19 @@ var allowed = map[string][]string{
 	"packages/api":           {},
 	"packages/api/goclient":  {},
 	"packages/console-api":   {},
-	"packages/localprotocol": {},
+	"packages/localprotocol": {"packages/connection"},
+	"packages/connection":    {},
 	// Desktop is an independent webview host. Only its app imports MyGo;
 	// only the session adapter executes the bundled matching server.
 	"apps/desktop/cmd/diffx-desktop": {"apps/desktop/internal/app"},
 	"apps/desktop/internal/app": {
 		"apps/desktop/internal/assets", "apps/desktop/internal/host", "apps/desktop/internal/launcher",
-		"apps/desktop/internal/session", "packages/localprotocol",
+		"apps/desktop/internal/session", "packages/localprotocol", "packages/connection",
 	},
 	"apps/desktop/internal/assets":     {},
-	"apps/desktop/internal/launcher":   {"apps/desktop/internal/session", "packages/localprotocol"},
-	"apps/desktop/internal/host":       {"apps/desktop/internal/assets", "packages/localprotocol"},
-	"apps/desktop/internal/session":    {"packages/api/goclient", "packages/localprotocol"},
+	"apps/desktop/internal/launcher":   {"apps/desktop/internal/session", "packages/localprotocol", "packages/connection"},
+	"apps/desktop/internal/host":       {"apps/desktop/internal/assets", "packages/localprotocol", "packages/connection", "packages/api"},
+	"apps/desktop/internal/session":    {"packages/api/goclient", "packages/localprotocol", "packages/connection"},
 	"apps/desktop/tools/stage-desktop": {},
 }
 
@@ -164,6 +169,7 @@ func checkPackage(pkg listedPackage) []string {
 		if dependency == "os/exec" && !slices.Contains([]string{
 			"internal/browser", "internal/diffsource", "internal/fetcher", "internal/hooks", "internal/localserver",
 			"internal/sshforward",
+			"internal/desktoplaunch",
 			"apps/desktop/internal/session",
 		}, name) {
 			violations = append(violations, fmt.Sprintf("%s must not execute processes", name))

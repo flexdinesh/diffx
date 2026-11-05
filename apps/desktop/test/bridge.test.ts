@@ -9,6 +9,8 @@ test("bridge refuses malformed status before mounting a review workspace", () =>
     error: "",
     owned: false,
     canReplace: false,
+    confirmSwitch: false,
+    destination: "",
   };
   assert.deepEqual(launchStatus(ready), ready);
   for (const response of [
@@ -20,6 +22,8 @@ test("bridge refuses malformed status before mounting a review workspace", () =>
     { ...ready, generation: -1 },
     { ...ready, generation: 1.5 },
     { ...ready, owned: "false" },
+    { ...ready, confirmSwitch: "false" },
+    { ...ready, destination: null },
     { ...ready, error: null },
   ]) {
     assert.throws(() => launchStatus(response), /Incompatible desktop bridge/);

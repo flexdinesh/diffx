@@ -4,15 +4,70 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/flexdinesh/diffx/packages/connection"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 	"time"
 )
+
+type stalledResponse struct {
+	header            http.Header
+	entered, released chan struct{}
+	once              sync.Once
+}
+
+func (w *stalledResponse) Header() http.Header { return w.header }
+func (w *stalledResponse) WriteHeader(int)     {}
+func (w *stalledResponse) Write([]byte) (int, error) {
+	close(w.entered)
+	<-w.released
+	return 0, io.ErrClosedPipe
+}
+func (w *stalledResponse) SetWriteDeadline(deadline time.Time) error {
+	if !deadline.IsZero() {
+		w.once.Do(func() { close(w.released) })
+	}
+	return nil
+}
+
+func TestDisposalInterruptsStalledDownstreamWrite(t *testing.T) {
+	h := newHost(t)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "review body") }))
+	defer upstream.Close()
+	if err := h.SetViewer(upstream.URL); err != nil {
+		t.Fatal(err)
+	}
+	w := &stalledResponse{header: make(http.Header), entered: make(chan struct{}), released: make(chan struct{})}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, h.Origin+"/api/v2/bootstrap", nil))
+	}()
+	select {
+	case <-w.entered:
+	case <-time.After(time.Second):
+		t.Fatal("downstream never blocked")
+	}
+	cleared := make(chan struct{})
+	go func() { h.ClearViewer(); close(cleared) }()
+	select {
+	case <-cleared:
+	case <-time.After(time.Second):
+		t.Fatal("stalled browser blocked connection disposal")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("old response survived disposal")
+	}
+}
 
 func newHost(t *testing.T) *Host {
 	t.Helper()
@@ -31,8 +86,8 @@ func newHost(t *testing.T) *Host {
 func TestHostPreservesBrowserPolicyAndOnlyProxiesPublicReview(t *testing.T) {
 	h := newHost(t)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if "http://"+r.Host != h.Origin || r.Header.Get("Origin") != h.Origin || r.Header.Get("Sec-Fetch-Site") != "same-origin" {
-			t.Errorf("browser policy changed: host=%s headers=%v", r.Host, r.Header)
+		if r.Host == strings.TrimPrefix(h.Origin, "http://") || r.Header.Get("Origin") != "" || r.Header.Get("Sec-Fetch-Site") != "" {
+			t.Errorf("native transport leaked browser authority: host=%s headers=%v", r.Host, r.Header)
 		}
 		if r.Header.Get("Forwarded") != "" || r.Header.Get("X-Forwarded-Host") != "" {
 			t.Error("trusted forged forwarded headers")
@@ -168,5 +223,49 @@ func TestRouteCanonicalization(t *testing.T) {
 		if PublicRoute("POST", route) {
 			t.Errorf("accepted %s", route)
 		}
+	}
+}
+
+func TestSocketOnlyNativeProxyStripsBrowserCredentialsAndNeverExposesControl(t *testing.T) {
+	h := newHost(t)
+	socket := filepath.Join(t.TempDir(), "server.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requests := make(chan string, 4)
+	upstream := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Host != "localhost" || r.Header.Get("Origin") != "" || r.Header.Get("Authorization") != "" || r.Header.Get("Cookie") != "" {
+			t.Error("webview authority escaped native proxy")
+		}
+		requests <- r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	})}
+	go upstream.Serve(listener)
+	defer upstream.Close()
+	if err := h.SetConnection(connection.Target{Kind: "unix", Socket: socket}); err != nil {
+		t.Fatal(err)
+	}
+	for _, route := range []string{"/api/v2/collections", "/control/v1/shutdown"} {
+		request := httptest.NewRequest(http.MethodPost, h.Origin+route, nil)
+		request.Header.Set("Authorization", "Bearer forged-browser-token")
+		request.Header.Set("Cookie", "forged-browser-cookie")
+		response := httptest.NewRecorder()
+		h.ServeHTTP(response, request)
+		want := http.StatusOK
+		if route == "/control/v1/shutdown" {
+			want = http.StatusNotFound
+		}
+		if response.Code != want {
+			t.Fatalf("route %s: %d", route, response.Code)
+		}
+	}
+	if got := <-requests; got != "/api/v2/collections" {
+		t.Fatal(got)
+	}
+	select {
+	case route := <-requests:
+		t.Fatalf("unexpected mutation or private request: %s", route)
+	default:
 	}
 }

@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+  "/api/v2/connections/pair": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Personal TLS listener only. Consume a ten-minute single-use invitation, bound to the pinned server identity and run. Native clients send no cookies, Origin or browser fetch headers. Distributed and Unix/loopback listeners do not expose this route. */
+    post: operations["pairPersonalConnection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v2/bootstrap": {
     parameters: {
       query?: never;
@@ -1159,6 +1176,18 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    PersonalPairRequest: {
+      /** @enum {integer} */
+      version: 1;
+      runId: string;
+      secret: string;
+    };
+    PersonalPairResponse: {
+      /** @enum {integer} */
+      version: 1;
+      runId: string;
+      credential: string;
+    };
     InviteToken: {
       /** @description The secret from the invite link's `#t=` fragment. */
       token: string;
@@ -1879,6 +1908,33 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  pairPersonalConnection: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-Diffx-Run": string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PersonalPairRequest"];
+      };
+    };
+    responses: {
+      /** @description Native credential valid for this server run. Never expose it to browser state. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PersonalPairResponse"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
   getBootstrap: {
     parameters: {
       query?: never;

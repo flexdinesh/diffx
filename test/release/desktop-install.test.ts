@@ -7,6 +7,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  readlink,
   realpath,
   rm,
   symlink,
@@ -28,6 +29,7 @@ interface Options {
   symlinkSidecar?: boolean;
   missingApp?: boolean;
   renameFailure?: boolean;
+  aliasFailure?: string;
   downloadFailure?: string;
   shasum?: boolean;
 }
@@ -46,12 +48,14 @@ interface Fixture {
   env: NodeJS.ProcessEnv;
 }
 
-for (const { os, machine, target } of [
+const platforms = [
   { os: "Linux", machine: "x86_64", target: "linux_amd64" },
   { os: "Linux", machine: "aarch64", target: "linux_arm64" },
   { os: "Darwin", machine: "arm64", target: "darwin_arm64" },
-]) {
-  test(`desktop ${target}: installs private pair, preserves CLI and user files`, async (t) => {
+];
+
+for (const { os, machine, target } of platforms) {
+  test(`desktop ${target}: exposes matching commands through one pointer, preserves user files`, async (t) => {
     const fixture = await createFixture(t, { os, machine });
     await install(fixture);
     const executable = await realpath(join(fixture.bin, "diffx-desktop"));
@@ -65,7 +69,7 @@ for (const { os, machine, target } of [
     );
     assert.equal(
       await readFile(join(fixture.bin, "diffx"), "utf8"),
-      "user CLI",
+      program("server old"),
     );
     assert.equal(
       await readFile(join(fixture.bin, "diffx-server"), "utf8"),
@@ -88,6 +92,18 @@ for (const { os, machine, target } of [
       (await execute(join(fixture.bin, "diffx-desktop"))).stdout,
       "desktop old\n",
     );
+    assert.equal(
+      (await execute(join(fixture.bin, "diffx"))).stdout,
+      "server old\n",
+    );
+    assert.equal(
+      await readFile(
+        join(dirnamePair(executable, fixture), "../previous/diffx"),
+        "utf8",
+      ),
+      "user CLI",
+    );
+    await assertAliases(fixture);
     await assertClean(fixture, 1);
   });
 }
@@ -116,50 +132,86 @@ test("desktop stable version installs on macOS Intel", async (t) => {
     (await execute(join(fixture.bin, "diffx-desktop"))).stdout,
     "desktop old\n",
   );
+  assert.equal(
+    (await execute(join(fixture.bin, "diffx"))).stdout,
+    "server old\n",
+  );
+  await assertAliases(fixture);
   await assertClean(fixture, 1);
 });
 
-test("desktop upgrade switches whole pair and retains old executable/server paths", async (t) => {
-  const fixture = await createFixture(t);
-  await install(fixture);
-  const oldExecutable = await realpath(join(fixture.bin, "diffx-desktop"));
-  const oldPair = dirnamePair(oldExecutable, fixture);
-  await writeFile(join(fixture.source, fixture.app), program("desktop new"));
-  await writeFile(join(fixture.source, fixture.sidecar), program("server new"));
-  await archive(fixture);
-  await install(fixture, ["--version", "v1.2.3"]);
-  const nextExecutable = await realpath(join(fixture.bin, "diffx-desktop"));
-  assert.notEqual(oldExecutable, nextExecutable);
-  assert.equal(
-    (await execute(join(fixture.bin, "diffx-desktop"))).stdout,
-    "desktop new\n",
-  );
-  assert.equal(await readFile(oldExecutable, "utf8"), program("desktop old"));
-  assert.equal(
-    await readFile(join(oldPair, fixture.sidecar), "utf8"),
-    program("server old"),
-  );
-  assert.equal(
-    await readFile(
-      join(dirnamePair(nextExecutable, fixture), fixture.sidecar),
-      "utf8",
-    ),
-    program("server new"),
-  );
-  assert.match(
-    await readFile(fixture.requests, "utf8"),
-    /download\/v1.2.3\/diffx-desktop_1.2.3_linux_amd64.tar.gz/,
-  );
-  await assertClean(fixture, 2);
-});
+for (const { os, machine, target } of [
+  ...platforms,
+  { os: "Darwin", machine: "x86_64", target: "darwin_amd64" },
+]) {
+  test(`desktop ${target}: upgrade switches whole pair and retains old executable/server paths`, async (t) => {
+    const fixture = await createFixture(t, { os, machine });
+    await install(
+      fixture,
+      target === "darwin_amd64" ? ["--version", "v1.2.3"] : [],
+    );
+    const oldExecutable = await realpath(join(fixture.bin, "diffx-desktop"));
+    const oldPair = dirnamePair(oldExecutable, fixture);
+    const aliases = await Promise.all(
+      ["diffx", "diffx-desktop"].map((name) =>
+        readlink(join(fixture.bin, name)),
+      ),
+    );
+    await writeFile(join(fixture.source, fixture.app), program("desktop new"));
+    await writeFile(
+      join(fixture.source, fixture.sidecar),
+      program("server new"),
+    );
+    await archive(fixture);
+    await install(fixture, ["--version", "v1.2.3"]);
+    const nextExecutable = await realpath(join(fixture.bin, "diffx-desktop"));
+    assert.notEqual(oldExecutable, nextExecutable);
+    assert.equal(
+      (await execute(join(fixture.bin, "diffx-desktop"))).stdout,
+      "desktop new\n",
+    );
+    assert.equal(
+      (await execute(join(fixture.bin, "diffx"))).stdout,
+      "server new\n",
+    );
+    assert.deepEqual(
+      await Promise.all(
+        ["diffx", "diffx-desktop"].map((name) =>
+          readlink(join(fixture.bin, name)),
+        ),
+      ),
+      aliases,
+    );
+    await assertAliases(fixture);
+    assert.equal(await readFile(oldExecutable, "utf8"), program("desktop old"));
+    assert.equal(
+      await readFile(join(oldPair, fixture.sidecar), "utf8"),
+      program("server old"),
+    );
+    assert.equal(
+      await readFile(
+        join(dirnamePair(nextExecutable, fixture), fixture.sidecar),
+        "utf8",
+      ),
+      program("server new"),
+    );
+    assert.match(
+      await readFile(fixture.requests, "utf8"),
+      new RegExp(`download/v1.2.3/diffx-desktop_1.2.3_${target}.tar.gz`),
+    );
+    await assertClean(fixture, 2);
+  });
+}
 
 test("desktop failed checksum upgrade preserves an installed pair", async (t) => {
   const fixture = await createFixture(t);
   await install(fixture);
   const previous = await realpath(join(fixture.bin, "diffx-desktop"));
+  const previousCLI = await realpath(join(fixture.bin, "diffx"));
   await writeFile(fixture.archive, "corrupt upgrade");
   await assert.rejects(install(fixture), /SHA-256 mismatch/);
   assert.equal(await realpath(join(fixture.bin, "diffx-desktop")), previous);
+  assert.equal(await realpath(join(fixture.bin, "diffx")), previousCLI);
   assert.equal((await execute(previous)).stdout, "desktop old\n");
   await assertClean(fixture, 1);
 });
@@ -183,6 +235,8 @@ for (const failure of [
   "missing-app",
   "symlink-sidecar",
   "rename",
+  "cli-alias",
+  "desktop-alias",
 ]) {
   test(`desktop ${failure}: preserves previous pair and cleans staging`, async (t) => {
     const options: Options = {
@@ -191,6 +245,8 @@ for (const failure of [
       symlinkSidecar: failure === "symlink-sidecar",
       renameFailure: failure === "rename",
     };
+    if (failure === "cli-alias") options.aliasFailure = "diffx";
+    if (failure === "desktop-alias") options.aliasFailure = "diffx-desktop";
     if (failure === "manifest-download")
       options.downloadFailure = "desktop-checksums.txt";
     if (failure === "archive-download") options.downloadFailure = ".tar.gz";
@@ -248,6 +304,89 @@ test("desktop relative destination with spaces and shasum fallback, no HOME", as
     "desktop old\n",
   );
   await assertClean(fixture, 1);
+});
+
+test("desktop activation failure preserves both aliases and active pair on upgrade", async (t) => {
+  const fixture = await createFixture(t, { renameFailure: true });
+  // Failure injection is enabled only after installing a verified old pair.
+  delete fixture.env.FAIL_ACTIVATION;
+  await install(fixture);
+  const previous = await realpath(
+    join(fixture.bin, ".diffx-desktop-versions/current"),
+  );
+  fixture.env.FAIL_ACTIVATION = "1";
+  await writeFile(join(fixture.source, fixture.app), program("desktop new"));
+  await writeFile(join(fixture.source, fixture.sidecar), program("server new"));
+  await archive(fixture);
+  await assert.rejects(install(fixture), /could not activate desktop pair/);
+  assert.equal(
+    await realpath(join(fixture.bin, ".diffx-desktop-versions/current")),
+    previous,
+  );
+  assert.equal(
+    (await execute(join(fixture.bin, "diffx"))).stdout,
+    "server old\n",
+  );
+  assert.equal(
+    (await execute(join(fixture.bin, "diffx-desktop"))).stdout,
+    "desktop old\n",
+  );
+  await assertAliases(fixture);
+  await assertClean(fixture, 1);
+});
+
+test("desktop migrates desktop-only installation and retains its private pair", async (t) => {
+  const fixture = await createFixture(t);
+  const old = join(fixture.bin, ".diffx-desktop-versions/install.legacy");
+  await mkdir(old, { recursive: true });
+  await writeFile(join(old, "diffx-desktop"), program("legacy desktop"));
+  await writeFile(join(old, "diffx"), program("legacy server"));
+  await symlink(join(old, "diffx-desktop"), join(fixture.bin, "diffx-desktop"));
+  await install(fixture);
+  await assertAliases(fixture);
+  assert.equal(
+    await readFile(join(old, "diffx"), "utf8"),
+    program("legacy server"),
+  );
+  assert.equal(
+    await readFile(join(fixture.bin, "diffx-desktop"), "utf8"),
+    program("desktop old"),
+  );
+});
+
+test("desktop restores a standalone CLI symlink after failed activation", async (t) => {
+  const fixture = await createFixture(t, { renameFailure: true });
+  const old = join(fixture.root, "standalone diffx");
+  await writeFile(old, "standalone CLI");
+  await rm(join(fixture.bin, "diffx"));
+  await symlink(old, join(fixture.bin, "diffx"));
+  await assert.rejects(install(fixture), /could not activate desktop pair/);
+  assert.equal(await realpath(join(fixture.bin, "diffx")), old);
+  assert.equal(await readFile(old, "utf8"), "standalone CLI");
+  await assertClean(fixture, 0);
+});
+
+test("desktop repairs an alias overwritten by a standalone CLI installer", async (t) => {
+  const fixture = await createFixture(t);
+  await install(fixture);
+  await rm(join(fixture.bin, "diffx"));
+  await writeFile(join(fixture.bin, "diffx"), "standalone replacement");
+  await install(fixture);
+  await assertAliases(fixture);
+  assert.equal(
+    (await execute(join(fixture.bin, "diffx"))).stdout,
+    "server old\n",
+  );
+  await assertClean(fixture, 2);
+});
+
+test("desktop refuses concurrent installation without removing its lock", async (t) => {
+  const fixture = await createFixture(t);
+  const lock = join(fixture.bin, ".diffx-desktop-versions/.install-lock");
+  await mkdir(lock, { recursive: true });
+  await assert.rejects(install(fixture), /another desktop install/);
+  assert.deepEqual(await readdir(lock), []);
+  assert.equal(await readFile(fixture.requests, "utf8"), "");
 });
 
 test("desktop help needs no downloads", async (t) => {
@@ -350,8 +489,10 @@ async function createFixture(
     "mkdir",
     "mktemp",
     "rm",
+    "rmdir",
     "awk",
     "chmod",
+    "cp",
     "mv",
     "ln",
     "readlink",
@@ -372,10 +513,22 @@ if (process.argv[2] === "-xzf") appendFileSync(${JSON.stringify(extractions)}, "
 const result = spawnSync(${JSON.stringify(stdout.trim())}, process.argv.slice(2), { stdio: "inherit" });
 process.exit(result.status ?? 1);`,
       );
-    } else if (tool === "mv" && options.renameFailure)
-      await executable(join(tools, tool), "process.exit(1);");
+    } else if (tool === "mv")
+      await executable(
+        join(tools, tool),
+        `
+const { spawnSync } = require("node:child_process");
+const args = process.argv.slice(2);
+if (process.env.FAIL_ACTIVATION && args.at(-1).endsWith("/current")) process.exit(1);
+if (${JSON.stringify(options.aliasFailure ?? "")} && args.at(-2).endsWith("/alias-" + ${JSON.stringify(options.aliasFailure ?? "")})) process.exit(1);
+// Exercise Darwin's no-dereference rename semantics on a Linux test host.
+const translated = args.map((arg) => arg === "-fh" && process.platform !== "darwin" ? "-fT" : arg === "-fT" && process.platform === "darwin" ? "-fh" : arg);
+const result = spawnSync(${JSON.stringify(stdout.trim())}, translated, { stdio: "inherit" });
+process.exit(result.status ?? 1);`,
+      );
     else await symlink(stdout.trim(), join(tools, tool));
   }
+  if (options.renameFailure) fixture.env.FAIL_ACTIVATION = "1";
   const hashTool = options.shasum ? "shasum" : "sha256sum";
   await executable(
     join(tools, hashTool),
@@ -445,8 +598,27 @@ async function assertClean(
   expectedPairs: number,
 ): Promise<void> {
   const versions = join(fixture.bin, ".diffx-desktop-versions");
-  const pairs = await readdir(versions);
+  const entries = await readdir(versions);
+  assert.equal(entries.includes(".install-lock"), false);
+  const pairs = entries.filter((name) => name !== "current");
   assert.equal(pairs.length, expectedPairs);
-  for (const pair of pairs)
-    assert.deepEqual(await readdir(join(versions, pair)), ["payload"]);
+  for (const pair of pairs) {
+    assert.deepEqual((await readdir(join(versions, pair))).sort(), [
+      "bin",
+      "payload",
+      "previous",
+    ]);
+  }
+}
+
+async function assertAliases(fixture: Fixture): Promise<void> {
+  const current = join(fixture.bin, ".diffx-desktop-versions/current");
+  for (const name of ["diffx", "diffx-desktop"]) {
+    assert.equal(
+      await readlink(join(fixture.bin, name)),
+      `.diffx-desktop-versions/current/bin/${name}`,
+    );
+    const executable = await realpath(join(fixture.bin, name));
+    assert.ok(executable.startsWith(`${await realpath(current)}/payload/`));
+  }
 }

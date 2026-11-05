@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/packages/api/goclient"
+	"github.com/flexdinesh/diffx/packages/connection"
 	"github.com/flexdinesh/diffx/test/desktop/driver"
 )
 
@@ -784,12 +785,40 @@ func TestDesktopExplicitReplacementAndFolderChoice(t *testing.T) {
 		}
 		return nil
 	}))
+	// A second native process forwards into the existing window and returns
+	// after acceptance without creating another server or review generation.
+	var beforeHandoff struct{ Generation uint64 }
+	w.eval(`window.mygo.call('Desktop.Status')`, &beforeHandoff)
+	repeated := start(t, f.binary, append(slices.Clone(f.env), "DIFFX_DESKTOP_SIDECAR="+f.sidecar), other, "--port=0")
+	select {
+	case <-repeated.done:
+		must(t, repeated.err)
+	case <-ctx.Done():
+		t.Fatal("same-target handoff did not return")
+	}
+	var afterHandoff struct{ Generation uint64 }
+	w.eval(`window.mygo.call('Desktop.Status')`, &afterHandoff)
+	if afterHandoff.Generation != beforeHandoff.Generation {
+		t.Fatal("same-target handoff restarted review")
+	}
+	windows, err := w.c.Windows(ctx)
+	must(t, err)
+	if len(windows) != 1 {
+		t.Fatalf("singleton created additional window: %+v", windows)
+	}
 	// Changing an owned scope closes its own lease first. The native picker
 	// supplies the new path; saved server review data remains intact.
 	var beforeFolder struct{ Generation uint64 }
 	w.eval(`window.mygo.call('Desktop.Status')`, &beforeFolder)
 	w.eval(`window.dispatchEvent(new Event('diffx:choose-folder'))`, nil)
 	w.chooseFolder(f.repo)
+	w.wait("folder switch requires confirmation", `document.body.textContent.includes('Switch workspace or connection?')`)
+	w.eval(`Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='Cancel').click()`, nil)
+	w.wait("cancel preserves current workspace", fmt.Sprintf(`(async()=>{const s=await window.mygo.call('Desktop.Status');return !s.confirmSwitch && s.generation===%d && s.phase==='ready';})()`, beforeFolder.Generation))
+	w.eval(`window.dispatchEvent(new Event('diffx:choose-folder'))`, nil)
+	w.chooseFolder(f.repo)
+	w.wait("folder switch confirmation shown again", `document.body.textContent.includes('Switch workspace or connection?')`)
+	w.eval(`Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='Switch session').click()`, nil)
 	w.wait("folder selection starts and owns the new scope", fmt.Sprintf(`(async()=>{const s=await window.mygo.call('Desktop.Status');return s.generation>%d && s.phase==='ready' && s.owned;})()`, beforeFolder.Generation))
 	w.ready()
 	var launch struct{ Owned bool }
@@ -798,4 +827,190 @@ func TestDesktopExplicitReplacementAndFolderChoice(t *testing.T) {
 		t.Fatal("folder choice lost owned-server lifetime")
 	}
 	w.quit()
+}
+
+// Hard links preserve the selected CLI identity while supplying the exact
+// installed companion names. The automation build remains a real MyGo window.
+func pairedCLI(t *testing.T, f fixture) (string, []string) {
+	t.Helper()
+	directory, err := os.MkdirTemp(filepath.Dir(f.sidecar), ".desktop-acceptance-pair-")
+	must(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(directory) })
+	cli := filepath.Join(directory, "diffx")
+	must(t, os.Link(f.sidecar, cli))
+	must(t, os.Link(f.binary, filepath.Join(directory, "diffx-desktop")))
+	return cli, append(slices.Clone(f.env), "DIFFX_DESKTOP_SIDECAR="+f.sidecar)
+}
+
+func acceptedCLI(t *testing.T, ctx context.Context, process *process) {
+	t.Helper()
+	select {
+	case <-process.done:
+		if process.err != nil {
+			t.Fatal("public CLI handoff failed")
+		}
+		if strings.Contains(process.output.String(), "desktop unavailable") {
+			t.Fatal("public CLI started foreground fallback")
+		}
+	case <-ctx.Done():
+		t.Fatal("public CLI did not return after desktop acceptance")
+	}
+}
+
+func TestDesktopDefaultSocketOnlyPublicCLIHandoffAndCancelledSwitch(t *testing.T) {
+	f := setup(t)
+	w := open(t, f, nil, f.repo)
+	w.ready()
+	before, err := f.status(w.ctx)
+	must(t, err)
+	if before.Socket == "" || before.ViewerURL != "" {
+		t.Fatal("default desktop session must serve only its Unix socket")
+	}
+	var beforeLaunch struct{ Generation uint64 }
+	w.eval(`window.mygo.call('Desktop.Status')`, &beforeLaunch)
+	cli, env := pairedCLI(t, f)
+	acceptedCLI(t, w.ctx, start(t, cli, env, f.repo))
+	var focused struct{ Generation uint64 }
+	w.eval(`window.mygo.call('Desktop.Status')`, &focused)
+	if focused.Generation != beforeLaunch.Generation {
+		t.Fatal("same-target public CLI handoff restarted the review")
+	}
+	other := filepath.Join(f.root, "other-workspace")
+	must(t, os.Mkdir(other, 0700))
+	pending := start(t, cli, env, other)
+	w.wait("public CLI changed-target confirmation", `document.body.textContent.includes('Switch workspace or connection?')`)
+	must(t, pending.running())
+	w.eval(`Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='Cancel').click()`, nil)
+	acceptedCLI(t, w.ctx, pending)
+	w.wait("cancel preserves rendered review and generation", fmt.Sprintf(`(async()=>{const s=await window.mygo.call('Desktop.Status');return !s.confirmSwitch && s.phase==='ready' && s.generation===%d && !!document.querySelector('#viewer diffs-container');})()`, beforeLaunch.Generation))
+	after, err := f.status(w.ctx)
+	must(t, err)
+	if after.InstanceID != before.InstanceID {
+		t.Fatal("cancelled public launch replaced current server")
+	}
+	windows, err := w.c.Windows(w.ctx)
+	must(t, err)
+	if len(windows) != 1 {
+		t.Fatal("public handoff created another window")
+	}
+	w.quit()
+	after, err = f.status(w.ctx)
+	must(t, err)
+	if after.State != "stopped" {
+		t.Fatal("quitting default desktop did not stop its owned socket server")
+	}
+}
+
+func TestDesktopDirectTLSPinRefusalPairingMutationSSEAndCachedReconnect(t *testing.T) {
+	f := setup(t)
+	remote := start(t, f.sidecar, f.env, "remote", "--listen=127.0.0.1:0", f.repo)
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
+	var invitation connection.Invitation
+	must(t, driver.Until(ctx, "personal TLS invitation", func(context.Context) error {
+		select {
+		case <-remote.done:
+			return errors.New("personal TLS server exited")
+		default:
+		}
+		for _, field := range strings.Fields(remote.output.String()) {
+			if !strings.HasPrefix(field, "diffx1_") {
+				continue
+			}
+			parsed, err := connection.Parse(field)
+			if err == nil {
+				invitation = parsed
+				return nil
+			}
+		}
+		return errors.New("personal TLS invitation not ready")
+	}))
+	before, err := f.status(ctx)
+	must(t, err)
+	cli, env := pairedCLI(t, f)
+	// Attach through the private local socket first, then switch through public
+	// CLI handoff. Invitations never appear in subsequent desktop/sidecar argv.
+	w := open(t, f, nil, "--desktop-launch")
+	w.ready()
+	bad := invitation
+	pin, err := base64.RawURLEncoding.DecodeString(bad.Pin)
+	must(t, err)
+	pin[0] ^= 1
+	bad.Pin = base64.RawURLEncoding.EncodeToString(pin)
+	refused := start(t, cli, env, "connect", bad.String())
+	w.wait("TLS target switch requires confirmation", `document.body.textContent.includes('Switch workspace or connection?')`)
+	w.eval(`Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='Switch session').click()`, nil)
+	acceptedCLI(t, ctx, refused)
+	w.wait("pin mismatch remains a GUI failure without replacement", `(async()=>{const s=await window.mygo.call('Desktop.Status');return s.phase==='failed' && !s.canReplace;})()`)
+	acceptedCLI(t, ctx, start(t, cli, env, "connect", invitation.String()))
+	w.wait("native TLS session ready", `(async()=>{const s=await window.mygo.call('Desktop.Status');return s.phase==='ready' && !s.owned;})()`)
+	w.ready()
+	var launch struct{ Owned bool }
+	w.eval(`window.mygo.call('Desktop.Status')`, &launch)
+	if launch.Owned {
+		t.Fatal("TLS connection acquired remote lifecycle ownership")
+	}
+	for _, route := range []string{"/control/v1/status", "/api/v2/connections/pair", "/api/v2/auth/login"} {
+		var code int
+		w.eval(fmt.Sprintf(`fetch(%q).then(r=>r.status)`, route), &code)
+		if code != http.StatusNotFound {
+			t.Fatal("desktop exposed a private or distributed route")
+		}
+	}
+	var streamed bool
+	w.eval(`(async()=>{const controller=new AbortController();try{const r=await fetch('/api/v2/events',{signal:controller.signal});if(!r.ok || !r.body)return false;const read=await r.body.getReader().read();return r.headers.get('content-type').includes('text/event-stream') && read.value?.length>0;}finally{controller.abort();}})()`, &streamed)
+	if !streamed {
+		t.Fatal("TLS SSE did not flush through WebKit")
+	}
+	w.click(`[aria-label="Leave review comment on file review.txt"]`)
+	w.wait("TLS comment editor focused", `document.activeElement?.matches('textarea[placeholder="Leave a review comment…"]')`)
+	const body = "Desktop pinned TLS comment"
+	w.input("type", "--clearmodifiers", "--delay", "0", body)
+	w.input("key", "--clearmodifiers", "ctrl+Return")
+	w.wait("TLS mutation persisted through native proxy", fmt.Sprintf(`(async()=>{const page=await fetch('/api/v2/contexts?latest=true').then(r=>r.json());const result=await fetch('/api/v2/contexts/'+page.contexts[0].id+'/comments').then(r=>r.json());return result.comments.some(c=>c.body===%q);})()`, body))
+	cache, err := filepath.Glob(filepath.Join(f.root, "runtime", "connections", "*.json"))
+	must(t, err)
+	if len(cache) != 1 {
+		t.Fatal("native TLS credential cache missing")
+	}
+	data, err := os.ReadFile(cache[0])
+	must(t, err)
+	var target connection.Target
+	must(t, json.Unmarshal(data, &target))
+	info, err := os.Stat(cache[0])
+	must(t, err)
+	if info.Mode().Perm() != 0600 || target.Credential == "" {
+		t.Fatal("credential cache is not private")
+	}
+	var webState string
+	w.eval(`(async()=>JSON.stringify({status:await window.mygo.call('Desktop.Status'),url:location.href,local:{...localStorage},session:{...sessionStorage},html:document.documentElement.outerHTML}))()`, &webState)
+	for _, secret := range []string{invitation.String(), invitation.Secret, invitation.Pin, target.Credential} {
+		if strings.Contains(webState, secret) {
+			t.Fatal("native connection secret escaped into webview state")
+		}
+	}
+	w.quit()
+	select {
+	case <-remote.done:
+		t.Fatal("desktop quit stopped remote server")
+	default:
+	}
+	// The original invitation has been consumed. A new desktop session must use
+	// its native cache and reconnect during this server run without re-pairing.
+	w = open(t, f, nil, "--desktop-launch")
+	w.ready()
+	var beforeReconnect struct{ Generation uint64 }
+	w.eval(`window.mygo.call('Desktop.Status')`, &beforeReconnect)
+	reconnect := start(t, cli, env, "connect", invitation.String())
+	w.wait("cached TLS reconnect confirmation", `document.body.textContent.includes('Switch workspace or connection?')`)
+	w.eval(`Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='Switch session').click()`, nil)
+	acceptedCLI(t, ctx, reconnect)
+	w.wait("cached native TLS session ready", fmt.Sprintf(`(async()=>{const s=await window.mygo.call('Desktop.Status');return s.phase==='ready' && !s.owned && s.generation>%d;})()`, beforeReconnect.Generation))
+	w.ready()
+	w.quit()
+	after, err := f.status(ctx)
+	must(t, err)
+	if after.State != "running" || after.InstanceID != before.InstanceID {
+		t.Fatal("TLS reconnect or quit replaced remote server")
+	}
 }

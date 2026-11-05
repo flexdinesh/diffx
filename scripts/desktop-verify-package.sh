@@ -8,6 +8,7 @@ version=${DIFFX_RELEASE_VERSION:-0.0.0-dev}
 source_sha=${DIFFX_SOURCE_SHA:-$(git rev-parse HEAD)}
 host=$(go env GOHOSTOS)/$(go env GOHOSTARCH)
 target=${DIFFX_DESKTOP_TARGET:-$host}
+case "$target" in linux/amd64|linux/arm64|darwin/amd64|darwin/arm64) ;; *) fail 'unsupported desktop target';; esac
 out=$PWD/apps/desktop/build/release
 archive=diffx-desktop_${version}_${target%/*}_${target#*/}.tar.gz
 stage=$(mktemp -d "$out/.verify.XXXXXXXXXX")
@@ -18,6 +19,10 @@ if command -v sha256sum >/dev/null 2>&1; then
 else
   (cd "$out" && shasum -a 256 -c "$archive.sha256")
 fi
+tar -tzf "$out/$archive" > "$stage/members" || fail 'could not list archive'
+awk '/^\// || /(^|\/)\.\.(\/|$)/ { exit 1 }' "$stage/members" || fail 'unsafe archive path'
+tar -tvzf "$out/$archive" > "$stage/types" || fail 'could not inspect archive'
+awk 'substr($0,1,1) != "-" && substr($0,1,1) != "d" { exit 1 }' "$stage/types" || fail 'archive links or special files are unsupported'
 tar -xzf "$out/$archive" -C "$stage"
 case "$target" in
   darwin/*)
@@ -35,7 +40,9 @@ case "$target" in
   *) fail 'unsupported target' ;;
 esac
 sidecar=$resources/diffx
-[ -x "$app" ] && [ -x "$sidecar" ] || fail 'missing executable pair'
+for binary in "$app" "$sidecar"; do
+  [ -f "$binary" ] && [ ! -L "$binary" ] && [ -x "$binary" ] || fail 'missing regular executable pair'
+done
 for notice in LICENSE NOTICE.txt README.txt BUILD-INFO.txt release-licensing.md licenses/github.com_egoist_mygo/LICENSE licenses/github.com_egoist_mygo/internal/shader/LICENSE licenses/go/LICENSE licenses/web/dependencies.json; do
   [ -s "$resources/$notice" ] || fail "missing $notice"
 done
@@ -45,6 +52,23 @@ go version -m "$sidecar" > "$stage/server-build"
 grep -Fq -- '-tags=mygo_noinspector' "$stage/app-build" || fail 'inspector exclusion tag missing'
 grep -Fxq "Version: $version" "$resources/BUILD-INFO.txt" || fail 'version metadata mismatch'
 grep -Fxq "Source: $source_sha" "$resources/BUILD-INFO.txt" || fail 'source metadata mismatch'
+grep -Fxq "Target: $target" "$resources/BUILD-INFO.txt" || fail 'target metadata mismatch'
+# Verify link-time versions on every target, including archives that cannot run
+# on this host. Build provenance alone does not establish a matching pair.
+for contract in \
+  "$stage/app-build|github.com/flexdinesh/diffx/apps/desktop/internal/app.Version=$version" \
+  "$stage/server-build|github.com/flexdinesh/diffx/internal/version.Version=$version" \
+  "$stage/server-build|github.com/flexdinesh/diffx/internal/version.Commit=$source_sha"; do
+  build=${contract%%|*}
+  setting=${contract#*|}
+  awk -v setting="$setting" '
+    $1 == "build" && $2 ~ /^-ldflags=/ {
+      count = split($0, fields, /[[:space:]\"]+/)
+      for (i = 1; i <= count; i++) if (fields[i] == setting) found = 1
+    }
+    END { exit !found }
+  ' "$build" || fail "binary metadata mismatch: $setting"
+done
 awk '$1 == "dep" && $2 == "github.com/egoist/mygo" && $3 == "v0.7.4" { found = 1 } END { exit !found }' "$stage/app-build" || fail 'MyGo v0.7.4 pin missing'
 for build in "$stage/app-build" "$stage/server-build"; do
   grep -Fq "GOOS=${target%/*}" "$build" || fail 'wrong target OS'

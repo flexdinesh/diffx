@@ -35,9 +35,14 @@ register paths for later server collection or maintain its own catalog.
 The application core has two compositions. See [architecture.md](architecture.md)
 for contracts, durability rules and migration details.
 
-`diffx [PATH]` is one foreground process: serve UI/REST/MCP immediately, then
-collect its selected checkout, or discover and collect the checkouts under its
-paths, and ingest directly in a background task. Discovery feeds four workers as checkouts are found; a serial
+`diffx [PATH]` opens the desktop client by default and returns after desktop
+acceptance. Its matching CLI owns a socket-only server, with an optional viewer
+when `--port` is explicit. `--browser` opens a foreground browser viewer;
+`--no-browser` serves that viewer without opening a client; `--headless` stays
+foreground with only the socket. Failure before desktop acceptance falls back to
+a foreground browser viewer; later failures remain in desktop. The server serves
+UI/REST/MCP immediately, then collects its selected checkout, or discovers and
+collects the checkouts under its paths, and ingests directly in a background task. Discovery feeds four workers as checkouts are found; a serial
 publisher ingests each completed checkout immediately, so its snapshot becomes queryable
 while slower checkouts continue. Publication commits and emits the existing
 ingestion event for each observation. The UI opens available snapshots and shows
@@ -55,9 +60,23 @@ Piped input is validated and collected once before serving.
 The home-directory database survives process termination, but each process
 serves only the checkouts it discovered (every branch and earlier run of them)
 or its own piped capture, so other checkouts' history reappears only when reopened.
-Only one local process owns the database; another invocation prompts before
-graceful replacement through the owner-only socket. Noninteractive callers use `--replace`.
+Only one local process owns the database. Desktop focuses the same target and
+confirms a changed target; cancelling preserves the session. A compatible scope
+can attach without owning the server. Other foreground scopes require graceful
+replacement through the owner-only socket; noninteractive callers use `--replace`.
 There is no collector daemon.
+
+`diffx remote [PATH]` serves the same personal SQLite/checkout composition over
+pinned TLS, default `:7981`, in the foreground. `--listen` chooses the bind
+address; `--advertise HOST:PORT` chooses the invitation address. Wildcard binds
+prefer the SSH session server IP, otherwise list non-loopback candidates without
+external discovery. It shares local runtime/database ownership and never silently
+promotes an existing local process. It prints `diffx connect diffx1_…` invitations
+that expire after ten minutes and can be consumed once. `diffx remote pair`
+rotates an unused invitation through the owner-only socket. Cached credentials
+allow reconnect for that server run; restart requires pairing again.
+`diffx remote status` retains its distributed destination meaning;
+`diffx remote -- status` serves a directory named `status`.
 
 `diffx sync` collects the selected checkout once,
 saves immutable pending payloads, and submits them over authenticated HTTP.
@@ -84,9 +103,13 @@ and review operations. Their lifecycle and submission delivery differ.
 
 ## Desktop client
 
-`diffx-desktop` is a client of local composition. Its independent MyGo host
-embeds the shared React review app and proxies public REST/SSE through the local
-sidecar viewer on one loopback webview origin. The narrow typed bridge owns launch,
+`diffx-desktop` is the default personal client. Its independent MyGo host
+embeds the shared React review app and proxies public REST/SSE through native
+Unix, pinned TLS or SSH-forwarded loopback connections on one stable loopback
+webview origin. `diffx connect STRING` and `diffx connect ssh://HOST` default to
+desktop; browser, no-browser and JSON variants stay foreground through a filtered
+loopback gateway. TLS credentials remain native and never enter React or URLs.
+The narrow typed bridge owns launch,
 folder dialogs, retry and explicit scope replacement; review semantics stay in
 the server. A matching bundled CLI implements `packages/localprotocol`.
 Attachment never transfers ownership; shutdown cancels only an owned server.
@@ -799,12 +822,18 @@ is not a replay of a previous failed submission.
 Local and remote deployment share application/storage contracts and the HTTP
 runtime. Local lifecycle discovery uses the owner-only socket for foreground
 status, shutdown and instance-bound lifetime notification. The same socket serves the local REST,
-MCP and web application; a loopback viewer port serves it to browsers unless
-`--headless`. Local mode has no account identity, so it never binds a
-non-loopback address; another machine reaches it by forwarding the socket or
-viewer port over SSH (`diffx connect ssh://HOST`). Collection in those sessions never uses HTTP.
+MCP and web application; an optional loopback viewer serves browsers. Desktop
+sessions use the socket by default. Explicit `diffx remote` adds authenticated
+pinned TLS network access to allowlisted review/collection routes, excluding
+private control, MCP, accounts and ingestion. Run-scoped pairing establishes
+access to the stable personal owner, without distributed accounts. The server
+retains credential hashes in memory; native clients keep owner-only cached
+credentials. Web clients see only loopback origins and no TLS secrets.
+SSH can forward the socket or viewer (`diffx connect ssh://HOST`); the client
+gateway filters public review routes, while a raw socket forward carries private
+controls too. Collection requests use shared services; Git stays on the server.
 
-Remote credentials establish owner identity before review REST, MCP, ingestion
+Distributed credentials establish owner identity before review REST, MCP, ingestion
 jobs, job status or events can access data. Browser assets and mode/login bootstrap
 remain accessible so unauthenticated users can sign in. Deployment probes are
 also unauthenticated and uncached: `/healthz` reports a serving process without

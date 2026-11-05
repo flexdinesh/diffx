@@ -1,8 +1,13 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+
+	"github.com/flexdinesh/diffx/apps/desktop/internal/session"
+	"github.com/flexdinesh/diffx/packages/localprotocol"
 )
 
 var Version = "dev"
@@ -13,6 +18,19 @@ func HandleCommand(args []string, output io.Writer) (bool, error) {
 		return false, nil
 	}
 	switch args[0] {
+	case "--desktop-contract":
+		sidecar := os.Getenv("DIFFX_DESKTOP_SIDECAR")
+		if sidecar == "" {
+			executable, err := os.Executable()
+			if err != nil {
+				return true, err
+			}
+			sidecar, err = session.ResolveSidecar(executable)
+			if err != nil {
+				return true, err
+			}
+		}
+		return true, json.NewEncoder(output).Encode(localprotocol.DesktopContract{ProtocolVersion: localprotocol.Version, Build: Version, Sidecar: sidecar})
 	case "--version":
 		_, err := fmt.Fprintln(output, "diffx-desktop "+Version)
 		return true, err

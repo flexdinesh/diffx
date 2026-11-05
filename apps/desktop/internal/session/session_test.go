@@ -13,15 +13,84 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/diffx/packages/connection"
 	"github.com/flexdinesh/diffx/packages/localprotocol"
 )
 
 // The test binary is the temporary sidecar. No shell, PATH or server internals.
 func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == localprotocol.ConnectCommand {
+		os.Exit(fakeConnect())
+	}
 	if len(os.Args) > 1 && os.Args[1] == localprotocol.Command {
 		os.Exit(fakeSidecar())
 	}
 	os.Exit(m.Run())
+}
+
+func fakeConnect() int {
+	if len(os.Args) != 6 || os.Args[2] != "--parent-fd" || os.Args[3] != "3" || os.Args[4] != "--intent-fd" || os.Args[5] != "4" {
+		return 31
+	}
+	lease := os.NewFile(3, "lease")
+	defer lease.Close()
+	intent := os.NewFile(4, "intent")
+	defer intent.Close()
+	var request localprotocol.ConnectRequest
+	if json.NewDecoder(intent).Decode(&request) != nil || len(request.Args) != 1 || request.Args[0] != "secret invitation" {
+		return 32
+	}
+	directory, err := os.Getwd()
+	if err != nil {
+		return 33
+	}
+	ready := localprotocol.Readiness{ProtocolVersion: localprotocol.Version, Connection: connection.Target{Kind: "tcp", URL: "http://127.0.0.1:7981"}, InstanceID: "remote-instance", ScopeID: "remote-scope", Input: localprotocol.Input{Kind: "remote"}, Label: directory}
+	if json.NewEncoder(os.Stdout).Encode(ready) != nil {
+		return 34
+	}
+	_, _ = io.Copy(io.Discard, lease)
+	return 0
+}
+
+func TestConnectSecretsUsePrivateDescriptorAndRemoteLeaseNeverOwnsServer(t *testing.T) {
+	options := fakeOptions(t, "connect", "secret invitation")
+	options.Directory = t.TempDir()
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	s, err := Start(ctx, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if s.Ready.Owned || s.Ready.Input.Kind != "remote" || s.Ready.Label != options.Directory || s.Ready.ViewerURL != "" {
+		t.Fatalf("remote contract: %+v", s.Ready)
+	}
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSocketOnlyReadinessAndRemoteOwnershipValidation(t *testing.T) {
+	local := localprotocol.Readiness{ProtocolVersion: localprotocol.Version, Connection: connection.Target{Kind: "unix", Socket: "/socket"}, InstanceID: "instance", ScopeID: "scope", Owned: true, Input: localprotocol.Input{Kind: "capture", ContextID: "capture"}}
+	if err := validate(local); err != nil {
+		t.Fatalf("socket-only readiness refused: %v", err)
+	}
+	remote := local
+	remote.Owned = false
+	remote.Input = localprotocol.Input{Kind: "remote"}
+	remote.Connection = connection.Target{Kind: "tcp", URL: "http://127.0.0.1:7981"}
+	if err := validate(remote); err != nil {
+		t.Fatal(err)
+	}
+	remote.Owned = true
+	if err := validate(remote); err == nil {
+		t.Fatal("remote ownership admitted")
+	}
+	remote.Owned = false
+	remote.Connection = local.Connection
+	if err := validate(remote); err == nil {
+		t.Fatal("remote intent admitted private local lifecycle target")
+	}
 }
 func fakeSidecar() int {
 	args := os.Args[2:]
@@ -223,12 +292,12 @@ func TestRealBundledSidecarCaptureAndAttachment(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	owner, err := Start(ctx, Options{SidecarPath: path, Stdin: input, Args: []string{"--port=0", "--state=memory"}, Stderr: os.Stderr})
+	owner, err := Start(ctx, Options{SidecarPath: path, Stdin: input, Args: []string{"--state=memory"}, Stderr: os.Stderr})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer owner.Close()
-	if !owner.Ready.Owned || owner.Ready.Input.Kind != "capture" || owner.Ready.Input.ContextID == "" {
+	if !owner.Ready.Owned || owner.Ready.Input.Kind != "capture" || owner.Ready.Input.ContextID == "" || owner.Ready.ViewerURL != "" || owner.Ready.Connection.Kind != "unix" {
 		t.Fatalf("capture readiness %#v", owner.Ready)
 	}
 	attached, err := Start(ctx, Options{SidecarPath: path, Args: []string{"--attach"}, Stderr: os.Stderr})
@@ -241,11 +310,17 @@ func TestRealBundledSidecarCaptureAndAttachment(t *testing.T) {
 	if err = attached.Close(); err != nil {
 		t.Fatal(err)
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, owner.Ready.ViewerURL+"/api/v2/contexts/"+owner.Ready.Input.ContextID, nil)
+	transport, err := connection.NewTransport(owner.Ready.Connection)
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := http.DefaultClient.Do(request)
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/api/v2/contexts/"+owner.Ready.Input.ContextID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		t.Fatalf("attachment quit stopped owner: %v", err)
 	}

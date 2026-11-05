@@ -1,12 +1,17 @@
 export interface LaunchStatus {
-  phase: "starting" | "ready" | "failed" | "folder";
+  phase: "starting" | "ready" | "failed" | "folder" | "reconnecting";
   generation: number;
   error: string;
   owned: boolean;
   canReplace: boolean;
+  confirmSwitch: boolean;
+  destination: string;
 }
 
 type Method =
+  | "Desktop.Bootstrap"
+  | "Desktop.Confirm"
+  | "Desktop.Cancel"
   | "Desktop.Status"
   | "Desktop.Retry"
   | "Desktop.Folder"
@@ -36,16 +41,21 @@ export function launchStatus(value: unknown): LaunchStatus {
     !("error" in value) ||
     !("owned" in value) ||
     !("canReplace" in value) ||
+    !("confirmSwitch" in value) ||
+    !("destination" in value) ||
     (value.phase !== "starting" &&
       value.phase !== "ready" &&
       value.phase !== "failed" &&
-      value.phase !== "folder") ||
+      value.phase !== "folder" &&
+      value.phase !== "reconnecting") ||
     typeof value.generation !== "number" ||
     !Number.isSafeInteger(value.generation) ||
     value.generation < 0 ||
     typeof value.error !== "string" ||
     typeof value.owned !== "boolean" ||
-    typeof value.canReplace !== "boolean"
+    typeof value.canReplace !== "boolean" ||
+    typeof value.confirmSwitch !== "boolean" ||
+    typeof value.destination !== "string"
   )
     throw new Error(
       "Incompatible desktop bridge response. Restart the matching desktop build.",
@@ -56,5 +66,7 @@ export function launchStatus(value: unknown): LaunchStatus {
     error: value.error,
     owned: value.owned,
     canReplace: value.canReplace,
+    confirmSwitch: value.confirmSwitch,
+    destination: value.destination,
   };
 }

@@ -7,76 +7,211 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
+	"strings"
 
 	"github.com/flexdinesh/diffx/internal/browser"
+	"github.com/flexdinesh/diffx/internal/clientgateway"
+	"github.com/flexdinesh/diffx/internal/desktoplaunch"
 	"github.com/flexdinesh/diffx/internal/sshforward"
+	"github.com/flexdinesh/diffx/internal/webui"
+	"github.com/flexdinesh/diffx/packages/connection"
+	"github.com/flexdinesh/diffx/packages/localprotocol"
 )
 
-// connectReady is the one-line `diffx connect --json` contract a desktop shell
-// reads once the forward serves diffx. Fields are only added.
+// connectReady retains the public SSH --json fields. Secrets are never emitted.
 type connectReady struct {
 	URL       string `json:"url"`
 	Target    string `json:"target"`
 	Transport string `json:"transport"`
 }
 
-// runConnect forwards a diffx running on another machine to a local loopback
-// port over the system ssh, then stays in the foreground until Ctrl-C or ssh
-// exits.
-func runConnect(ctx context.Context, arguments []string, stdout, stderr io.Writer) error {
+type connectOptions struct {
+	target                     string
+	port                       int
+	noBrowser, browser, asJSON bool
+	remoteDiffx                string
+}
+
+func parseConnect(arguments []string, stderr io.Writer) (connectOptions, error) {
+	values := connectOptions{}
 	flags := flag.NewFlagSet("diffx connect", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	port := flags.Int("port", -1, "local loopback port; defaults to the first available from 7991 to 8000, 0 lets the OS choose")
-	noBrowser := flags.Bool("no-browser", false, "do not open a browser")
-	asJSON := flags.Bool("json", false, "print one JSON line with the URL once ready")
-	remoteDiffx := flags.String("remote-diffx", "diffx", "diffx command on the remote machine")
+	flags.IntVar(&values.port, "port", -1, "local loopback port, 0 selects a free port")
+	flags.BoolVar(&values.noBrowser, "no-browser", false, "serve a foreground browser connection without opening it")
+	flags.BoolVar(&values.browser, "browser", false, "open a foreground browser connection instead of desktop")
+	flags.BoolVar(&values.asJSON, "json", false, "serve a foreground connection and print its ready URL as JSON")
+	flags.StringVar(&values.remoteDiffx, "remote-diffx", "diffx", "diffx command on the remote SSH machine")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "  Usage: diffx connect ssh://[USER@]HOST[:PORT] [--port N] [--no-browser] [--json] [--remote-diffx PATH]")
-		fmt.Fprintln(stderr, "  Forwards the remote diffx socket, or its viewer port, over ssh.")
+		fmt.Fprintln(stderr, "Usage: diffx connect STRING|ssh://[USER@]HOST[:PORT] [--browser|--no-browser|--json]")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(normalizeConnectArguments(arguments)); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return nil
-		}
-		return err
+		return values, err
 	}
 	if flags.NArg() != 1 {
-		return errors.New("connect takes one target, like ssh://devbox")
+		return values, errors.New("connect takes one target, a connection invitation or ssh://HOST")
 	}
-	if *port < -1 || *port > 65535 {
-		return errors.New("port must be between 0 and 65535")
+	if values.port < -1 || values.port > 65535 {
+		return values, errors.New("port must be between 0 and 65535")
 	}
-	target, err := sshforward.ParseTarget(flags.Arg(0))
+	if values.browser && values.noBrowser {
+		return values, errors.New("--browser conflicts with --no-browser")
+	}
+	values.target = flags.Arg(0)
+	if strings.HasPrefix(values.target, "ssh://") {
+		if _, err := sshforward.ParseTarget(values.target); err != nil {
+			return values, err
+		}
+	} else if _, err := connection.Parse(values.target); err != nil {
+		return values, errors.New("target must be a connection invitation or ssh://HOST")
+	}
+	return values, nil
+}
+
+type activeConnection struct {
+	target           connection.Target
+	label, transport string
+	forward          *sshforward.Forward
+}
+
+func openConnection(ctx context.Context, values connectOptions, stderr io.Writer) (*activeConnection, error) {
+	if strings.HasPrefix(values.target, "ssh://") {
+		target, err := sshforward.ParseTarget(values.target)
+		if err != nil {
+			return nil, err
+		}
+		forward, err := sshforward.Connect(ctx, target, sshforward.Options{RemoteDiffx: values.remoteDiffx, Port: values.port, Stderr: stderr})
+		if err != nil {
+			return nil, err
+		}
+		return &activeConnection{target: connection.Target{Kind: "tcp", URL: forward.URL}, label: target.String(), transport: forward.Transport, forward: forward}, nil
+	}
+	inv, err := connection.Parse(values.target)
+	if err != nil {
+		return nil, err
+	}
+	target, err := pairedTarget(ctx, inv)
+	if err != nil {
+		return nil, err
+	}
+	return &activeConnection{target: target, label: inv.Address, transport: "tls"}, nil
+}
+
+func (active *activeConnection) Close() {
+	if active.forward != nil {
+		_ = active.forward.Close()
+	}
+}
+
+func (active *activeConnection) Wait(ctx context.Context) error {
+	if active.forward != nil {
+		return active.forward.Wait(ctx)
+	}
+	<-ctx.Done()
+	return nil
+}
+
+func runConnect(ctx context.Context, arguments []string, stdout, stderr io.Writer) error {
+	values, err := parseConnect(arguments, stderr)
+	if errors.Is(err, flag.ErrHelp) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	forward, err := sshforward.Connect(ctx, target, sshforward.Options{RemoteDiffx: *remoteDiffx, Port: *port, Stderr: stderr})
+	if !values.browser && !values.noBrowser && !values.asJSON {
+		accepted, launchErr := desktoplaunch.Open(ctx, append([]string{"connect"}, arguments...), nil, stderr)
+		if accepted {
+			return nil
+		}
+		fmt.Fprintln(stderr, "diffx: desktop unavailable; opening browser.")
+		if launchErr != nil {
+			fmt.Fprintln(stderr, "diffx:", launchErr)
+		}
+	}
+	upstream := values
+	// Keep the requested public port on the filtered browser gateway.
+	// The raw SSH forward remains a separate ephemeral native endpoint.
+	if strings.HasPrefix(values.target, "ssh://") {
+		upstream.port = 0
+	}
+	active, err := openConnection(ctx, upstream, stderr)
 	if err != nil {
 		return err
 	}
-	defer forward.Close()
-	if *asJSON {
-		if err := json.NewEncoder(stdout).Encode(connectReady{URL: forward.URL, Target: target.String(), Transport: forward.Transport}); err != nil {
+	defer active.Close()
+	port := values.port
+	gateway, err := clientgateway.Start(webui.Assets(), active.target, port)
+	if err != nil {
+		return err
+	}
+	defer gateway.Close()
+	if values.asJSON {
+		if err := json.NewEncoder(stdout).Encode(connectReady{URL: gateway.URL, Target: active.label, Transport: active.transport}); err != nil {
 			return err
 		}
 	} else {
-		color := terminalColors(stdout)
-		fmt.Fprintf(stdout, "  %s\n", color.paint(color.bold+color.cyan, "diffx "+displayVersion()))
-		fmt.Fprintf(stdout, "  %s       %s\n", color.paint(color.dim, "connected to:"), target)
-		fmt.Fprintf(stdout, "  %s         %s\n", color.paint(color.dim, "forwarding:"), forward.Transport)
-		fmt.Fprintf(stdout, "  %s                %s\n", color.paint(color.dim, "url:"), color.paint(color.green, forward.URL))
-		fmt.Fprintf(stdout, "  %s\n", color.paint(color.dim, "ctrl-c to stop."))
+		fmt.Fprintf(stdout, "  connected to: %s\n  url: %s\n  ctrl-c to disconnect.\n", active.label, gateway.URL)
 	}
-	if !*noBrowser {
-		if err := browser.Open(forward.URL); err != nil {
-			fmt.Fprintf(stderr, "  diffx: %v\n", err)
+	if !values.noBrowser {
+		if err := browser.Open(gateway.URL); err != nil {
+			fmt.Fprintln(stderr, "diffx:", err)
 		}
 	}
-	return forward.Wait(ctx)
+	return active.Wait(ctx)
 }
 
-// normalizeConnectArguments lets flags follow the target.
+func runConnectionSession(ctx context.Context, arguments []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet(localprotocol.ConnectCommand, flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	parentFD := flags.Int("parent-fd", -1, "inherited parent pipe")
+	intentFD := flags.Int("intent-fd", -1, "inherited native connection request")
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 || *parentFD < 3 || *intentFD < 3 || *parentFD == *intentFD {
+		return errors.New("connection session requires distinct inherited parent and intent pipes")
+	}
+	ctx, closeLifetime, err := parentLifetime(ctx, *parentFD)
+	if err != nil {
+		return err
+	}
+	defer closeLifetime()
+	intent := os.NewFile(uintptr(*intentFD), "connection-intent")
+	if intent == nil {
+		return errors.New("connection intent missing")
+	}
+	defer intent.Close()
+	stop := context.AfterFunc(ctx, func() { _ = intent.Close() })
+	defer stop()
+	var request localprotocol.ConnectRequest
+	decoder := json.NewDecoder(io.LimitReader(intent, 64*1024))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&request) != nil || decoder.Decode(new(struct{})) != io.EOF {
+		return errors.New("invalid native connection request")
+	}
+	values, err := parseConnect(request.Args, io.Discard)
+	if err != nil {
+		return errors.New("invalid native connection target")
+	}
+	active, err := openConnection(ctx, values, stderr)
+	if err != nil {
+		return sessionResult(ctx, err)
+	}
+	defer active.Close()
+	identity := active.target.RunID
+	if identity == "" {
+		identity = active.label
+	}
+	ready := localprotocol.Readiness{ProtocolVersion: localprotocol.Version, Connection: active.target, Label: active.label, InstanceID: identity, ScopeID: identity, Input: localprotocol.Input{Kind: "remote"}}
+	if err := json.NewEncoder(stdout).Encode(ready); err != nil {
+		return errors.New("write connection readiness failed")
+	}
+	return active.Wait(ctx)
+}
+
+// Flags may follow the target; invitation data is never evaluated as shell text.
 func normalizeConnectArguments(arguments []string) []string {
 	values := map[string]bool{"--port": true, "-port": true, "--remote-diffx": true, "-remote-diffx": true}
 	flags, positionals := []string{}, []string{}

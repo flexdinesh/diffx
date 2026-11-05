@@ -7,24 +7,101 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/flexdinesh/diffx/apps/desktop/internal/session"
+	"github.com/flexdinesh/diffx/packages/connection"
 	"github.com/flexdinesh/diffx/packages/localprotocol"
 )
 
-type viewer struct {
-	sync.Mutex
-	origin string
+func TestSwitchDestinationExcludesNativeSecrets(t *testing.T) {
+	secret := strings.Repeat("A", 43)
+	invitation := connection.Invitation{Version: connection.Version, Address: "review.example:443", RunID: secret, Pin: secret, Secret: secret}.String()
+	if got := destination([]string{"connect", invitation}, "/workspace", false); got != "review.example:443" || strings.Contains(got, secret) {
+		t.Fatalf("unsafe destination %q", got)
+	}
+	if got := destination([]string{"connect", "ssh://user@devbox:2222"}, "/workspace", false); got != "SSH devbox:2222" {
+		t.Fatalf("SSH destination %q", got)
+	}
+	if got := destination([]string{"--base", "HEAD", "checkout"}, "/workspace", false); got != "/workspace/checkout" {
+		t.Fatalf("local destination %q", got)
+	}
+	if got := destination(nil, "/workspace", true); got != "Piped diff" {
+		t.Fatalf("capture destination %q", got)
+	}
 }
 
-func (v *viewer) SetViewer(origin string) error {
+func TestCaptureSpoolingRejectsOversizeBeforeStartingSidecar(t *testing.T) {
+	input, err := os.CreateTemp(t.TempDir(), "oversize")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
+	if err := input.Truncate(localprotocol.MaxCaptureBytes + 1); err != nil {
+		t.Fatal(err)
+	}
+	l := New(&viewer{}, Options{Stdin: input})
+	defer l.Close()
+	if _, err := l.replayStdin(t.Context()); err == nil || !strings.Contains(err.Error(), "input limit") {
+		t.Fatalf("oversize input accepted: %v", err)
+	}
+	if l.capture != "" {
+		t.Fatal("rejected capture retained for replay")
+	}
+}
+
+func TestConfigurationChangeRequiresConfirmationAndReachesSidecar(t *testing.T) {
+	started := make(chan []string, 2)
+	l := New(&viewer{}, Options{Args: []string{"/checkout"}, Directory: "/cwd", Environment: []string{"DIFFX_LOCAL_STATE=/old.db"}, SidecarPath: "/sidecar", Start: func(_ context.Context, o session.Options) (*Lease, error) {
+		started <- slices.Clone(o.Environment)
+		return &Lease{Ready: localprotocol.Readiness{Connection: connection.Target{Kind: "unix", Socket: "/socket"}}, Done: make(chan error), Close: func() error { return nil }}, nil
+	}})
+	defer l.Close()
+	if err := l.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, l, "ready")
+	<-started
+	pending, err := l.offer([]string{"/checkout"}, nil, "/cwd", []string{"DIFFX_LOCAL_STATE=/new.db"})
+	if err != nil || pending == nil || !l.Status().ConfirmSwitch {
+		t.Fatalf("configuration change did not require confirmation: %v", err)
+	}
+	if err := l.Confirm(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case environment := <-started:
+		if !slices.Equal(environment, []string{"DIFFX_LOCAL_STATE=/new.db"}) {
+			t.Fatal("sidecar inherited stale configuration")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("replacement never started")
+	}
+}
+
+type viewer struct {
+	sync.Mutex
+	origin    string
+	healthErr error
+	probes    int
+}
+
+func (v *viewer) SetConnection(target connection.Target) error {
+	origin := target.URL
 	v.Lock()
 	defer v.Unlock()
 	v.origin = origin
 	return nil
+}
+func (v *viewer) Health(context.Context) error {
+	v.Lock()
+	defer v.Unlock()
+	v.probes++
+	return v.healthErr
 }
 func (v *viewer) ClearViewer() { v.Lock(); defer v.Unlock(); v.origin = "" }
 
@@ -107,6 +184,17 @@ func TestScopeChangeJoinsLeaseBeforePublishingNewViewer(t *testing.T) {
 	}
 	dir := t.TempDir()
 	if err := l.Folder(dir); err != nil {
+		t.Fatal(err)
+	}
+	if !l.Status().ConfirmSwitch {
+		t.Fatal("scope change skipped confirmation")
+	}
+	select {
+	case <-closed:
+		t.Fatal("confirmation closed current lease")
+	default:
+	}
+	if err := l.Confirm(); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -217,4 +305,147 @@ func TestReplacementConsumptionPreservesLiteralPaths(t *testing.T) {
 	if !slices.Equal(args, []string{"--port=0", "--", "--replace"}) {
 		t.Fatalf("literal path consumed as authority: %v", args)
 	}
+}
+
+func TestCancelledConnectionSwitchPreservesCurrentLeaseAndGeneration(t *testing.T) {
+	starts := 0
+	closed := make(chan struct{}, 2)
+	l := New(&viewer{}, Options{Args: []string{"/checkout"}, Directory: "/cwd", SidecarPath: "/sidecar", Start: func(context.Context, session.Options) (*Lease, error) {
+		starts++
+		return &Lease{Ready: localprotocol.Readiness{Connection: connection.Target{Kind: "unix", Socket: "/socket"}}, Done: make(chan error), Close: func() error { closed <- struct{}{}; return nil }}, nil
+	}})
+	defer l.Close()
+	if err := l.Start(); err != nil {
+		t.Fatal(err)
+	}
+	before := waitStatus(t, l, "ready")
+	done := make(chan localprotocol.Acceptance, 1)
+	go func() {
+		done <- l.Request(t.Context(), localprotocol.Intent{Args: []string{"connect", "private invitation"}, Directory: "/other"}, nil)
+	}()
+	deadline := time.NewTimer(time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for !l.Status().ConfirmSwitch {
+		select {
+		case <-deadline.C:
+			t.Fatal("confirmation unavailable")
+		case <-ticker.C:
+		}
+	}
+	if err := l.Cancel(); err != nil {
+		t.Fatal(err)
+	}
+	if reply := <-done; !reply.Accepted {
+		t.Fatal("cancellation would trigger duplicate browser fallback")
+	}
+	if after := l.Status(); after != before {
+		t.Fatalf("cancel changed session: before=%+v after=%+v", before, after)
+	}
+	if starts != 1 {
+		t.Fatal("cancel started a connection")
+	}
+	select {
+	case <-closed:
+		t.Fatal("cancel closed current lease")
+	default:
+	}
+}
+
+func TestSameTargetOnlyFocusesAndDisconnectedSenderCancelsConfirmation(t *testing.T) {
+	dir := t.TempDir()
+	l := New(&viewer{}, Options{Args: []string{dir}, Directory: dir, SidecarPath: "/sidecar", Start: func(context.Context, session.Options) (*Lease, error) {
+		return &Lease{Ready: localprotocol.Readiness{Input: localprotocol.Input{Kind: "checkout", Paths: []string{dir}}}, Done: make(chan error), Close: func() error { return nil }}, nil
+	}})
+	defer l.Close()
+	if err := l.Start(); err != nil {
+		t.Fatal(err)
+	}
+	before := waitStatus(t, l, "ready")
+	if reply := l.Request(t.Context(), localprotocol.Intent{Directory: dir}, nil); !reply.Accepted || l.Status() != before {
+		t.Fatal("same canonical target restarted")
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if reply := l.Request(ctx, localprotocol.Intent{Args: []string{"connect", "other"}}, nil); reply.Accepted {
+		t.Fatal("disconnected sender switched session")
+	}
+	if l.Status() != before {
+		t.Fatal("sender cancellation changed current session")
+	}
+}
+
+func TestRemoteTransientFailurePreservesGenerationAndRetriesAreBounded(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		v := &viewer{}
+		l := New(v, Options{Args: []string{"connect", "invitation"}, SidecarPath: "/sidecar", Start: func(context.Context, session.Options) (*Lease, error) {
+			return &Lease{Ready: localprotocol.Readiness{Input: localprotocol.Input{Kind: "remote"}, Connection: connection.Target{Kind: "tcp", URL: "http://127.0.0.1:7981"}}, Done: make(chan error), Close: func() error { return nil }}, nil
+		}})
+		defer l.Close()
+		if err := l.Start(); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		before := l.Status()
+		v.Lock()
+		v.healthErr = errors.New("offline")
+		v.Unlock()
+		time.Sleep(4 * time.Second)
+		synctest.Wait()
+		if got := l.Status(); got.Phase != "reconnecting" || got.Generation != before.Generation {
+			t.Fatalf("transient failure disposed workspace: %+v", got)
+		}
+		v.Lock()
+		v.healthErr = nil
+		v.Unlock()
+		time.Sleep(4 * time.Second)
+		synctest.Wait()
+		if got := l.Status(); got.Phase != "ready" || got.Generation != before.Generation {
+			t.Fatalf("recovery replaced workspace: %+v", got)
+		}
+		v.Lock()
+		v.healthErr = errors.New("offline")
+		v.Unlock()
+		time.Sleep(3 * time.Minute)
+		synctest.Wait()
+		if got := l.Status(); got.Phase != "failed" || got.CanReplace {
+			t.Fatalf("exhausted retry did not offer explicit retry: %+v", got)
+		}
+		v.Lock()
+		probes := v.probes
+		v.Unlock()
+		if probes > 25 {
+			t.Fatalf("unbounded reconnect attempts: %d", probes)
+		}
+	})
+}
+
+func TestRemoteForwardExitRecreatesOnlyConnectionWithoutChangingWorkspace(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		finished := make(chan error, 1)
+		starts, closed := 0, 0
+		l := New(&viewer{}, Options{Args: []string{"connect", "ssh://host"}, SidecarPath: "/sidecar", Start: func(_ context.Context, options session.Options) (*Lease, error) {
+			if !slices.Equal(options.Args, []string{"connect", "ssh://host"}) {
+				t.Error("reconnect replayed a different command")
+			}
+			starts++
+			done := make(chan error, 1)
+			if starts == 1 {
+				done = finished
+			}
+			return &Lease{Ready: localprotocol.Readiness{Input: localprotocol.Input{Kind: "remote"}, Connection: connection.Target{Kind: "tcp", URL: "http://127.0.0.1:7981"}}, Done: done, Close: func() error { closed++; return nil }}, nil
+		}})
+		defer l.Close()
+		if err := l.Start(); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		before := l.Status()
+		finished <- errors.New("ssh exited")
+		synctest.Wait()
+		if after := l.Status(); after.Phase != "ready" || after.Generation != before.Generation || starts != 2 || closed != 1 {
+			t.Fatalf("forward recovery: %+v starts=%d closed=%d", after, starts, closed)
+		}
+	})
 }

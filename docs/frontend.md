@@ -11,11 +11,20 @@ the same measured geometry.
 
 `apps/desktop` is a separate Go module containing a thin MyGo webview host.
 The host embeds the desktop Vite build, serves it on a loopback origin and
-proxies allowlisted public REST/SSE to the local sidecar viewer. Its typed
-bridge exposes launch state, folder selection, retry and explicit replacement.
+proxies the shared public review REST/SSE allowlist through native Unix, pinned
+TLS or SSH-forwarded loopback connections. Default local sessions require no
+viewer port. TLS credentials stay native, outside React and browser URLs. Its
+typed bridge exposes launch state, folder selection, retry, target-switch
+confirmation and explicit replacement.
 OS menus and file dialogs remain native. The session adapter starts the bundled
 matching CLI or attaches to a compatible scope; cancellation joins stale work,
-and Quit stops only an owned server. Server data and review behavior have one
+and Quit stops only an owned local server. One desktop window focuses the same
+target; changing workspace or connection requires confirmation. Cancel preserves
+the current session. Accepted switches cancel and join requests and streams
+before changing the target. Remote reconnect backoff caps at 15 seconds for two
+minutes, then offers Retry; failed mutations are never automatically replayed.
+Desktop acceptance returns the invoking CLI before server readiness; later
+failures stay in the window. Server data and review behavior have one
 owner. There are no custom Go diff widgets or generated native palettes.
 
 Desktop uses the web preference implementation in its own webview origin.

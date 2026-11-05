@@ -102,7 +102,11 @@ containers; running them directly, like direct `go test`, bypasses isolation.
 
 `desktop` additionally validates the independent `apps/desktop` Go module
 with vet, race tests, production-tag tests and its matching CLI over the real
-local socket. The runner supplies `DIFFX_DESKTOP_SIDECAR`, so session integration
+local socket, including socket-only default readiness and optional viewer
+readiness. Host/launcher boundaries cover target-switch confirmation, cancellation,
+request/stream disposal and owned versus attached/remote leases. Root Go tests
+cover pinned TLS pairing, expiry, one-use consumption, credential reuse, restart
+invalidation, route denial and secret redaction. The runner supplies `DIFFX_DESKTOP_SIDECAR`, so session integration
 does not silently skip. The unit group runs shared `@diffx/review-app` and
 desktop JavaScript tests alongside browser/console and plugin suites; recursive
 type checking includes both new packages. Shared review source, desktop entry,
@@ -123,7 +127,9 @@ checksums, layouts, embedded desktop/browser frontend bytes, licenses,
 framework pin and release tags, and executes the
 host-compatible app/server version pair. Cross-compiled targets are inspected
 without claiming native runtime acceptance. The separate `release` group covers
-installer failure preservation, atomic pair upgrades and CLI coexistence.
+installer failure preservation, both command launchers, retained matching pairs
+and activation through one shared pointer. CLI-only installers keep their
+separate single-command contract.
 
 The `static` group runs on the host: type checking, lint, format verification,
 Go formatting, read-only architecture/design guards and `check:artifacts`, which

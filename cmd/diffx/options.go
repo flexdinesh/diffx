@@ -39,6 +39,7 @@ type options struct {
 	webDir           string
 	webDirSet        bool
 	noBrowser        bool
+	browser          bool
 	version          bool
 	server           string
 	serverSet        bool
@@ -123,6 +124,7 @@ func parseOptionsSession(arguments []string, stderr io.Writer, local, session bo
 	flags.StringVar(&values.branch, "branch", "", "recover committed branch from Git objects; defaults base to auto")
 	if local {
 		flags.BoolVar(&values.headless, "headless", false, "serve only the local socket: no viewer port and no browser")
+		flags.BoolVar(&values.browser, "browser", false, "serve in the foreground and open the browser instead of desktop")
 	}
 	flags.StringVar(&values.configFile, "config-file", "", "machine JSON config path; defaults to DIFFX_CONFIG_PATH")
 	flags.IntVar(&values.port, "port", 0, "HTTP port; defaults to the first available port from 7981 to 7990")
@@ -146,6 +148,8 @@ func parseOptionsSession(arguments []string, stderr io.Writer, local, session bo
 		fmt.Fprintln(stderr, "         diffx mcp")
 		fmt.Fprintln(stderr, "         diffx connect ssh://[USER@]HOST[:PORT] [--port N] [--json]")
 		fmt.Fprintln(stderr, "         diffx remote status [--config-file FILE]")
+		fmt.Fprintln(stderr, "         diffx remote [PATH] [--listen :7981] [--advertise HOST:PORT]")
+		fmt.Fprintln(stderr, "         diffx remote pair [--advertise HOST:PORT]")
 		fmt.Fprintln(stderr, "         diffx config {set|get|remove} KEY [VALUE]")
 		fmt.Fprintln(stderr, "         diffx diagnostics export {REPORT_ID|--latest} --output FILE")
 		flags.PrintDefaults()
@@ -208,6 +212,9 @@ func parseOptionsSession(arguments []string, stderr io.Writer, local, session bo
 	})
 	if values.headless && values.portSet {
 		return options{}, errors.New("--headless serves no viewer; remove --port")
+	}
+	if values.browser && (values.headless || values.noBrowser) {
+		return options{}, errors.New("--browser cannot be combined with --headless or --no-browser")
 	}
 	if values.headless {
 		values.noBrowser = true
