@@ -31,7 +31,7 @@ const colorProperty =
 // Source paths are repository-relative. The shared design system owns tokens,
 // type, the Tailwind theme bridge and components; apps compose it.
 const ui = "packages/ui/src/";
-const web = "apps/web/src/";
+const web = "packages/review-app/src/";
 
 // Exact optical/renderer allowances, not file-wide exclusions. DESIGN.md owns
 // the reasons; token rules still apply to every other declaration in these files.
@@ -964,6 +964,7 @@ export function readFrontendSources(repository: string): DesignSource[] {
   const apps = join(repository, "apps");
   const roots = [
     join(repository, ui),
+    ...[join(repository, web)].filter((root) => existsSync(root)),
     ...(existsSync(apps) ? readdirSync(apps) : [])
       .map((app) => join(apps, app, "src"))
       .filter((root) => existsSync(root)),
@@ -979,7 +980,7 @@ if (
   const violations = checkDesign(readFrontendSources(repository));
   for (const violation of violations)
     console.error(
-      `${violation.path}:${violation.line}: ${violation.property}: ${violation.value} — use DESIGN.md tokens`,
+      `${violation.path}:${violation.line}: ${violation.property}: ${violation.value} - use DESIGN.md tokens`,
     );
   if (violations.length) process.exitCode = 1;
 }

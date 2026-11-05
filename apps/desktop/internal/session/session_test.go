@@ -1,7 +1,6 @@
 package session
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -32,6 +31,11 @@ func fakeSidecar() int {
 	lease := os.NewFile(3, "lease")
 	defer lease.Close()
 	if args[2] == "--fail" {
+		_, _ = io.WriteString(os.Stderr, "another checkout scope is running")
+		return 22
+	}
+	if args[2] == "--diagnostics" {
+		_, _ = io.WriteString(os.Stderr, strings.Repeat("diagnostic ", 2000))
 		return 22
 	}
 	if args[2] == "--hang" {
@@ -87,69 +91,31 @@ func fakeOptions(t *testing.T, args ...string) Options {
 	return Options{SidecarPath: executable, Args: args, Stderr: os.Stderr}
 }
 
-func TestSessionOwnsSocketLeaseCancellationAndReaping(t *testing.T) {
+func TestSessionOwnsLeaseCancellationAndReaping(t *testing.T) {
 	socket := filepath.Join(t.TempDir(), "sidecar.sock")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	s, err := Start(ctx, fakeOptions(t, socket))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	if !s.Ready.Owned || s.HTTP.Timeout != 0 {
-		t.Fatal("lost ownership or SSE uses total timeout")
+	if !s.Ready.Owned {
+		t.Fatal("lost owned readiness")
 	}
-	r, err := s.Client.GetBootstrapWithResponse(ctx)
-	if err != nil || r.JSON200 == nil {
-		t.Fatalf("generated client: %v, %#v", err, r)
-	}
-	stream, err := s.HTTP.Get(Authority + "/stream")
-	if err != nil {
+	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reader := bufio.NewReader(stream.Body)
-	if _, err = reader.ReadString('\n'); err != nil {
-		t.Fatal(err)
-	}
-	if err = s.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = io.ReadAll(reader); err == nil {
-		t.Fatal("session close did not cancel SSE")
-	}
-	stream.Body.Close()
 	select {
 	case err := <-s.Done():
 		if err != nil {
 			t.Fatal(err)
 		}
 	default:
-		t.Fatal("Close returned without process reaping")
+		t.Fatal("Close returned before process reaping")
 	}
-	if _, err = os.Stat(socket); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("sidecar socket survived shutdown: %v", err)
-	}
-}
-
-func TestTransportRejectsRedirectAndAuthorityEscape(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	s, err := Start(ctx, fakeOptions(t, filepath.Join(t.TempDir(), "sidecar.sock")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	if response, err := s.HTTP.Get(Authority + "/redirect"); err == nil {
-		response.Body.Close()
-		t.Fatal("followed redirect")
-	} else if response != nil {
-		response.Body.Close()
-	}
-	for _, target := range []string{"http://example.com/api/v2/bootstrap", "http://localhost:80/api/v2/bootstrap", "https://localhost/api/v2/bootstrap", "http://user@localhost/api/v2/bootstrap"} {
-		if response, err := s.HTTP.Get(target); err == nil {
-			response.Body.Close()
-			t.Fatalf("accepted %s", target)
-		}
+	if _, err := os.Stat(socket); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("sidecar socket survived: %v", err)
 	}
 }
 
@@ -174,6 +140,19 @@ func TestStartupFailuresAreBoundedAndReaped(t *testing.T) {
 	}
 }
 
+func TestStartupFailureIncludesBoundedDiagnostics(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	_, err := Start(ctx, fakeOptions(t, "--fail"))
+	if err == nil || !strings.Contains(err.Error(), "another checkout scope is running") {
+		t.Fatalf("GUI lost sidecar failure: %v", err)
+	}
+	_, err = Start(ctx, fakeOptions(t, "--diagnostics"))
+	if err == nil || !strings.Contains(err.Error(), "diagnostic") || len(err.Error()) > 9000 {
+		t.Fatalf("unbounded or missing diagnostics: %v", err)
+	}
+}
+
 func TestRejectsEveryFlagSpellingForParentLease(t *testing.T) {
 	for _, argument := range []string{"--parent-fd", "--parent-fd=4", "-parent-fd", "-parent-fd=4"} {
 		t.Run(argument, func(t *testing.T) {
@@ -187,7 +166,7 @@ func TestRejectsEveryFlagSpellingForParentLease(t *testing.T) {
 
 func TestResolveOnlyMatchingInstallation(t *testing.T) {
 	dir := t.TempDir()
-	app := filepath.Join(dir, "diffx-native")
+	app := filepath.Join(dir, "diffx-desktop")
 	sibling := filepath.Join(dir, "diffx")
 	if err := os.WriteFile(app, []byte("app"), 0700); err != nil {
 		t.Fatal(err)
@@ -217,12 +196,12 @@ func TestResolveOnlyMatchingInstallation(t *testing.T) {
 // absolute path. This verifies the real public process/REST boundary without
 // importing the root module's private test helpers or application packages.
 func TestRealBundledSidecarCaptureAndAttachment(t *testing.T) {
-	path := os.Getenv("DIFFX_NATIVE_SIDECAR")
+	path := os.Getenv("DIFFX_DESKTOP_SIDECAR")
 	if path == "" {
 		if os.Getenv("DIFFX_CHECK_RUNNER") == "1" {
-			t.Fatal("native validation must inject the matching sidecar binary")
+			t.Fatal("desktop validation must inject the matching sidecar binary")
 		}
-		t.Skip("DIFFX_NATIVE_SIDECAR must name the built matching root binary")
+		t.Skip("DIFFX_DESKTOP_SIDECAR must name the built matching root binary")
 	}
 	runtime, err := os.MkdirTemp("", "dxn-")
 	if err != nil {
@@ -262,9 +241,17 @@ func TestRealBundledSidecarCaptureAndAttachment(t *testing.T) {
 	if err = attached.Close(); err != nil {
 		t.Fatal(err)
 	}
-	r, err := owner.Client.GetContextWithResponse(ctx, owner.Ready.Input.ContextID)
-	if err != nil || r.JSON200 == nil {
-		t.Fatalf("attachment quit stopped owner: %v %#v", err, r)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, owner.Ready.ViewerURL+"/api/v2/contexts/"+owner.Ready.Input.ContextID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("attachment quit stopped owner: %v", err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("capture unavailable after attachment quit: %s", response.Status)
 	}
 	if err = owner.Close(); err != nil {
 		t.Fatal(err)

@@ -5,35 +5,32 @@ import (
 	"io"
 )
 
-// Version is set by native packaging. Source builds identify themselves as dev.
 var Version = "dev"
 
-// HandleCommand handles informational commands before platform initialization.
+// HandleCommand runs before platform initialization.
 func HandleCommand(args []string, output io.Writer) (bool, error) {
 	if len(args) != 1 {
 		return false, nil
 	}
 	switch args[0] {
 	case "--version":
-		_, err := fmt.Fprintln(output, "diffx-native "+Version)
+		_, err := fmt.Fprintln(output, "diffx-desktop "+Version)
 		return true, err
 	case "--help", "-h":
-		_, err := fmt.Fprint(output, `Usage: diffx-native [PATH] [LOCAL OPTIONS]
-       diffx-native --path DIR [--path DIR...] [--scan-depth N]
-       git diff | diffx-native
+		_, err := fmt.Fprint(output, `Usage: diffx-desktop [PATH] [LOCAL OPTIONS]
+       diffx-desktop --path DIR [--path DIR...] [--scan-depth N]
+       git diff | diffx-desktop
 
-Open the native local review window. With no PATH, review the shell's checkout.
-Local input, comparison, configuration and reset options pass to the matching
-private Diffx server. Examples: --scan-worktrees, --base REF, --config-file FILE,
---replace, --reset-state. Headless and remote commands are not native workflows.
+Open the shared Diffx review workspace in a desktop window.
+Local comparison, configuration and reset options pass to the bundled matching CLI.
+Another scope requires explicit --replace or confirmation in the desktop window.
 
-  --desktop-launch  Attach to a running session or choose a folder. Does not
-                    discover repositories beneath the launcher's directory.
-  --help, -h        Print native usage.
-  --version         Print the native build version.
+  --desktop-launch  Attach to a running local session, otherwise choose a folder.
+  --help, -h        Print usage.
+  --version         Print the desktop build version.
 
-DIFFX_NATIVE_SIDECAR sets an explicit absolute sidecar executable for development
-and native acceptance tests. Installed builds otherwise use their bundled server.
+DIFFX_DESKTOP_SIDECAR selects an absolute matching sidecar path for development.
+Linux requires WebKitGTK. The shared web target requires Safari 16.4 or newer.
 `)
 		return true, err
 	}

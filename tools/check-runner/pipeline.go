@@ -72,8 +72,8 @@ func (p *pipeline) execute(ctx context.Context, group checkGroup, invocation, ar
 	if err != nil {
 		return err
 	}
-	if group.Native {
-		container = container.WithExec([]string{"sh", "-ec", "apt-get update && apt-get install -y --no-install-recommends libgtk-3-0 libpango-1.0-0 libcairo2 libgdk-pixbuf-2.0-0 fontconfig fonts-dejavu-core fonts-noto-color-emoji && rm -rf /var/lib/apt/lists/*"}).
+	if group.Desktop {
+		container = container.WithExec([]string{"sh", "-ec", "apt-get update && apt-get install -y --no-install-recommends libwebkit2gtk-4.1-0 libgtk-3-0 libpango-1.0-0 libcairo2 libgdk-pixbuf-2.0-0 fontconfig fonts-dejavu-core fonts-noto-color-emoji && rm -rf /var/lib/apt/lists/*"}).
 			WithEnvVariable("MYGO_GPU", "0").
 			WithExec([]string{"mise", "exec", "--", "go", "-C", "apps/desktop", "mod", "download"})
 	}
@@ -81,8 +81,11 @@ func (p *pipeline) execute(ctx context.Context, group checkGroup, invocation, ar
 		container = container.WithExec([]string{"mise", "run", "--force", "build"}).
 			WithExec([]string{"mise", "run", "--force", "plugins:build"})
 	}
-	if group.Name == "native-window" {
-		container = container.WithExec([]string{"sh", "-ec", "apt-get update && apt-get install -y --no-install-recommends xvfb xauth dbus dbus-x11 libx11-6 libxtst6 xclip && rm -rf /var/lib/apt/lists/*"}).
+	if group.Desktop {
+		container = container.WithExec([]string{"mise", "run", "--force", "desktop:stage"})
+	}
+	if group.Name == "desktop-window" {
+		container = container.WithExec([]string{"sh", "-ec", "apt-get update && apt-get install -y --no-install-recommends xvfb xauth dbus dbus-x11 libx11-6 libxtst6 xclip xdotool scrot && rm -rf /var/lib/apt/lists/*"}).
 			WithEnvVariable("GDK_BACKEND", "x11")
 	}
 	if group.Browser {
@@ -95,7 +98,7 @@ func (p *pipeline) execute(ctx context.Context, group checkGroup, invocation, ar
 		WithEnvVariable("DIFFX_FIXTURE_SERVER_BINARY", "/workspace/dist/diffx-server").
 		WithEnvVariable("DIFFX_FIXTURE_CONSOLE_BINARY", "/workspace/dist/diffx-console").
 		WithEnvVariable("DIFFX_FIXTURE_WEB_DIR", "/workspace/apps/web/dist").
-		WithEnvVariable("DIFFX_NATIVE_SIDECAR", "/workspace/dist/diffx").
+		WithEnvVariable("DIFFX_DESKTOP_SIDECAR", "/workspace/dist/diffx").
 		WithEnvVariable("DIFFX_CHECK_RUNNER", "1")
 	if group.Database {
 		database := p.client.Container().From(postgresImage).
@@ -114,8 +117,8 @@ func (p *pipeline) execute(ctx context.Context, group checkGroup, invocation, ar
 	}
 	// Preserve the original baseline: builds/generators must not silently change
 	// checked-in generated artifacts, even in a successful consumer group.
-	script.WriteString("git status --porcelain --untracked-files=all -- packages/api/src/schema.d.ts packages/api/goclient/client.gen.go packages/console-api/src/schema.d.ts packages/plugin-opencode/dist packages/plugin-pi/dist internal/pgstore/pgdb apps/desktop/internal/design/tokens_generated.go apps/desktop/internal/design/code_generated.go apps/desktop/internal/preferences/themes_generated.go > /artifacts/generated-drift.log\nif [ -s /artifacts/generated-drift.log ]; then cat /artifacts/generated-drift.log; status=1; fi\n")
-	script.WriteString("for app in web console; do if [ -d apps/$app/test-results ]; then cp -R apps/$app/test-results /artifacts/$app; fi; done\nexit \"$status\"\n")
+	script.WriteString("git status --porcelain --untracked-files=all -- packages/api/src/schema.d.ts packages/api/goclient/client.gen.go packages/console-api/src/schema.d.ts packages/plugin-opencode/dist packages/plugin-pi/dist internal/pgstore/pgdb > /artifacts/generated-drift.log\nif [ -s /artifacts/generated-drift.log ]; then cat /artifacts/generated-drift.log; status=1; fi\n")
+	script.WriteString("for app in web console desktop; do if [ -d apps/$app/test-results ]; then cp -R apps/$app/test-results /artifacts/$app; fi; done\nexit \"$status\"\n")
 	result := container.WithExec([]string{"bash", "-c", script.String()}, dagger.ContainerWithExecOpts{Expect: dagger.ReturnTypeAny})
 	code, err := result.ExitCode(ctx)
 	if err != nil {

@@ -91,7 +91,7 @@ commands and validation records are bypassable and are not remote enforcement.
 
 Use `mise run check:<group>` for targeted checks. Groups are `static`,
 `contracts`, `go`, `unit`, `browser`, `conformance`, `docs`, `release`,
-`generated`, `native`, `native-window`, and `native-package`. They cover the existing static checks, architecture guards, Go
+`generated`, `desktop`, `desktop-window`, and `desktop-package`. They cover the existing static checks, architecture guards, Go
 tests, web/console unit and DOM tests, plugins, browser suites, API contracts,
 docs build, release tooling, and generated API/SQL/plugin consistency. PR
 validation uses Go's race detector. Public mise `test:*` tasks route through
@@ -100,30 +100,27 @@ JS tooling (build, typecheck, lint, format, raw test runners) and never call
 mise. Groups invoke those scripts and hidden mise `exec` tasks inside
 containers; running them directly, like direct `go test`, bypasses isolation.
 
-`native` additionally validates the separate `apps/desktop` Go module with vet,
-race tests, MyGo headless interactions, production-tag app interactions and the built matching CLI over its real
-local socket. The runner supplies `DIFFX_NATIVE_SIDECAR`, so session integration
-does not silently skip. The group's private container supplies GTK3 and fonts;
-it uses MyGo's CPU renderer without WebKitGTK. Root/server and browser groups
-do not install native runtime dependencies. Nested Go manifests, framework pin,
-token sources and generated native palettes participate in source fingerprints.
-Generation checks include the Go REST client and native palette outputs.
+`desktop` additionally validates the independent `apps/desktop` Go module
+with vet, race tests, production-tag tests and its matching CLI over the real
+local socket. The runner supplies `DIFFX_DESKTOP_SIDECAR`, so session integration
+does not silently skip. The unit group runs shared `@diffx/review-app` and
+desktop JavaScript tests alongside browser/console and plugin suites; recursive
+type checking includes both new packages. Shared review source, desktop entry,
+Vite/build configuration, nested Go manifests and framework pin participate in
+fingerprints. Native token generation and generated palettes no longer exist.
 
-`native-window` builds a test-only automation executable and runs actual GTK
-content windows under Xvfb and a private D-Bus session. It verifies review
-interaction, focus, geometry, clipboard export, cross-client writes and owned
-versus attached shutdown against the matching real local server. The container
-installs no WebKitGTK or browser. Missing display, tools or binaries fail this
-opted-in group. Automation builds use `nativeautomation`; MyGo disables its
-automation plugin under `mygo_noinspector`, which remains mandatory for release
-builds. Automation and inspector code never ship in experimental archives.
-MyGo's automation build reserves the app's export chord for its element picker;
-window acceptance exercises the native Copy review action and OS clipboard.
-The `native` group separately verifies the export chord with production's
-`mygo_noinspector` tag.
+Desktop groups stage `apps/desktop/dist` into `internal/assets/dist` before Go
+tests/builds. Their containers install WebKitGTK 4.1, GTK3 and fonts.
+`desktop-window` uses Xvfb and private D-Bus with actual webviews, covering
+review interaction, workers, geometry, focus, clipboard, cross-client writes and
+owned versus attached shutdown. Missing runtime/display/tools/binaries fail this
+opted-in group. Browser local and remote regressions retain their existing group.
+Automation uses `desktopautomation`; production requires `mygo_noinspector`
+and excludes both automation and inspector dependencies.
 
-`native-package` builds real macOS/Linux amd64/arm64 release archives, verifies
-checksums, layouts, licenses, framework pin and release tags, and executes the
+`desktop-package` builds real macOS/Linux amd64/arm64 release archives, verifies
+checksums, layouts, embedded desktop/browser frontend bytes, licenses,
+framework pin and release tags, and executes the
 host-compatible app/server version pair. Cross-compiled targets are inspected
 without claiming native runtime acceptance. The separate `release` group covers
 installer failure preservation, atomic pair upgrades and CLI coexistence.
@@ -177,7 +174,7 @@ streamed logs and completed artifacts; a browser killed mid-trace may not leave
 a usable trace. Results distinguish executed checks from reused validation.
 
 Validation containers currently support Linux x64 only. They do not validate
-native macOS behavior. Run `mise run native:platform-smoke` on a real macOS
+macOS webview behavior. Run `mise run desktop:platform-smoke` on a real macOS
 desktop before claiming macOS runtime verification. This explicit platform
 supplement runs on its host to exercise the actual OS rather than a Linux
 container. Cross-compilation proves build support only.

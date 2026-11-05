@@ -6,7 +6,7 @@ import { parse } from "yaml";
 import {
   validComment,
   formatComments,
-} from "../../apps/web/src/review-comments.ts";
+} from "../../packages/review-app/src/review-comments.ts";
 import type {
   ApiFilePatch,
   ApiRepositoryDiff,

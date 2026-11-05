@@ -18,7 +18,7 @@ import {
 } from "../../tools/check-design.ts";
 
 const ui = "packages/ui/src/";
-const web = "apps/web/src/";
+const web = "packages/review-app/src/";
 
 function check(text: string, path = "new.css") {
   return checkDesign([{ path, text }]);
@@ -277,9 +277,22 @@ test("new nested frontend files enter the check automatically", () => {
 test("the shared design system and every app enter the check", () => {
   const directory = mkdtempSync(join(tmpdir(), "diffx-design-"));
   try {
-    for (const root of [`${ui}components`, "apps/console/src/new"])
+    for (const root of [
+      `${ui}components`,
+      `${web}components`,
+      "apps/desktop/src",
+      "apps/console/src/new",
+    ])
       mkdirSync(join(directory, root), { recursive: true });
     mkdirSync(join(directory, "apps/console/public"));
+    writeFileSync(
+      join(directory, web, "components/shared.css"),
+      ".shared { color: red }",
+    );
+    writeFileSync(
+      join(directory, "apps/desktop/src/launch.css"),
+      ".launch { color: red }",
+    );
     writeFileSync(join(directory, ui, "components/x.css"), ".x { color: red }");
     writeFileSync(
       join(directory, "apps/console/src/new/control.css"),
@@ -291,7 +304,12 @@ test("the shared design system and every app enter the check", () => {
     );
     assert.deepEqual(
       readFrontendSources(directory).map((source) => source.path),
-      [`${ui}components/x.css`, "apps/console/src/new/control.css"],
+      [
+        `${ui}components/x.css`,
+        `${web}components/shared.css`,
+        "apps/console/src/new/control.css",
+        "apps/desktop/src/launch.css",
+      ],
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -482,6 +500,9 @@ test("feature files render primitives instead of raw form controls", () => {
     for (const file of [
       "apps/web/src/ProjectsNav.tsx",
       "apps/web/src/components/row.tsx",
+      "packages/review-app/src/SharedRow.tsx",
+      "packages/review-app/src/components/SharedControl.tsx",
+      "apps/desktop/src/DesktopLaunch.tsx",
       "apps/console/src/Members.tsx",
       "packages/ui/src/gallery/Gallery.tsx",
       "packages/ui/src/components/ui/button.tsx",
@@ -496,7 +517,15 @@ test("feature files render primitives instead of raw form controls", () => {
     );
     const output = result.stdout + result.stderr;
     assert.equal(result.status, 1, output);
-    for (const name of ["ProjectsNav", "row", "Members", "Gallery"])
+    for (const name of [
+      "ProjectsNav",
+      "row",
+      "SharedRow",
+      "SharedControl",
+      "DesktopLaunch",
+      "Members",
+      "Gallery",
+    ])
       assert.match(output, new RegExp(`${name}\\.tsx.*forbid-elements`));
     assert.doesNotMatch(output, /button\.tsx.*forbid-elements/);
   } finally {

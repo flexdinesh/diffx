@@ -69,10 +69,10 @@ jobs:
           DIFFX_SOURCE_SHA: ${{ steps.version.outputs.source_sha }}
         run: mise run release:publish
 
-  native:
+  desktop:
     needs: release
     if: needs.release.outputs.tag != ''
-    uses: ./.github/workflows/native.yml
+    uses: ./.github/workflows/desktop.yml
     with:
       tag: ${{ needs.release.outputs.tag }}
       source: ${{ needs.release.outputs.source }}

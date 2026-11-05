@@ -17,7 +17,7 @@ jobs:
     permissions:
       contents: write
     outputs:
-      native_source: ${{ steps.publish.outputs.native_source }}
+      desktop_source: ${{ steps.publish.outputs.desktop_source }}
     concurrency:
       group: edge
       cancel-in-progress: false
@@ -43,12 +43,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-  native:
+  desktop:
     needs: edge
-    if: needs.edge.outputs.native_source != ''
+    if: needs.edge.outputs.desktop_source != ''
     permissions:
       contents: write
-    uses: ./.github/workflows/native.yml
+    uses: ./.github/workflows/desktop.yml
     with:
       tag: edge
-      source: ${{ needs.edge.outputs.native_source }}
+      source: ${{ needs.edge.outputs.desktop_source }}

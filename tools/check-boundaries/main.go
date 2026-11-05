@@ -108,18 +108,18 @@ var allowed = map[string][]string{
 	"packages/api/goclient":  {},
 	"packages/console-api":   {},
 	"packages/localprotocol": {},
-	// Desktop is an independent client module. Only native presentation owners
-	// import MyGo; only its session adapter executes the bundled server.
-	"apps/desktop/cmd/diffx-native": {"apps/desktop/internal/app"},
+	// Desktop is an independent webview host. Only its app imports MyGo;
+	// only the session adapter executes the bundled matching server.
+	"apps/desktop/cmd/diffx-desktop": {"apps/desktop/internal/app"},
 	"apps/desktop/internal/app": {
-		"apps/desktop/internal/design", "apps/desktop/internal/diffview", "apps/desktop/internal/preferences",
-		"apps/desktop/internal/session", "apps/desktop/internal/workspace", "packages/api/goclient", "packages/localprotocol",
+		"apps/desktop/internal/assets", "apps/desktop/internal/host", "apps/desktop/internal/launcher",
+		"apps/desktop/internal/session", "packages/localprotocol",
 	},
-	"apps/desktop/internal/design":      {},
-	"apps/desktop/internal/diffview":    {"packages/api/goclient"},
-	"apps/desktop/internal/preferences": {},
-	"apps/desktop/internal/session":     {"packages/api/goclient", "packages/localprotocol"},
-	"apps/desktop/internal/workspace":   {"packages/api/goclient", "packages/localprotocol"},
+	"apps/desktop/internal/assets":     {},
+	"apps/desktop/internal/launcher":   {"apps/desktop/internal/session", "packages/localprotocol"},
+	"apps/desktop/internal/host":       {"apps/desktop/internal/assets", "packages/localprotocol"},
+	"apps/desktop/internal/session":    {"packages/api/goclient", "packages/localprotocol"},
+	"apps/desktop/tools/stage-desktop": {},
 }
 
 // postgresOwners hold every Postgres driver and migration dependency.
@@ -157,7 +157,7 @@ func checkPackage(pkg listedPackage) []string {
 	var violations []string
 	for _, dependency := range pkg.Imports {
 		if dependency == "github.com/egoist/mygo" || strings.HasPrefix(dependency, "github.com/egoist/mygo/") {
-			if !slices.Contains([]string{"apps/desktop/internal/app", "apps/desktop/internal/design", "apps/desktop/internal/diffview"}, name) {
+			if name != "apps/desktop/internal/app" {
 				violations = append(violations, fmt.Sprintf("%s must not import desktop UI; keep MyGo in apps/desktop presentation packages", name))
 			}
 		}

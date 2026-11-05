@@ -1,4 +1,4 @@
-// Package session owns the bundled local sidecar and its Unix-socket transport.
+// Package session owns the bundled local sidecar and its parent lifetime lease.
 package session
 
 import (
@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -18,11 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/flexdinesh/diffx/packages/api/goclient"
 	"github.com/flexdinesh/diffx/packages/localprotocol"
 )
-
-const Authority = "http://localhost"
 
 type Options struct {
 	Args        []string
@@ -33,8 +29,6 @@ type Options struct {
 
 type Session struct {
 	Ready    localprotocol.Readiness
-	Client   *goclient.ClientWithResponses
-	HTTP     *http.Client
 	cancel   context.CancelFunc
 	finished chan struct{}
 	done     chan error
@@ -59,7 +53,7 @@ func ResolveSidecar(executable string) (string, error) {
 			return filepath.Clean(path), nil
 		}
 	}
-	return "", errors.New("matching bundled diffx sidecar missing; reinstall the native application")
+	return "", errors.New("matching bundled diffx sidecar missing; reinstall the desktop application")
 }
 
 // Start consumes exactly one bounded readiness record. Closing a session closes
@@ -91,7 +85,15 @@ func Start(ctx context.Context, options Options) (*Session, error) {
 	}
 	args := append([]string{localprotocol.Command, "--parent-fd", "3"}, options.Args...)
 	cmd := exec.Command(path, args...)
-	cmd.Stdin, cmd.Stderr, cmd.ExtraFiles = options.Stdin, options.Stderr, []*os.File{leaseRead}
+	// Stderr diagnostics use Cmd's copying pipe. A descendant retaining it must
+	// not prevent the sidecar from being reaped after its process exits.
+	cmd.WaitDelay = 2 * time.Second
+	diagnostics := &startupDiagnostics{}
+	stderr := options.Stderr
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	cmd.Stdin, cmd.Stderr, cmd.ExtraFiles = options.Stdin, io.MultiWriter(stderr, diagnostics), []*os.File{leaseRead}
 	stdout, stdoutWrite, err := os.Pipe()
 	if err != nil {
 		leaseRead.Close()
@@ -178,7 +180,7 @@ func Start(ctx context.Context, options Options) (*Session, error) {
 	case result := <-read:
 		if result.err != nil {
 			_ = s.Close()
-			return nil, result.err
+			return nil, diagnostics.failure(result.err)
 		}
 		s.Ready = result.ready
 	case <-lifetime.Done():
@@ -186,25 +188,27 @@ func Start(ctx context.Context, options Options) (*Session, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		return nil, errors.New("sidecar exited during startup")
+		return nil, diagnostics.failure(errors.New("sidecar exited during startup"))
 	}
-	transport := &http.Transport{
-		Proxy: nil,
-		DialContext: func(request context.Context, _, _ string) (net.Conn, error) {
-			dialer := &net.Dialer{Timeout: 10 * time.Second}
-			return dialer.DialContext(request, "unix", s.Ready.Socket)
-		},
-		ResponseHeaderTimeout: 20 * time.Second,
-		MaxIdleConns:          8, MaxIdleConnsPerHost: 8, IdleConnTimeout: 90 * time.Second,
-	}
-	s.HTTP = &http.Client{Transport: socketTransport{base: transport, lifetime: lifetime}, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("sidecar redirects refused") }}
-	s.Client, err = goclient.NewClientWithResponses(Authority, goclient.WithHTTPClient(s.HTTP))
-	if err != nil {
-		_ = s.Close()
-		return nil, err
-	}
-	go func() { <-lifetime.Done(); transport.CloseIdleConnections() }()
 	return s, nil
+}
+
+// Keep GUI startup failures useful even when the app has no terminal. Bound
+// diagnostics independently of sidecar output; read only after process reaping.
+type startupDiagnostics struct{ data []byte }
+
+func (d *startupDiagnostics) Write(p []byte) (int, error) {
+	remaining := 8192 - len(d.data)
+	if remaining > 0 {
+		d.data = append(d.data, p[:min(remaining, len(p))]...)
+	}
+	return len(p), nil
+}
+func (d *startupDiagnostics) failure(err error) error {
+	if detail := strings.TrimSpace(string(d.data)); detail != "" {
+		return fmt.Errorf("%w: %s", err, detail)
+	}
+	return err
 }
 
 func (s *Session) Done() <-chan error { return s.done }
@@ -251,31 +255,3 @@ func validate(r localprotocol.Readiness) error {
 	}
 	return nil
 }
-
-type socketTransport struct {
-	base     *http.Transport
-	lifetime context.Context
-}
-
-func (t socketTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Scheme != "http" || req.URL.Host != "localhost" || req.URL.User != nil || (req.Host != "" && req.Host != "localhost") {
-		return nil, errors.New("request outside sidecar authority refused")
-	}
-	ctx, cancel := context.WithCancel(req.Context())
-	stop := context.AfterFunc(t.lifetime, cancel)
-	response, err := t.base.RoundTrip(req.Clone(ctx))
-	if err != nil {
-		stop()
-		cancel()
-		return nil, err
-	}
-	response.Body = &cancelBody{ReadCloser: response.Body, cancel: func() { stop(); cancel() }}
-	return response, nil
-}
-
-type cancelBody struct {
-	io.ReadCloser
-	cancel func()
-}
-
-func (b *cancelBody) Close() error { err := b.ReadCloser.Close(); b.cancel(); return err }

@@ -82,6 +82,19 @@ a session-mode pooler; transaction-mode PgBouncer drops notifications.
 Both modes use identical collection, validation, identity, ingestion, catalog
 and review operations. Their lifecycle and submission delivery differ.
 
+## Desktop client
+
+`diffx-desktop` is a client of local composition. Its independent MyGo host
+embeds the shared React review app and proxies public REST/SSE through the local
+sidecar viewer on one loopback webview origin. The narrow typed bridge owns launch,
+folder dialogs, retry and explicit scope replacement; review semantics stay in
+the server. A matching bundled CLI implements `packages/localprotocol`.
+Attachment never transfers ownership; shutdown cancels only an owned server.
+Browser coexistence, PATH/stdin and persistent server comments/review marks
+retain their existing contracts. Desktop starts fresh with web preferences,
+without migrating former native settings. Browser-only PWA activation stays in
+the browser entry. See [desktop-webview.md](desktop-webview.md).
+
 ## Request and response flows
 
 ### Collect and ingest

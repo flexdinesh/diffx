@@ -1,0 +1,59 @@
+name: Desktop artifacts
+
+on:
+  workflow_call:
+    inputs:
+      source:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  HUSKY: 0
+
+concurrency:
+  group: desktop-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source }}
+          fetch-depth: 0
+      - uses: jdx/mise-action@v4
+        with:
+          version: 2026.8.6
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: desktop-${{ runner.os }}-${{ hashFiles('mise.toml', '.node-version', 'package.json', 'pnpm-lock.yaml', 'go.sum', 'apps/desktop/go.sum') }}
+          restore-keys: desktop-${{ runner.os }}-
+      - run: mise run deps
+      - run: mise run web:stage
+      - run: mise run desktop:stage
+      - name: Build experimental desktop archives
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          DIFFX_SOURCE_SHA: ${{ inputs.source }}
+        run: |
+          export DIFFX_RELEASE_VERSION="${RELEASE_TAG#v}"
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
+            DIFFX_DESKTOP_TARGET="$target" mise run release:desktop-package
+          done
+      - name: Upload desktop artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          DIFFX_SOURCE_SHA: ${{ inputs.source }}
+        run: mise run release:desktop-publish

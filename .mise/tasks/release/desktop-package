@@ -1,0 +1,10 @@
+#!/bin/sh
+#MISE description="Build experimental desktop archive and checksum without publishing"
+set -eu
+: "${DIFFX_RELEASE_VERSION:?DIFFX_RELEASE_VERSION is required}"
+: "${DIFFX_SOURCE_SHA:?DIFFX_SOURCE_SHA is required}"
+[ -z "$(git status --porcelain)" ] || {
+  printf '%s\n' 'desktop release source must be clean; use desktop:package for local working files' >&2
+  exit 1
+}
+exec sh scripts/desktop-package.sh

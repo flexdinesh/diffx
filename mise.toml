@@ -37,7 +37,6 @@ description = "Generate API clients, Postgres queries and agent plugin adapters"
 run = [
   "pnpm generate:api",
   { task = "generate:api:go" },
-  { task = "generate:native:tokens" },
   { task = "generate:sql" },
   { task = "plugins:build" },
 ]
@@ -46,23 +45,50 @@ run = [
 description = "Generate the Go REST client from the canonical OpenAPI contract"
 run = "go generate ./packages/api/goclient"
 
-[tasks."generate:native:tokens"]
-description = "Generate native palettes and preferences from canonical design sources"
-run = "go run ./tools/native-tokens"
-
-[tasks."native:build"]
-description = "Build the experimental native app with its matching private server"
-depends = ["build"]
+[tasks."desktop:build"]
+description = "Build the experimental desktop app with its matching private server"
+depends = ["build", "desktop:stage"]
 run = [
-  "go -C apps/desktop build -mod=readonly -trimpath -tags mygo_noinspector -o build/dev/diffx-native ./cmd/diffx-native",
+  "go -C apps/desktop build -mod=readonly -trimpath -tags mygo_noinspector -o build/dev/diffx-desktop ./cmd/diffx-desktop",
   "go build -trimpath -o apps/desktop/build/dev/diffx ./cmd/diffx",
 ]
 
-[tasks."native:dev"]
-description = "Develop the Go-only native app with the pinned MyGo tool"
-depends = ["native:build"]
-env = { DIFFX_NATIVE_SIDECAR = "{{config_root}}/apps/desktop/build/dev/diffx" }
+[tasks."desktop:dev"]
+description = "Develop the shared review app in the MyGo webview host"
+depends = ["desktop:build"]
+env = { DIFFX_DESKTOP_SIDECAR = "{{config_root}}/apps/desktop/build/dev/diffx" }
 run = "go -C apps/desktop tool mygo dev"
+
+[tasks."desktop:frontend"]
+description = "Build the shared review frontend for the desktop webview"
+depends = ["web:build"]
+sources = [
+  "apps/desktop/src/**/*",
+  "apps/desktop/public/**/*",
+  "apps/desktop/index.html",
+  "apps/desktop/vite.config.ts",
+  "apps/desktop/tsconfig.json",
+  "apps/desktop/package.json",
+  "packages/review-app/**/*",
+  "packages/ui/src/**/*",
+  "packages/ui/package.json",
+  "packages/api/src/**/*",
+  "packages/api/openapi.yaml",
+  "packages/api/package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "package.json",
+  "tsconfig.json",
+]
+outputs = ["apps/desktop/dist/**/*"]
+run = "pnpm --filter @diffx/desktop build"
+
+[tasks."desktop:stage"]
+description = "Stage the desktop frontend before Go embedding"
+depends = ["desktop:frontend"]
+sources = ["apps/desktop/dist/**/*", "apps/desktop/tools/stage-desktop/**/*"]
+outputs = ["apps/desktop/internal/assets/dist/**/*"]
+run = "go -C apps/desktop run ./tools/stage-desktop dist internal/assets/dist"
 
 [tasks."generate:sql"]
 description = "Generate typed Go Postgres queries from internal/pgstore SQL"
@@ -71,6 +97,9 @@ run = "sqlc generate -f internal/pgstore/sqlc.yaml"
 [tasks."web:build"]
 description = "Generate API types and build the web app and console"
 sources = [
+  "packages/review-app/src/**/*",
+  "packages/review-app/package.json",
+  "packages/review-app/tsconfig.json",
   "apps/web/src/**/*",
   "apps/web/public/**/*",
   "apps/web/index.html",
@@ -248,42 +277,42 @@ description = "Internal Go race tests; use test:race for isolation"
 hide = true
 run = "go test -race -timeout 5m ./..."
 
-[tasks."test:exec:native"]
-description = "Internal native tests; use check:native for isolation"
+[tasks."test:exec:desktop"]
+description = "Internal desktop tests; use check:desktop for isolation"
 hide = true
 run = "go -C apps/desktop test -json -mod=readonly -timeout 3m ./..."
 
-[tasks."test:exec:native:race"]
-description = "Internal native race tests; use check:native for isolation"
+[tasks."test:exec:desktop:race"]
+description = "Internal desktop race tests; use check:desktop for isolation"
 hide = true
 run = "go -C apps/desktop test -json -mod=readonly -race -timeout 5m ./..."
 
-[tasks."test:exec:native:release"]
-description = "Internal production-tag native interactions; use check:native for isolation"
+[tasks."test:exec:desktop:release"]
+description = "Internal production-tag desktop interactions; use check:desktop for isolation"
 hide = true
-run = "go -C apps/desktop test -json -mod=readonly -tags mygo_noinspector -timeout 3m ./internal/app ./cmd/diffx-native"
+run = "go -C apps/desktop test -json -mod=readonly -tags mygo_noinspector -timeout 3m ./..."
 
-[tasks."test:exec:native:window"]
-description = "Internal real GTK window acceptance; use check:native:window for isolation"
+[tasks."test:exec:desktop:window"]
+description = "Internal real GTK window acceptance; use check:desktop:window for isolation"
 hide = true
-env = { DIFFX_NATIVE_ACCEPTANCE = "1", DIFFX_NATIVE_BINARY = "{{config_root}}/dist/diffx-native-acceptance", DIFFX_NATIVE_DRIVER = "{{config_root}}/dist/diffx-native-driver", MYGO_GPU = "0", GDK_BACKEND = "x11" }
+env = { DIFFX_DESKTOP_ACCEPTANCE = "1", DIFFX_DESKTOP_BINARY = "{{config_root}}/dist/diffx-desktop-acceptance", DIFFX_DESKTOP_DRIVER = "{{config_root}}/dist/diffx-desktop-driver", MYGO_GPU = "0", GDK_BACKEND = "x11" }
 run = [
-  "go -C apps/desktop build -mod=readonly -tags nativeautomation -o ../../dist/diffx-native-acceptance ./cmd/diffx-native",
-  "go build -o dist/diffx-native-driver ./test/native/cmd/native-driver",
-  "xvfb-run -a -s '-screen 0 1600x1000x24 -nolisten tcp' dbus-run-session -- go test -json -count=1 -timeout=180s ./test/native/...",
+  "go -C apps/desktop build -mod=readonly -tags desktopautomation -o ../../dist/diffx-desktop-acceptance ./cmd/diffx-desktop",
+  "go build -o dist/diffx-desktop-driver ./test/desktop/cmd/desktop-driver",
+  "xvfb-run -a -s '-screen 0 1600x1000x24 -nolisten tcp' dbus-run-session -- go test -json -count=1 -timeout=180s ./test/desktop/...",
 ]
 
-[tasks."test:exec:native:package"]
-description = "Internal real native archives; use check:native:package for isolation"
+[tasks."test:exec:desktop:package"]
+description = "Internal real desktop archives; use check:desktop:package for isolation"
 hide = true
 run = """
 set -eu
 export DIFFX_RELEASE_VERSION=0.0.0
 export DIFFX_SOURCE_SHA=$(git rev-parse HEAD)
 for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
-  export DIFFX_NATIVE_TARGET="$target"
-  sh scripts/native-package.sh
-  sh scripts/native-verify-package.sh
+  export DIFFX_DESKTOP_TARGET="$target"
+  sh scripts/desktop-package.sh
+  sh scripts/desktop-verify-package.sh
 done
 """
 
@@ -329,7 +358,7 @@ if ! sqlc diff -f internal/pgstore/sqlc.yaml; then
   echo 'Run `mise run generate:sql` and commit internal/pgstore/pgdb.' >&2
   exit 1
 fi
-generated_changes=$(git status --porcelain --untracked-files=all -- packages/api/src/schema.d.ts packages/api/goclient/client.gen.go packages/console-api/src/schema.d.ts packages/plugin-opencode/dist packages/plugin-pi/dist apps/desktop/internal/design/tokens_generated.go apps/desktop/internal/design/code_generated.go apps/desktop/internal/preferences/themes_generated.go)
+generated_changes=$(git status --porcelain --untracked-files=all -- packages/api/src/schema.d.ts packages/api/goclient/client.gen.go packages/console-api/src/schema.d.ts packages/plugin-opencode/dist packages/plugin-pi/dist)
 if [ -n "$generated_changes" ]; then
   printf '%s\n' "$generated_changes"
   echo 'Commit generated API types and built plugins before pushing.' >&2
@@ -403,20 +432,20 @@ description = "Run Go tests in an isolated snapshot"
 tools = { "aqua:dagger/dagger" = "0.21.11" }
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group go"
 
-[tasks."check:native"]
-description = "Run native view, controller and real local-session tests in isolation"
+[tasks."check:desktop"]
+description = "Run desktop webview host, bridge and real local-session tests in isolation"
 tools = { "aqua:dagger/dagger" = "0.21.11" }
-run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group native"
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group desktop"
 
-[tasks."check:native:window"]
-description = "Run real Linux native window, clipboard and shared-server acceptance"
+[tasks."check:desktop:window"]
+description = "Run real Linux desktop window, clipboard and shared-server acceptance"
 tools = { "aqua:dagger/dagger" = "0.21.11" }
-run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group native-window"
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group desktop-window"
 
-[tasks."check:native:package"]
-description = "Build and verify actual experimental native archives for all supported targets"
+[tasks."check:desktop:package"]
+description = "Build and verify actual experimental desktop archives for all supported targets"
 tools = { "aqua:dagger/dagger" = "0.21.11" }
-run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group native-package"
+run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group desktop-package"
 
 [tasks."check:contracts"]
 description = "Run architecture and shared-rule contracts in isolation"

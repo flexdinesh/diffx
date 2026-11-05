@@ -8,13 +8,16 @@ system in `packages/ui/`; agent plugins in `packages/plugin-*`; user docs site
 in `docs-website/`; maintainer docs in `docs/`; cross-package conformance,
 contract and release tests in `test/`.
 
-Experimental MyGo native client in `apps/desktop/` is a separate Go module.
-It consumes public REST/SSE and local-session contracts, never root internals.
-Generate its design tokens from canonical UI sources; keep MyGo out of root
-server packages. `mise run check:native` owns its headless/controller/session
-tests; `mise run check:native:window` owns real Linux GTK acceptance. Release
-builds exclude automation and inspector code. Root `go test ./...` does not
-discover nested modules.
+The MyGo webview client in `apps/desktop/` is a separate Go module with a
+Vite entry. Browser and desktop entries mount `packages/review-app`, which owns
+review UI, state, styles and Pierre rendering; `packages/ui` owns design tokens
+and primitives. The desktop host consumes public REST/SSE and local-session
+contracts, never root internals. It embeds staged desktop assets and bundles a
+matching CLI. `mise run check:desktop` owns host/bridge/session tests;
+`check:desktop:window` owns real Linux WebKitGTK acceptance;
+`check:desktop:package` verifies four-target archives. Production excludes
+automation and inspector code. Root `go test ./...` does not discover nested
+modules. Run `desktop:stage` before raw desktop Go builds/tests.
 
 - Keep changes minimal. Follow existing patterns.
 - Preserve TypeScript type safety: no `any`, type assertions, or non-null assertions.

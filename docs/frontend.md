@@ -1,52 +1,39 @@
 # Frontend conventions
 
-## Experimental native desktop
+## Desktop webview and shared review app
 
-`apps/desktop` is a Go module using MyGo native content windows. It renders no
-webviews, HTML or JavaScript. Its `session` adapter starts a bundled matching
-CLI or attaches to the existing compatible local scope; `workspace` owns
-REST/SSE request lifetimes, cancellation and immutable presentation snapshots.
-The server remains the owner of observations, review state, anchors and export.
+`packages/review-app` (`@diffx/review-app`) owns review views, state, request
+lifetimes, styles, themes, workers and Pierre integration. It exports
+`ReviewApplication({ platform })`; `apps/web/src/main.tsx` and
+`apps/desktop/src/main.tsx` compose distinct entry points. `packages/ui` remains
+the design-system owner. Shared feature code renders its primitives and uses
+the same measured geometry.
 
-`diffview` adapts stored patches to MyGo without recalculating their change
-runs. Sparse old/new coordinate maps translate native buffer indices to stored
-one-based lines. Context expansion inserts only verified unchanged captured
-contents, then remaps selections and server-resolved annotations. Missing
-contents stay unavailable. Editor mutation actions remain private and disabled.
-Commit lenses disable review ranges while retaining native text copy.
+`apps/desktop` is a separate Go module containing a thin MyGo webview host.
+The host embeds the desktop Vite build, serves it on a loopback origin and
+proxies allowlisted public REST/SSE to the local sidecar viewer. Its typed
+bridge exposes launch state, folder selection, retry and explicit replacement.
+OS menus and file dialogs remain native. The session adapter starts the bundled
+matching CLI or attaches to a compatible scope; cancellation joins stale work,
+and Quit stops only an owned server. Server data and review behavior have one
+owner. There are no custom Go diff widgets or generated native palettes.
 
-The file list owns scrolling across files; individual native diff content does
-not create nested vertical scrolling. Inline comment heights come from native
-layout. Range selection uses click/Shift-click and keyboard controls. Unified
-comment actions follow selection because MyGo's unified hover gutter cannot
-reliably identify deletion-side lines. Horizontal offsets are retained while
-mounted but cannot be restored across editor reconstruction through MyGo's
-current public API.
+Desktop uses the web preference implementation in its own webview origin.
+The host retains its loopback port across restarts so appearance and display
+preferences remain available. A saved-port conflict fails explicitly instead
+of selecting another origin.
+There is no migration from old native settings. Browser and desktop preferences
+are separate; saved server comments and reviewed marks remain available.
+Only the browser entry activates the remote PWA/service worker. Desktop requires
+a modern WebKit runtime supporting the shared build target, Safari 16.4 or
+equivalent; Linux acceptance uses WebKitGTK 4.1. A Linux build or cross-compile
+does not establish macOS runtime acceptance.
 
-Inline and file annotations require the selected comparison scope. The Comments
-sidebar retains cross-scope comments with scope labels; navigation switches to
-that scope and retains its line target until the preview mounts. The outer file
-list restores measured stored-line anchors during context and annotation changes.
-Creating or editing a comment opens the normal native Comments pane (a drawer
-at compact widths). MyGo's accessibility tree treats code editors as leaves,
-so annotation controls alone cannot provide accessible comment editing. All
-drafts remain visible in that pane independently of the saved-comment filter.
-Session replacement joins the old controller and settles its drafts before
-accepting new operation IDs. Unconfirmed drafts remain editable with recovery
-instructions. Comments and reviewed marks refresh every three seconds, coalesced
-with selected reads and writes, because ingestion events do not cover review
-mutations. This never collects Git or replaces the selected snapshot.
-
-Alt+M marks reviewed and advances after acknowledgement. In-flight repeats are
-ignored; a held chord can mark successive files, but cannot unreview the final
-file. Use the file's Reviewed control to toggle an existing mark.
-
-Native primitives consume generated semantic tokens and palettes. Preferences
-live in a versioned, atomically written app configuration file, independent of
-browser localStorage. Server comments and reviewed-file marks are shared with
-the web UI. Native tests use MyGo's headless tester; actual native-window
-automation is a separate platform check. No memory or performance benchmarks
-are part of the experimental port.
+`desktop:frontend` builds `apps/desktop/dist`; `desktop:stage` copies it into
+`apps/desktop/internal/assets/dist` for Go embedding. These outputs stay ignored.
+`check:desktop` covers the host, bridge and real local-session boundary;
+`check:desktop:window` exercises real WebKitGTK windows; production excludes
+automation and inspector. See [desktop-webview.md](desktop-webview.md).
 
 ## Web application
 
@@ -68,7 +55,7 @@ production component/hook behavior that does not require layout. Keep critical
 review journeys and actual rendering, geometry, scrolling, selection, responsive
 and focus behavior in Chromium.
 
-`App.tsx` composes page sections. `main.tsx` composes sidebar and appearance
+`App.tsx` composes page sections. The shared application entry composes sidebar and appearance
 providers around identity; `SessionProvider` owns context selection, routes
 (`review-route.ts`) and collection (`use-collection.ts`) and imports no views;
 `SessionShell` renders its loading, empty and failure states; `AppProvider`
