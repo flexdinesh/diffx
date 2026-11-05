@@ -25,7 +25,11 @@
       "rules": { "react/rules-of-hooks": "off" }
     },
     {
-      "files": ["apps/*/src/**/*.tsx", "packages/ui/src/**/*.tsx"],
+      "files": [
+        "apps/*/src/**/*.tsx",
+        "packages/review-app/src/**/*.tsx",
+        "packages/ui/src/**/*.tsx"
+      ],
       "rules": {
         "react/forbid-elements": [
           "error",

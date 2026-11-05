@@ -1,8 +1,8 @@
 Diffx is Copyright (c) Diffx contributors, distributed under the MIT license.
 MyGo v0.7.4 is Copyright (c) 2026 MyGo contributors, MIT licensed.
 
-LICENSE contains Diffx's license. licenses/ contains license and notice files
-from linked Go modules, embedded theme sources, and the Go runtime. Module
-versions are recorded in BUILD-INFO.txt. MyGo's internal shader license is
-included with its notices. The private CLI also embeds the browser application;
-see release-licensing.md for its dependency licensing exceptions.
+LICENSE contains Diffx's license. licenses/ contains linked Go module and
+runtime notices plus web runtime dependency notices and dependencies.json.
+BUILD-INFO.txt records executable versions and provenance. Both host and private
+CLI embed web assets; release-licensing.md documents their licensing exceptions.
+There are no separate copied native theme palettes.

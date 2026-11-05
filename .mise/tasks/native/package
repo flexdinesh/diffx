@@ -1,7 +1,0 @@
-#!/bin/sh
-#MISE description="Package experimental native app and private matching CLI locally"
-#MISE depends=["web:stage"]
-set -eu
-export DIFFX_RELEASE_VERSION="${DIFFX_RELEASE_VERSION:-0.0.0-dev}"
-export DIFFX_SOURCE_SHA="${DIFFX_SOURCE_SHA:-$(git rev-parse HEAD)}"
-exec sh scripts/native-package.sh

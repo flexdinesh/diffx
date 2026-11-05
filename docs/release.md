@@ -88,88 +88,96 @@ because source refs lack embedded assets. Historical binary releases remain
 installable separately with `install.sh --version vX.Y.Z`. For development from
 a configured checkout, use `mise run install`.
 
-## Experimental native desktop
+## Experimental desktop webview
 
-`diffx-native` is a separate macOS/Linux Go-only MyGo v0.7.4 client. It
-renders native views and uses a private matching CLI as its local server.
+`diffx-desktop` is a separate macOS/Linux MyGo v0.7.4 webview host. It
+embeds the shared React review app and uses a private matching CLI as its local server.
 Normal `install.sh`, `install-edge.sh`, CLI assets and their `checksums.txt`
-retain their existing behavior. Native assets use separate names and
-`native-checksums.txt` on the same source release. Edge remains experimental;
-native stable-version archives are also explicitly experimental.
+retain their existing behavior. Desktop assets use separate names and
+`desktop-checksums.txt` on the same source release. Edge remains experimental;
+desktop stable-version archives are also explicitly experimental.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-native.sh | sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-native.sh | sh -s -- --version v0.2.0
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-desktop.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-desktop.sh | sh -s -- --version v0.2.0
 ```
 
-The native installer defaults to edge and supports `--version edge|vX.Y.Z`
+The desktop installer defaults to edge and supports `--version edge|vX.Y.Z`
 and `--bin-dir DIR` (default `~/.local/bin`). It verifies one exact SHA-256
 entry before extraction, stages the app/server pair on the destination
-filesystem, and atomically replaces only the `diffx-native` launcher. It never
+filesystem, and atomically replaces only the `diffx-desktop` launcher. It never
 installs its private server over the user's `diffx`. Download, checksum,
 extraction or launcher-rename failure preserves the prior launcher and pair.
 No downloaded program runs during installation. Shell profiles are unchanged.
 
-Private pairs live beneath the bin directory's `.diffx-native-versions/`.
+Private pairs live beneath the bin directory's `.diffx-desktop-versions/`.
 Upgrades retain old pairs so a running app can still start its matching
-server. Stop all native apps before deleting old pairs. To uninstall the
-default installation, remove `~/.local/bin/diffx-native` and
-`~/.local/bin/.diffx-native-versions`; review data and preferences remain.
+server. Stop all desktop apps before deleting old pairs. To uninstall the
+default installation, remove `~/.local/bin/diffx-desktop` and
+`~/.local/bin/.diffx-desktop-versions`; review data and preferences remain.
 Both clients share the existing local database and lifecycle rules. Closing
-native stops only a server it owns; an attached server stays running.
+desktop stops only a server it owns; an attached server stays running.
 
-Native archives are `diffx-native_<version>_<os>_<arch>.tar.gz` for macOS
+Desktop archives are `diffx-desktop_<version>_<os>_<arch>.tar.gz` for macOS
 (`darwin`) and Linux, each amd64/arm64. macOS contains
-`Diffx Native Experimental.app`, with the native executable in `Contents/MacOS`
+`Diffx Desktop Experimental.app`, with the desktop executable in `Contents/MacOS`
 and private `diffx` in `Contents/Resources`. Its bundle launcher passes
 `--desktop-launch` to attach or choose a folder. Linux contains a
-`diffx-native/` directory with sibling `diffx-native` and private `diffx`, plus
-a desktop entry invoking `diffx-native --desktop-launch`. Put the installed
+`diffx-desktop/` directory with sibling `diffx-desktop` and private `diffx`, plus
+a desktop entry invoking `diffx-desktop --desktop-launch`. Put the installed
 command on the desktop environment's PATH before registering that entry.
 Shell invocation preserves local path/pipe arguments. Keep each pair together.
 
-Artifacts include Diffx's license, collected linked-module/runtime/theme
+Artifacts include Diffx's license, collected linked Go/runtime and web dependency
 notices and build provenance. The private CLI retains embedded browser assets
 for web coexistence, with the licensing exceptions below. Linux requires the
-system GTK libraries used by MyGo; macOS uses system frameworks. There is no
-webview UI, DMG, package installer, Developer ID signing, notarization or
+system GTK3 and WebKitGTK 4.1 libraries; macOS uses system WebKit. The shared
+frontend targets Safari 16.4 or equivalent. There is no DMG, package installer,
+Developer ID signing, notarization or
 auto-updater. macOS security policy may require explicit user approval for
 the unsigned experimental bundle.
 
 Build local working files without publishing:
 
 ```sh
-mise run native:package
-mise run native:package-verify
-DIFFX_NATIVE_TARGET=darwin/arm64 mise run native:package
+mise run desktop:package
+mise run desktop:package-verify
+DIFFX_DESKTOP_TARGET=darwin/arm64 mise run desktop:package
 ```
 
-`native:package` stages embedded web assets and defaults to version `0.0.0-dev` and
+`desktop:package` stages both desktop and browser assets and defaults to version `0.0.0-dev` and
 the checked-out source SHA. Ignored outputs live in `apps/desktop/build/release/`.
-`native:package-verify` additionally checks archive checksums, layouts, notices,
+`desktop:package-verify` additionally checks archive checksums, layouts, embedded frontend bytes, notices,
 target metadata and version metadata, executing both `--version` commands
 when the target matches the host. It opens no window.
 For release builds, set `DIFFX_RELEASE_VERSION`, `DIFFX_SOURCE_SHA` and optionally
-`DIFFX_NATIVE_TARGET`, then run `mise run release:native-package` on clean
+`DIFFX_DESKTOP_TARGET`, then run `mise run release:desktop-package` on clean
 source. It uses `mygo_noinspector`, excludes automation, injects the same version
 into app and server, and emits an archive plus `.sha256` sidecar. Local release
 tests run through `mise run check:release`; the raw JS tooling command is
 `pnpm test:release`.
 
-Stable and edge workflows call **Native artifacts** after the CLI release
+Stable and edge workflows call **Desktop artifacts** after the CLI release
 publishes, passing its exact source SHA and tag. That workflow only stages,
 cross-compiles and uploads; it runs no test suite and never creates a release
 or changes latest/prerelease status. CLI publication can succeed independently
-of experimental native packaging. Native checksums upload last. Edge checks
+of experimental desktop packaging. Desktop checksums upload last. Edge checks
 that both current main and edge tag still match before uploading; rolling
 asset replacement can temporarily fail checksum verification, so retry after
-publication completes. Stable native uploads never clobber existing assets;
+publication completes. Stable desktop uploads never clobber existing assets;
 a complete rerun preserves them, while a partial upload requires maintainer
 inspection before retrying. No release artifact is committed.
 
 Cross-compilation and archive tests do not establish macOS/Linux window runtime
-behavior. Run native platform acceptance separately before claiming support;
+behavior. Run desktop platform acceptance separately before claiming support;
 neither RAM nor performance measurements are required.
+
+Former `diffx-native` installs are not aliases. After stopping the old app,
+remove its launcher and `.diffx-native-versions` directory from the installation
+bin directory. Do not delete server review data or user configuration files.
+`install-desktop.sh` installs a new atomic pair in `.diffx-desktop-versions`;
+old native settings are not migrated. macOS runtime acceptance remains a
+separate Mac requirement.
 
 ## Version series
 

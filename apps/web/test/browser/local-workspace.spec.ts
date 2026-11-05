@@ -10,8 +10,8 @@ import {
   comparisonKind,
   isDiffMode,
   type DiffMode,
-} from "../../src/diff-mode.ts";
-import type { ReviewComment } from "../../src/review-comments.ts";
+} from "@diffx/review-app/diff-mode";
+import type { ReviewComment } from "@diffx/review-app/review-comments";
 
 // Every scenario here mocks several review contexts; the fixture itself is a
 // capture, so serve a checkout-process bootstrap by default.

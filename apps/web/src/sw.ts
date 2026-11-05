@@ -5,7 +5,7 @@ import {
   fallbackNotification,
   notificationClickAction,
   readPushPayload,
-} from "./push-notification.ts";
+} from "@diffx/review-app/push-notification";
 
 declare const self: ServiceWorkerGlobalScope;
 

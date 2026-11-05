@@ -41,21 +41,21 @@ chrome competing with additions, deletions, syntax, or selected lines.
 `packages/ui` (`@diffx/ui`) is the shared design system; apps import it and
 never fork it.
 
-The experimental native desktop uses Go primitives in
-`apps/desktop/internal/design`. `tools/native-tokens` generates its semantic
-palette, metrics and theme registry from the canonical CSS and web registry
-below. Native code consumes generated values; it does not maintain another
-palette. Native control geometry and font rasterization may differ while
-preserving this compact visual direction and semantic roles.
+Browser and desktop entries mount the same `packages/review-app` views and
+styles. The MyGo webview host owns only OS menus, dialogs and session launch.
+There is no second palette, native diff renderer or token generator. Preserve
+Pierre's measured geometry, worker rendering, selection and theme behavior in
+both entries. Desktop preferences start fresh with web settings; server review
+data is retained.
 
 - `packages/ui/src/tokens.css`: semantic colors, spacing, geometry, elevation,
   responsive gutters, light/dark equivalents, and theme palettes.
-- `apps/web/src/theme.ts`: the theme registry (id, label, kind, mode and
+- `packages/review-app/src/theme.ts`: the theme registry (id, label, kind, mode and
   matching code theme).
 - `packages/ui/src/typography.css`: fonts, text/icon sizes, weights, line heights.
 - `packages/ui/src/styles.css`: Tailwind entry point, token-utility and shadcn
   theme bridge, and element defaults.
-- `apps/web/src/style.css`: imports `@diffx/ui/styles.css`; shell, navigation,
+- `packages/review-app/src/style.css`: imports `@diffx/ui/styles.css`; shell, navigation,
   and viewer boundary.
 - `packages/ui/src/components/ui`: repository-owned shadcn/Base UI primitives
   and shared variants.
@@ -63,9 +63,9 @@ preserving this compact visual direction and semantic roles.
   (see [Component inventory](#component-inventory)).
 - `packages/ui/design.html` and `packages/ui/src/gallery`: the dev-only gallery
   of every primitive and composite variant; its goldens are visual contracts.
-- `apps/web/src/review.css`: review/sidebar composition and touch adaptations.
-- `apps/web/src/DiffWorkspace.tsx`: Pierre options, React slots, measured metrics.
-- `apps/web/src/display-options.ts`: supported Pierre syntax-theme pairs.
+- `packages/review-app/src/review.css`: review/sidebar composition and touch adaptations.
+- `packages/review-app/src/DiffWorkspace.tsx`: Pierre options, React slots, measured metrics.
+- `packages/review-app/src/display-options.ts`: supported Pierre syntax-theme pairs.
 
 Keep these responsibilities clear. Fix the original shared rule instead of
 adding another late override. Existing short names such as `--bg`, `--fg`, and
@@ -961,9 +961,9 @@ Before adding a value or visual pattern:
 
 ## Enforcement
 
-`mise run check:design` scans CSS, TypeScript and TSX under `packages/ui/src`
-and every `apps/*/src`, including new nested files, static utilities, inline style objects, SVG colors
-and Pierre's `unsafeCSS`. Local `mise run check` and pre-push run the guard
+`mise run check:design` scans CSS, TypeScript and TSX under `packages/ui/src`,
+`packages/review-app/src` and every `apps/*/src`, including new nested files, static utilities, inline style objects, SVG colors
+and Pierre's `unsafeCSS`. Local `mise run check` and explicit PR validation run the guard
 and its contracts. It rejects literal palettes outside `tokens.css` definitions,
 independent typography, literal radii/elevation, and arbitrary padding/margin/gap
 lengths. Spacing utilities stay on the `--space-*` scale; 2px steps stay in

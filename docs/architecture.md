@@ -5,13 +5,20 @@ canonical record of package boundaries and architectural decisions.
 [System semantics](system.md) covers identities and durability;
 [development](development.md) covers commands and checks.
 
-The experimental MyGo desktop is another client of the local composition,
-not another deployment mode. `apps/desktop` is a separate Go module consuming
-public REST/SSE and local-session wire contracts. It has no dependency on
-root `internal/` packages and never owns SQLite, Git collection or review rules.
-Only its native presentation packages import MyGo. Its session adapter alone
-executes the bundled matching CLI. Web and distributed compositions retain
-their existing entry points.
+The MyGo desktop is another client of the local composition, not another
+deployment mode. `apps/desktop` is a separate Go module with a Vite entry,
+consuming public REST/SSE and local-session wire contracts. It never owns
+SQLite, Git collection or review rules, and cannot import root `internal/`.
+Its thin `app` package owns MyGo, OS menus and dialogs; `session` alone executes
+the bundled matching CLI; `host` serves embedded assets and proxies allowlisted
+public REST/SSE on one loopback origin. Private control endpoints stay private.
+Browser (`apps/web`) and desktop entries mount `ReviewApplication({ platform })`
+from `packages/review-app`, sharing views, state, styles, workers and Pierre
+geometry. `packages/ui` remains the design-system owner. PWA activation requires
+the browser entry and remote bootstrap. Desktop has no parallel Go diff widgets,
+token generator or preferences implementation. Web preferences start fresh and
+persist across restarts through a stable desktop loopback origin; server
+review data and public local-session ownership rules remain unchanged.
 
 ## Local validation
 
@@ -137,8 +144,8 @@ instance with the requested canonical scope can be attached; another scope
 requires explicit replacement. Attachment never transfers server ownership.
 Closing the parent pipe cancels and joins only an owned server. Scope identity,
 replacement, collection and state-reset decisions remain in the CLI/localserver
-composition, rather than in a desktop client. Clients use REST/SSE over the
-owner-only socket; the loopback viewer remains available for web coexistence.
+composition, rather than in a desktop client. The desktop host proxies public REST/SSE through the
+local sidecar viewer for its webview; the loopback viewer remains available for web coexistence.
 
 Independent local sessions use distinct `DIFFX_RUNTIME_DIR` directories, which
 give each its own socket, and viewer ports (`--port 0` selects a free port).
@@ -338,27 +345,25 @@ current build platform; tests may import adapters to exercise their contracts.
 The same guard classifies public Go packages under `packages/` and the separate
 desktop module. The generated
 Go REST client and local readiness DTOs depend on wire concerns only, never
-server internals. Root Go packages cannot import MyGo: native UI belongs to the
+server internals. Root Go packages cannot import MyGo: the webview shell belongs to the
 separate desktop application module. OpenAPI remains the source of REST wire
 types for both TypeScript and Go; named components share capabilities without
 changing the JSON contract.
 
-The native check group runs headless MyGo view/controller tests and real local
-session integration in its own Linux container. Its source identity includes
-the desktop module's manifests, framework pin and generated palettes. GTK and
-fonts belong only to native preparation; web/server groups do not gain desktop
-runtime requirements. Static architecture and formatting guards remain on the
-host. Actual platform-window checks are distinct from headless view tests.
+The `desktop` check group runs host/bridge/session tests and production-tag
+tests in its own Linux container. Its source identity includes shared React
+source, desktop entry and build configuration, nested Go manifests and framework
+pin. GTK/WebKitGTK and fonts belong only to desktop preparation. Static
+architecture and formatting guards remain on the host with private snapshots.
 
-The required `native-window` group runs real GTK content windows in a private
-Xvfb/D-Bus session, exercising native interactions and the same local server.
-Only its test binary enables MyGo automation. The required `native-package`
-group compiles and inspects all four macOS/Linux archives, including private
-server pairing, notices and inspector exclusion. Production archives never
-include the automation plugin. Actual macOS acceptance uses the explicit host
-`native:platform-smoke` supplement; Linux containers cannot certify macOS
-runtime behavior. The experimental client's parity and interaction compromises
-are recorded in [native-desktop.md](native-desktop.md).
+The required `desktop-window` group runs actual webviews under Xvfb/D-Bus,
+covering workers, rendering, review interactions, clipboard and local-server
+lifecycle. Only its test binary enables automation. `desktop-package` compiles
+and inspects all four macOS/Linux archives, including embedded desktop/browser
+frontend bytes, matching server versions, notices and inspector exclusion.
+Actual macOS acceptance requires the explicit `desktop:platform-smoke` on a Mac.
+Linux containers cannot certify macOS runtime behavior. See
+[desktop-webview.md](desktop-webview.md).
 
 ## Making changes
 

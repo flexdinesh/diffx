@@ -1,0 +1,17 @@
+#!/bin/sh
+#MISE description="Exercise actual macOS/Linux desktop windows, clipboard and local server"
+#MISE depends=["desktop:build"]
+set -eu
+case "$(go env GOOS)" in
+  darwin) ;;
+  linux) export MYGO_GPU=0 GDK_BACKEND=x11 ;;
+  *) printf '%s\n' 'Desktop platform smoke supports macOS and Linux.' >&2; exit 1 ;;
+esac
+go -C apps/desktop build -mod=readonly -tags desktopautomation \
+  -o build/acceptance/diffx-desktop ./cmd/diffx-desktop
+go build -o dist/diffx-desktop-driver ./test/desktop/cmd/desktop-driver
+export DIFFX_DESKTOP_ACCEPTANCE=1
+export DIFFX_DESKTOP_BINARY=$PWD/apps/desktop/build/acceptance/diffx-desktop
+export DIFFX_DESKTOP_SIDECAR=$PWD/apps/desktop/build/dev/diffx
+export DIFFX_DESKTOP_DRIVER=$PWD/dist/diffx-desktop-driver
+exec go test -count=1 -timeout=180s -v ./test/desktop/...

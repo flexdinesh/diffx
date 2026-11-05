@@ -1,0 +1,38 @@
+{
+  "name": "@diffx/review-app",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/ReviewApplication.tsx",
+    "./push-notification": "./src/push-notification.ts",
+    "./theme": "./src/theme.ts",
+    "./diff-mode": "./src/diff-mode.ts",
+    "./review-comments": "./src/review-comments.ts"
+  },
+  "scripts": {
+    "test:unit": "node --test --test-reporter=dot test/*.test.ts && pnpm test:dom",
+    "test:dom": "node --import tsx --import ./test/dom/setup.ts --test --test-reporter=dot test/dom/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@diffx/api": "workspace:*",
+    "@diffx/ui": "workspace:*",
+    "@pierre/diffs": "catalog:",
+    "lucide-react": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@testing-library/react": "catalog:",
+    "@types/jsdom": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "jsdom": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "webmcp-types": "catalog:"
+  }
+}

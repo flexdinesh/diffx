@@ -1,7 +1,7 @@
 import { type Page } from "@playwright/test";
 import { expect, fileToggle, reviewedToggle, test } from "./fixtures.ts";
 import { resetFixtureState } from "./fixture-state.ts";
-import { THEMES, themePalette } from "../../src/theme.ts";
+import { THEMES, themePalette } from "@diffx/review-app/theme";
 
 test.beforeEach(async ({ request }) => resetFixtureState(request));
 

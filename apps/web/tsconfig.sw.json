@@ -4,5 +4,5 @@
     "lib": ["ESNext", "WebWorker"],
     "types": []
   },
-  "include": ["src/sw.ts", "src/push-notification.ts"]
+  "include": ["src/sw.ts"]
 }

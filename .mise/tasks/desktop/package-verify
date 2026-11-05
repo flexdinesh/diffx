@@ -1,0 +1,5 @@
+#!/bin/sh
+#MISE description="Build and verify desktop archive, versions, notices and release flags locally"
+#MISE depends=["desktop:package"]
+set -eu
+exec sh scripts/desktop-verify-package.sh

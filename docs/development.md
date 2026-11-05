@@ -42,30 +42,32 @@ mise run plugins:build                      # agent plugin adapters
 
 ## Frontend
 
-The experimental native app has its own Go module and pinned MyGo tool:
+The experimental desktop webview app has its own Go module and pinned MyGo tool:
 
 ```sh
-mise run native:build
-apps/desktop/build/dev/diffx-native /path/to/checkout
-mise run native:dev
-mise run check:native
-mise run check:native:window
-mise run check:native:package
-mise run native:platform-smoke  # actual macOS/Linux desktop session
-mise run generate:native:tokens
+mise run desktop:build
+apps/desktop/build/dev/diffx-desktop /path/to/checkout
+mise run desktop:dev
+mise run check:desktop
+mise run check:desktop:window
+mise run check:desktop:package
+mise run desktop:platform-smoke  # actual macOS/Linux desktop session
 ```
 
-The build places a matching private `diffx` beside `diffx-native`. Development
-passes that sidecar's absolute path to MyGo; the app never searches `PATH` for
-another server. Native UI needs no Node runtime or webview. Its development
-build still uses the existing server build, including staged web assets for
-browser coexistence. Native checks run through the managed Dagger engine and
-include headless view tests, real Unix-socket session integration and actual
-Linux GTK window automation under Xvfb. `native:platform-smoke` supplements the
-isolated suite on a real macOS or Linux desktop, exercising native focus,
-clipboard and lifecycle. It builds a private automation executable solely for
-acceptance; production builds exclude that plugin and inspector. The smoke task
-uses temporary review/config/state directories and never a personal server.
+The build stages `@diffx/desktop` into `apps/desktop/internal/assets/dist`,
+then places a matching private `diffx` beside `diffx-desktop`. Development passes
+that sidecar's absolute path through `DIFFX_DESKTOP_SIDECAR`; the app never
+searches PATH for another server. `desktop:frontend` builds the Vite entry;
+`desktop:stage` runs the staging helper before raw desktop Go builds or tests.
+Node is a build dependency; the installed app uses system WebKit, not Node.
+Browser and desktop use the same `packages/review-app` implementation.
+
+Desktop checks use the managed Dagger engine. They cover the host and typed
+bridge, real Unix-socket sessions, Linux WebKitGTK windows under Xvfb, and four
+target archives with embedded frontend verification. `desktop:platform-smoke`
+supplements isolation on a real macOS or Linux session. Acceptance builds use
+`desktopautomation`; production excludes automation and inspector. macOS
+runtime acceptance requires a Mac. See [desktop-webview.md](desktop-webview.md).
 
 ```sh
 mise run dev                                    # Vite HMR + fixture server

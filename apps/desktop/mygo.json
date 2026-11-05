@@ -1,8 +1,8 @@
 {
-  "name": "Diffx Native Experimental",
-  "slug": "diffx-native",
-  "identifier": "dev.diffx.native.experimental",
+  "name": "Diffx Desktop Experimental",
+  "slug": "diffx-desktop",
+  "identifier": "dev.diffx.desktop.experimental",
   "version": "0.2.0",
-  "main": "./cmd/diffx-native",
+  "main": "./cmd/diffx-desktop",
   "out": "build"
 }
