@@ -32,6 +32,7 @@ for (const target of targets) {
   test(`desktop package ${target}: complete platform layout, version pair and licenses`, async (t) => {
     const fixture = await createFixture(t);
     await packageDesktop(fixture, { DIFFX_DESKTOP_TARGET: target });
+    await verifyDesktop(fixture, { DIFFX_DESKTOP_TARGET: target });
     const name = `diffx-desktop_1.2.3_${target.replace("/", "_")}.tar.gz`;
     const archive = join(fixture.out, name);
     const digest = createHash("sha256")
@@ -62,6 +63,10 @@ for (const target of targets) {
     assert.equal(
       await readFile(join(resources, "LICENSE"), "utf8"),
       "fixture MIT\n",
+    );
+    assert.match(
+      await readFile(join(resources, "README.txt"), "utf8"),
+      /both diffx and diffx-desktop on PATH/,
     );
     assert.equal(
       await readFile(
@@ -118,6 +123,21 @@ for (const target of targets) {
       name,
       `${name}.sha256`,
     ]);
+  });
+}
+
+for (const failure of ["app-version", "cli-version", "cli-source"]) {
+  test(`desktop cross-target verifier refuses mismatched ${failure}`, async (t) => {
+    const fixture = await createFixture(t);
+    const target = "darwin/arm64";
+    await packageDesktop(fixture, {
+      DIFFX_DESKTOP_TARGET: target,
+      STUB_METADATA_FAILURE: failure,
+    });
+    await assert.rejects(
+      verifyDesktop(fixture, { DIFFX_DESKTOP_TARGET: target }),
+      /binary metadata mismatch/,
+    );
   });
 }
 
@@ -302,6 +322,14 @@ function packageDesktop(fixture: Fixture, env: NodeJS.ProcessEnv = {}) {
   );
 }
 
+function verifyDesktop(fixture: Fixture, env: NodeJS.ProcessEnv = {}) {
+  return execute(
+    "/bin/sh",
+    [join(fixture.root, "scripts/desktop-verify-package.sh")],
+    { cwd: fixture.root, env: { ...fixture.env, ...env } },
+  );
+}
+
 function publish(fixture: Fixture, env: NodeJS.ProcessEnv = {}) {
   return execute(
     "/bin/sh",
@@ -331,7 +359,15 @@ async function createFixture(t: TestContext): Promise<Fixture> {
     join(repository, "scripts/desktop-package.sh"),
     join(root, "scripts/desktop-package.sh"),
   );
-  for (const name of ["desktop-assets.mjs", "desktop-web-licenses.mjs"])
+  await cp(
+    join(repository, "scripts/desktop-verify-package.sh"),
+    join(root, "scripts/desktop-verify-package.sh"),
+  );
+  for (const name of [
+    "desktop-assets.mjs",
+    "desktop-web-licenses.mjs",
+    "desktop-build-metadata.mjs",
+  ])
     await cp(join(repository, "scripts", name), join(root, "scripts", name));
   await cp(
     join(repository, "apps/desktop/resources"),
@@ -396,24 +432,34 @@ else process.exit(2);
 `;
 
 const goStub = `
-const { appendFileSync, writeFileSync, chmodSync } = require("node:fs");
+const { appendFileSync, readFileSync, writeFileSync, chmodSync } = require("node:fs");
 const env = process.env;
 const all = process.argv.slice(2);
 const desktop = all[0] === "-C";
 const args = desktop ? all.slice(2) : all;
-if (args[0] === "env") { console.log(env.STUB_ROOT + "/goroot"); process.exit(0); }
+if (args[0] === "env") { console.log(args[1] === "GOHOSTOS" ? "linux" : args[1] === "GOHOSTARCH" ? "amd64" : env.STUB_ROOT + "/goroot"); process.exit(0); }
 appendFileSync(env.STUB_CALLS, JSON.stringify(all) + " CGO_ENABLED=" + env.CGO_ENABLED + " GOFLAGS=" + env.GOFLAGS + "\\n");
 if (args[0] === "list") {
   if (args.includes("{{.ImportPath}}")) console.log(["automation", "inspector"].includes(env.STUB_FAILURE) ? "github.com/egoist/mygo/plugins/" + env.STUB_FAILURE : "github.com/egoist/mygo/webview");
   else console.log("github.com/egoist/mygo|" + env.STUB_ROOT + "/module");
-} else if (args[0] === "version") console.log("build tags mygo_noinspector");
+} else if (args[0] === "version") {
+  const output = args.at(-1);
+  const app = output.endsWith("/diffx-desktop");
+  const [os, arch] = env.DIFFX_DESKTOP_TARGET.split("/");
+  // Real Go omits -ldflags for -trimpath builds.
+  console.log('\\tbuild\\t-trimpath=true\\n\\tbuild\\t-tags=mygo_noinspector\\n\\tbuild\\tGOOS=' + os + '\\n\\tbuild\\tGOARCH=' + arch);
+  if (app) console.log("\\tdep\\tgithub.com/egoist/mygo\\tv0.7.4");
+}
 else if (args[0] === "build") {
   if (env.STUB_FAILURE === (desktop ? "desktop-build" : "sidecar-build")) { console.error("build failed"); process.exit(1); }
-  const flags = args[args.indexOf("-ldflags") + 1];
+  let flags = args[args.indexOf("-ldflags") + 1];
+  if (env.STUB_METADATA_FAILURE === (desktop ? "app-version" : "cli-version")) flags = flags.replace("|1.2.3|", "|1.2.30|");
+  if (!desktop && env.STUB_METADATA_FAILURE === "cli-source") flags = flags.replace("|" + env.STUB_SOURCE + "|end", "|" + "b".repeat(40) + "|end");
   const version = flags.match(/Version=([^ ]+)/)?.[1];
   if (!version) process.exit(2);
   const output = args[args.indexOf("-o") + 1];
   writeFileSync(output, "#!/bin/sh\\nprintf '%s\\\\n' '" + (desktop ? "diffx-desktop" : "diffx") + " " + version + "'\\n");
+  appendFileSync(output, "# fixture-build-flags " + flags + "\\n");
   if (env.STUB_FAILURE !== (desktop ? "desktop-assets" : "server-assets")) appendFileSync(output, "# fixture index\\n# fixture script\\n");
   chmodSync(output, 0o755);
 } else process.exit(2);

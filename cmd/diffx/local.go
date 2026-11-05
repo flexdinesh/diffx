@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/collector"
+	"github.com/flexdinesh/diffx/internal/desktoplaunch"
 	"github.com/flexdinesh/diffx/internal/diffsource"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/localserver"
@@ -33,6 +34,16 @@ func runLocal(ctx context.Context, arguments []string, stdin *os.File, stdout, s
 		return errors.New("local mode accepts a checkout path or piped diff; use sync for remote collection or dev --fixture for fixtures")
 	}
 	values.diagnosticWriter = stderr
+	if !values.browser && !values.noBrowser && !values.headless && !values.webDirSet {
+		accepted, launchErr := desktoplaunch.Open(ctx, arguments, stdin, stderr)
+		if accepted {
+			return nil
+		}
+		fmt.Fprintln(stderr, "diffx: desktop unavailable; opening browser.")
+		if launchErr != nil {
+			fmt.Fprintln(stderr, "diffx:", launchErr)
+		}
+	}
 	input, err := acquireLocalInput(ctx, values, stdin)
 	if err != nil {
 		return err

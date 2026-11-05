@@ -92,6 +92,11 @@ a configured checkout, use `mise run install`.
 
 ## Experimental desktop webview
 
+Desktop archives retain a role/version/source identity in each executable.
+Runtime version reporting and cross-target verification consume the same record;
+verification does not depend on linker settings, which Go omits with `-trimpath`.
+Host-compatible binaries also execute their informational version commands.
+
 `diffx-desktop` is a separate macOS/Linux MyGo v0.7.4 webview host. It
 embeds the shared React review app and uses a private matching CLI as its local server.
 Normal `install.sh`, `install-edge.sh`, CLI assets and their `checksums.txt`
@@ -107,18 +112,31 @@ curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-deskt
 The desktop installer defaults to edge and supports `--version edge|vX.Y.Z`
 and `--bin-dir DIR` (default `~/.local/bin`). It verifies one exact SHA-256
 entry before extraction, stages the app/server pair on the destination
-filesystem, and atomically replaces only the `diffx-desktop` launcher. It never
-installs its private server over the user's `diffx`. Download, checksum,
-extraction or launcher-rename failure preserves the prior launcher and pair.
+filesystem, and exposes both `diffx` and `diffx-desktop`. Existing command
+launchers, including a standalone CLI, are replaced with symlinks to
+`.diffx-desktop-versions/current/bin/<command>`. A single atomic `current`
+symlink switch selects the matching pair. A private install lock serializes
+migration and activation. Pre-activation failure restores replaced launchers;
+failed recovery retains backups and reports their location.
 No downloaded program runs during installation. Shell profiles are unchanged.
 
-Private pairs live beneath the bin directory's `.diffx-desktop-versions/`.
-Upgrades retain old pairs so a running app can still start its matching
-server. Stop all desktop apps before deleting old pairs. To uninstall the
-default installation, remove `~/.local/bin/diffx-desktop` and
+Private pairs live in `.diffx-desktop-versions/install.*/payload/`; each install's
+`bin/` links to its app and CLI, and `previous/` retains replaced launchers when
+needed. `current` points to one `install.*` directory. Upgrades retain old pairs
+so a running app can still start its matching server. Stop all desktop apps
+before deleting inactive pairs. To uninstall the default pair, remove
+`~/.local/bin/diffx`, `~/.local/bin/diffx-desktop` and
 `~/.local/bin/.diffx-desktop-versions`; review data and preferences remain.
-Both clients share the existing local database and lifecycle rules. Closing
-desktop stops only a server it owns; an attached server stays running.
+CLI-only installers remain available separately and replace only `diffx`.
+Reinstall the desktop pair to restore both managed launchers.
+
+`diffx [PATH]` defaults to desktop and returns after desktop acceptance; explicit
+browser/no-browser/headless variants stay foreground. Desktop serves local
+sessions over the socket unless `--port` requests a viewer. Both clients share
+local database and lifecycle rules. Closing desktop stops only an owned local
+server; attached and remote servers stay running. Local app/CLI builds and
+contracts must match. Remote compatibility uses explicit connection/API protocol
+versions, rather than requiring identical builds.
 
 Desktop archives are `diffx-desktop_<version>_<os>_<arch>.tar.gz` for macOS
 (`darwin`) and Linux, each amd64/arm64. macOS contains

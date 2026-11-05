@@ -43,10 +43,10 @@ if awk '/github.com\/egoist\/mygo\/plugins\/(automation|inspector)/ { found = 1 
   fail 'automation and inspector must never ship in desktop releases'
 fi
 go -C apps/desktop build -trimpath -tags mygo_noinspector \
-  -ldflags "-s -w -X github.com/flexdinesh/diffx/apps/desktop/internal/app.Version=$version" \
+  -ldflags "-s -w -X github.com/flexdinesh/diffx/apps/desktop/internal/app.Version=$version -X github.com/flexdinesh/diffx/apps/desktop/internal/app.BuildIdentity=diffx-build-v1|desktop|$version|$source_sha|end" \
   -o "$app_dir/diffx-desktop" ./cmd/diffx-desktop
 build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-go build -trimpath -ldflags "-s -w -X github.com/flexdinesh/diffx/internal/version.Version=$version -X github.com/flexdinesh/diffx/internal/version.Commit=$source_sha -X github.com/flexdinesh/diffx/internal/version.Date=$build_date" \
+go build -trimpath -ldflags "-s -w -X github.com/flexdinesh/diffx/internal/version.Version=$version -X github.com/flexdinesh/diffx/internal/version.Commit=$source_sha -X github.com/flexdinesh/diffx/internal/version.Date=$build_date -X github.com/flexdinesh/diffx/internal/version.BuildIdentity=diffx-build-v1|cli|$version|$source_sha|end" \
   -o "$resources/diffx" ./cmd/diffx
 node scripts/desktop-assets.mjs "$app_dir/diffx-desktop" "$resources/diffx"
 chmod 755 "$app_dir/diffx-desktop" "$resources/diffx"

@@ -1,10 +1,11 @@
 Diffx Desktop Experimental
 
 This archive contains the MyGo webview host, embedded shared React review app
-and its private matching Diffx CLI. Keep both executables together. The private
-diffx is not a PATH installation and must not replace the user's diffx command.
+and its private matching Diffx CLI. Keep both executables together.
 
 Install with install-desktop.sh to verify SHA-256 and atomically select a pair.
+It exposes both diffx and diffx-desktop on PATH through one active installation
+pointer, replacing existing command aliases. CLI-only installers remain separate.
 macOS: extract the .app into a user-owned Applications directory.
 Linux: keep the diffx-desktop directory together and put its executable on PATH
 before registering diffx-desktop.desktop. Desktop launches use --desktop-launch
@@ -21,6 +22,8 @@ not migrated. Browser and desktop preferences are separate.
 
 Stop running apps before uninstalling. Private version directories are retained
 across upgrades so running apps keep their matching sidecar. Remove the default
-~/.local/bin/diffx-desktop and ~/.local/bin/.diffx-desktop-versions to uninstall.
+~/.local/bin/diffx, ~/.local/bin/diffx-desktop and
+~/.local/bin/.diffx-desktop-versions to uninstall. Prior command files and links
+are retained in each installation's previous directory when replaced.
 Review data and configuration files are not removed. Former diffx-native
 installations can be removed separately after stopping those apps.

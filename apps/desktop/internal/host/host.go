@@ -1,5 +1,5 @@
-// Package host serves the desktop build and the local viewer API on one origin.
-// It never connects to the owner's control socket.
+// Package host serves the desktop build and allowlisted review API on one origin.
+// Native transports hold credentials; private control routes are never exposed.
 package host
 
 import (
@@ -15,6 +15,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/flexdinesh/diffx/packages/api"
+	"github.com/flexdinesh/diffx/packages/connection"
 )
 
 type Host struct {
@@ -26,6 +29,9 @@ type Host struct {
 	target   *httputil.ReverseProxy
 	lifetime context.Context
 	cancel   context.CancelFunc
+	client   *http.Client
+	base     string
+	requests *sync.WaitGroup
 }
 
 func Start(assets fs.FS, portFile string) (*Host, error) {
@@ -42,30 +48,47 @@ func Start(assets fs.FS, portFile string) (*Host, error) {
 	return h, nil
 }
 
-// SetViewer disposes all requests to the old scope before publishing the new
-// target. Keeping the original Host and Origin lets the sidecar revalidate its
-// normal loopback browser policy, including mutations and EventSource requests.
+// SetViewer adapts a loopback viewer to the native connection contract.
 func (h *Host) SetViewer(viewer string) error {
 	u, err := url.Parse(viewer)
 	if err != nil || !loopbackOrigin(u) {
 		return errors.New("invalid loopback viewer origin")
 	}
-	transport := &http.Transport{Proxy: nil, ResponseHeaderTimeout: 20 * time.Second}
+	return h.SetConnection(connection.Target{Kind: "tcp", URL: u.String()})
+}
+
+// SetConnection holds all credentials natively. The webview sees only the
+// stable host origin and the shared public review route contract.
+func (h *Host) SetConnection(target connection.Target) error {
+	transport, err := connection.NewTransport(target)
+	if err != nil {
+		return errors.New("invalid desktop connection")
+	}
+	base := "http://localhost"
+	if target.Kind != "unix" {
+		base = target.URL
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return errors.New("invalid desktop connection origin")
+	}
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.Out.URL.Scheme, r.Out.URL.Host = u.Scheme, u.Host
 			r.Out.Host = r.In.Host
-			// ReverseProxy removes forwarded headers. Never trust or create them.
+			r.Out.Header.Del("Authorization")
+			r.Out.Header.Del("Cookie")
 		},
 		Transport:     transport,
 		FlushInterval: -1,
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
-			http.Error(w, "Local session unavailable", http.StatusBadGateway)
+			http.Error(w, "Connection unavailable", http.StatusBadGateway)
 		},
 		ModifyResponse: func(r *http.Response) error {
 			if r.StatusCode >= 300 && r.StatusCode < 400 {
-				return errors.New("sidecar redirect refused")
+				return errors.New("connection redirect refused")
 			}
+			r.Header.Del("Set-Cookie")
 			return nil
 		},
 	}
@@ -75,6 +98,36 @@ func (h *Host) SetViewer(viewer string) error {
 	h.lifetime, h.cancel = context.WithCancel(context.Background())
 	context.AfterFunc(h.lifetime, transport.CloseIdleConnections)
 	h.target = proxy
+	h.requests = &sync.WaitGroup{}
+	h.base = base
+	h.client = &http.Client{Transport: transport, Timeout: 10 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
+	return nil
+}
+
+// Health probes are reads only. Failed mutations are never replayed.
+func (h *Host) Health(ctx context.Context) error {
+	h.mu.RLock()
+	client, base, lifetime := h.client, h.base, h.lifetime
+	h.mu.RUnlock()
+	if client == nil {
+		return errors.New("connection unavailable")
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(lifetime, cancel)
+	defer stop()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v2/health", nil)
+	if err != nil {
+		return err
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return errors.New("connection unavailable")
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return errors.New("connection unavailable")
+	}
 	return nil
 }
 
@@ -89,8 +142,11 @@ func loopbackOrigin(u *url.URL) bool {
 func (h *Host) clearLocked() {
 	if h.cancel != nil {
 		h.cancel()
+		h.requests.Wait()
 	}
 	h.target, h.lifetime, h.cancel = nil, nil, nil
+	h.client = nil
+	h.base = ""
 }
 func (h *Host) ClearViewer() { h.mu.Lock(); defer h.mu.Unlock(); h.clearLocked() }
 func (h *Host) Close() error {
@@ -105,65 +161,7 @@ func (h *Host) Close() error {
 
 // PublicRoute is deliberately smaller than the server's entire API. Desktop
 // only exposes local review operations; no control, MCP, ingestion or auth API.
-func PublicRoute(method, route string) bool {
-	if method == http.MethodHead {
-		method = http.MethodGet
-	}
-	if path.Clean(route) != route || strings.ContainsAny(route, "\\%") {
-		return false
-	}
-	switch route {
-	case "/api/v2/bootstrap", "/api/v2/health", "/api/v2/events", "/api/v2/metrics", "/api/v2/contexts":
-		return method == http.MethodGet
-	case "/api/v2/collections":
-		return method == http.MethodPost
-	}
-	p := strings.Split(strings.TrimPrefix(route, "/api/v2/contexts/"), "/")
-	if !strings.HasPrefix(route, "/api/v2/contexts/") || len(p) == 0 || p[0] == "" {
-		return false
-	}
-	if len(p) == 1 {
-		return method == http.MethodGet || method == http.MethodDelete
-	}
-	if len(p) == 2 {
-		switch p[1] {
-		case "session", "commits":
-			return method == http.MethodGet
-		case "comments":
-			return method == http.MethodGet || method == http.MethodPost
-		case "review-marks":
-			return method == http.MethodGet || method == http.MethodDelete
-		}
-	}
-	if len(p) == 3 {
-		switch p[1] {
-		case "comments":
-			if p[2] == "export" {
-				return method == http.MethodGet
-			}
-			if p[2] == "import" {
-				return method == http.MethodPost
-			}
-			return method == http.MethodPatch || method == http.MethodDelete
-		case "review-marks":
-			return method == http.MethodPut || method == http.MethodDelete
-		case "diffs":
-			return p[2] == "current" && method == http.MethodGet
-		case "review":
-			return p[2] == "comments" && method == http.MethodGet
-		}
-	}
-	if len(p) == 4 {
-		return method == http.MethodGet && p[1] == "commits" && p[3] == "diff" || method == http.MethodPost && p[1] == "comments" && p[3] == "carry"
-	}
-	if len(p) == 5 {
-		return p[1] == "diffs" && p[3] == "versions" && method == http.MethodGet || p[1] == "review" && p[2] == "comments" && p[4] == "resolve" && method == http.MethodPost
-	}
-	if len(p) == 6 && (p[1] == "diffs" || p[1] == "commits") && p[3] == "files" && (p[5] == "patch" || p[5] == "contents") {
-		return method == http.MethodGet
-	}
-	return false
-}
+func PublicRoute(method, route string) bool { return api.PublicReviewRoute(method, route) }
 
 func (h *Host) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Exact listener authority also excludes DNS rebinding through other names.
@@ -179,15 +177,32 @@ func (h *Host) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.mu.RLock()
-		target, lifetime := h.target, h.lifetime
+		target, lifetime, requests := h.target, h.lifetime, h.requests
+		if target != nil {
+			requests.Add(1)
+		}
 		h.mu.RUnlock()
 		if target == nil {
 			http.Error(w, "Local session unavailable", http.StatusServiceUnavailable)
 			return
 		}
+		defer requests.Done()
 		ctx, cancel := context.WithCancel(r.Context())
-		stop := context.AfterFunc(lifetime, cancel)
-		defer func() { stop(); cancel() }()
+		controller := http.NewResponseController(w)
+		disposed := make(chan struct{})
+		stop := context.AfterFunc(lifetime, func() {
+			cancel()
+			// Upstream cancellation cannot interrupt a blocked downstream Write.
+			_ = controller.SetWriteDeadline(time.Now())
+			close(disposed)
+		})
+		defer func() {
+			if !stop() {
+				<-disposed
+			}
+			cancel()
+			_ = controller.SetWriteDeadline(time.Time{})
+		}()
 		target.ServeHTTP(w, r.Clone(ctx))
 		return
 	}

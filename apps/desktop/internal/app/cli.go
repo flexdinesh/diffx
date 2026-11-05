@@ -1,11 +1,20 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+
+	"github.com/flexdinesh/diffx/apps/desktop/internal/session"
+	"github.com/flexdinesh/diffx/packages/buildmeta"
+	"github.com/flexdinesh/diffx/packages/localprotocol"
 )
 
 var Version = "dev"
+var BuildIdentity = ""
+
+func buildLabel() string { return buildmeta.Resolve(BuildIdentity, "desktop", Version, "").Version }
 
 // HandleCommand runs before platform initialization.
 func HandleCommand(args []string, output io.Writer) (bool, error) {
@@ -13,8 +22,21 @@ func HandleCommand(args []string, output io.Writer) (bool, error) {
 		return false, nil
 	}
 	switch args[0] {
+	case "--desktop-contract":
+		sidecar := os.Getenv("DIFFX_DESKTOP_SIDECAR")
+		if sidecar == "" {
+			executable, err := os.Executable()
+			if err != nil {
+				return true, err
+			}
+			sidecar, err = session.ResolveSidecar(executable)
+			if err != nil {
+				return true, err
+			}
+		}
+		return true, json.NewEncoder(output).Encode(localprotocol.DesktopContract{ProtocolVersion: localprotocol.Version, Build: buildLabel(), Sidecar: sidecar})
 	case "--version":
-		_, err := fmt.Fprintln(output, "diffx-desktop "+Version)
+		_, err := fmt.Fprintln(output, "diffx-desktop "+buildLabel())
 		return true, err
 	case "--help", "-h":
 		_, err := fmt.Fprint(output, `Usage: diffx-desktop [PATH] [LOCAL OPTIONS]

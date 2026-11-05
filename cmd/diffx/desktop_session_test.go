@@ -112,13 +112,37 @@ func (child *desktopChild) ready(t *testing.T) localprotocol.Readiness {
 		if result.err != nil {
 			t.Fatalf("readiness: %v", result.err)
 		}
-		if result.value.ProtocolVersion != localprotocol.Version || result.value.ScopeID == "" || result.value.InstanceID == "" || result.value.Socket == "" || result.value.ViewerURL == "" {
+		if result.value.ProtocolVersion != localprotocol.Version || result.value.ScopeID == "" || result.value.InstanceID == "" || result.value.Socket == "" || result.value.Connection.Kind != "unix" || result.value.Connection.Socket != result.value.Socket {
 			t.Fatalf("incomplete readiness: %+v", result.value)
 		}
 		return result.value
 	case <-time.After(10 * time.Second):
 		t.Fatal("readiness timed out")
 		return localprotocol.Readiness{}
+	}
+}
+
+func TestDesktopDefaultUsesSocketWithoutViewer(t *testing.T) {
+	runtime := desktopEnvironment(t)
+	child := startDesktopChild(t, nil, cliRepository(t), "--state=memory")
+	ready := child.ready(t)
+	if !ready.Owned || ready.ViewerURL != "" {
+		t.Fatalf("default desktop opened a viewer: owned=%v viewer=%q", ready.Owned, ready.ViewerURL)
+	}
+	client := &localserver.Client{RuntimeDirectory: runtime}
+	response, err := client.HTTPClient().Get("http://localhost/api/v2/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != 200 {
+		t.Fatalf("socket health: %d", response.StatusCode)
+	}
+	_ = child.lifetime.Close()
+	child.wait(t, "")
+	status, err := client.Status(t.Context())
+	if err != nil || status.State != "stopped" {
+		t.Fatalf("owned server survived desktop quit: %s %v", status.State, err)
 	}
 }
 

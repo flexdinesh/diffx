@@ -58,7 +58,7 @@ func RunForeground(ctx context.Context, settings Settings, input Input, confirm 
 
 // runForeground keeps discovery, attachment, replacement and ownership under
 // the same lifecycle lock. Attached callers never acquire database ownership.
-func runForeground(ctx context.Context, settings Settings, input Input, decide func(Status) (bool, error), requireRunning bool, reset StateReset, ready func(Status, Published, bool) error, stderr io.Writer) error {
+func runForeground(ctx context.Context, settings Settings, input Input, decide func(Status) (bool, error), requireRunning bool, reset StateReset, ready func(Status, Published, bool) error, stderr io.Writer, network ...func() (*networkAccess, error)) error {
 	client, err := NewClient()
 	if err != nil {
 		return err
@@ -95,6 +95,15 @@ func runForeground(ctx context.Context, settings Settings, input Input, decide f
 		return err
 	}
 	defer owner.Close()
+	var networks []*networkAccess
+	if len(network) > 0 && network[0] != nil {
+		access, err := network[0]()
+		if err != nil {
+			return err
+		}
+		defer access.listener.Close()
+		networks = append(networks, access)
+	}
 	id := rand.Text()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -105,6 +114,6 @@ func runForeground(ctx context.Context, settings Settings, input Input, decide f
 		if readinessError != nil {
 			cancel()
 		}
-	}, log.New(stderr, "diffx: ", log.LstdFlags))
+	}, log.New(stderr, "diffx: ", log.LstdFlags), networks...)
 	return errors.Join(readinessError, err)
 }

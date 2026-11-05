@@ -6,6 +6,31 @@ info:
 servers:
   - url: /
 paths:
+  /api/v2/connections/pair:
+    post:
+      operationId: pairPersonalConnection
+      description: Personal TLS listener only. Consume a ten-minute single-use invitation, bound to the pinned server identity and run. Native clients send no cookies, Origin or browser fetch headers. Distributed and Unix/loopback listeners do not expose this route.
+      parameters:
+        - in: header
+          name: X-Diffx-Run
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersonalPairRequest"
+      responses:
+        "200":
+          description: Native credential valid for this server run. Never expose it to browser state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalPairResponse"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v2/bootstrap:
     get:
       operationId: getBootstrap
@@ -1868,6 +1893,34 @@ components:
               authorizeUrl:
                 type: string
   schemas:
+    PersonalPairRequest:
+      type: object
+      additionalProperties: false
+      required: [version, runId, secret]
+      properties:
+        version:
+          type: integer
+          enum: [1]
+        runId:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{43}$"
+        secret:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{43}$"
+    PersonalPairResponse:
+      type: object
+      additionalProperties: false
+      required: [version, runId, credential]
+      properties:
+        version:
+          type: integer
+          enum: [1]
+        runId:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{43}$"
+        credential:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{43}$"
     InviteToken:
       type: object
       additionalProperties: false

@@ -523,6 +523,36 @@ func (e IngestionRequestProtocolVersion) Valid() bool {
 	}
 }
 
+// Defines values for PersonalPairRequestVersion.
+const (
+	PersonalPairRequestVersionN1 PersonalPairRequestVersion = 1
+)
+
+// Valid indicates whether the value is a known member of the PersonalPairRequestVersion enum.
+func (e PersonalPairRequestVersion) Valid() bool {
+	switch e {
+	case PersonalPairRequestVersionN1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonalPairResponseVersion.
+const (
+	PersonalPairResponseVersionN1 PersonalPairResponseVersion = 1
+)
+
+// Valid indicates whether the value is a known member of the PersonalPairResponseVersion enum.
+func (e PersonalPairResponseVersion) Valid() bool {
+	switch e {
+	case PersonalPairResponseVersionN1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProbeStatus.
 const (
 	Ok ProbeStatus = "ok"
@@ -1395,6 +1425,26 @@ type PasswordSignupCredentials struct {
 	Password string              `json:"password"`
 }
 
+// PersonalPairRequest defines model for PersonalPairRequest.
+type PersonalPairRequest struct {
+	RunId   string                     `json:"runId"`
+	Secret  string                     `json:"secret"`
+	Version PersonalPairRequestVersion `json:"version"`
+}
+
+// PersonalPairRequestVersion defines model for PersonalPairRequest.Version.
+type PersonalPairRequestVersion int
+
+// PersonalPairResponse defines model for PersonalPairResponse.
+type PersonalPairResponse struct {
+	Credential string                      `json:"credential"`
+	RunId      string                      `json:"runId"`
+	Version    PersonalPairResponseVersion `json:"version"`
+}
+
+// PersonalPairResponseVersion defines model for PersonalPairResponse.Version.
+type PersonalPairResponseVersion int
+
 // Probe defines model for Probe.
 type Probe struct {
 	Status ProbeStatus `json:"status"`
@@ -1823,6 +1873,11 @@ type CollectCheckoutsParams struct {
 	Initial *bool `form:"initial,omitempty" json:"initial,omitempty"`
 }
 
+// PairPersonalConnectionParams defines parameters for PairPersonalConnection.
+type PairPersonalConnectionParams struct {
+	XDiffxRun string `json:"X-Diffx-Run"`
+}
+
 // ListContextsParams defines parameters for ListContexts.
 type ListContextsParams struct {
 	// Q Search observation metadata.
@@ -2069,6 +2124,9 @@ type LoginJSONRequestBody = PasswordCredentials
 
 // SignUpJSONRequestBody defines body for SignUp for application/json ContentType.
 type SignUpJSONRequestBody = PasswordSignupCredentials
+
+// PairPersonalConnectionJSONRequestBody defines body for PairPersonalConnection for application/json ContentType.
+type PairPersonalConnectionJSONRequestBody = PersonalPairRequest
 
 // CreateCommentV2JSONRequestBody defines body for CreateCommentV2 for application/json ContentType.
 type CreateCommentV2JSONRequestBody = CreateComment
@@ -2334,6 +2392,18 @@ type ClientInterface interface {
 	//
 	// Local checkout mode only. Collects the process's selected checkout again, or discovers its selected paths again and collects every checkout and linked worktree found, ingesting each as a fresh observation. Absent when the process serves piped input, a fixture or remote storage.
 	CollectCheckouts(ctx context.Context, params *CollectCheckoutsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PairPersonalConnectionWithBody performs a POST /api/v2/connections/pair (the `PairPersonalConnection` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Personal TLS listener only. Consume a ten-minute single-use invitation, bound to the pinned server identity and run. Native clients send no cookies, Origin or browser fetch headers. Distributed and Unix/loopback listeners do not expose this route.
+	PairPersonalConnectionWithBody(ctx context.Context, params *PairPersonalConnectionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PairPersonalConnection performs a POST /api/v2/connections/pair (the `PairPersonalConnection` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Personal TLS listener only. Consume a ten-minute single-use invitation, bound to the pinned server identity and run. Native clients send no cookies, Origin or browser fetch headers. Distributed and Unix/loopback listeners do not expose this route.
+	PairPersonalConnection(ctx context.Context, params *PairPersonalConnectionParams, body PairPersonalConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListContexts performs a GET /api/v2/contexts (the `ListContexts` operationId) request.
 	ListContexts(ctx context.Context, params *ListContextsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2918,6 +2988,38 @@ func (c *Client) GetBootstrap(ctx context.Context, reqEditors ...RequestEditorFn
 // Local checkout mode only. Collects the process's selected checkout again, or discovers its selected paths again and collects every checkout and linked worktree found, ingesting each as a fresh observation. Absent when the process serves piped input, a fixture or remote storage.
 func (c *Client) CollectCheckouts(ctx context.Context, params *CollectCheckoutsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCollectCheckoutsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PairPersonalConnectionWithBody performs a POST /api/v2/connections/pair (the `PairPersonalConnection` operationId) request,
+// with any type of body and a specified content type.
+//
+// Personal TLS listener only. Consume a ten-minute single-use invitation, bound to the pinned server identity and run. Native clients send no cookies, Origin or browser fetch headers. Distributed and Unix/loopback listeners do not expose this route.
+func (c *Client) PairPersonalConnectionWithBody(ctx context.Context, params *PairPersonalConnectionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPairPersonalConnectionRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PairPersonalConnection performs a POST /api/v2/connections/pair (the `PairPersonalConnection` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Personal TLS listener only. Consume a ten-minute single-use invitation, bound to the pinned server identity and run. Native clients send no cookies, Origin or browser fetch headers. Distributed and Unix/loopback listeners do not expose this route.
+func (c *Client) PairPersonalConnection(ctx context.Context, params *PairPersonalConnectionParams, body PairPersonalConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPairPersonalConnectionRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -4552,6 +4654,59 @@ func NewCollectCheckoutsRequest(server string, params *CollectCheckoutsParams) (
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPairPersonalConnectionRequest calls the generic PairPersonalConnection builder with application/json body
+func NewPairPersonalConnectionRequest(server string, params *PairPersonalConnectionParams, body PairPersonalConnectionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPairPersonalConnectionRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewPairPersonalConnectionRequestWithBody constructs an http.Request for the PairPersonalConnection method, with any body, and a specified content type
+func NewPairPersonalConnectionRequestWithBody(server string, params *PairPersonalConnectionParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/connections/pair")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		var headerParam0 string
+
+		headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Diffx-Run", params.XDiffxRun, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("X-Diffx-Run", headerParam0)
+
 	}
 
 	return req, nil
@@ -8088,6 +8243,20 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	CollectCheckoutsWithResponse(ctx context.Context, params *CollectCheckoutsParams, reqEditors ...RequestEditorFn) (*CollectCheckoutsResponse, error)
 
+	// PairPersonalConnectionWithBodyWithResponse performs a POST /api/v2/connections/pair (the `PairPersonalConnection` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Personal TLS listener only. Consume a ten-minute single-use invitation, bound to the pinned server identity and run. Native clients send no cookies, Origin or browser fetch headers. Distributed and Unix/loopback listeners do not expose this route.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	PairPersonalConnectionWithBodyWithResponse(ctx context.Context, params *PairPersonalConnectionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PairPersonalConnectionResponse, error)
+
+	// PairPersonalConnectionWithResponse performs a POST /api/v2/connections/pair (the `PairPersonalConnection` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Personal TLS listener only. Consume a ten-minute single-use invitation, bound to the pinned server identity and run. Native clients send no cookies, Origin or browser fetch headers. Distributed and Unix/loopback listeners do not expose this route.
+	PairPersonalConnectionWithResponse(ctx context.Context, params *PairPersonalConnectionParams, body PairPersonalConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*PairPersonalConnectionResponse, error)
+
 	// ListContextsWithResponse performs a GET /api/v2/contexts (the `ListContexts` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -9324,6 +9493,54 @@ func (r CollectCheckoutsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CollectCheckoutsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PairPersonalConnectionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PersonalPairResponse
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PairPersonalConnectionResponse) GetJSON200() *PersonalPairResponse {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r PairPersonalConnectionResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r PairPersonalConnectionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PairPersonalConnectionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PairPersonalConnectionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PairPersonalConnectionResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -13137,6 +13354,32 @@ func (c *ClientWithResponses) CollectCheckoutsWithResponse(ctx context.Context, 
 	return ParseCollectCheckoutsResponse(rsp)
 }
 
+// PairPersonalConnectionWithBodyWithResponse performs a POST /api/v2/connections/pair (the `PairPersonalConnection` operationId) request,
+// with any type of body and a specified content type.
+//
+// Personal TLS listener only. Consume a ten-minute single-use invitation, bound to the pinned server identity and run. Native clients send no cookies, Origin or browser fetch headers. Distributed and Unix/loopback listeners do not expose this route.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) PairPersonalConnectionWithBodyWithResponse(ctx context.Context, params *PairPersonalConnectionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PairPersonalConnectionResponse, error) {
+	rsp, err := c.PairPersonalConnectionWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePairPersonalConnectionResponse(rsp)
+}
+
+// PairPersonalConnectionWithResponse performs a POST /api/v2/connections/pair (the `PairPersonalConnection` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Personal TLS listener only. Consume a ten-minute single-use invitation, bound to the pinned server identity and run. Native clients send no cookies, Origin or browser fetch headers. Distributed and Unix/loopback listeners do not expose this route.
+func (c *ClientWithResponses) PairPersonalConnectionWithResponse(ctx context.Context, params *PairPersonalConnectionParams, body PairPersonalConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*PairPersonalConnectionResponse, error) {
+	rsp, err := c.PairPersonalConnection(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePairPersonalConnectionResponse(rsp)
+}
+
 // ListContextsWithResponse performs a GET /api/v2/contexts (the `ListContexts` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -14681,6 +14924,39 @@ func ParseCollectCheckoutsResponse(rsp *http.Response) (*CollectCheckoutsRespons
 			return nil, err
 		}
 		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePairPersonalConnectionResponse parses an HTTP response from a PairPersonalConnectionWithResponse call
+func ParsePairPersonalConnectionResponse(rsp *http.Response) (*PairPersonalConnectionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PairPersonalConnectionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PersonalPairResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem

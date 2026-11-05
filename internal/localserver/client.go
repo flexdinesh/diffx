@@ -81,6 +81,11 @@ func (client *Client) Status(ctx context.Context) (Status, error) {
 	return client.probe(ctx)
 }
 
+// Pair rotates an unused invitation through the owner-only control socket.
+func (client *Client) Pair(ctx context.Context, advertise string) ([]string, error) {
+	return client.control().Pair(ctx, advertise)
+}
+
 func (client *Client) Stop(ctx context.Context) error {
 	lock, err := client.lifecycleLock(ctx)
 	if err != nil {

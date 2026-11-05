@@ -24,6 +24,8 @@ func run(ctx context.Context, arguments []string, stdin *os.File, stdout, stderr
 		switch arguments[0] {
 		case localprotocol.Command:
 			return runDesktopSession(ctx, arguments[1:], stdin, stdout, stderr)
+		case localprotocol.ConnectCommand:
+			return runConnectionSession(ctx, arguments[1:], stdout, stderr)
 		case "diagnostics":
 			return runDiagnostics(arguments[1:], stdout)
 		case "config":
@@ -31,7 +33,7 @@ func run(ctx context.Context, arguments []string, stdin *os.File, stdout, stderr
 		case "sync":
 			return runSync(ctx, arguments[1:], stdin, stdout, stderr)
 		case "remote":
-			return runRemote(ctx, arguments[1:], stdout)
+			return runRemoteCommand(ctx, arguments[1:], stdin, stdout, stderr)
 		case "status":
 			return runStatus(ctx, arguments[1:], stdout, stderr)
 		case "mcp":

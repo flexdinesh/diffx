@@ -13,6 +13,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/config"
 	"github.com/flexdinesh/diffx/internal/controlapi"
 	buildversion "github.com/flexdinesh/diffx/internal/version"
+	"github.com/flexdinesh/diffx/packages/connection"
 	"github.com/flexdinesh/diffx/packages/localprotocol"
 )
 
@@ -29,9 +30,6 @@ func RunSession(ctx context.Context, settings Settings, input Input, policy Sess
 		settings, err = effectiveSettings(settings)
 		if err != nil {
 			return err
-		}
-		if settings.Headless {
-			return errors.New("desktop sessions require a loopback viewer")
 		}
 	}
 	decide := func(status Status) (bool, error) {
@@ -70,6 +68,7 @@ func RunSession(ctx context.Context, settings Settings, input Input, policy Sess
 		}
 		return ready(localprotocol.Readiness{ProtocolVersion: localprotocol.Version, Socket: status.Socket,
 			InstanceID: status.InstanceID, ViewerURL: status.ViewerURL, Owned: owned,
+			Connection: connection.Target{Kind: "unix", Socket: status.Socket}, Label: sessionLabel(status),
 			ScopeID: status.Session.ScopeID, Input: status.Session.Input})
 	}, stderr)
 }
@@ -78,13 +77,15 @@ func compatibleSession(status Status) error {
 	if status.State != "running" || status.ProtocolVersion != controlapi.ProtocolVersion || status.Version != buildversion.Number() || status.Session == nil || status.Session.ProtocolVersion != localprotocol.Version || status.Session.ScopeID == "" || status.Socket == "" || status.InstanceID == "" {
 		return errors.New("running local instance is incompatible with desktop sessions")
 	}
-	viewer, err := url.Parse(status.ViewerURL)
-	if err != nil || viewer.Scheme != "http" || viewer.User != nil || viewer.Path != "" || viewer.RawQuery != "" || viewer.Fragment != "" || viewer.Port() == "" {
-		return errors.New("running local instance has no compatible loopback viewer")
-	}
-	ip := net.ParseIP(viewer.Hostname())
-	if ip == nil || !ip.IsLoopback() {
-		return errors.New("running local instance has no compatible loopback viewer")
+	if status.ViewerURL != "" {
+		viewer, err := url.Parse(status.ViewerURL)
+		if err != nil || viewer.Scheme != "http" || viewer.User != nil || viewer.Path != "" || viewer.RawQuery != "" || viewer.Fragment != "" || viewer.Port() == "" {
+			return errors.New("running local instance has no compatible loopback viewer")
+		}
+		ip := net.ParseIP(viewer.Hostname())
+		if ip == nil || !ip.IsLoopback() {
+			return errors.New("running local instance has no compatible loopback viewer")
+		}
 	}
 	switch status.Session.Input.Kind {
 	case "checkout", "checkouts":
@@ -99,6 +100,16 @@ func compatibleSession(status Status) error {
 		return errors.New("running local instance has unsupported input metadata")
 	}
 	return nil
+}
+
+func sessionLabel(status Status) string {
+	if len(status.Session.Input.Paths) == 1 {
+		return filepath.Base(status.Session.Input.Paths[0])
+	}
+	if len(status.Session.Input.Paths) > 1 {
+		return "Local workspace"
+	}
+	return "Captured diff"
 }
 
 func (client *Client) waitInstance(ctx context.Context, instanceID string) error {

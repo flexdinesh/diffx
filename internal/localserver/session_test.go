@@ -132,7 +132,6 @@ func TestSessionCompatibilityAndEffectiveSettings(t *testing.T) {
 		func(s *Status) { s.Session = nil },
 		func(s *Status) { s.ProtocolVersion-- },
 		func(s *Status) { s.Version = "incompatible" },
-		func(s *Status) { s.ViewerURL = "" },
 		func(s *Status) { s.ViewerURL = "http://192.0.2.1:7981" },
 		func(s *Status) { s.ViewerURL = "http://127.0.0.1:7981/contexts/id" },
 	} {
@@ -141,6 +140,10 @@ func TestSessionCompatibilityAndEffectiveSettings(t *testing.T) {
 		if err := compatibleSession(copy); err == nil {
 			t.Fatalf("accepted incompatible: %+v", copy)
 		}
+	}
+	status.ViewerURL = ""
+	if err := compatibleSession(status); err != nil {
+		t.Fatalf("socket-only compatibility: %v", err)
 	}
 	root := t.TempDir()
 	alias := filepath.Join(t.TempDir(), "alias")

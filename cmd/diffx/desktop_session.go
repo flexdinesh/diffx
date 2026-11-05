@@ -34,7 +34,7 @@ func runDesktopSession(ctx context.Context, arguments []string, stdin *os.File, 
 	}
 	defer closeLifetime()
 	if values.serverSet || values.tokenSet || values.branch != "" || values.fixture != "" || values.print || values.retry || values.headless || values.version {
-		return errors.New("desktop session accepts local checkout/scanning/capture options and requires a viewer")
+		return errors.New("desktop session accepts local checkout/scanning/capture options")
 	}
 	values.noBrowser, values.diagnosticWriter = true, stderr
 	var settings localserver.Settings
@@ -43,6 +43,7 @@ func runDesktopSession(ctx context.Context, arguments []string, stdin *os.File, 
 		if err != nil {
 			return err
 		}
+		settings.Headless = !values.portSet && !values.webDirSet
 	}
 	var selected localserver.Input
 	if !values.attach {

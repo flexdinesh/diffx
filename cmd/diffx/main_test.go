@@ -12,7 +12,14 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/diffsource"
 	"github.com/flexdinesh/diffx/internal/review"
+	"github.com/flexdinesh/diffx/packages/localprotocol"
 )
+
+func TestDesktopCaptureLimitMatchesProducerInputLimit(t *testing.T) {
+	if localprotocol.MaxCaptureBytes != diffsource.MaxInputBytes {
+		t.Fatal("desktop capture accepts more input than the producer")
+	}
+}
 
 func TestNormalizeArgumentsAllowsFlagsAfterPath(t *testing.T) {
 	actual := normalizeArguments([]string{".", "--port", "4000", "--no-browser"})

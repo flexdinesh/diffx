@@ -5,8 +5,9 @@ canonical record of package boundaries and architectural decisions.
 [System semantics](system.md) covers identities and durability;
 [development](development.md) covers commands and checks.
 
-The MyGo desktop is another client of the local composition, not another
-deployment mode. `apps/desktop` is a separate Go module with a Vite entry,
+The MyGo desktop is the default client of the personal SQLite composition,
+including its explicit TLS network access policy. `apps/desktop` is a separate
+Go module with a Vite entry,
 consuming public REST/SSE and local-session wire contracts. It never owns
 SQLite, Git collection or review rules, and cannot import root `internal/`.
 Its thin `app` package owns MyGo, OS menus and dialogs; `session` alone executes
@@ -50,8 +51,9 @@ Built plugin distributions and generated API/SQL source remain committed.
 Stable publishing tags `main` directly and stages embedded web assets only in
 the workflow workspace. Main pushes publish a rolling `edge` prerelease/tag;
 the legacy edge branch is no longer updated. Neither channel creates asset
-commits. Shell installers distribute the CLI only; Go source installs are
-unsupported because source refs lack embedded assets. See [release.md](release.md).
+commits. CLI-only shell installers distribute `diffx`; the separate desktop
+installer exposes a matching `diffx` and `diffx-desktop` pair. Go source installs
+are unsupported because source refs lack embedded assets. See [release.md](release.md).
 
 One explicitly managed, version-pinned engine and dedicated cache volume serve
 this repository's worktrees. Engine lifetime is independent of invocation
@@ -62,15 +64,19 @@ and broad pruning are forbidden.
 
 ## Modes are compositions
 
-| Concern    | Local `diffx [PATH]`                                                | Remote `diffx-server`                    |
-| ---------- | ------------------------------------------------------------------- | ---------------------------------------- |
-| Collection | Selected checkout(s) at start, live page loads and sync; stdin once | Separate finite sync or hook producer    |
-| Admission  | Direct application call; startup runs after serving                 | Authenticated durable queue and worker   |
-| Lifetime   | Foreground; authenticated singleton replacement                     | Foreground; graceful worker shutdown     |
-| Storage    | One owner of persistent SQLite                                      | Shared Postgres; stateless processes     |
-| Queries    | Selected checkout(s) or capture via REST/MCP                        | Same application services via REST/MCP   |
-| Access     | Owner-only socket; loopback viewer unless `--headless`              | Account credentials wrap the application |
-| Identity   | Automatic stable local owner; no account UI                         | Account sessions and scoped API tokens   |
+| Concern    | Local `diffx [PATH]`                                                       | Remote `diffx-server`                    |
+| ---------- | -------------------------------------------------------------------------- | ---------------------------------------- |
+| Collection | Selected checkout(s) at start, live page loads and sync; stdin once        | Separate finite sync or hook producer    |
+| Admission  | Direct application call; startup runs after serving                        | Authenticated durable queue and worker   |
+| Lifetime   | Desktop-owned by default; explicit foreground modes; singleton replacement | Foreground; graceful worker shutdown     |
+| Storage    | One owner of persistent SQLite                                             | Shared Postgres; stateless processes     |
+| Queries    | Selected checkout(s) or capture via REST/MCP                               | Same application services via REST/MCP   |
+| Access     | Owner-only socket; optional loopback viewer; explicit pinned TLS policy    | Account credentials wrap the application |
+| Identity   | Automatic stable local owner; no account UI                                | Account sessions and scoped API tokens   |
+
+`diffx remote [PATH]` selects the personal SQLite composition with explicit
+network access; `diffx-server` remains the distributed Postgres composition.
+Personal pairing does not configure distributed `remote.url` or `remote.token`.
 
 Source support and review policy resolve snapshot capabilities. A mode never
 invents contents, scopes or refresh support. Queue presence at the composition
@@ -125,27 +131,55 @@ running instance, and a socket file left by a crash is replaced under that
 lock. Control supports status, shutdown and an instance-bound lifetime stream,
 and is mounted only on the socket.
 Replacement uses lifecycle locking and graceful shutdown; a PID alone is never
-authority. Browsers cannot reach a Unix socket, so the same process also serves
-the application on a loopback viewer port unless `--headless`. The viewer
-never binds a non-loopback address: other machines forward the socket, or the
-viewer port, over SSH. One browser policy covers every application transport,
-because a browser may sit behind the viewer or an SSH forward: Origin must
-match Host, cross-site requests are refused, and Host must name loopback on any
-port, which defeats DNS rebinding without knowing the forwarded port.
-`diffx status --json` reports the socket and viewer for scripts and remote
-clients; `diffx connect ssh://HOST` reads it over SSH and forwards the socket,
-and its `--json` ready line is the contract for future desktop clients. `diffx dev --fixture FILE` is isolated from personal lifecycle
-discovery and serves only a viewer.
+authority. Browsers cannot reach a Unix socket. Default `diffx [PATH]` hands
+its input to desktop over owner-only IPC and returns after desktop acceptance.
+The desktop session serves only the socket unless an explicit `--port` requests
+a separate loopback viewer. `--browser` selects a foreground viewer and opens
+it; `--no-browser` selects a foreground viewer without opening a client;
+`--headless` selects socket-only foreground serving. Failure before desktop
+acceptance permits foreground browser fallback. Later server/connection failure
+stays visible in desktop. Local viewer ports and desktop/browser gateway origins
+remain loopback, with matching Origin/Host and cross-site request checks.
+`diffx status --json` reports the socket and optional viewer.
+`diffx dev --fixture FILE` is isolated from personal lifecycle discovery and
+serves only a viewer.
 
-Experimental desktop session composition reuses the same local application and
-database owner. Its private CLI entry emits the public `packages/localprotocol`
-readiness contract and keeps a parent-lifetime pipe open. A compatible existing
-instance with the requested canonical scope can be attached; another scope
-requires explicit replacement. Attachment never transfers server ownership.
-Closing the parent pipe cancels and joins only an owned server. Scope identity,
-replacement, collection and state-reset decisions remain in the CLI/localserver
-composition, rather than in a desktop client. The desktop host proxies public REST/SSE through the
-local sidecar viewer for its webview; the loopback viewer remains available for web coexistence.
+`diffx remote [PATH]` stays foreground and adds a TLS listener, default `:7981`,
+with explicit `--listen` and optional `--advertise HOST:PORT`. It uses the same
+SQLite/runtime singleton and never silently promotes an existing local process.
+Without explicit advertisement, a concrete bind address is used; wildcard binds
+prefer the SSH session's server IP, otherwise enumerate non-loopback interface
+addresses. There is no external discovery. `internal/pairing` generates a fresh
+TLS identity per run and a 256-bit one-use invitation expiring after ten minutes.
+`packages/connection` owns the `diffx1_` encoded invitation and native Unix,
+loopback TCP and pinned TLS transports. Pairing atomically exchanges the invitation
+for a run-scoped credential, with bounded attempts and only credential hashes in
+server memory. `diffx remote pair` rotates the unused invitation through private
+socket control without invalidating existing credentials. Restart requires a new
+invitation. The CLI caches credentials under its private state directory in `connections/`
+(owner-only directory and files), separately from distributed configuration, so the original connect command can reconnect
+during the same run. Credentials never enter React, browser URLs or child argv.
+The TLS listener serves pairing and the shared `api.PublicReviewRoute` allowlist,
+including checkout collection and review REST/SSE; it excludes private control,
+MCP, account and ingestion routes. Native clients pin the certificate, require
+TLS 1.3 and never fall back to plaintext.
+
+Desktop session composition reuses the same local application and database
+owner. Private CLI entries emit `packages/localprotocol` readiness with a native
+connection target and optional viewer, and retain a parent-lifetime pipe. A
+compatible existing canonical scope can be attached; another scope requires
+explicit replacement. Attachment never transfers ownership. Closing the pipe
+cancels and joins only an owned server. One desktop window focuses the same target;
+changing workspace or connection requires confirmation. Cancel preserves the
+current session. Accepted transitions cancel and join prior requests and streams.
+The host proxies public REST/SSE directly through native Unix/TLS/SSH transports
+on its stable loopback origin. Remote leases never own the server. Reconnect
+backoff caps at 15 seconds for two minutes, then offers Retry; mutations are never
+automatically replayed. `connect --browser`, `--no-browser` and `--json` retain
+foreground lifetimes through a filtered loopback gateway. SSH uses system SSH
+configuration and socket forwarding, with viewer forwarding when socket
+forwarding is refused. The public gateway excludes private controls; a raw SSH
+socket forward still carries them.
 
 Independent local sessions use distinct `DIFFX_RUNTIME_DIR` directories, which
 give each its own socket, and viewer ports (`--port 0` selects a free port).
@@ -214,13 +248,17 @@ owner. See [development.md](development.md) for isolated checkout commands.
   `controlapi`: its private control API, credential-free because composition
   mounts it only on the owner's socket; `unixsocket`: socket bind, dial and
   peer credentials, with admission policy left to the listener's composition;
-  `sshforward`: `diffx connect`, which runs the system `ssh` to read a remote
+  `pairing`: run-scoped TLS identity, invitations, credentials and network access
+  policy; `clientgateway`: filtered browser access through native connections;
+  `desktoplaunch`: CLI desktop discovery, matching-pair checks and accepted handoff;
+  `sshforward`: native SSH forwarding, which runs the system `ssh` to read a remote
   `diffx status --json` and forward its socket, or its viewer port when the SSH
   server refuses socket forwarding, to a local loopback port; it holds no
   credentials and serves nothing itself. A forwarded socket carries its
   control API too, so any local process that can reach the forwarded port can
   stop the remote instance; this is accepted alongside the existing read
-  exposure of loopback ports, and browsers stay refused; `remoteserver`: remote
+  exposure of loopback ports, and browsers stay refused. Desktop and browser
+  gateways expose only public review routes; `remoteserver`: distributed
   member authentication and worker composition; `authhttp`: browser
   authentication HTTP shared by remote transports (session cookie, CSRF,
   problem and identity error mapping, sign-in admission and rate limiting,
@@ -385,6 +423,13 @@ the full suite, and local validation is not remote enforcement.
 
 ## Adapter and schema evolution
 
+`packages/buildmeta` owns desktop package identity records shared by the CLI and
+independent desktop module. Packaged executables use the retained role/version/
+source record for runtime version reporting; cross-target verification inspects
+that same record. Go omits linker settings with `-trimpath`, so linker-flag output
+cannot establish a matching pair. Standalone CLI publishing keeps its existing
+version metadata, and development pairing compares explicit build labels.
+
 New adapters must preserve ownership, atomic publication, retention, replay,
 lease fencing and commit-before-ack recovery. External brokers require atomic
 scheduling intent (an outbox). The server and local mode do not share a storage
@@ -493,14 +538,14 @@ code or the server contract.
 
 Personal CLI configuration keeps modes in separate namespaces so one machine runs
 both compositions at once: `local.*` and `DIFFX_LOCAL_*` configure only
-`diffx [PATH]` (viewer ports 7981–7990), `remote.*` and `DIFFX_REMOTE_*` only sync and
+`diffx [PATH]` and personal serving (optional viewer ports 7981–7990), `remote.*` and `DIFFX_REMOTE_*` only sync and
 hooks. Mode is chosen by the command, never by a config field: local commands
 reject remote flags, and sync, hooks and `remote status` fail without a complete
 remote destination. Hooks check that destination before discovery, so an
 unconfigured machine never enrolls identities or collects checkouts. Flat
 pre-namespace config files are rejected with each key's replacement and a nested
 JSON example. `local.host`, `DIFFX_LOCAL_HOST` and `--host` are rejected with
-their fix, because the viewer binds loopback only and remote access goes
-through SSH. Misplaced keys name their target section and field; invalid values
+their fix, because the viewer binds loopback only; personal network access
+requires explicit `diffx remote` TLS serving or SSH forwarding. Misplaced keys name their target section and field; invalid values
 include accepted examples. Diagnostics never echo tokens or credential-bearing
 URLs, and rejected files remain unchanged.

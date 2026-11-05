@@ -2,6 +2,7 @@ package version
 
 import (
 	"runtime/debug"
+	"strings"
 	"testing"
 )
 
@@ -45,14 +46,26 @@ func TestStringUsesTaggedGoInstallMetadata(t *testing.T) {
 	}
 }
 
+func TestPackagedRecordOwnsVersionAndSource(t *testing.T) {
+	setBuildMetadata(t, "dev", "", "", &debug.BuildInfo{Main: debug.Module{Version: "v0.0.0-source"}}, true)
+	source := strings.Repeat("a", 40)
+	BuildIdentity = "diffx-build-v1|cli|1.2.3|" + source + "|end"
+	if Number() != "1.2.3" || Explicit() != "1.2.3" || Build().Commit != source {
+		t.Fatal("packaged identity lost to inferred Go metadata")
+	}
+}
+
 func setBuildMetadata(t *testing.T, version, commit, date string, info *debug.BuildInfo, ok bool) {
 	t.Helper()
 	oldVersion, oldCommit, oldDate := Version, Commit, Date
+	oldIdentity := BuildIdentity
 	oldReadBuildInfo := readBuildInfo
 	Version, Commit, Date = version, commit, date
+	BuildIdentity = ""
 	readBuildInfo = func() (*debug.BuildInfo, bool) { return info, ok }
 	t.Cleanup(func() {
 		Version, Commit, Date = oldVersion, oldCommit, oldDate
+		BuildIdentity = oldIdentity
 		readBuildInfo = oldReadBuildInfo
 	})
 }

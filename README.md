@@ -1,6 +1,6 @@
 # diffx
 
-Review local Git changes in your browser without touching your working tree or
+Review Git changes in desktop or browser without touching your working tree or
 index.
 
 ## Install
@@ -19,6 +19,16 @@ For the latest `main` build:
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-edge.sh | sh
 ```
 
+For the experimental desktop and matching CLI pair:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-desktop.sh | sh
+```
+
+This replaces both `diffx` and `diffx-desktop` launchers. Desktop is the default
+client; a CLI-only install falls back to a foreground browser viewer. See
+[desktop installation](docs/release.md#experimental-desktop-webview).
+
 See [install options](docs-website/src/pages/getting-started.md) for pinned versions
 and a custom binary directory. For a developer checkout, use `mise run install`.
 Go source installs are unsupported because source refs lack embedded web assets.
@@ -29,7 +39,10 @@ Go source installs are unsupported because source refs lack embedded web assets.
 diffx                              # review current checkout
 diffx /path/to/repo                # review another checkout
 git diff | diffx                   # review a patch
-diffx connect ssh://devbox         # review diffx on a remote machine
+diffx --browser                    # foreground browser viewer
+diffx remote ~/work                # foreground personal TLS server; prints invitation
+diffx connect STRING               # pair using printed diffx1_ invitation
+diffx connect ssh://devbox         # review an existing remote personal server
 ```
 
 ## Docs

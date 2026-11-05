@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"sync/atomic"
 
@@ -15,6 +16,7 @@ type handler struct {
 	shutdown func()
 	lifetime context.Context
 	draining atomic.Bool
+	pair     func(string) ([]string, error)
 }
 
 // New serves status and shutdown. Mount it only on a transport that already
@@ -27,6 +29,12 @@ func New(status func() (Status, error), shutdown func()) http.Handler {
 // instance stops. It carries no application state and performs no periodic work.
 func NewWithLifetime(ctx context.Context, status func() (Status, error), shutdown func()) http.Handler {
 	return &handler{status: status, shutdown: shutdown, lifetime: ctx}
+}
+
+// NewWithPairing mounts invitation rotation on the same owner-only transport.
+// A nil pair callback leaves the endpoint unavailable for ordinary local runs.
+func NewWithPairing(ctx context.Context, status func() (Status, error), shutdown func(), pair func(string) ([]string, error)) http.Handler {
+	return &handler{status: status, shutdown: shutdown, lifetime: ctx, pair: pair}
 }
 func (handler *handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Cache-Control", "no-store")
@@ -81,6 +89,26 @@ func (handler *handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 		if first {
 			go handler.shutdown()
 		}
+		return
+	}
+	if request.URL.Path == "/control/v1/pair" && handler.pair != nil && !handler.draining.Load() {
+		var input struct {
+			Advertise string `json:"advertise"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 4096))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&input) != nil || decoder.Decode(new(struct{})) != io.EOF {
+			writeProblem(response, http.StatusBadRequest, "invalid_pair_request", "Invalid pairing request")
+			return
+		}
+		invitations, err := handler.pair(input.Advertise)
+		if err != nil {
+			writeProblem(response, http.StatusBadRequest, "pair_unavailable", "Cannot create personal server invitation")
+			return
+		}
+		writeJSON(response, http.StatusOK, struct {
+			Invitations []string `json:"invitations"`
+		}{invitations})
 		return
 	}
 	writeProblem(response, 404, "not_found", "Control endpoint not found")

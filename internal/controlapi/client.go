@@ -1,6 +1,7 @@
 package controlapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -36,6 +37,20 @@ func (client *Client) Shutdown(ctx context.Context) error {
 	return client.do(ctx, http.MethodPost, "/control/v1/shutdown", &result)
 }
 
+func (client *Client) Pair(ctx context.Context, advertise string) ([]string, error) {
+	data, err := json.Marshal(struct {
+		Advertise string `json:"advertise"`
+	}{advertise})
+	if err != nil {
+		return nil, err
+	}
+	var result struct {
+		Invitations []string `json:"invitations"`
+	}
+	err = client.doBody(ctx, http.MethodPost, "/control/v1/pair", bytes.NewReader(data), &result)
+	return result.Invitations, err
+}
+
 // WaitInstance waits for the instance's lifetime stream to close. Headers are
 // flushed immediately; only caller cancellation or server loss ends the body.
 func (client *Client) WaitInstance(ctx context.Context, instanceID string) error {
@@ -56,9 +71,16 @@ func (client *Client) WaitInstance(ctx context.Context, instanceID string) error
 }
 
 func (client *Client) do(ctx context.Context, method, path string, result interface{}) error {
-	request, err := http.NewRequestWithContext(ctx, method, baseURL+path, nil)
+	return client.doBody(ctx, method, path, nil, result)
+}
+
+func (client *Client) doBody(ctx context.Context, method, path string, body io.Reader, result interface{}) error {
+	request, err := http.NewRequestWithContext(ctx, method, baseURL+path, body)
 	if err != nil {
 		return err
+	}
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
 	}
 	response, err := client.http.Do(request)
 	if err != nil {

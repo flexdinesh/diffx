@@ -50,7 +50,11 @@ function preview(
  * serves the worker's fixture snapshot through the public read routes, whose
  * server disables comments. Returns the paths the page requested.
  */
-async function publicServer(page: Page, contextId: string) {
+async function publicServer(
+  page: Page,
+  contextId: string,
+  { ready = false }: { ready?: boolean } = {},
+) {
   const requested: string[] = [];
   page.on("request", (request) => {
     const path = new URL(request.url()).pathname;
@@ -71,6 +75,7 @@ async function publicServer(page: Page, contextId: string) {
   );
   let polls = 0;
   await page.route(`**${statusPath}`, (route) => {
+    if (ready) return route.fulfill({ json: preview(contextId, "ready") });
     if (route.request().method() === "PUT")
       return route.fulfill({ json: preview(null, "fetching") });
     polls++;
@@ -169,7 +174,10 @@ test.describe("on a phone", () => {
     page,
     baseURL,
   }) => {
-    const requested = await publicServer(page, await fixtureContext(baseURL));
+    // Fetch polling is covered above; this case exercises the ready layout.
+    const requested = await publicServer(page, await fixtureContext(baseURL), {
+      ready: true,
+    });
     await pasteAndOpen(page);
     await expectReadOnlyPreview(page, requested);
   });
