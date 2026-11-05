@@ -15,7 +15,11 @@ import (
 func TestMain(m *testing.M) {
 	if os.Getenv("DIFFX_TEST_DESKTOP_STUB") == "1" {
 		if len(os.Args) == 2 && os.Args[1] == "--desktop-contract" {
-			_ = json.NewEncoder(os.Stdout).Encode(localprotocol.DesktopContract{ProtocolVersion: localprotocol.Version, Build: "dev", Sidecar: os.Getenv("DIFFX_TEST_CLI")})
+			build := os.Getenv("DIFFX_TEST_DESKTOP_BUILD")
+			if build == "" {
+				build = "dev"
+			}
+			_ = json.NewEncoder(os.Stdout).Encode(localprotocol.DesktopContract{ProtocolVersion: localprotocol.Version, Build: build, Sidecar: os.Getenv("DIFFX_TEST_CLI")})
 			os.Exit(0)
 		}
 		if len(os.Args) == 1 {
@@ -68,6 +72,11 @@ func TestOpenPassesPrivateIntentAndPreservesStdinBeforeAcceptance(t *testing.T) 
 	if _, err = input.WriteString("piped patch"); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("DIFFX_TEST_DESKTOP_BUILD", "incompatible")
+	if handled, err := Open(t.Context(), []string{"connect", "secret invitation"}, input, io.Discard); handled || err == nil {
+		t.Fatal("mismatched explicit desktop build label admitted")
+	}
+	t.Setenv("DIFFX_TEST_DESKTOP_BUILD", "dev")
 	for _, fail := range []bool{true, false} {
 		if _, err = input.Seek(0, 0); err != nil {
 			t.Fatal(err)
