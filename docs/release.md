@@ -5,8 +5,7 @@
 Only the manual **Release** workflow creates stable version tags and GitHub
 Releases. It checks out the latest `main` when the run starts and marks the
 release as GitHub's latest stable release. Dispatches from other branches are
-skipped. Releases publish downloadable binaries; they never deploy servers (see
-[Homelab container images](#homelab-container-images)).
+skipped. Releases publish downloadable binaries; they never deploy servers.
 
 Checks and test suites run locally through explicit `mise run check:pr` before
 creating or updating PRs, including after rebasing onto changed upstream content.
@@ -250,33 +249,3 @@ Known exceptions, accepted after the October 2026 dependency audit:
 
 Recheck with `pnpm licenses list -r` and the `LICENSE` files of `go list -deps`
 modules when adding dependencies.
-
-## Homelab container images
-
-Woodpecker publishes `diffx-server`, `diffx-fetcher` and `diffx-console` images
-to `registry.local.deebox.xyz/home` for the Kubernetes app in
-`deehomelab/k8s-cluster` (`apps/diffx`). Server deploys are independent of CLI
-releases and version tags; prod runs images built once for staging:
-
-- `.woodpecker/deploy.yml`: pushes to `main` stage the embedded web assets,
-  build all Dockerfile targets, tag `:<commit>` and `:main`, and roll
-  `diffx-staging` to the pushed digests. A manual Woodpecker run on `main` does
-  the same without a push.
-- `.woodpecker/promote.yml`: deploying a successful `main` pipeline to the
-  `prod` environment (Woodpecker pipeline **Deploy**, or
-  `woodpecker-cli pipeline deploy <repo> <pipeline> prod`) pulls that commit's
-  `:<commit>` images, retags them `:release` (the tag the prod overlay pins) and
-  rolls `diffx-prod` to the same digests staging ran, without rebuilding.
-  Promotion fails when the commit has no staging images. Promoting an earlier
-  commit rolls back only when its server accepts the migrated database schema.
-  The repository must allow deployments in Woodpecker.
-
-Only Deployments that exist in the namespace roll; prod has no fetcher until its
-GitHub integration is enabled. Images are published even before the k8s-cluster
-manifests are provisioned. Woodpecker must trust the repository for the Docker
-socket and hold a `KUBECONFIG` secret with deployment access to both namespaces.
-Pushes to `main` deploy staging without waiting for GitHub Actions; verification
-is performed through explicit local PR validation. Staging and prod must drop
-`DIFFX_SERVER_SIGNUP` and `DIFFX_SERVER_PASSWORD_SIGNIN` before deploying a
-build without them, since the server refuses to start while either is set; set
-admission in the console's Settings page after deploy.
