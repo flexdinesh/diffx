@@ -5,6 +5,7 @@ RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY packages/api ./packages/api
+COPY packages/buildmeta ./packages/buildmeta
 ARG TARGETOS=linux
 ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -o /diffx-server ./cmd/diffx-server

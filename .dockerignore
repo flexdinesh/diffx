@@ -8,5 +8,7 @@
 !packages/
 !packages/api/
 !packages/api/**
+!packages/buildmeta/
+!packages/buildmeta/**
 **/*_test.go
 packages/api/node_modules
