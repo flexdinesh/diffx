@@ -737,8 +737,8 @@ func TestDesktopPreferencesSurviveActualWebKitRestart(t *testing.T) {
 	w.ready()
 	origin := w.origin
 	w.click("#settings")
-	w.wait("theme choices", `Array.from(document.querySelectorAll('[role="radio"]')).some(e=>e.textContent.includes('diffx Dark'))`)
-	w.eval(`Array.from(document.querySelectorAll('[role="radio"]')).find(e=>e.textContent.includes('diffx Dark')).id='desktop-acceptance-dark'`, nil)
+	w.wait("theme choices", `Array.from(document.querySelectorAll('[role="radio"]')).some(e=>e.textContent.includes('DiffX Dark'))`)
+	w.eval(`Array.from(document.querySelectorAll('[role="radio"]')).find(e=>e.textContent.includes('DiffX Dark')).id='desktop-acceptance-dark'`, nil)
 	w.click("#desktop-acceptance-dark")
 	w.wait("appearance preference saved", `localStorage.getItem('theme-v2')==='dark' && document.documentElement.dataset.theme==='dark'`)
 	w.input("key", "--clearmodifiers", "Escape")

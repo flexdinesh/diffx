@@ -130,7 +130,7 @@
   align-items: center;
   justify-content: space-around;
   height: var(--panel-header-height);
-  border-bottom: 1px solid var(--border-muted);
+  border-bottom: 1px solid transparent;
 }
 .loading-tree {
   flex: 1;

@@ -15,10 +15,20 @@ test("validates persisted diff appearance options", () => {
   assert.equal(readDiffTheme("unknown"), "match");
   assert.equal(readLineDiffType("char"), "char");
   assert.equal(readLineDiffType("unknown"), "word-alt");
-  assert.deepEqual(themesFor("catppuccin", "tokyo-night"), {
-    light: "catppuccin-latte",
-    dark: "catppuccin-mocha",
+  assert.deepEqual(themesFor("github", "tokyo-night"), {
+    light: "github-light",
+    dark: "github-dark",
   });
+});
+
+test("removed code themes fall back to matching the app theme", () => {
+  const storage = (entries: Record<string, string>) => (key: string) =>
+    entries[key] ?? null;
+  for (const removed of ["vitesse", "catppuccin"]) {
+    assert.equal(readDiffTheme(removed), "match");
+    assert.equal(savedDiffTheme(storage({ "code-theme": removed })), "match");
+    assert.equal(savedDiffTheme(storage({ "diff-theme": removed })), "match");
+  }
 });
 
 test("code theme matches the app theme by default", () => {
@@ -45,7 +55,7 @@ test("legacy code theme migrates its saved Pierre default to match", () => {
     entries[key] ?? null;
   assert.equal(savedDiffTheme(storage({})), "match");
   assert.equal(savedDiffTheme(storage({ "diff-theme": "pierre" })), "match");
-  assert.equal(savedDiffTheme(storage({ "diff-theme": "vitesse" })), "vitesse");
+  assert.equal(savedDiffTheme(storage({ "diff-theme": "github" })), "github");
   assert.equal(
     savedDiffTheme(storage({ "code-theme": "pierre", "diff-theme": "github" })),
     "pierre",

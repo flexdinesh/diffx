@@ -131,6 +131,9 @@ measured elements or replace the application tokens with framework defaults.
 | Application / primary surface | `--bg`                             | Inputs, header, primary content                                    |
 | Diff canvas                   | `--diff-canvas`                    | Quiet neutral surround behind opaque file diffs                    |
 | Diff canvas dots              | `--diff-canvas-dot`                | Faint dotted texture visible only between file diffs               |
+| Diff empty-line hatch         | `--diff-buffer-stripe`             | Stripes on empty lines over the shell code surface                 |
+| Changed-line number hue       | `--diff-number-base`, `-shell`     | Share of tint hue in number text; the rest mixes toward `--fg`     |
+| Dark changed-row syntax       | `--diff-syntax-base`, `-shell`     | Share of token color in syntax text; the rest mixes toward `--fg`  |
 | Secondary surface             | `--panel`                          | Sidebar, grouped controls, inline review annotations               |
 | Shell canvas                  | `--shell-canvas`                   | Neutral background behind the header and flush panes               |
 | Elevated surface              | `--surface-raised`                 | Dialogs and future actual overlays                                 |
@@ -186,8 +189,9 @@ measured elements or replace the application tokens with framework defaults.
   (80–170°) and yellow (30–70°) and stay distinct; otherwise use the Diffx value
   for that mode.
 - The code theme defaults to “Match app theme”: Pierre for Diffx themes, the
-  bundled Shiki theme where one exists, otherwise `diffx-palette`. Pierre,
-  GitHub, Vitesse and Catppuccin remain explicit overrides in View options.
+  bundled Shiki theme where one exists, otherwise `diffx-palette`. Pierre and
+  GitHub remain explicit overrides in View options. Saved code themes that no
+  longer exist fall back to “Match app theme”.
 - Theme swatches render through the theme's own tokens by scoping
   `[data-palette]` on the swatch; Diffx light and dark are addressable as
   `diffx-light` and `diffx-dark`. Never hard-code a preview color.
@@ -303,7 +307,8 @@ such detail into a token. New layout spacing must use the scale.
   checkouts” for discovered checkouts, that never swaps the open review.
 - Header text uses cap-height trimming with token padding to center UI and
   monospace labels without clipping ascenders or descenders.
-- Header lead: brand and divider identify the app. The file-sidebar toggle
+- Header lead: the brand mark, without the product name, and divider identify the
+  app; the link's accessible name is “diffx home”. The file-sidebar toggle
   leads the review toolbar. Below 1012px a “Show reviews” toggle in the header
   opens the review column as a drawer. “Search reviews” (magnifier, Cmd/Ctrl+K)
   leads the header's trailing actions in every layout and opens the review
@@ -422,7 +427,9 @@ such detail into a token. New layout spacing must use the scale.
   on short viewports or enlarged text so navigation/export/footer stay reachable.
 - Scrollbars are thin and quiet, matching Pierre's code tracks: a fixed
   `--scrollbar-size` (10px) track with a 6px square thumb that appears while
-  its pane is hovered or holds focus and darkens on hover and drag. Firefox uses
+  its pane is hovered or holds focus and darkens on hover and drag. The diff
+  viewport keeps its thumb visible at rest, so its reserved track never reads as
+  an empty gutter. Firefox uses
   `scrollbar-width: thin`; set `scrollbar-color` only there, since it inherits
   into Pierre's shadow roots and disables their Chromium styling. Long-lived panes
   that gain and lose overflow (diff viewport, file tree, comments, Reviews
@@ -463,10 +470,16 @@ such detail into a token. New layout spacing must use the scale.
   height for unwrapped code, or 0 when wrapped. The frame adds no layout geometry;
   keep `itemMetrics` synchronized so virtual scrolling remains correct.
 - Under "Match app theme" with a base Diffx theme, `data-code-surface="shell"`
-  puts context lines, gutters and buffers on `--bg` and separators on `--panel`
-  through Pierre's `--diffs-*-override` properties; `--diffs-gap-style` and
-  `--code-surface` repaint the context lines and gaps Pierre fills with its theme
-  background, near-black beside that surface. Syntax colors and addition/deletion tints stay Pierre's.
+  puts context lines and gutters on `--bg` and separators on `--panel` through
+  Pierre's `--diffs-*-override` properties, and stripes empty-line buffers with
+  `--diff-buffer-stripe`. `--diffs-gap-style` and `--code-surface` repaint the
+  lines and gaps Pierre fills with its theme background, near-black beside that
+  surface; changed rows mix their tints with `--bg` too, so they never read darker
+  than context. The review and landing diffs each carry these shadow-root rules,
+  since `unsafeCSS` stays a checked literal. Syntax colors and addition/deletion
+  hues stay Pierre's, with two readability mixes toward `--fg`: changed-line number
+  text (`--diff-number-base-shell`, to keep AA) and syntax on dark changed rows
+  (`--diff-syntax-base-shell`, since Pierre's dark syntax is tuned for near-black).
   Other code themes and palette themes keep their own surface.
 - `unsafeCSS` squares every corner in the shadow root, including Pierre's inline
   diff spans and scrollbar thumbs. Pierre draws status icons from rounded sprites
@@ -536,7 +549,7 @@ with a semantic variant instead of overriding it.
 | Loading placeholder                    | `ui/skeleton` (shapes mirror real geometry)                                                                                              |
 | Divider, drawer backdrop               | `ui/separator` (`chrome` for the header), `scrim`                                                                                        |
 | Review context icon                    | `context-icon`                                                                                                                           |
-| The logo beside the product name       | `brand-mark`                                                                                                                             |
+| The logo, alone or beside the name     | `brand-mark`                                                                                                                             |
 
 Feature files may not render raw `<button>`, `<input>`, `<select>` or
 `<textarea>`; lint points to the component. Review every variant in both themes
@@ -624,8 +637,10 @@ at `/design.html` (see `docs/frontend.md`).
 - Navigating from the file list briefly pulses the destination file header with
   the accent for about one second. Reduced-motion mode uses static feedback that
   remains visible long enough to identify the destination without animation.
-- Sidebar tabs fuse with their panel: the active tab shares `--panel` and covers
-  the header's hairline, inactive tabs recess into `--shell`. Segmented choices and pressed
+- Sidebar tabs fuse with their panel: the active tab shares `--panel`, inactive
+  tabs recess into `--shell` and draw their own edges. A tab strip's header has no
+  hairline of its own, and an active last tab has no trailing edge, so header
+  actions sit directly on the panel with no box around them. Segmented choices and pressed
   toggles use accent text on `--accent-bg`. Expose state with native/ARIA semantics.
 - Badges use compact text and neutral surfaces. Status color is
   supplemental; retain “Open”, “Resolved”, Git letters, counts, and staging shapes.

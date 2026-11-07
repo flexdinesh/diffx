@@ -136,7 +136,6 @@ export function FileExplorerNav() {
             <>
               <IconButton
                 label={`${foldersCollapsed ? "Expand" : "Collapse"} all folders`}
-                variant="subtle"
                 size="icon-sm"
                 disabled={folderPaths.length === 0}
                 onClick={() => {

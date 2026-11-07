@@ -32,8 +32,19 @@ export function LandingDemoDiff() {
         :host, pre, code, [data-gutter], [data-content] {
           background-color: var(--code-surface, var(--diffs-bg));
         }
-        [data-line-type^="context"] {
+        /* Pierre's base colors only resolve inside this shadow root. */
+        :host {
+          --diffs-fg-number-deletion-override: color-mix(in lab, var(--diffs-deletion-base) var(--diff-number-base), var(--fg));
+          --diffs-fg-number-addition-override: color-mix(in lab, var(--diffs-addition-base) var(--diff-number-base), var(--fg));
+        }
+        :is([data-line-type^="context"], [data-line-type^="change"]) {
           --diffs-computed-decoration-bg: var(--code-surface, var(--diffs-bg));
+        }
+        [data-line][data-line-type^="change"] span {
+          color: light-dark(
+            var(--diffs-token-light, var(--diffs-light)),
+            color-mix(in lab, var(--diffs-token-dark, var(--diffs-dark)) var(--diff-syntax-base), var(--fg))
+          );
         }
         :is([data-change-icon="change"], [data-change-icon="new"], [data-change-icon="deleted"], [data-change-icon="rename-pure"], [data-change-icon="rename-changed"]) {
           background-color: currentColor;
