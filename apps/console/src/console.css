@@ -31,6 +31,9 @@
   color: var(--text-secondary);
 }
 .brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   color: var(--text-secondary);
@@ -52,7 +55,7 @@
   padding-top: var(--space-16);
 }
 .auth-page .brand {
-  display: inline-block;
+  display: inline-flex;
   margin-bottom: var(--space-8);
 }
 .console-form {

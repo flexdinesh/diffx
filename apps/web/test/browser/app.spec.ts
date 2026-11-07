@@ -1835,6 +1835,8 @@ test("header icons use design-system sizes and the active tab fuses with its pan
   const filesToggle = page.getByRole("button", { name: "Hide file sidebar" });
   await expect(page.locator("#file-count")).not.toHaveText("0");
   await expect(brand).toHaveText("diffx");
+  await expect(page.getByRole("link", { name: "diffx home" })).toBeVisible();
+  await expect(brand.locator('svg[aria-hidden="true"]')).toBeVisible();
   await expect(
     page.getByRole("navigation", { name: "Views", exact: true }),
   ).toHaveCount(0);

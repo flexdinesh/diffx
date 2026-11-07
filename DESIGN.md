@@ -126,30 +126,31 @@ measured elements or replace the application tokens with framework defaults.
 
 ## Color
 
-| Role                          | Token               | Rule                                                               |
-| ----------------------------- | ------------------- | ------------------------------------------------------------------ |
-| Application / primary surface | `--bg`              | Inputs, header, primary content                                    |
-| Diff canvas                   | `--diff-canvas`     | Quiet neutral surround behind opaque file diffs                    |
-| Diff canvas dots              | `--diff-canvas-dot` | Faint dotted texture visible only between file diffs               |
-| Secondary surface             | `--panel`           | Sidebar, grouped controls, inline review annotations               |
-| Shell canvas                  | `--shell-canvas`    | Neutral background behind the header and flush panes               |
-| Elevated surface              | `--surface-raised`  | Dialogs and future actual overlays                                 |
-| Primary text                  | `--fg`              | File names, headings, review content                               |
-| Secondary text                | `--text-secondary`  | Supporting prose and available secondary actions                   |
-| Muted text                    | `--muted`           | Paths, counts, captions; still readable, never disabled by default |
-| Separator                     | `--border-muted`    | Pane dividers and low-emphasis grouping                            |
-| Control boundary              | `--border-control`  | Inputs and controls requiring stronger boundaries                  |
-| Neutral hover                 | `--hover`           | Available controls under the pointer                               |
-| Count fill                    | `--count-bg`        | Static count and badge surfaces; never hover feedback              |
-| Shell hover                   | `--shell-hover`     | Hover/expanded header controls on `--shell-canvas`                 |
-| Accent                        | `--accent`          | Selection, focus, navigation links, primary commit action          |
-| Accent interaction            | `--accent-hover`    | Hover/active on filled primary actions                             |
-| Selected surface              | `--accent-bg`       | Selected file or pressed toggle                                    |
-| On accent                     | `--on-accent`       | Text on filled accent; never assume white in both themes           |
-| Success                       | `--success`         | Added files/counts, reviewed and resolved state                    |
-| Warning                       | `--warning`         | Modified files, recoverable notices                                |
-| Review anchor                 | `--review-anchor`   | Subtle tint on lines covered by a visible review comment           |
-| Destructive / error           | `--error`           | Deleted files/counts, conflicts, delete actions, errors            |
+| Role                          | Token                              | Rule                                                               |
+| ----------------------------- | ---------------------------------- | ------------------------------------------------------------------ |
+| Application / primary surface | `--bg`                             | Inputs, header, primary content                                    |
+| Diff canvas                   | `--diff-canvas`                    | Quiet neutral surround behind opaque file diffs                    |
+| Diff canvas dots              | `--diff-canvas-dot`                | Faint dotted texture visible only between file diffs               |
+| Secondary surface             | `--panel`                          | Sidebar, grouped controls, inline review annotations               |
+| Shell canvas                  | `--shell-canvas`                   | Neutral background behind the header and flush panes               |
+| Elevated surface              | `--surface-raised`                 | Dialogs and future actual overlays                                 |
+| Primary text                  | `--fg`                             | File names, headings, review content                               |
+| Secondary text                | `--text-secondary`                 | Supporting prose and available secondary actions                   |
+| Muted text                    | `--muted`                          | Paths, counts, captions; still readable, never disabled by default |
+| Separator                     | `--border-muted`                   | Pane dividers and low-emphasis grouping                            |
+| Control boundary              | `--border-control`                 | Inputs and controls requiring stronger boundaries                  |
+| Neutral hover                 | `--hover`                          | Available controls under the pointer                               |
+| Count fill                    | `--count-bg`                       | Static count and badge surfaces; never hover feedback              |
+| Shell hover                   | `--shell-hover`                    | Hover/expanded header controls on `--shell-canvas`                 |
+| Accent                        | `--accent`                         | Selection, focus, navigation links, primary commit action          |
+| Accent interaction            | `--accent-hover`                   | Hover/active on filled primary actions                             |
+| Selected surface              | `--accent-bg`                      | Selected file or pressed toggle                                    |
+| On accent                     | `--on-accent`                      | Text on filled accent; never assume white in both themes           |
+| Success                       | `--success`                        | Added files/counts, reviewed and resolved state                    |
+| Warning                       | `--warning`                        | Modified files, recoverable notices                                |
+| Review anchor                 | `--review-anchor`                  | Subtle tint on lines covered by a visible review comment           |
+| Destructive / error           | `--error`                          | Deleted files/counts, conflicts, delete actions, errors            |
+| Brand mark rows               | `--brand-removed`, `--brand-added` | The brand mark's changed rows only; never status                   |
 
 - Use one foreground hierarchy across both themes. Dark mode maps the same roles;
   it is not a separate visual identity.
@@ -535,6 +536,7 @@ with a semantic variant instead of overriding it.
 | Loading placeholder                    | `ui/skeleton` (shapes mirror real geometry)                                                                                              |
 | Divider, drawer backdrop               | `ui/separator` (`chrome` for the header), `scrim`                                                                                        |
 | Review context icon                    | `context-icon`                                                                                                                           |
+| The logo beside the product name       | `brand-mark`                                                                                                                             |
 
 Feature files may not render raw `<button>`, `<input>`, `<select>` or
 `<textarea>`; lint points to the component. Review every variant in both themes
@@ -850,21 +852,40 @@ Review, Hand off) on the real review surface, in the same world as the app.
   link in monospace, outline “Copy link” and ghost “Dismiss link”.
 - Signed-out pages (sign-in, setup, reset) follow the sign-in pages above.
 
-## App icons
+## Logo and app icons
 
-`apps/web/public/icons` holds the remote server's app icons: a “[x]” mark of
-butt-capped, mitered strokes in light `--accent` on light `--shell`, a filled
-square tile with no curve anywhere; `apps/console/public/icon.svg` is the same
-mark. `icon.svg` is the favicon and switches to the dark tokens under
-`prefers-color-scheme: dark`; it is also the source of `icon-192.png` and
-`icon-512.png`. `icon-maskable.svg` is full-bleed with the mark at 75%, which
-keeps the brackets' corners inside the central safe-zone circle, and is the
-source of `icon-maskable-512.png` and the opaque
-`apple-touch-icon.png` (180). `badge.svg` is the white-on-transparent
-notification badge source of `badge-96.png`. Regenerate the PNGs from their
-SVG source at their exact sizes when the mark or those tokens change.
-The manifest uses `--bg` as background and `--shell` as theme color. The header
-keeps its text-only `diffx`.
+The mark is a thick X cut into five rows of code. The second row slides left in
+red and the fourth slides right in green, each tilted 5°: one line removed, one
+line added. All edges are straight, on a square tile. It has two drawings: the
+full one, and a heavier one for 24px and below. The mark's red and green are the
+one exception to a single blue, because the changed rows are the idea of the
+mark; they are brighter than `--error` and `--success` and never carry status.
+
+`apps/web/public/icons` holds the remote server's app icons. `icon.svg` is the
+favicon in the small drawing, on `#f4f5f7`, switching to `#06080c` under
+`prefers-color-scheme: dark`; `apps/console/public/icon.svg` and
+`docs-website/public/icon.svg` are the same file. Rasters cannot switch, so they
+stay on near-black: `icon-app.svg` is the source of `icon-192.png`,
+`icon-512.png` and the desktop icons (`diffx-desktop.png` at 512,
+`diffx-desktop.icns` holding 128 to 1024). `icon-maskable.svg` is full-bleed with
+the mark at 74%, which keeps its corners inside the central safe-zone circle, and
+is the source of `icon-maskable-512.png` and the opaque `apple-touch-icon.png`
+(180). `badge.svg` is the white-on-transparent notification badge source of
+`badge-96.png`; the rows' slide carries the mark without color. Regenerate the
+rasters from their SVG source at their exact sizes when the mark changes.
+The manifest uses `--bg` as background and `--shell` as theme color.
+
+`BrandMark` is the mark in the product: before the name in every `.brand`, at
+`--icon-base`, with slate rows in the brand's text color and the changed rows in
+`--brand-removed` and `--brand-added`. It stays out of the accessibility tree
+because the name is always beside it.
+
+`docs-website/public` holds the horizontal logos (`logo-light.svg`,
+`logo-dark.svg`, also used by the README) and the 1200x630 social card:
+`og.svg` is the source of `og.png`, copied to `apps/web/public/og.png`. Their
+text is outlined from Noto Sans, so they render the same everywhere. The web
+app's `og:image` is the fixed URL `https://diffx.app/og.png`, because a crawler
+needs an absolute URL; self-hosted servers share that image.
 
 ## Interaction states
 

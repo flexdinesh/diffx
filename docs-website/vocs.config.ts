@@ -10,6 +10,9 @@ export default defineConfig({
   renderStrategy: "full-static",
   baseUrl: siteUrl,
   accentColor: "light-dark(#3f5fd6, #74ade8)",
+  iconUrl: "/icon.svg",
+  logoUrl: { light: "/logo-light.svg", dark: "/logo-dark.svg" },
+  ogImageUrl: `${productionUrl}/og.png`,
   // Non-production hosts stay out of search indexes and point crawlers at
   // production. Vocs serializes `head` to the client as source text, so the
   // function cannot reference module variables; keep the URL inline.

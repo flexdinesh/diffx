@@ -71,6 +71,7 @@ import {
   TooltipTrigger,
 } from "@diffx/ui/components/ui/tooltip";
 import { ChoiceList, ChoiceListItem } from "@diffx/ui/components/choice-list";
+import { BrandMark } from "@diffx/ui/components/brand-mark";
 import { CollapsibleSection } from "@diffx/ui/components/collapsible-section";
 import { ConfirmDialog } from "@diffx/ui/components/confirm-dialog";
 import { ContextIcon } from "@diffx/ui/components/context-icon";
@@ -378,6 +379,7 @@ function Components() {
           <ContextIcon piped={false} />
           <ContextIcon piped size="md" />
           <ContextIcon piped={false} tone="muted" />
+          <BrandMark />
         </Row>
       </Section>
 

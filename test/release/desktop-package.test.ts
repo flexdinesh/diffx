@@ -114,11 +114,26 @@ for (const target of targets) {
         await readFile(join(payload, "Contents/MacOS/launch"), "utf8"),
         /--desktop-launch/,
       );
-    } else
+      assert.match(
+        await readFile(join(payload, "Contents/Info.plist"), "utf8"),
+        /<key>CFBundleIconFile<\/key><string>diffx-desktop<\/string>/,
+      );
+      assert.ok(
+        (await readFile(join(resources, "diffx-desktop.icns"))).length > 0,
+      );
+    } else {
       assert.match(
         await readFile(join(payload, "diffx-desktop.desktop"), "utf8"),
         /Exec=diffx-desktop --desktop-launch/,
       );
+      assert.match(
+        await readFile(join(payload, "diffx-desktop.desktop"), "utf8"),
+        /Icon=diffx-desktop/,
+      );
+      assert.ok(
+        (await readFile(join(payload, "diffx-desktop.png"))).length > 0,
+      );
+    }
     assert.deepEqual((await readdir(fixture.out)).sort(), [
       name,
       `${name}.sha256`,

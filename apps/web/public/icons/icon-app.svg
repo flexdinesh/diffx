@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- diffx "changed line" X, full drawing on near-black. Source of the app icon PNGs. -->
+  <rect width="512" height="512" fill="#06080c"/>
+  <path fill="#4a4e63" d="M64 64L200 64L237.1 121.6L101.2 121.6ZM312 64L448 64L410.8 121.6L274.9 121.6ZM169.4 227.2L342.6 227.2L324 256L342.6 284.8L169.4 284.8L188 256ZM101.2 390.4L237.1 390.4L200 448L64 448ZM274.9 390.4L410.8 390.4L448 448L312 448Z"/>
+  <path fill="#ff3b4e" d="M66.7 157.9L344.3 133.6L312.2 194.2L108.8 212Z"/>
+  <path fill="#1fdc7c" d="M199.8 317.8L403.2 300L445.3 354.1L167.7 378.4Z"/>
+</svg>

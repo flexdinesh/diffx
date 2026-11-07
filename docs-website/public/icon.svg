@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- diffx "changed line" X, favicon drawing: rows of code, one removed and
+       one added. Follows the OS theme; the raster icons use icon-app.svg. -->
+  <style>
+    .tile { fill: #f4f5f7; }
+    .row { fill: #4a4e63; }
+    .removed { fill: #e8283c; }
+    .added { fill: #0fb461; }
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #06080c; }
+      .removed { fill: #ff3b4e; }
+      .added { fill: #1fdc7c; }
+    }
+  </style>
+  <rect class="tile" width="512" height="512"/>
+  <path class="row" d="M32 32L190.7 32L231.9 96L73.3 96ZM321.3 32L480 32L438.7 96L280.1 96ZM156 224L356 224L335.3 256L356 288L156 288L176.7 256ZM73.3 416L231.9 416L190.7 480L32 480ZM280.1 416L438.7 416L480 480L321.3 480Z"/>
+  <path class="removed" d="M42.8 142.2L365.6 114L330 181.4L89.6 202.4Z"/>
+  <path class="added" d="M182 330.6L422.4 309.6L469.2 369.8L146.4 398Z"/>
+</svg>

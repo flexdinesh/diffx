@@ -1,5 +1,6 @@
 import { api, errorDetail, type ConsoleBootstrap } from "@diffx/console-api";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { BrandMark } from "@diffx/ui/components/brand-mark";
 import { ErrorState } from "@diffx/ui/components/error-state";
 import { Button } from "@diffx/ui/components/ui/button";
 import { Input } from "@diffx/ui/components/ui/input";
@@ -29,7 +30,10 @@ function AuthPage({ title, children }: { title: string; children: ReactNode }) {
   return (
     <main className="console-page auth-page">
       <a className="brand" href="/">
-        diffx <span className="brand-product">Console</span>
+        <BrandMark />
+        <span>
+          diffx <span className="brand-product">Console</span>
+        </span>
       </a>
       <h1 className="mb-4 text-xl font-semibold">{title}</h1>
       {children}

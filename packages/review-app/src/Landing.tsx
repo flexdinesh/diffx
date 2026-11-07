@@ -7,6 +7,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { BrandMark } from "@diffx/ui/components/brand-mark";
 import { ErrorState } from "@diffx/ui/components/error-state";
 import { LinkButton } from "@diffx/ui/components/link-button";
 import { Button } from "@diffx/ui/components/ui/button";
@@ -71,6 +72,7 @@ export function Landing({
       <div className="landing-topbar-band">
         <header className="landing-topbar landing-frame">
           <a className="brand" href="/">
+            <BrandMark />
             diffx
           </a>
           <nav className="landing-topbar-actions" aria-label="diffx">
