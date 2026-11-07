@@ -5,12 +5,7 @@ import type {
 } from "@pierre/diffs";
 import { themeCode, themeKind, type ThemePreference } from "./theme.ts";
 
-export type DiffTheme =
-  | "match"
-  | "pierre"
-  | "github"
-  | "vitesse"
-  | "catppuccin";
+export type DiffTheme = "match" | "pierre" | "github";
 
 export const CODE_THEME_STORAGE_KEY = "code-theme";
 const LEGACY_CODE_THEME_STORAGE_KEY = "diff-theme";
@@ -32,16 +27,6 @@ export const DIFF_THEMES: readonly {
     label: "GitHub",
     themes: { light: "github-light", dark: "github-dark" },
   },
-  {
-    value: "vitesse",
-    label: "Vitesse",
-    themes: { light: "vitesse-light", dark: "vitesse-dark" },
-  },
-  {
-    value: "catppuccin",
-    label: "Catppuccin",
-    themes: { light: "catppuccin-latte", dark: "catppuccin-mocha" },
-  },
 ];
 
 export const LINE_DIFF_TYPES: readonly {
@@ -58,8 +43,6 @@ export function readDiffTheme(value: string | null): DiffTheme {
   switch (value) {
     case "pierre":
     case "github":
-    case "vitesse":
-    case "catppuccin":
       return value;
     default:
       return "match";

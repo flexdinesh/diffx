@@ -75,6 +75,25 @@ test("pane scrollbars keep a constant thin gutter as overflow changes", async ({
   expect(await toggleRight()).toBe(overflowing);
 });
 
+test("the diff thumb stays visible at rest while other panes wait for hover", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 700 });
+  await page.goto("/");
+  await expect(page.locator("#viewer diffs-container").first()).toBeVisible();
+  await page.mouse.move(0, 0);
+  const thumb = (selector: string) =>
+    page
+      .locator(selector)
+      .evaluate(
+        (element) =>
+          getComputedStyle(element, "::-webkit-scrollbar-thumb")
+            .backgroundColor,
+      );
+  await expect.poll(() => thumb("#file-tree")).toBe("rgba(0, 0, 0, 0)");
+  expect(await thumb(".diff-code-view")).not.toBe("rgba(0, 0, 0, 0)");
+});
+
 test("diff tracks fill frames and headers align with their gutters", async ({
   page,
 }) => {

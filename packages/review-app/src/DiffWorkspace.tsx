@@ -533,15 +533,32 @@ export function DiffWorkspace() {
         :host, pre, code, [data-gutter], [data-content] {
           background-color: var(--code-surface, var(--diffs-bg));
         }
-        [data-line-type^="context"] {
+        /* Pierre's base colors only resolve inside this shadow root. */
+        :host {
+          --diffs-fg-number-deletion-override: color-mix(in lab, var(--diffs-deletion-base) var(--diff-number-base), var(--fg));
+          --diffs-fg-number-addition-override: color-mix(in lab, var(--diffs-addition-base) var(--diff-number-base), var(--fg));
+        }
+        :is([data-line-type^="context"], [data-line-type^="change"]) {
           --diffs-computed-decoration-bg: var(--code-surface, var(--diffs-bg));
         }
-        /* Native scrollbar tracks are part of the code surface. */
+        [data-line][data-line-type^="change"] span {
+          color: light-dark(
+            var(--diffs-token-light, var(--diffs-light)),
+            color-mix(in lab, var(--diffs-token-dark, var(--diffs-dark)) var(--diff-syntax-base), var(--fg))
+          );
+        }
+        /* Native scrollbar tracks are part of the code surface and match Pierre's changed-row mix. */
         [data-code]:has(> [data-content] > :is([data-line], [data-no-newline]):last-child[data-line-type="change-addition"]) {
-          background-color: var(--diffs-bg-addition);
+          background-color: light-dark(
+            color-mix(in lab, var(--code-surface, var(--diffs-bg)) 88%, var(--diffs-addition-base)),
+            color-mix(in lab, var(--code-surface, var(--diffs-bg)) 80%, var(--diffs-addition-base))
+          );
         }
         [data-code]:has(> [data-content] > :is([data-line], [data-no-newline]):last-child[data-line-type="change-deletion"]) {
-          background-color: var(--diffs-bg-deletion);
+          background-color: light-dark(
+            color-mix(in lab, var(--code-surface, var(--diffs-bg)) 88%, var(--diffs-deletion-base)),
+            color-mix(in lab, var(--code-surface, var(--diffs-bg)) 80%, var(--diffs-deletion-base))
+          );
         }
         [data-diffs-header] {
           height: calc(2 * var(--space-4) + var(--space-1));

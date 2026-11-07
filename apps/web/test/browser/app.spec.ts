@@ -1668,13 +1668,13 @@ test("settings theme picker follows system, applies palettes and persists", asyn
     themes.getByRole("radio", { name: "Auto", exact: true }),
   ).toBeChecked();
 
-  await themes.getByRole("radio", { name: "diffx Light", exact: true }).click();
+  await themes.getByRole("radio", { name: "DiffX Light", exact: true }).click();
   await expect(html).toHaveAttribute("data-theme", "light");
   await expect.poll(savedTheme).toBe("light");
   // Arrow keys move and select, like native radios.
   await page.keyboard.press("ArrowDown");
   await expect(
-    themes.getByRole("radio", { name: "diffx Dark", exact: true }),
+    themes.getByRole("radio", { name: "DiffX Dark", exact: true }),
   ).toBeChecked();
   await expect(html).toHaveAttribute("data-theme", "dark");
 
@@ -1834,9 +1834,13 @@ test("header icons use design-system sizes and the active tab fuses with its pan
   const brand = page.locator(".topbar .brand");
   const filesToggle = page.getByRole("button", { name: "Hide file sidebar" });
   await expect(page.locator("#file-count")).not.toHaveText("0");
-  await expect(brand).toHaveText("diffx");
+  // The mark alone identifies the app; the link keeps its accessible name.
+  await expect(brand).toHaveText("");
   await expect(page.getByRole("link", { name: "diffx home" })).toBeVisible();
   await expect(brand.locator('svg[aria-hidden="true"]')).toBeVisible();
+  const brandBox = await brand.boundingBox();
+  expect(brandBox?.width).toBe(24);
+  expect(brandBox?.height).toBe(24);
   await expect(
     page.getByRole("navigation", { name: "Views", exact: true }),
   ).toHaveCount(0);
@@ -2004,7 +2008,7 @@ test("header text and actions stay centered", async ({ page }) => {
       const actionBox = action.getBoundingClientRect();
       const labels = Array.from(
         header.querySelectorAll(
-          ".brand > span, .context-identity-name, .context-identity-branch, .context-identity-separator, .context-identity-worktree-name, #repo-path",
+          ".context-identity-name, .context-identity-branch, .context-identity-separator, .context-identity-worktree-name, #repo-path",
         ),
       )
         .filter((element) => element.getBoundingClientRect().width > 0)

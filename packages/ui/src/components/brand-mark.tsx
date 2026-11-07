@@ -1,7 +1,7 @@
 /**
  * The diffx mark: an X cut into rows of code, with one row removed and one
- * added. Slate rows follow the surrounding brand text. Always beside the name,
- * so it stays out of the accessibility tree.
+ * added. Slate rows follow the surrounding brand color. The adjacent name or the
+ * enclosing link's label identifies it, so it stays out of the accessibility tree.
  */
 export function BrandMark() {
   return (

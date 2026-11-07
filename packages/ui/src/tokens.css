@@ -18,6 +18,16 @@
   --diff-file-header: var(--panel);
   --diff-canvas: #e9e9ea;
   --diff-canvas-dot: #cfcfd1;
+  /* Pierre's empty-line hatch on the shell code surface. */
+  --diff-buffer-stripe: color-mix(in lab, var(--bg) 88%, var(--fg));
+  /* Share of the tint hue in changed-line numbers; the rest mixes toward --fg.
+     The shell surface lowers it to keep AA against Pierre's vivid hues. */
+  --diff-number-base: 100%;
+  --diff-number-base-shell: 65%;
+  /* Share of each token color in dark changed-row syntax; the rest mixes toward
+     --fg. Pierre's dark syntax is tuned for near-black, so the slate shell needs it. */
+  --diff-syntax-base: 100%;
+  --diff-syntax-base-shell: 70%;
   --accent: #3f5fd6;
   --accent-hover: #3452c2;
   --accent-bg: #e6eafb;

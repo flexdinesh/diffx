@@ -89,7 +89,6 @@ export function HeaderBrand() {
     <>
       <a className="brand" href="/" aria-label="diffx home">
         <BrandMark />
-        <span>diffx</span>
       </a>
       <Separator
         variant="chrome"

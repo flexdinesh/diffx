@@ -36,12 +36,12 @@ export const THEMES = [
   },
   {
     id: "light",
-    label: "diffx Light",
+    label: "DiffX Light",
     kind: "base",
     mode: "light",
     code: pierre,
   },
-  { id: "dark", label: "diffx Dark", kind: "base", mode: "dark", code: pierre },
+  { id: "dark", label: "DiffX Dark", kind: "base", mode: "dark", code: pierre },
   {
     id: "catppuccin",
     label: "Catppuccin",

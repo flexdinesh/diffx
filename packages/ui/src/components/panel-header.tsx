@@ -4,6 +4,8 @@ import { cn } from "@diffx/ui/lib/utils";
 /**
  * The compact header row shared by navigation panels: 36px on desktop, the
  * topbar height inside compact drawers, a bottom separator, trailing actions.
+ * Tabs draw their own edges, so a tab strip's separator stays transparent and
+ * its actions sit directly on the panel.
  */
 export function PanelHeader({
   title,
@@ -20,7 +22,7 @@ export function PanelHeader({
     <div
       data-slot="panel-header"
       className={cn(
-        "flex h-panel-header min-w-0 shrink-0 items-center gap-0.5 border-b border-border px-1 max-lg:h-topbar [&_svg]:[stroke-width:var(--icon-stroke-chrome)]",
+        "flex h-panel-header min-w-0 shrink-0 items-center gap-0.5 border-b border-border px-1 max-lg:h-topbar has-data-[slot=tabs-list]:border-b-transparent [&_svg]:[stroke-width:var(--icon-stroke-chrome)]",
         title !== undefined && "gap-2 pl-4",
         className,
       )}

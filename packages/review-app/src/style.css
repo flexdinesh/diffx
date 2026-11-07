@@ -25,7 +25,6 @@
 /* Center mixed UI/mono text by cap height; padding preserves clipped descenders. */
 .topbar
   :is(
-    .brand > span,
     .context-identity-name,
     .context-identity-branch,
     .context-identity-separator,
@@ -283,8 +282,11 @@ main {
   display: flex;
   flex-direction: column;
 }
+/* The mark stands alone here: padding keeps a 24px target without moving it. */
 .topbar > .brand {
   flex-shrink: 0;
+  padding: var(--space-1);
+  margin-inline: calc(-1 * var(--space-1));
 }
 .toolbar {
   display: flex;
@@ -341,22 +343,41 @@ main {
   --status-glyph-deleted: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.5 1.5h13v13h-13zM3 3v10h10V3zM4.5 7.25h7v1.5h-7z'/%3E%3C/svg%3E");
   --status-glyph-moved: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.5 1.5h13v13h-13zM3 3v10h10V3zM4.5 7.25h4.1L7.1 5.75l1.06-1.06L11.47 8l-3.31 3.31-1.06-1.06 1.5-1.5H4.5z'/%3E%3C/svg%3E");
 }
-/* Code in a Diffx theme shares the shell's surface; syntax and tints stay Pierre's. */
+/* Code in a Diffx theme shares the shell's surface; syntax and tint hues stay Pierre's. */
 [data-code-surface="shell"] {
   --diffs-bg-context-override: var(--bg);
   --diffs-bg-context-gutter-override: var(--bg);
-  --diffs-bg-buffer-override: var(--bg);
+  /* Pierre's hatch stripes empty lines in this color over the surface. */
+  --diffs-bg-buffer-override: var(--diff-buffer-stripe);
   --diffs-bg-separator-override: var(--panel);
   /* Pierre paints context lines and gaps in its theme background; unsafeCSS reads this. */
   --diffs-gap-style: var(--space-0-5) solid var(--bg);
   --code-surface: var(--bg);
   --code-count-addition: var(--success);
   --code-count-deletion: var(--error);
+  --diff-number-base: var(--diff-number-base-shell);
+  --diff-syntax-base: var(--diff-syntax-base-shell);
 }
 .diff-code-view {
   padding-inline: var(--diff-gutter);
   /* A constant inset keeps toolbar actions still as files collapse or load. */
   scrollbar-gutter: stable;
+}
+/* The long diff keeps its scroll position visible at rest; other panes stay hover-only.
+   Unlayered rules beat the base layer's, so hover and drag feedback repeats here. */
+.diff-code-view::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+}
+.diff-code-view::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+.diff-code-view::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-active);
+}
+@supports not selector(::-webkit-scrollbar) {
+  .diff-code-view {
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
 }
 .diff-scroll-end {
   /* Lets the last file reach the top; four gutters cover its header and Pierre's bottom padding. */

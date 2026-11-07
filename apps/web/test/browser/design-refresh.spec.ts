@@ -697,3 +697,120 @@ test("diff header actions use shared muted borders and collapse files directly",
   ).toBeVisible();
   await expect(fileToggle(viewer, { expanded: true }).first()).toBeVisible();
 });
+
+test("default themes keep diff tints, numbers and the hatch on the shell surface", async ({
+  page,
+}) => {
+  const colorSchemes: ("light" | "dark")[] = ["light", "dark"];
+  const luminance = ([r, g, b]: number[]) => {
+    const channel = (value = 0) => {
+      const c = value / 255;
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+  };
+  const contrast = (a: number[], b: number[]) => {
+    const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return ((high ?? 0) + 0.05) / ((low ?? 0) + 0.05);
+  };
+  await page.setViewportSize({ width: 1440, height: 4_000 });
+  for (const colorScheme of colorSchemes) {
+    await page.emulateMedia({ colorScheme });
+    await page.goto("/");
+    const viewer = page.locator("#viewer");
+    await expect(viewer).toHaveAttribute("data-code-surface", "shell");
+    const buffer = viewer.locator("[data-content-buffer]").first();
+    await expect(buffer).toBeAttached();
+    for (const type of ["addition", "deletion"]) {
+      await expect(
+        viewer.locator(`[data-line][data-line-type="change-${type}"]`).first(),
+      ).toBeVisible();
+    }
+    const colors = await viewer.evaluate((element) => {
+      const context = document.createElement("canvas").getContext("2d", {
+        willReadFrequently: true,
+      });
+      if (!context) throw new Error("Missing canvas");
+      const rgb = (color: string) => {
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+        return Array.from(context.getImageData(0, 0, 1, 1).data.slice(0, 3));
+      };
+      const roots = Array.from(element.querySelectorAll("diffs-container"));
+      const find = (selector: string) => {
+        for (const root of roots) {
+          const match = root.shadowRoot?.querySelector(selector);
+          if (match) return getComputedStyle(match);
+        }
+        throw new Error(`Missing ${selector}`);
+      };
+      const row = (type: string) => {
+        const selector = `[data-line-type="change-${type}"]`;
+        const number = find(`[data-column-number]${selector}`);
+        return {
+          line: rgb(find(`[data-line]${selector}`).backgroundColor),
+          numberBackground: rgb(number.backgroundColor),
+          number: rgb(number.color),
+        };
+      };
+      // Pierre's dimmest syntax token, its punctuation.
+      const punctuation = find(
+        '[data-line][data-line-type="change-addition"] span[style*="#636363"]',
+      );
+      const probe = document.createElement("span");
+      probe.style.color = "var(--bg)";
+      element.append(probe);
+      const surface = getComputedStyle(probe).color;
+      probe.remove();
+      return {
+        surface,
+        surfaceRgb: rgb(surface),
+        hatch: find("[data-content-buffer]").backgroundImage,
+        addition: row("addition"),
+        deletion: row("deletion"),
+        punctuation: rgb(punctuation.color),
+      };
+    });
+    // Dim syntax stays legible on rows lifted off Pierre's near-black.
+    if (colorScheme === "dark")
+      expect(
+        contrast(colors.punctuation, colors.addition.line),
+      ).toBeGreaterThan(2.4);
+    // Stripes differ from the surface they draw over.
+    expect(colors.hatch).toContain("repeating-linear-gradient");
+    expect(colors.hatch).not.toContain(colors.surface);
+    for (const { line, numberBackground, number } of [
+      colors.addition,
+      colors.deletion,
+    ]) {
+      // Tints mix with the surface, so dark rows lift and light rows sink.
+      if (colorScheme === "dark")
+        expect(luminance(line)).toBeGreaterThan(luminance(colors.surfaceRgb));
+      else expect(luminance(line)).toBeLessThan(luminance(colors.surfaceRgb));
+      expect(contrast(number, numberBackground)).toBeGreaterThanOrEqual(4.5);
+    }
+  }
+});
+
+test("a tab strip leaves its actions without a surrounding box", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await showDiff(page);
+  const header = page.locator('#sidebar [data-slot="panel-header"]');
+  const transparent = "rgba(0, 0, 0, 0)";
+  await expect(header).toHaveCSS("border-bottom-color", transparent);
+  const collapse = page.getByRole("button", {
+    name: /^(?:Collapse|Expand) all folders$/,
+  });
+  await expect(collapse).toHaveCSS("border-top-color", transparent);
+  const tabs = header.getByRole("tab");
+  await expect(tabs.last()).toHaveAttribute("aria-selected", "false");
+  await expect(tabs.last()).toHaveCSS("border-right-width", "1px");
+  await expect(tabs.last()).toHaveCSS("border-bottom-width", "1px");
+  await tabs.last().click();
+  await expect(tabs.last()).toHaveAttribute("aria-selected", "true");
+  await expect(tabs.last()).toHaveCSS("border-right-width", "0px");
+  await expect(tabs.first()).toHaveCSS("border-right-width", "1px");
+});
