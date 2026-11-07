@@ -9,12 +9,12 @@ const skeletonVariants = cva(
   {
     variants: {
       shape: {
-        line: "h-2 rounded-xs",
-        code: "h-1.5 rounded-xs",
-        label: "h-3 rounded-xs",
-        icon: "size-icon-sm rounded-xs",
-        control: "h-control-compact rounded-control",
-        field: "h-control rounded-control",
+        line: "h-2",
+        code: "h-1.5",
+        label: "h-3",
+        icon: "size-icon-sm",
+        control: "h-control-compact",
+        field: "h-control",
       },
     },
     defaultVariants: { shape: "line" },

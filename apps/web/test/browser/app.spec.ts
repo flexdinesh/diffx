@@ -10,20 +10,6 @@ import {
 } from "./fixtures.ts";
 import { resetFixtureState } from "./fixture-state.ts";
 
-async function resolvedRadius(
-  page: Page,
-  token: "--radius-sm" | "--radius-md" | "--radius-lg",
-) {
-  return page.evaluate((name) => {
-    const probe = document.createElement("div");
-    probe.style.borderRadius = `var(${name})`;
-    document.body.append(probe);
-    const radius = getComputedStyle(probe).borderRadius;
-    probe.remove();
-    return radius;
-  }, token);
-}
-
 /** Stores review marks the way the diff's review buttons do. */
 async function markReviewed(baseURL: string | undefined, except: string) {
   if (!baseURL) throw new Error("Missing test URL");
@@ -609,7 +595,7 @@ test("file frames preserve measured gutters, gaps, and virtual geometry", async 
   });
 
   await expect(containers.first()).toHaveCSS("box-shadow", "none");
-  await expect(containers.first()).toHaveCSS("border-radius", "6px");
+  await expect(containers.first()).toHaveCSS("border-radius", "0px");
   await expect(containers.first()).toHaveCSS("outline-width", "1px");
   await expect(containers.first()).toHaveCSS("outline-offset", "0px");
   const borderColors = await containers.first().evaluate((element) => {
@@ -1354,8 +1340,7 @@ test("inline comments use a distinct structured surface while sidebar comments r
     }),
   ).toHaveAttribute("aria-expanded", "false");
   await expect(inline).toHaveAttribute("data-slot", "card");
-  const mediumRadius = await resolvedRadius(page, "--radius-md");
-  await expect(inline).toHaveCSS("border-radius", mediumRadius);
+  await expect(inline).toHaveCSS("border-radius", "0px");
   await expect(inline).toHaveCSS("border-left-width", "1px");
   await expect(inline).toHaveCSS("border-right-width", "1px");
   await expect(inline).toHaveCSS("border-top-width", "1px");
@@ -1388,19 +1373,16 @@ test("inline comments use a distinct structured surface while sidebar comments r
   expect(Math.abs(headerAlignment.centerOffset)).toBeLessThanOrEqual(0.5);
   await expect(inline.locator('[data-slot="card-header"]')).toHaveCSS(
     "height",
-    "36px",
+    "28px",
   );
   await expect(inline.locator('[data-slot="card-footer"]')).toHaveCSS(
     "height",
-    "36px",
+    "28px",
   );
-  // Status uses the shared Badge status variant: compact height, small radius.
+  // Status uses the shared Badge status variant: compact height, square corners.
   const inlineState = inline.getByTitle(/^Lifecycle:/);
   await expect(inlineState).toHaveCSS("height", "24px");
-  await expect(inlineState).toHaveCSS(
-    "border-radius",
-    await resolvedRadius(page, "--radius-sm"),
-  );
+  await expect(inlineState).toHaveCSS("border-radius", "0px");
   const surfaces = await inline.evaluate((element) => {
     const header = element.querySelector<HTMLElement>(
       '[data-slot="card-header"]',
@@ -1419,7 +1401,7 @@ test("inline comments use a distinct structured surface while sidebar comments r
   expect(surfaces.actions).not.toBe(surfaces.body);
   await expect(inline.locator('[data-slot="card-header"] svg')).toHaveCount(2);
   await expect(inline.locator('[data-slot="card-title"] span')).toHaveText(
-    "· line 2–4",
+    "Line 2–4",
   );
   await expect(inline.locator('[data-slot="card-footer"] svg')).toHaveCount(4);
   const commentActions = inline
@@ -1440,10 +1422,10 @@ test("inline comments use a distinct structured surface while sidebar comments r
       })),
     ),
   ).toEqual([
-    { height: 28, variant: "ghost" },
-    { height: 28, variant: "ghost" },
-    { height: 28, variant: "outline" },
-    { height: 28, variant: "destructive" },
+    { height: 24, variant: "ghost" },
+    { height: 24, variant: "ghost" },
+    { height: 24, variant: "outline" },
+    { height: 24, variant: "destructive" },
   ]);
   const resolve = inline.getByRole("button", {
     name: "Resolve",
@@ -1553,11 +1535,11 @@ test("inline comments use a distinct structured surface while sidebar comments r
   ).toBeVisible();
   await expect(sidebar.locator('[data-slot="card-header"]')).toHaveCSS(
     "height",
-    "32px",
+    "28px",
   );
   await expect(sidebar.locator('[data-slot="card-footer"]')).toHaveCSS(
     "height",
-    "32px",
+    "28px",
   );
   await expect(sidebar.getByTitle(/^Lifecycle:/)).toHaveCSS("height", "24px");
   await page
@@ -1581,10 +1563,7 @@ test("inline comments use a distinct structured surface while sidebar comments r
     ),
   ).toEqual(["2", "3", "4"]);
   await expect(sidebar).toHaveAttribute("data-slot", "card");
-  await expect(sidebar).toHaveCSS(
-    "border-radius",
-    await resolvedRadius(page, "--radius-lg"),
-  );
+  await expect(sidebar).toHaveCSS("border-radius", "0px");
   await expect(sidebar).toHaveCSS("border-left-width", "1px");
   await expect(sidebar).toHaveCSS("border-right-width", "1px");
   const [inlineBorder, sidebarBorder] = await Promise.all([
@@ -1846,7 +1825,7 @@ test("a capture shows only its diff: no review navigation, search or switcher", 
   ).toHaveCount(0);
 });
 
-test("header icons and sidebar tab indicator use design-system sizes", async ({
+test("header icons use design-system sizes and the active tab fuses with its panel", async ({
   page,
 }) => {
   await withReviewNavigation(page);
@@ -1944,12 +1923,9 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
     const rail = find(".stream-rail").getBoundingClientRect();
     const railView = railViewButton.getBoundingClientRect();
     const headerButton = headerElement.getBoundingClientRect();
-    const indicator = getComputedStyle(tab, "::after");
-    const colorProbe = document.createElement("span");
-    colorProbe.style.color = "var(--accent)";
-    document.body.append(colorProbe);
-    const accent = getComputedStyle(colorProbe).color;
-    colorProbe.remove();
+    const panel = document.querySelector(".navigation-island");
+    const inactiveTab = document.querySelector("#comments-tab");
+    if (!panel || !inactiveTab) throw new Error("Missing sidebar tabs");
     return {
       identity: size(".context-identity svg"),
       viewOptions: size("#view-options svg"),
@@ -1963,8 +1939,10 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
         (element) => getComputedStyle(element).strokeWidth,
       ),
       tabBorderWidth: getComputedStyle(tab).borderBottomWidth,
-      indicatorColor: indicator.backgroundColor,
-      indicatorOpacity: indicator.opacity,
+      tabBackground: getComputedStyle(tab).backgroundColor,
+      panelBackground: getComputedStyle(panel).backgroundColor,
+      inactiveTabBorderWidth: getComputedStyle(inactiveTab).borderBottomWidth,
+      inactiveTabBackground: getComputedStyle(inactiveTab).backgroundColor,
       dividerCenterOffset: Math.abs(
         topbarBox.top +
           topbarBox.height / 2 -
@@ -1979,7 +1957,6 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
       headerButtonInset: headerButton.top - topbarBox.top,
       railViewRadius: getComputedStyle(railViewButton).borderRadius,
       headerButtonRadius: getComputedStyle(headerElement).borderRadius,
-      accent,
     };
   });
 
@@ -1987,8 +1964,8 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
     refresh: "16px",
     headerIcon: "16px",
     view: "16px",
-    tabBorderWidth: "1px",
-    indicatorOpacity: "1",
+    tabBorderWidth: "0px",
+    inactiveTabBorderWidth: "1px",
     dividerHeight: 16,
     headerHeight: 36,
   });
@@ -2001,7 +1978,8 @@ test("header icons and sidebar tab indicator use design-system sizes", async ({
   expect(styles.railViewRadius).toBe(styles.headerButtonRadius);
   expect(styles.chromeStrokes.every((stroke) => stroke === "1.7px")).toBe(true);
   expect(styles.dividerCenterOffset).toBeLessThanOrEqual(0.5);
-  expect(styles.indicatorColor).toBe(styles.accent);
+  expect(styles.tabBackground).toBe(styles.panelBackground);
+  expect(styles.inactiveTabBackground).not.toBe(styles.panelBackground);
 });
 
 test("header text and actions stay centered", async ({ page }) => {
@@ -2055,7 +2033,7 @@ test("header text and actions stay centered", async ({ page }) => {
         labels,
       };
     });
-    // Controls center between the window edge and the islands below.
+    // Controls center between the window edge and the panes below.
     expect(geometry.top).toBe(0);
     expect(geometry.islandGap).toBe(0);
     expect(geometry.iconOffset).toBe(0);
@@ -2131,7 +2109,7 @@ test("review column and file sidebar resize independently and persist", async ({
     await page.mouse.up();
     await expect(resizer).toHaveAttribute("aria-valuenow", String(before + 40));
     await expect(pane).toHaveCSS("width", `${before + 40}px`);
-    expect(await paneGap()).toBe(6);
+    expect(await paneGap()).toBe(0);
     await resizer.focus();
     await page.keyboard.press("ArrowLeft");
     await expect(pane).toHaveCSS("width", `${before + 20}px`);
@@ -2552,7 +2530,7 @@ test("file review comments save and reopen without selecting lines", async ({
       .filter({ hasText: `Review entire ${path}` });
     await expect(card).toBeVisible();
     await expect(card.locator('[data-slot="card-title"]')).toContainText(
-      "· file",
+      "File",
     );
   }
   await page.reload();

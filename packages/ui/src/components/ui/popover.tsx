@@ -41,7 +41,7 @@ function PopoverContent({
         <PopoverPrimitive.Popup
           data-slot="popover-content"
           className={cn(
-            "flex max-h-(--available-height) w-[min(16rem,calc(100vw-2*var(--space-4)))] flex-col gap-3 overflow-y-auto rounded-control bg-raised p-3 text-sm text-fg shadow-overlay ring-1 ring-border outline-none",
+            "flex max-h-(--available-height) w-[min(16rem,calc(100vw-2*var(--space-4)))] flex-col gap-3 overflow-y-auto bg-raised p-3 text-sm text-fg shadow-overlay ring-1 ring-border outline-none",
             size === "list" && "max-h-[min(24rem,var(--available-height))]",
             className,
           )}

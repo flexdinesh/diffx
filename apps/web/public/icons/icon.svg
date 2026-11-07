@@ -1,20 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- diffx "dx" monogram and favicon. Source of the PNG icons; colors are
-       the shell canvas and accent tokens, light and dark. -->
+  <!-- diffx "[x]" mark and favicon. Source of the PNG icons; colors are the
+       shell and accent tokens, light and dark. -->
   <style>
-    .tile { fill: #edeef2; }
-    .ink { stroke: #5957d2; }
+    .tile { fill: #e2e2e3; }
+    .ink { stroke: #3f5fd6; }
     @media (prefers-color-scheme: dark) {
-      .tile { fill: #292a30; }
-      .ink { stroke: #aba7ff; }
+      .tile { fill: #3b414d; }
+      .ink { stroke: #74ade8; }
     }
   </style>
-  <rect class="tile" x="16" y="16" width="480" height="480" rx="112"/>
-  <g class="ink">
-    <g fill="none" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="184" cy="288" r="64"/>
-      <path d="M248 144V352"/>
-      <path d="M300 224l92 128M392 224l-92 128"/>
-    </g>
+  <rect class="tile" width="512" height="512"/>
+  <g class="ink" fill="none" stroke-linecap="butt" stroke-linejoin="miter">
+    <path stroke-width="64" d="M160 96H96V416H160M352 96H416V416H352"/>
+    <path stroke-width="56" d="M192 192L320 320M320 192L192 320"/>
   </g>
 </svg>

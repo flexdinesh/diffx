@@ -40,7 +40,7 @@ function SelectTrigger({
       data-slot="select-trigger"
       data-size={size}
       className={cn(
-        "flex w-fit items-center justify-between gap-2 whitespace-nowrap rounded-control border border-control bg-bg px-2 text-sm text-fg select-none disabled:cursor-not-allowed disabled:opacity-60 aria-invalid:border-error data-[size=default]:h-control data-[size=sm]:h-control-compact max-md:min-h-touch max-md:text-input-touch pointer-coarse:min-h-touch pointer-coarse:text-input-touch *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-icon",
+        "flex w-fit items-center justify-between gap-2 whitespace-nowrap border border-control bg-bg px-2 text-sm text-fg select-none disabled:cursor-not-allowed disabled:opacity-60 aria-invalid:border-error data-[size=default]:h-control data-[size=sm]:h-control-compact max-md:min-h-touch max-md:text-input-touch pointer-coarse:min-h-touch pointer-coarse:text-input-touch *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-icon",
         className,
       )}
       {...props}
@@ -83,7 +83,7 @@ function SelectContent({
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
           className={cn(
-            "relative isolate max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-control bg-raised text-fg shadow-overlay ring-1 ring-border",
+            "relative isolate max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto bg-raised text-fg shadow-overlay ring-1 ring-border",
             className,
           )}
           {...props}
@@ -122,7 +122,7 @@ function SelectItem({
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        "relative flex min-h-control w-full cursor-default items-center gap-2 rounded-control py-1 pr-8 pl-2 text-sm outline-hidden select-none focus:bg-selected focus:text-accent data-highlighted:bg-selected data-highlighted:text-accent data-disabled:pointer-events-none data-disabled:opacity-60 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-icon",
+        "relative flex min-h-control w-full cursor-default items-center gap-2 py-1 pr-8 pl-2 text-sm outline-hidden select-none focus:bg-selected focus:text-accent data-highlighted:bg-selected data-highlighted:text-accent data-disabled:pointer-events-none data-disabled:opacity-60 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-icon",
         className,
       )}
       {...props}

@@ -3,7 +3,7 @@ import type {
   SupportedLanguages,
   ThemesType,
 } from "@pierre/diffs";
-import { themeCode, type ThemePreference } from "./theme.ts";
+import { themeCode, themeKind, type ThemePreference } from "./theme.ts";
 
 export type DiffTheme =
   | "match"
@@ -98,6 +98,14 @@ export function themesFor(
     DIFF_THEMES.find((option) => option.value === value)?.themes ??
     themeCode(appTheme)
   );
+}
+
+/** Whether code renders on the shell's surface: a Diffx theme and "Match app theme". */
+export function codeMatchesShell(
+  value: DiffTheme,
+  appTheme: ThemePreference,
+): boolean {
+  return value === "match" && themeKind(appTheme) === "base";
 }
 
 export function languageOverride(

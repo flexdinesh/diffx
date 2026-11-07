@@ -375,6 +375,7 @@ function ProjectItem({
   return (
     <li>
       <DisclosureRow
+        depth={1}
         className="mt-1"
         open={expanded}
         onToggle={onToggle}
@@ -466,7 +467,7 @@ function StreamRow({
 }) {
   return (
     <ListRow
-      {...(depth !== undefined && { depth })}
+      depth={(depth ?? 0) + 1}
       className="flex-col items-stretch"
       render={<a href={streamPath(context)} />}
       aria-current={current ? "page" : undefined}

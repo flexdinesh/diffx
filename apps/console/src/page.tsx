@@ -77,10 +77,7 @@ export function OneTimeLink({
     }
   }
   return (
-    <div
-      className="mb-6 rounded-control border border-separator bg-panel p-4"
-      role="status"
-    >
+    <div className="mb-6 border border-separator bg-panel p-4" role="status">
       <h2 className="mb-2 text-md font-semibold">{title}</h2>
       <p className={prose}>
         {children} The link disappears when you leave this page.

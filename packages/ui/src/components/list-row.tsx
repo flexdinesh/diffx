@@ -4,7 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@diffx/ui/lib/utils";
 
 const listRowVariants = cva(
-  "flex w-full min-w-0 min-h-control-small items-center gap-1.5 rounded-control px-1 py-0.5 text-left text-sm text-fg no-underline hover:bg-hover aria-[current=page]:bg-selected aria-[current=page]:text-accent aria-[current=true]:bg-selected aria-[current=true]:text-accent aria-selected:bg-selected aria-checked:bg-selected aria-checked:text-accent disabled:cursor-not-allowed disabled:text-secondary disabled:hover:bg-transparent [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-icon-sm",
+  "flex w-full min-w-0 min-h-control-small items-center gap-1.5 px-1 py-0.5 text-left text-sm text-fg no-underline hover:bg-hover aria-[current=page]:bg-selected aria-[current=page]:text-accent aria-[current=true]:bg-selected aria-[current=true]:text-accent aria-selected:bg-selected aria-checked:bg-selected aria-checked:text-accent disabled:cursor-not-allowed disabled:text-secondary disabled:hover:bg-transparent [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-icon-sm",
   {
     variants: {
       // Paths and code identifiers stay mono; names of repos and branches sans.
@@ -17,7 +17,7 @@ const listRowVariants = cva(
         // Two-line dialog results (review picker): roomier insets and muted
         // leading/trailing icons; touch-height rows on coarse pointers.
         option:
-          "gap-2 rounded-md px-3 py-1.5 text-base max-md:px-2 pointer-coarse:min-h-touch [&>svg]:text-muted",
+          "gap-2 px-3 py-1.5 text-base max-md:px-2 pointer-coarse:min-h-touch [&>svg]:text-muted",
       },
     },
     defaultVariants: { font: "sans", variant: "default" },

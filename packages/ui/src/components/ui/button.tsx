@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@diffx/ui/lib/utils";
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-control border border-transparent text-base font-medium select-none disabled:pointer-events-none disabled:opacity-60 aria-invalid:border-error [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-icon",
+  "group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap border border-transparent text-base font-medium select-none disabled:pointer-events-none disabled:opacity-60 aria-invalid:border-error [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-icon",
   {
     variants: {
       variant: {

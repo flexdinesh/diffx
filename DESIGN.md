@@ -2,10 +2,14 @@
 name: diffx
 description: Focused, compact, calm code review workspace
 colors:
-  diff-canvas: "#ffffff"
-  diff-canvas-dot: "#e5e7ec"
-  diff-canvas-dark: "#111216"
-  diff-canvas-dot-dark: "#282a31"
+  diff-canvas: "#e9e9ea"
+  diff-canvas-dot: "#cfcfd1"
+  diff-canvas-dark: "#21252b"
+  diff-canvas-dot-dark: "#3a3f49"
+  shell: "#e2e2e3"
+  shell-dark: "#3b414d"
+  accent: "#3f5fd6"
+  accent-dark: "#74ade8"
 ---
 
 # Design system
@@ -17,11 +21,13 @@ The code is the primary content. Navigation, display controls, comments, and
 review progress help people read and act on it.
 
 Keep the interface **focused, compact, calm, precise, readable, and familiar**.
-Retain neutral surfaces, violet selection, system UI type, and monospace code.
-Polish this direction rather than inventing a new one.
+The direction is editor chrome in the spirit of Zed: panes meet flush at
+hairlines, every corner is square, surfaces are One-style neutrals, and a single
+blue carries selection and action. System UI type and monospace code stay. Polish
+this direction rather than inventing a new one.
 
 Avoid dashboard-like card grids, oversized headings, decorative gradients,
-floating toolbars, pill-shaped everything, decorative shadows, and colored
+floating toolbars, curved corners of any size, decorative shadows, and colored
 chrome competing with additions, deletions, syntax, or selected lines.
 
 ## Design principles
@@ -49,7 +55,8 @@ both entries. Desktop preferences start fresh with web settings; server review
 data is retained.
 
 - `packages/ui/src/tokens.css`: semantic colors, spacing, geometry, elevation,
-  responsive gutters, light/dark equivalents, and theme palettes.
+  responsive gutters, light/dark equivalents, and theme palettes. It defines no
+  radius tokens.
 - `packages/review-app/src/theme.ts`: the theme registry (id, label, kind, mode and
   matching code theme).
 - `packages/ui/src/typography.css`: fonts, text/icon sizes, weights, line heights.
@@ -85,7 +92,7 @@ system for Tailwind or shadcn.
 - Prefer a shared shadcn primitive and its variants for standard controls. Use
   authored CSS for shell/responsive composition, dynamic tree depth, resizing,
   measured geometry, status graphics, and Pierre integration.
-- **Primitives own visuals.** Color, border, radius, padding, height, type and
+- **Primitives own visuals.** Color, border, padding, height, type and
   icon size live in a primitive or composite variant. Feature code arranges
   components (layout, gap, margin, flex/grid, visibility) and may style its own
   intrinsic elements with token utilities; it never restyles a component through
@@ -96,16 +103,16 @@ system for Tailwind or shadcn.
 name, so markup and tokens share one vocabulary. Default Tailwind scales are
 cleared; only these exist:
 
-| Utility family                     | Examples                                                                         | Token                                            |
-| ---------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Surfaces (`bg-*`)                  | `bg-bg`, `bg-panel`, `bg-raised`, `bg-hover`, `bg-selected`, `bg-shell`          | `--bg`, `--panel`, `--surface-raised`, …         |
-| Text (`text-*`)                    | `text-fg`, `text-secondary`, `text-muted`, `text-accent`, `text-error`           | `--fg`, `--text-secondary`, `--muted`, …         |
-| Borders (`border-*`)               | `border-border`, `border-separator`, `border-control`                            | `--border`, `--border-muted`, `--border-control` |
-| Status                             | `*-success`, `*-warning`, `*-error`, `*-success-bg`, …                           | Semantic status pairs                            |
-| Spacing (`p-*`, `gap-*`, `m-*`)    | `0.5`, `1`, `1.5`, `2`, `3`, `4`, `6`, `8`, `12`, `16`                           | `--space-*` (4px rhythm)                         |
-| Sizes (`h-*`, `size-*`, `min-h-*`) | `control`, `control-small`, `control-compact`, `touch`, `icon`, `icon-sm`        | Control, touch and icon tokens                   |
-| Type                               | `text-xs`…`text-xl`, `text-code`, `leading-ui`, `tracking-label`                 | `typography.css`                                 |
-| Radius / elevation                 | `rounded-control`, `rounded-md`, `rounded-lg`, `rounded-round`, `shadow-overlay` | Radius and overlay tokens                        |
+| Utility family                     | Examples                                                                  | Token                                            |
+| ---------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------ |
+| Surfaces (`bg-*`)                  | `bg-bg`, `bg-panel`, `bg-raised`, `bg-hover`, `bg-selected`, `bg-shell`   | `--bg`, `--panel`, `--surface-raised`, …         |
+| Text (`text-*`)                    | `text-fg`, `text-secondary`, `text-muted`, `text-accent`, `text-error`    | `--fg`, `--text-secondary`, `--muted`, …         |
+| Borders (`border-*`)               | `border-border`, `border-separator`, `border-control`                     | `--border`, `--border-muted`, `--border-control` |
+| Status                             | `*-success`, `*-warning`, `*-error`, `*-success-bg`, …                    | Semantic status pairs                            |
+| Spacing (`p-*`, `gap-*`, `m-*`)    | `0.5`, `1`, `1.5`, `2`, `3`, `4`, `6`, `8`, `12`, `16`                    | `--space-*` (4px rhythm)                         |
+| Sizes (`h-*`, `size-*`, `min-h-*`) | `control`, `control-small`, `control-compact`, `touch`, `icon`, `icon-sm` | Control, touch and icon tokens                   |
+| Type                               | `text-xs`…`text-xl`, `text-code`, `leading-ui`, `tracking-label`          | `typography.css`                                 |
+| Elevation                          | `shadow-overlay`                                                          | Overlay token                                    |
 
 Use the utility when one exists; `bg-(--panel)` or `p-[var(--space-2)]` for a
 token that already has a utility is rejected. 2px (`*-0.5`) steps are optical
@@ -125,7 +132,7 @@ measured elements or replace the application tokens with framework defaults.
 | Diff canvas                   | `--diff-canvas`     | Quiet neutral surround behind opaque file diffs                    |
 | Diff canvas dots              | `--diff-canvas-dot` | Faint dotted texture visible only between file diffs               |
 | Secondary surface             | `--panel`           | Sidebar, grouped controls, inline review annotations               |
-| Shell canvas                  | `--shell-canvas`    | Neutral background around workspace islands and behind the header  |
+| Shell canvas                  | `--shell-canvas`    | Neutral background behind the header and flush panes               |
 | Elevated surface              | `--surface-raised`  | Dialogs and future actual overlays                                 |
 | Primary text                  | `--fg`              | File names, headings, review content                               |
 | Secondary text                | `--text-secondary`  | Supporting prose and available secondary actions                   |
@@ -146,7 +153,7 @@ measured elements or replace the application tokens with framework defaults.
 
 - Use one foreground hierarchy across both themes. Dark mode maps the same roles;
   it is not a separate visual identity.
-- Accent must explain an action or state. Do not outline every comment in violet.
+- Accent must explain an action or state. Do not outline every comment in blue.
   Open comments use a neutral edge; resolved comments add success plus text.
 - `--file-code`, `--file-data`, `--file-markup`, and `--file-config` preserve small
   file-kind hints. They are a bounded categorical palette, not extra UI accents.
@@ -259,16 +266,16 @@ such detail into a token. New layout spacing must use the scale.
   The diff receives all width remaining after navigation. The signed-out
   landing page is the one exception (see
   [Signed-out landing page](#signed-out-landing-page)).
-- Inset the shell by `--shell-gutter` (6px). Use the same gutter between
-  islands, `--radius-lg` outer corners, and a 1px neutral outline without
-  elevation. The review column and file sidebar form one continuous navigation
-  island; notices, toolbar, viewer, and status bar form the review island.
-  Keep these frames outside Pierre's measured file geometry. At compact widths,
-  remove the empty navigation island and retain the inset review surface;
-  modal drawers use the same inset and corners without clipping focus or menus.
+- The shell has no outer gutter and panes no gaps: header, navigation and review
+  meet flush at 1px `--border` hairlines, without elevation. The review column
+  and file sidebar form one continuous navigation pane; notices, toolbar, viewer,
+  and status bar form the review pane. Keep these hairlines outside Pierre's
+  measured file geometry. At compact widths, remove the empty navigation pane and
+  let the review pane fill the window; modal drawers span the window's full
+  height from its leading edge, without clipping focus or menus.
 - Header: `--topbar-height` (36 desktop, 44 narrow or coarse pointer). The
-  header replaces the shell's top gutter, sitting flush with the window edge
-  directly above the islands, so its controls center between both edges. Keep
+  header sits flush with the window edge directly above the panes, so its
+  controls center between both edges. Keep
   desktop controls at 32px, header icons at 16px, the divider at 16px, and group
   spacing at 6px so the header recedes into the editor chrome. Toolbar and sidebar
   tabs share the compact 36px desktop rhythm (`--control-small` plus two
@@ -305,7 +312,7 @@ such detail into a token. New layout spacing must use the scale.
   a capture (piped stdin or a fixture) serves one fixed diff. A capture shows
   no review column, rail, drawer toggle, search, Cmd/Ctrl+K, header
   comboboxes or sync; its header keeps the brand, file-sidebar toggle and the
-  static Piped identity, and the island holds only the file sidebar (hidden,
+  static Piped identity, and the navigation pane holds only the file sidebar (hidden,
   still mounted, while collapsed). Piped wording, icons and grouping appear
   only there; elsewhere a stored stdin snapshot reads like any review.
   Components read the policy, never the deployment mode.
@@ -313,11 +320,11 @@ such detail into a token. New layout spacing must use the scale.
   the column; a local checkout process shows the column, rail and “Show
   reviews” drawer toggle only once the column would list two current streams,
   then keeps them for the page session so a stream leaving never reflows the
-  review. Until then the island holds only the file sidebar, exactly as a
+  review. Until then the navigation pane holds only the file sidebar, exactly as a
   capture's, with no placeholder or motion; search, Cmd/Ctrl+K, the header
   comboboxes and sync remain. The column appears instantly in its persisted
   list or rail state.
-- Review column: the leading pane of the navigation island, titled “Reviews”,
+- Review column: the leading pane of the navigation column, titled “Reviews”,
   on `--panel`, sharing the file tree and diff's top and bottom edges below the
   header. Switching streams changes everything to its right; the column stays.
   It has two states, list and rail, persisted per browser; there is no
@@ -344,8 +351,7 @@ such detail into a token. New layout spacing must use the scale.
   Repository collapse state persists per browser.
 - Review rail: the collapsed column is a fixed `--activity-width` column equal
   to `--topbar-height` (36px; 44px for coarse pointers). Items match header icon
-  buttons (32px desktop, 44px touch) with the header's inset; coarse pointers add
-  a 4px block inset so flush items clear the island corners. “Expand reviews”
+  buttons (32px desktop, 44px touch) with the header's inset. “Expand reviews”
   leads a separator, then one `rail` button per repository showing a
   two-letter monogram, an accent dot for unopened streams, and
   `aria-current="true"` with accent text on `--selected` for the open review's
@@ -399,20 +405,22 @@ such detail into a token. New layout spacing must use the scale.
   no hover preview. Add future browser preferences as further sections.
 - The diff display toolbar uses `--panel`, matching the header and status bar.
 - Desktop navigation widths: `--streams-width` defaults to 240px and
-  `--sidebar-width` to 330px. `Navigation.tsx` owns the island and one resize
+  `--sidebar-width` to 330px. `Navigation.tsx` owns the pane and one resize
   handle per pane; `use-stream-nav.ts` owns the review column width (200–400px)
   and `use-sidebar.ts` the file sidebar width (200–520px), both bounded by
   available viewport space. The header file-sidebar toggle hides and reopens
   the file sidebar.
   Do not add competing CSS defaults or override a saved width at tablet sizes.
-- Sidebar interiors share a 16px inset. Tree rows use 8px base padding plus
-  16px per nesting level; file and folder names align to the same icon column.
+- Sidebar interiors share a 16px inset. Rows run edge to edge so selection and
+  hover fill the pane up to its stable scrollbar gutter, and indent themselves to
+  that inset. Tree rows use 8px base padding plus 16px per nesting level; file and
+  folder names align to the same icon column.
 - The viewport, file list, and comments list own their scrolling. Flex children
   need `min-width: 0` / `min-height: 0` so content can shrink without page overflow.
   Keep a 12rem minimum basis for sidebar content; the outer sidebar can scroll
   on short viewports or enlarged text so navigation/export/footer stay reachable.
 - Scrollbars are thin and quiet, matching Pierre's code tracks: a fixed
-  `--scrollbar-size` (10px) track with a 6px rounded thumb that appears while
+  `--scrollbar-size` (10px) track with a 6px square thumb that appears while
   its pane is hovered or holds focus and darkens on hover and drag. Firefox uses
   `scrollbar-width: thin`; set `scrollbar-color` only there, since it inherits
   into Pierre's shadow roots and disables their Chromium styling. Long-lived panes
@@ -426,8 +434,8 @@ such detail into a token. New layout spacing must use the scale.
 - Keep overlays anchored to their owning region. Sidebar/resizer layering uses
   `--layer-sidebar` / `--layer-resizer`; modal dialogs use the native top layer.
   Each resize handle overlaps its pane's trailing edge and adds no layout
-  width. Drag distance changes that pane's width, regardless of shell insets. The shell gutter separates navigation from
-  the review island; the measured 12px diff gutter remains inside that island.
+  width. Drag distance changes that pane's width. A hairline separates navigation
+  from the review pane; the measured 12px diff gutter remains inside that pane.
 
 ### Pierre boundary
 
@@ -445,13 +453,25 @@ such detail into a token. New layout spacing must use the scale.
 - Do not add outer margins, padding, or borders to virtualized `diffs-container`
   elements. Quiet frames use `--space-3` horizontal gutters on `CodeView` and
   Pierre-measured top/bottom padding and file gaps (12px by default), read from
-  the sizing probe. Frame each file with `--radius-md`, `overflow: clip`, and a
-  1px `--border` outline at the edge, matching shell separators in both themes.
+  the sizing probe. Files stay separately framed boxes on the dotted canvas: frame
+  each with `overflow: clip` and a 1px `--border` outline at the edge, matching
+  shell separators in both themes.
   Remove bottom padding from code and diff surfaces. Native horizontal scrollbar
   tracks use the final row's addition/deletion color; other endings use the base
   code surface. Set `itemMetrics.paddingBottom` to the measured native scrollbar
   height for unwrapped code, or 0 when wrapped. The frame adds no layout geometry;
   keep `itemMetrics` synchronized so virtual scrolling remains correct.
+- Under "Match app theme" with a base Diffx theme, `data-code-surface="shell"`
+  puts context lines, gutters and buffers on `--bg` and separators on `--panel`
+  through Pierre's `--diffs-*-override` properties; `--diffs-gap-style` and
+  `--code-surface` repaint the context lines and gaps Pierre fills with its theme
+  background, near-black beside that surface. Syntax colors and addition/deletion tints stay Pierre's.
+  Other code themes and palette themes keep their own surface.
+- `unsafeCSS` squares every corner in the shadow root, including Pierre's inline
+  diff spans and scrollbar thumbs. Pierre draws status icons from rounded sprites
+  CSS cannot reach, so it hides each sprite and masks a square `--status-glyph-*`
+  over the icon box, leaving its size unchanged. On the shell surface, header
+  counts use `--success` and `--error` to keep text contrast.
 - Keep `unsafeCSS` small and justified. Do not reconstruct syntax styling or
   broadly target internal shadow-DOM elements to make the library look like chrome.
 - Each file header shows a Reviewed toggle and, when comments are enabled, an
@@ -469,21 +489,18 @@ such detail into a token. New layout spacing must use the scale.
   every `SearchField` (file filter and picker search) share this token.
   Text, icons, hover and focus identify these actions; avoid per-button colors.
 - Use 1px `--border-muted` for separators and `--border-control` for interactive
-  boundaries requiring 3:1 contrast. `--border` frames islands, files and
+  boundaries requiring 3:1 contrast. `--border` frames panes, files and
   cards; focus and errors use their semantic tokens. Do not stack a card
   border inside another bordered panel unless it
   represents an independent review object.
-- `--radius-xs` (2) is for skeleton bars. `--radius-sm` (4), aliased as
-  `--radius-control`, is for rows, badges, and compact controls; `--radius-md`
-  (6) for inline comment cards, file frames and picker rows; `--radius-lg` (8)
-  for shell islands, sidebar comments and dialogs. Inline review annotations
-  remain square. Circles (`--radius-round`, `rounded-round`) are reserved for
-  dots and small status marks; use `StatusDot` rather than a new circle.
+- Every corner is square: controls, cards, dialogs, status dots, the reviewed
+  check, scrollbar thumbs, skeletons and Pierre's shadow DOM. There are no radius
+  tokens or `rounded-*` utilities, and no exceptions. Custom SVG marks use square
+  caps and miter joins; Lucide glyphs keep the geometry they ship with.
 - `--shadow-overlay` is the single elevation treatment for drawers/dialogs.
   Use `--backdrop` for modal separation. Whitespace and surface changes do the
   grouping work in the rest of the app.
-- Quiet frames use small corners (`--radius-md`, 6px by default), a neutral
-  outline, and measured gaps without an elevation shadow. The faint canvas dots
+- Quiet frames use a neutral outline and measured gaps without an elevation shadow. The faint canvas dots
   use a 20px pitch and remain visible only outside file surfaces.
 
 ## Components
@@ -531,7 +548,7 @@ at `/design.html` (see `docs/frontend.md`).
 - Standard control height is `--control-height` (32). Compact header-slot
   controls use `--control-compact` (24); segmented groups share the 32px outer size.
 - Outlined buttons use regular borders, medium UI text, 12px horizontal padding,
-  and `--radius-control`. Quiet buttons use secondary text and no resting border.
+  and square corners. Quiet buttons use secondary text and no resting border.
 - Standard buttons and button-like header statuses use the 32px control height.
   Compact sizing is reserved for subordinate icon and metadata controls. Shared
   variants own hover, active, border, and background styling.
@@ -545,7 +562,7 @@ at `/design.html` (see `docs/frontend.md`).
 ### Forms
 
 - Reuse the shared shadcn `Input`, `Select`, and `Textarea` primitives. They use
-  `--bg` or `--panel`, `--border-control`, and `--radius-control`. Textareas share the
+  `--bg` or `--panel` and `--border-control`. Textareas share the
   review body style and 8px/12px padding.
 - Label every control. Placeholders are hints, not labels. Keep label-to-control
   spacing at 8px, including the heading above a comment editor.
@@ -558,14 +575,16 @@ at `/design.html` (see `docs/frontend.md`).
 
 ### Cards, navigation, and status
 
-- Review comments and editors use the shared shadcn `Card` composition. Inline
-  cards use a complete subtle border, `--radius-md`, generous outer spacing, and
-  no shadow; sidebar cards use `--radius-lg`. Separate card regions with a raised
-  body surface, neutral header, and neutral action row; reserve accent tint for
-  active editors and selections. Keep status at the
-  header's trailing edge and use compact labeled icons for state and actions.
-- Comment actions and each file's viewed control use standard button sizing.
-  Comment status badges match the same control height.
+- Review comments and editors use the shared shadcn `Card` composition, as dense
+  as the rest of the shell: a complete subtle border, no shadow, 8px block margins,
+  a 28px header, an 8px body and a 28px action row. Separate card regions with a
+  raised body surface, neutral header, and neutral action row; reserve accent tint
+  for active editors and selections. Titles state the target ("File", "Line 2–4")
+  without repeating "Review comment"; the editor's label is screen-reader only.
+  Keep status at the header's trailing edge and use compact labeled icons for state
+  and actions.
+- Comment actions use `xs` buttons with touch sizing on coarse pointers; each
+  file's viewed control uses standard button sizing.
 - Resolved comments collapse to their header by default. A labeled chevron
   expands the body and actions; reopening restores the expanded open state.
 - Comment views default to open comments and offer Open, Resolved, Outdated, and
@@ -603,12 +622,13 @@ at `/design.html` (see `docs/frontend.md`).
 - Navigating from the file list briefly pulses the destination file header with
   the accent for about one second. Reduced-motion mode uses static feedback that
   remains visible long enough to identify the destination without animation.
-- Sidebar mode buttons use an accent underline. Segmented choices and pressed
+- Sidebar tabs fuse with their panel: the active tab shares `--panel` and covers
+  the header's hairline, inactive tabs recess into `--shell`. Segmented choices and pressed
   toggles use accent text on `--accent-bg`. Expose state with native/ARIA semantics.
-- Badges use compact text, `--radius-sm`, and neutral surfaces. Status color is
+- Badges use compact text and neutral surfaces. Status color is
   supplemental; retain “Open”, “Resolved”, Git letters, counts, and staging shapes.
 - Future menus or tables inherit these text, row, surface, and selection rules.
-  Do not invent a separate menu/table palette or rounded container style.
+  Do not invent a separate menu/table palette or container style.
 
 ### Overlays
 
@@ -660,7 +680,7 @@ at `/design.html` (see `docs/frontend.md`).
 - Use the controlled shadcn `Dialog` built on Base UI. General dialogs retain a
   visible accessible title; the review picker uses the screen-reader title
   above. Keep focus inside while open, support Escape, and restore focus on close.
-- Use `--surface-raised`, `--radius-lg`, `--shadow-overlay`, and `--backdrop`.
+- Use `--surface-raised`, `--shadow-overlay`, and `--backdrop`.
   Shadows communicate actual elevation only; no resting button/card shadows.
 - Bound width by `--reading-width` and viewport gutters; bound height by the
   dynamic viewport and allow internal scrolling. Long XML must remain selectable.
@@ -765,7 +785,7 @@ Review, Hand off) on the real review surface, in the same world as the app.
   requests in one subgrid of icon, mono `owner/repo`, mono `#n` and title.
   With previews off, "Go to app" is the filled primary beside an outline
   "Read the docs".
-- Stage: one `--shell-canvas` island (1px `--border`, `--radius-lg`). A sticky
+- Stage: one `--shell-canvas` frame (1px `--border`). A sticky
   act strip (labels plus mono captions, a proportional diffstat) marks the act
   in view with the selected surface and accent text, and scrolls to an act on
   click; below 1012px it becomes a top tab row. Run shows the `diffx` command
@@ -832,17 +852,19 @@ Review, Hand off) on the real review surface, in the same world as the app.
 
 ## App icons
 
-`apps/web/public/icons` holds the remote server's app icons: a “dx” monogram
-of round-capped strokes (circle bowl, stem, crossed x) in light `--accent` on
-light `--shell-canvas`. `icon.svg` is the favicon and switches to the dark
-tokens under `prefers-color-scheme: dark`; it is also the source of
-`icon-192.png` and `icon-512.png` (rounded tile, transparent corners).
-`icon-maskable.svg` is full-bleed with the glyphs at 90% inside the central
-safe zone and is the source of `icon-maskable-512.png` and the opaque
+`apps/web/public/icons` holds the remote server's app icons: a “[x]” mark of
+butt-capped, mitered strokes in light `--accent` on light `--shell`, a filled
+square tile with no curve anywhere; `apps/console/public/icon.svg` is the same
+mark. `icon.svg` is the favicon and switches to the dark tokens under
+`prefers-color-scheme: dark`; it is also the source of `icon-192.png` and
+`icon-512.png`. `icon-maskable.svg` is full-bleed with the mark at 75%, which
+keeps the brackets' corners inside the central safe-zone circle, and is the
+source of `icon-maskable-512.png` and the opaque
 `apple-touch-icon.png` (180). `badge.svg` is the white-on-transparent
 notification badge source of `badge-96.png`. Regenerate the PNGs from their
-SVG source at their exact sizes when the monogram or those tokens change.
-The manifest uses `--bg` as background and `--shell-canvas` as theme color.
+SVG source at their exact sizes when the mark or those tokens change.
+The manifest uses `--bg` as background and `--shell` as theme color. The header
+keeps its text-only `diffx`.
 
 ## Interaction states
 
@@ -865,7 +887,7 @@ Do not add motion for decoration. New animation must honor
   data loads; the loading status bar carries the Settings trigger. Reserve both navigation widths and split/unified layout
   with neutral skeletons for review rows, file rows, the toolbar and diff frames.
   Narrow screens hide the placeholder file sidebar and follow the narrow layout.
-- Skeletons use `--border-muted`, existing spacing and radius tokens, and a gentle
+- Skeletons use `--border-muted`, existing spacing tokens, and a gentle
   shared opacity pulse. Disable animation under `prefers-reduced-motion`. Keep
   placeholders out of the accessibility tree and tab order; label the busy region
   with a concise status at the bottom of the review surface. Its detail line
@@ -945,7 +967,7 @@ Do not add motion for decoration. New animation must honor
 
 ## Rules for future UI work
 
-> Do not introduce a new color, font size, spacing value, radius, shadow, or
+> Do not introduce a new color, font size, spacing value, shadow, or
 > component variant unless the existing system cannot express the required design meaning.
 
 Before adding a value or visual pattern:
@@ -980,8 +1002,9 @@ component. Feature `className`s on components may only arrange them. oxlint's
 `react/forbid-elements` rejects raw form controls outside
 `packages/ui/src/components/`.
 
-The guard has exact exceptions for the reviewed-file check circle, SVG monogram
-units, icon line boxes, the Pierre gutter divider, Tailwind breakpoints, and
+The guard rejects any non-zero `border-radius`, `rx` or `ry` (CSS, inline style or
+SVG attribute), any `--*radius*` custom property, and every `rounded*` utility,
+including `rounded-none`. It has exact exceptions for SVG monogram units, icon line boxes, the Pierre gutter divider, Tailwind breakpoints, and
 Pierre's line-surface mixes/inset strokes. Changes to exceptions need a concrete
 role, rationale and contract test in the same PR. Do not exempt entire
 components.
@@ -1004,24 +1027,24 @@ scrolling checks. Record this evidence in the PR template.
 
 This audit records the starting points, not permission to reuse legacy values.
 
-| Area             | Existing pattern / inconsistency                                                            | Consolidation                                                                                |
-| ---------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Surfaces         | White / `#f8f9fb`; dark `#151619` / `#1b1c20`                                               | Retain neutral shell; add a semantic elevated surface                                        |
-| Text             | `#24252a` / `#e1e2e7`; most supporting text shared `#787c86` / `#91949e`                    | Distinguish secondary/muted; strengthen muted contrast                                       |
-| Borders/hover    | `#e5e7ec` / `#303137`; `#eeeef4` / `#282930`                                                | Retain separators; distinguish control boundaries                                            |
-| Accent/brand     | Violet `#6260df` / `#aba7ff`, pale violet fills; former yellow logo                         | Preserve violet roles; remove the nonessential logo                                          |
-| Status           | Green `#24844c` / `#70cc95`, red `#cf4b51` / `#ed8a8e`, shared gold `#b58a29`               | Semantic success/error/warning with theme-equivalent contrast                                |
-| File kinds       | Four inline light/dark blue, gold, orange, purple pairs                                     | Bounded semantic file-kind tokens                                                            |
-| Type             | System sans/mono; 9, 10, 11, 12, 13, 14, 15, 17, 18px; 400/550/600/650/700 weights          | Five UI sizes; three weights; separate functional touch-input size                           |
-| Leading/tracking | Browser defaults, 18/13 tree, 22/13 code, 1.5/1.6/1.7 prose; −0.6px and 1.1px tracking      | Explicit UI/copy leading, semantic tracking; preserve measured code leading                  |
-| Spacing          | Repeated 3/5/6/7/9/10/11/14/15/17/18/20/22px padding, margins, gaps mixed with 4/8/12/16/24 | 4px rhythm; documented optical exceptions only                                               |
-| Radii            | 3, 4, 5, 6, 7, 8, 10px plus circles                                                         | 3/6/12px roles; circles only for dots/checks                                                 |
-| Shadows          | Tiny button and segmented shadows; sidebar shadow; dialog backdrop                          | One overlay shadow; non-geometric file outlines without elevation                            |
-| Geometry         | Header 58px, toolbar 40px; 24/28/30px icon controls and content-sized buttons               | 56/44px shell rhythm, 32px controls, 24px Pierre slots, 44px touch targets                   |
-| Width/gutters    | Competing 260/220/280px sidebar rules; 10/12/14/22/24px gutters; 680px dialog               | One user-owned sidebar width; shared shell gutters/reading width; measured 12px diff spacing |
-| Review           | Inline 12×14px padding versus sidebar/mobile 10px; 85px editor, 300px XML area              | Shared 12px comment inset, readable editor, viewport-bounded overlay                         |
-| States           | Search removed input focus; textarea/select lacked shared focus; reviewed rows faded to 55% | Group/field focus, readable reviewed state, explicit destructive action                      |
-| Responsive       | 1000/760px breakpoints; toolbar wrapped only below 760px                                    | 1012px drawer, 768px compact chrome, unified narrow default                                  |
+| Area             | Existing pattern / inconsistency                                                            | Consolidation                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Surfaces         | White / `#f8f9fb`; dark `#151619` / `#1b1c20`                                               | Retain neutral shell; add a semantic elevated surface                                       |
+| Text             | `#24252a` / `#e1e2e7`; most supporting text shared `#787c86` / `#91949e`                    | Distinguish secondary/muted; strengthen muted contrast                                      |
+| Borders/hover    | `#e5e7ec` / `#303137`; `#eeeef4` / `#282930`                                                | Retain separators; distinguish control boundaries                                           |
+| Accent/brand     | Violet `#6260df` / `#aba7ff`, pale violet fills; former yellow logo                         | Blue `#3f5fd6` / `#74ade8`; `[x]` icons only, text-only header                              |
+| Status           | Green `#24844c` / `#70cc95`, red `#cf4b51` / `#ed8a8e`, shared gold `#b58a29`               | Semantic success/error/warning with theme-equivalent contrast                               |
+| File kinds       | Four inline light/dark blue, gold, orange, purple pairs                                     | Bounded semantic file-kind tokens                                                           |
+| Type             | System sans/mono; 9, 10, 11, 12, 13, 14, 15, 17, 18px; 400/550/600/650/700 weights          | Five UI sizes; three weights; separate functional touch-input size                          |
+| Leading/tracking | Browser defaults, 18/13 tree, 22/13 code, 1.5/1.6/1.7 prose; −0.6px and 1.1px tracking      | Explicit UI/copy leading, semantic tracking; preserve measured code leading                 |
+| Spacing          | Repeated 3/5/6/7/9/10/11/14/15/17/18/20/22px padding, margins, gaps mixed with 4/8/12/16/24 | 4px rhythm; documented optical exceptions only                                              |
+| Radii            | 3, 4, 5, 6, 7, 8, 10px plus circles                                                         | None; every corner is square                                                                |
+| Shadows          | Tiny button and segmented shadows; sidebar shadow; dialog backdrop                          | One overlay shadow; non-geometric file outlines without elevation                           |
+| Geometry         | Header 58px, toolbar 40px; 24/28/30px icon controls and content-sized buttons               | 56/44px shell rhythm, 32px controls, 24px Pierre slots, 44px touch targets                  |
+| Width/gutters    | Competing 260/220/280px sidebar rules; 10/12/14/22/24px gutters; 680px dialog               | One user-owned sidebar width; flush panes, shared reading width; measured 12px diff spacing |
+| Review           | Inline 12×14px padding versus sidebar/mobile 10px; 85px editor, 300px XML area              | Shared 8px comment inset, readable editor, viewport-bounded overlay                         |
+| States           | Search removed input focus; textarea/select lacked shared focus; reviewed rows faded to 55% | Group/field focus, readable reviewed state, explicit destructive action                     |
+| Responsive       | 1000/760px breakpoints; toolbar wrapped only below 760px                                    | 1012px drawer, 768px compact chrome, unified narrow default                                 |
 
 ### Decisions needing product judgment
 

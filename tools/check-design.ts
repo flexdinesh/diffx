@@ -24,7 +24,7 @@ const typeProperty =
   /^(?:(?:font(?:-family|-size|-weight)?|line-height|letter-spacing)$|--(?:font|text|weight|leading|tracking|icon)-)/;
 const spacingProperty =
   /^(?:(?:padding|margin)(?:-(?:top|right|bottom|left|inline|block)(?:-start|-end)?)?|(?:row-|column-)?gap)$/;
-const radiusProperty = /^border(?:-[\w-]+)?-radius$/;
+const radiusProperty = /^(?:border(?:-[\w-]+)?-radius|rx|ry)$/;
 const colorProperty =
   /(?:color|background|border|outline|shadow|fill|stroke)|^--/;
 
@@ -36,7 +36,6 @@ const web = "packages/review-app/src/";
 // Exact optical/renderer allowances, not file-wide exclusions. DESIGN.md owns
 // the reasons; token rules still apply to every other declaration in these files.
 const exceptions = new Set([
-  `${web}review.css|.file-reviewed-check|border-radius|50%`,
   `${web}review.css|.file-icon|line-height|1`,
   `${web}review.css|.monogram-icon text|font|700 9px ui-monospace, monospace`,
   `${web}style.css|#viewer|--diff-gutter-divider-width|2px`,
@@ -120,16 +119,17 @@ function invalidValue(
     if (/[a-z]/i.test(remainder.replace(/\b(?:calc|min|max|clamp)\b/g, "")))
       return true;
   }
+  // Every corner is square; no token, exception or custom property can curve one.
   if (
     radiusProperty.test(property) &&
     !/^(?:0(?:px|rem|em|%)?|none|inherit|initial|unset)$/.test(value)
-  ) {
-    if (
-      !value.includes("var(") ||
-      /(?:\d*\.)?\d+(?:px|rem|em|%)/.test(remainder)
-    )
-      return true;
-  }
+  )
+    return true;
+  if (
+    /^--[\w-]*radius/.test(property) &&
+    !(path === `${ui}styles.css` && property === "--radius-*")
+  )
+    return true;
   if (
     /^(?:box|text)-shadow$/.test(property) &&
     !/^(?:none|inherit|initial|unset|var\(--[\w-]+\))$/.test(value)
@@ -270,11 +270,10 @@ type Namespace =
   | "font"
   | "leading"
   | "tracking"
-  | "rounded"
   | "shadow";
 
 interface Theme {
-  /** Registered type, radius and shadow utilities, e.g. `text-sm`. */
+  /** Registered type and shadow utilities, e.g. `text-sm`. */
   utilities: Set<string>;
   /** Token variable to the utility name that already renders it, per namespace. */
   aliases: Map<string, Map<Namespace, string>>;
@@ -300,7 +299,6 @@ function readTheme(sources: readonly DesignSource[]): Theme {
     [/^--font-([\w-]+)$/, "font", "font-"],
     [/^--leading-([\w-]+)$/, "leading", "leading-"],
     [/^--tracking-([\w-]+)$/, "tracking", "tracking-"],
-    [/^--radius-([\w-]+)$/, "rounded", "rounded-"],
     [/^--shadow-([\w-]+)$/, "shadow", "shadow-"],
     [/^--color-([\w-]+)$/, "color", ""],
     [/^--spacing-([\w-]+)$/, "spacing", ""],
@@ -370,9 +368,7 @@ function aliasFor(token: string, theme: Theme): string | undefined {
                 prefix === "tracking" ||
                 prefix === "shadow"
               ? [prefix]
-              : /^rounded(?:-[trblse]{1,2})?$/.test(prefix)
-                ? ["rounded"]
-                : [];
+              : [];
   for (const namespace of namespaces) {
     const name = names.get(namespace);
     if (name) return `${match[1]}${prefix}-${name}`;
@@ -387,6 +383,7 @@ function utilityInvalid(
   registered: ReadonlySet<string> = new Set(),
 ): boolean {
   const token = baseUtility(original);
+  if (/^rounded(?:-|$)/.test(token)) return true;
   const property = /^\[([\w-]+):(.+)\]$/.exec(token);
   if (property?.[1] && property[2])
     return invalidValue(
@@ -396,7 +393,7 @@ function utilityInvalid(
       property[2].replaceAll("_", " "),
     );
   const arbitrary =
-    /^(rounded(?:-[trblse]{1,2})?|font|text|leading|tracking|shadow|bg|border|outline|ring|fill|stroke|p[xytrblse]?|m[xytrblse]?|gap(?:-[xy])?)-\[(.+)\]$/.exec(
+    /^(font|text|leading|tracking|shadow|bg|border|outline|ring|fill|stroke|p[xytrblse]?|m[xytrblse]?|gap(?:-[xy])?)-\[(.+)\]$/.exec(
       token,
     );
   if (arbitrary?.[1] && arbitrary[2]) {
@@ -404,9 +401,8 @@ function utilityInvalid(
     const value = arbitrary[2]
       .replace(/^(?:length|color):/, "")
       .replaceAll("_", " ");
-    const cssProperty = prefix.startsWith("rounded")
-      ? "border-radius"
-      : prefix === "font"
+    const cssProperty =
+      prefix === "font"
         ? "font"
         : prefix === "leading"
           ? "line-height"
@@ -430,13 +426,11 @@ function utilityInvalid(
   )
     return true;
   if (
-    /^text-(?:xs|sm|base|lg|xl|\d+xl)$|^font-(?:thin|extralight|light|normal|medium|semibold|bold|extrabold|black|sans|serif|mono)$|^leading-(?:none|tight|snug|normal|relaxed|loose|\d+)$|^tracking-(?:tighter|tight|normal|wide|wider|widest)$|^rounded(?:-[trblse]{1,2})?(?:-(?:xs|sm|md|lg|xl|\d+xl|full))?$|^(?:text-)?shadow(?:-(?:xs|sm|md|lg|xl|\d+xl))?$/.test(
+    /^text-(?:xs|sm|base|lg|xl|\d+xl)$|^font-(?:thin|extralight|light|normal|medium|semibold|bold|extrabold|black|sans|serif|mono)$|^leading-(?:none|tight|snug|normal|relaxed|loose|\d+)$|^tracking-(?:tighter|tight|normal|wide|wider|widest)$|^(?:text-)?shadow(?:-(?:xs|sm|md|lg|xl|\d+xl))?$/.test(
       token,
     )
-  ) {
-    const rounded = /^rounded(?:-[trblse]{1,2})?-(.+)$/.exec(token);
-    return !registered.has(rounded?.[1] ? `rounded-${rounded[1]}` : token);
-  }
+  )
+    return !registered.has(token);
   return false;
 }
 
@@ -852,7 +846,7 @@ export function checkDesign(
         node.type === "JSXAttribute" &&
         record(node.name) &&
         typeof node.name.name === "string" &&
-        /^(?:fill|stroke|color)$/.test(node.name.name)
+        /^(?:fill|stroke|color|rx|ry)$/.test(node.name.name)
       ) {
         const attribute =
           record(node.value) && node.value.type === "JSXExpressionContainer"

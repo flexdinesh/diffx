@@ -9,7 +9,7 @@ export default defineConfig({
   description: "Review Git changes in your browser with diffx.",
   renderStrategy: "full-static",
   baseUrl: siteUrl,
-  accentColor: "light-dark(#5957d2, #aba7ff)",
+  accentColor: "light-dark(#3f5fd6, #74ade8)",
   // Non-production hosts stay out of search indexes and point crawlers at
   // production. Vocs serializes `head` to the client as source text, so the
   // function cannot reference module variables; keep the URL inline.

@@ -117,7 +117,6 @@
   min-height: var(--control-height);
   padding: var(--space-2) var(--space-1);
   border-bottom: 1px solid var(--border-muted);
-  border-radius: var(--radius-control);
   color: var(--fg);
   text-decoration: none;
 }
@@ -153,7 +152,6 @@
   column-gap: var(--space-6);
   padding: var(--space-4) var(--space-6) var(--space-6);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
   background: var(--shell-canvas);
 }
 .landing-acts {
@@ -175,7 +173,6 @@
   display: grid;
   gap: var(--space-0-5);
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-control);
   color: var(--text-secondary);
   text-decoration: none;
   transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -218,7 +215,6 @@
 .landing-diffstat-bar > span {
   flex: 1;
   height: var(--space-2);
-  border-radius: var(--radius-xs);
   background: var(--error);
 }
 .landing-diffstat-bar > span[data-kind="addition"] {
@@ -261,7 +257,6 @@
   max-width: 40rem;
   padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
   background: var(--bg);
   font-family: var(--font-mono);
   font-size: var(--text-code);
@@ -279,7 +274,6 @@
 .landing-diff {
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
   background: var(--diff-canvas);
 }
 .landing-comment {
@@ -290,7 +284,6 @@
 .landing-agent {
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
   background: var(--bg);
 }
 .landing-agent-header {
@@ -403,7 +396,6 @@
     top: 0;
     margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-3)) 0;
     padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     border-bottom: 1px solid var(--border);
     background: var(--shell-canvas);
   }

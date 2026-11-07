@@ -4,7 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@diffx/ui/lib/utils";
 
 const badgeVariants = cva(
-  "group/badge inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-sm border text-xs [&>svg]:pointer-events-none [&>svg:not([class*='size-'])]:size-icon-sm",
+  "group/badge inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap border text-xs [&>svg]:pointer-events-none [&>svg:not([class*='size-'])]:size-icon-sm",
   {
     variants: {
       variant: {

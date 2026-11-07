@@ -484,11 +484,11 @@ raises the “Newer snapshot” notice with “View latest”. Without an availa
 head, the UI waits for collection; failures remain visible and offer Retry.
 Otherwise `/` opens the most recently active changed head's live URL. Startup
 selection and the local default MCP context use the same collection default.
-The Reviews column leads the navigation island, beside the open review's file
+The Reviews column leads the navigation pane, beside the open review's file
 sidebar, aligned with the diff below the header. A remote server always shows
 it. A local checkout process shows it, its rail and the compact drawer toggle
 only once the column would list two current streams, then keeps it for the
-page session; until then the island holds only the file sidebar, while search,
+page session; until then the navigation pane holds only the file sidebar, while search,
 the header comboboxes and sync remain. Switching streams replaces
 everything to its right and keeps the column. It collapses to a rail of
 repository marks. A repository (its rail mark or its name in the list) opens

@@ -16,8 +16,6 @@
 }
 .topbar {
   height: var(--topbar-height);
-  /* Replace the shell's top gutter so controls center between window and islands. */
-  margin-top: calc(-1 * var(--shell-gutter));
   display: flex;
   gap: var(--space-1-5);
   align-items: center;
@@ -90,8 +88,6 @@
 .app-shell {
   display: flex;
   height: 100dvh;
-  gap: var(--shell-gutter);
-  padding: var(--shell-gutter);
   background: var(--shell-canvas);
 }
 .app-main {
@@ -104,14 +100,13 @@
   flex: 1;
   min-height: 0;
   display: flex;
+  border-top: 1px solid var(--border);
 }
 .navigation-island {
   display: flex;
   flex-shrink: 0;
   min-height: 0;
-  border-radius: var(--radius-lg);
   background: var(--panel);
-  outline: 1px solid var(--border);
 }
 /* The review column leads the island; the file sidebar follows it. */
 .stream-column {
@@ -120,15 +115,10 @@
   width: var(--streams-width);
   min-height: 0;
   position: relative;
-  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
 }
 .stream-column.is-rail {
   flex-basis: var(--activity-width);
   width: var(--activity-width);
-}
-.stream-column:last-child,
-.stream-column:has(+ .navigation-panel[hidden]) {
-  border-radius: var(--radius-lg);
 }
 /* A capture has no review column; with its file sidebar collapsed nothing
    remains, so the island hides (still mounted) and the review fills the row. */
@@ -136,7 +126,7 @@
   display: none;
 }
 .navigation-island[data-empty] + .workspace {
-  margin-left: 0;
+  border-left: 0;
 }
 .navigation-panel {
   display: flex;
@@ -152,11 +142,9 @@
   display: flex;
   flex-direction: column;
   position: relative;
-  margin-left: var(--shell-gutter);
-  border-radius: var(--radius-lg);
   overflow: clip;
   background: var(--bg);
-  outline: 1px solid var(--border);
+  border-left: 1px solid var(--border);
 }
 /* Collapsed review column: header-rhythm actions, then one mark per repository. */
 .stream-rail {
@@ -168,7 +156,6 @@
   min-height: 0;
   /* Match the header's inset around its buttons on every edge. */
   padding: calc((var(--activity-width) - var(--activity-item)) / 2);
-  border-radius: inherit;
 }
 .stream-rail-divider {
   margin-block: var(--space-1);
@@ -191,15 +178,14 @@
   display: flex;
   flex-direction: column;
   background: var(--panel);
-  border-radius: inherit;
 }
 .projects-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
   scrollbar-gutter: stable;
-  /* Rows inset by --space-1; chevrons align with the 16px panel title. */
-  padding: var(--space-2) var(--space-3) var(--space-4);
+  /* Rows run full width and indent themselves to the 16px panel title. */
+  padding: var(--space-2) 0 var(--space-4);
 }
 .projects-list,
 .stream-list {
@@ -226,12 +212,10 @@
   flex-direction: column;
   background: var(--panel);
   border-left: 1px solid var(--border-muted);
-  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
 }
 /* Without a review column the file sidebar leads the island alone. */
 .navigation-panel:first-child .sidebar {
   border-left: 0;
-  border-radius: var(--radius-lg);
 }
 .file-filter-row {
   display: flex;
@@ -239,7 +223,7 @@
   margin: 0 var(--space-3) var(--space-2);
 }
 .file-tree {
-  padding: 0 var(--space-1) var(--space-4);
+  padding: 0 0 var(--space-4);
   flex: 1;
   overflow: auto;
   scrollbar-gutter: stable;
@@ -267,7 +251,6 @@
 .change-bar {
   height: var(--space-1);
   background: var(--error);
-  border-radius: var(--radius-sm);
   overflow: hidden;
   margin: var(--space-1) 0;
 }
@@ -349,6 +332,26 @@ main {
   --diffs-line-height: calc(var(--text-code) * var(--leading-code));
   --diff-gutter-divider-width: 2px;
 }
+/* Pierre draws status icons from rounded sprites CSS cannot reach; unsafeCSS masks these
+   square glyphs over them. */
+:root {
+  --status-glyph-change: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.5 1.5h13v13h-13zM3 3v10h10V3zM6 6h4v4H6z'/%3E%3C/svg%3E");
+  --status-glyph-new: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.5 1.5h13v13h-13zM3 3v10h10V3zM7.25 4.5h1.5v2.75h2.75v1.5H8.75v2.75h-1.5V8.75H4.5v-1.5h2.75z'/%3E%3C/svg%3E");
+  --status-glyph-deleted: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.5 1.5h13v13h-13zM3 3v10h10V3zM4.5 7.25h7v1.5h-7z'/%3E%3C/svg%3E");
+  --status-glyph-moved: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.5 1.5h13v13h-13zM3 3v10h10V3zM4.5 7.25h4.1L7.1 5.75l1.06-1.06L11.47 8l-3.31 3.31-1.06-1.06 1.5-1.5H4.5z'/%3E%3C/svg%3E");
+}
+/* Code in a Diffx theme shares the shell's surface; syntax and tints stay Pierre's. */
+[data-code-surface="shell"] {
+  --diffs-bg-context-override: var(--bg);
+  --diffs-bg-context-gutter-override: var(--bg);
+  --diffs-bg-buffer-override: var(--bg);
+  --diffs-bg-separator-override: var(--panel);
+  /* Pierre paints context lines and gaps in its theme background; unsafeCSS reads this. */
+  --diffs-gap-style: var(--space-0-5) solid var(--bg);
+  --code-surface: var(--bg);
+  --code-count-addition: var(--success);
+  --code-count-deletion: var(--error);
+}
 .diff-code-view {
   padding-inline: var(--diff-gutter);
   /* A constant inset keeps toolbar actions still as files collapse or load. */
@@ -370,7 +373,6 @@ main {
 }
 #viewer diffs-container {
   /* Frame files without adding unmeasured height to Pierre's virtual layout. */
-  border-radius: var(--radius-md);
   overflow: clip;
   outline: 1px solid var(--border);
   outline-offset: 0;
@@ -388,11 +390,8 @@ main {
   font-size: var(--icon-base);
   width: 1em;
   height: 1em;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.review-checkbox rect {
-  rx: var(--radius-control);
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 .main-footer {
   display: flex;
@@ -425,7 +424,7 @@ main {
     display: contents;
   }
   .workspace {
-    margin-left: 0;
+    border-left: 0;
   }
   .mobile-review-progress {
     display: inline;
@@ -441,17 +440,15 @@ main {
     display: flex;
     position: fixed;
     z-index: var(--layer-sidebar);
-    inset: var(--shell-gutter) auto var(--shell-gutter) var(--shell-gutter);
+    inset: 0 auto 0 0;
     width: var(--drawer-width);
-    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-overlay);
   }
   .projects-nav.open {
     position: fixed;
     z-index: var(--layer-sidebar);
-    inset: var(--shell-gutter) auto var(--shell-gutter) var(--shell-gutter);
+    inset: 0 auto 0 0;
     width: var(--drawer-width);
-    border-radius: var(--radius-lg);
     outline: 1px solid var(--border);
     box-shadow: var(--shadow-overlay);
   }
@@ -580,11 +577,5 @@ main {
   }
   .context-identity-worktree {
     flex-shrink: 0;
-  }
-}
-@media (pointer: coarse) {
-  /* Flush touch targets stay inside the island's rounded corners. */
-  .stream-rail {
-    padding-block: var(--space-1);
   }
 }

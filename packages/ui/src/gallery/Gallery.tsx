@@ -209,9 +209,7 @@ function Components() {
               key={name}
               className="flex flex-col gap-1 text-xs text-secondary"
             >
-              <span
-                className={`${className} h-8 rounded-sm border border-border`}
-              />
+              <span className={`${className} h-8 border border-border`} />
               {name}
             </div>
           ))}
@@ -222,13 +220,6 @@ function Components() {
               {name} Aa
             </span>
           ))}
-        </Row>
-        <Row>
-          <span className="size-8 rounded-xs border border-control" />
-          <span className="size-8 rounded-sm border border-control" />
-          <span className="size-8 rounded-md border border-control" />
-          <span className="size-8 rounded-lg border border-control" />
-          <span className="size-8 rounded-round border border-control" />
         </Row>
       </Section>
 

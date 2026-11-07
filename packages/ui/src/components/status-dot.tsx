@@ -2,7 +2,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import type { ComponentProps } from "react";
 import { cn } from "@diffx/ui/lib/utils";
 
-const statusDotVariants = cva("inline-block shrink-0 rounded-round", {
+const statusDotVariants = cva("inline-block shrink-0 ", {
   variants: {
     tone: {
       current: "",

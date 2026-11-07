@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from "@diffx/ui/components/ui/card";
 import { useAppearance } from "./appearance-context.tsx";
-import { themesFor } from "./display-options.ts";
+import { codeMatchesShell, themesFor } from "./display-options.ts";
 import { demoComment, demoCommentLine, demoPatch } from "./landing-demo.ts";
 
 /**
@@ -28,6 +28,26 @@ export function LandingDemoDiff() {
       diffIndicators: "bars",
       hunkSeparators: "simple",
       unsafeCSS: `
+        *, *::before, *::after, ::-webkit-scrollbar-thumb { border-radius: 0; }
+        :host, pre, code, [data-gutter], [data-content] {
+          background-color: var(--code-surface, var(--diffs-bg));
+        }
+        [data-line-type^="context"] {
+          --diffs-computed-decoration-bg: var(--code-surface, var(--diffs-bg));
+        }
+        :is([data-change-icon="change"], [data-change-icon="new"], [data-change-icon="deleted"], [data-change-icon="rename-pure"], [data-change-icon="rename-changed"]) {
+          background-color: currentColor;
+          mask-position: center;
+          mask-repeat: no-repeat;
+          mask-size: contain;
+          & use { display: none; }
+        }
+        [data-change-icon="change"] { mask-image: var(--status-glyph-change); }
+        [data-change-icon="new"] { mask-image: var(--status-glyph-new); }
+        [data-change-icon="deleted"] { mask-image: var(--status-glyph-deleted); }
+        :is([data-change-icon="rename-pure"], [data-change-icon="rename-changed"]) { mask-image: var(--status-glyph-moved); }
+        [data-diffs-header] [data-additions-count] { color: var(--code-count-addition, var(--diffs-addition-base)); }
+        [data-diffs-header] [data-deletions-count] { color: var(--code-count-deletion, var(--diffs-deletion-base)); }
         [data-diffs-header] { background: var(--diff-file-header); }
         [data-change-icon="change"] { color: var(--warning); }
       `,
@@ -39,7 +59,12 @@ export function LandingDemoDiff() {
     [],
   );
   return (
-    <div className="landing-diff">
+    <div
+      className="landing-diff"
+      data-code-surface={
+        codeMatchesShell(diffTheme, themePreference) ? "shell" : undefined
+      }
+    >
       <PatchDiff
         patch={demoPatch}
         options={options}

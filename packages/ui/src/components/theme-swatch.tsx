@@ -28,7 +28,7 @@ export function ThemeSwatch({
       data-slot="theme-swatch"
       aria-hidden="true"
       className={cn(
-        "flex h-4 w-10 shrink-0 flex-col overflow-clip rounded-control ring-1 ring-border",
+        "flex h-4 w-10 shrink-0 flex-col overflow-clip ring-1 ring-border",
         className,
       )}
     >

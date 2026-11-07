@@ -90,7 +90,7 @@ function placementNote(comment: ReviewComment, placement: CommentPlacement) {
 
 // Inline annotations keep generous outer spacing; sidebar cards stack.
 function cardSpacing(sidebar: boolean) {
-  return sidebar ? "my-2" : "mx-6 my-4 max-md:mx-1 max-md:my-2";
+  return sidebar ? "my-2" : "mx-6 my-2 max-md:mx-1";
 }
 
 // Both the diff annotations and sidebar edit the same page-level draft.
@@ -213,10 +213,7 @@ export function CommentEditor({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <label
-            className="mb-1 block text-sm font-semibold text-fg"
-            htmlFor={inputId}
-          >
+          <label className="sr-only" htmlFor={inputId}>
             Review comment
           </label>
           <Textarea
@@ -225,7 +222,7 @@ export function CommentEditor({
             placeholder="Leave a review comment…"
             aria-invalid={!!error}
             aria-describedby={error ? errorId : undefined}
-            rows={3}
+            rows={2}
             value={draft.body}
             onChange={(event) => {
               if (event.target.value.trim()) setError("");
@@ -258,7 +255,7 @@ export function CommentEditor({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
+            size="xs"
             touch
             onClick={onCancel}
           >
@@ -267,7 +264,7 @@ export function CommentEditor({
           </Button>
           <Button
             type="submit"
-            size="sm"
+            size="xs"
             touch
             disabled={isSaving}
             aria-busy={isSaving}
@@ -369,18 +366,13 @@ export function CommentCard({
                 </span>
               </Button>
             ) : (
-              <>
-                <strong className="font-semibold whitespace-nowrap text-fg">
-                  Review comment
-                </strong>
-                <span>
-                  {comment.target === "file"
-                    ? "· file"
-                    : placedInline(applicability)
-                      ? `· line ${lines(placement.start, placement.end)}`
-                      : `· line ${lines(comment.start, comment.end)}`}
-                </span>
-              </>
+              <span>
+                {comment.target === "file"
+                  ? "File"
+                  : placedInline(applicability)
+                    ? `Line ${lines(placement.start, placement.end)}`
+                    : `Line ${lines(comment.start, comment.end)}`}
+              </span>
             )}
           </CardTitle>
           <CardAction>
@@ -402,7 +394,7 @@ export function CommentCard({
         </CardHeader>
         <div id={contentId} hidden={!expanded}>
           <CardContent>
-            <p className="text-md whitespace-pre-wrap [overflow-wrap:anywhere]">
+            <p className="text-sm whitespace-pre-wrap [overflow-wrap:anywhere]">
               {comment.body}
             </p>
             {note && <p className="my-2 text-xs text-muted">{note}</p>}
@@ -414,7 +406,7 @@ export function CommentCard({
                 <summary className="min-h-control-compact cursor-pointer max-md:min-h-touch pointer-coarse:min-h-touch">
                   {stale ? "Original code" : "Code context"}
                 </summary>
-                <pre className="max-h-48 overflow-auto rounded-sm bg-bg p-2 font-mono text-sm leading-copy whitespace-pre-wrap text-fg [overflow-wrap:anywhere]">
+                <pre className="max-h-48 overflow-auto bg-bg p-2 font-mono text-sm leading-copy whitespace-pre-wrap text-fg [overflow-wrap:anywhere]">
                   {comment.code}
                 </pre>
               </details>
@@ -423,7 +415,7 @@ export function CommentCard({
           <CardFooter>
             <IconButton
               label={`Copy comment at ${location(comment, placement)}`}
-              size={sidebar ? "icon-xs" : "icon-sm"}
+              size="icon-xs"
               touch
               onClick={() => onCopy(comment)}
             >
@@ -432,7 +424,7 @@ export function CommentCard({
             <Button
               type="button"
               variant="ghost"
-              size={sidebar ? "xs" : "sm"}
+              size="xs"
               touch
               className="mr-auto"
               onClick={() => onEdit(comment)}
@@ -443,7 +435,7 @@ export function CommentCard({
             <Button
               type="button"
               variant="outline"
-              size={sidebar ? "xs" : "sm"}
+              size="xs"
               touch
               onClick={() => onToggle(comment)}
             >
@@ -458,7 +450,7 @@ export function CommentCard({
               <Button
                 type="button"
                 variant="outline"
-                size={sidebar ? "xs" : "sm"}
+                size="xs"
                 touch
                 title="Keep this comment open on its file in the current snapshot"
                 onClick={() => onCarry(comment)}
@@ -470,7 +462,7 @@ export function CommentCard({
             <Button
               type="button"
               variant="destructive"
-              size={sidebar ? "xs" : "sm"}
+              size="xs"
               touch
               onClick={() => setConfirmDelete(true)}
             >
