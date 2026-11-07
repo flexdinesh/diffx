@@ -12,6 +12,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { BrandMark } from "@diffx/ui/components/brand-mark";
 import { ContextIcon } from "@diffx/ui/components/context-icon";
 import { CountBadge } from "@diffx/ui/components/count-badge";
 import { DisclosureRow } from "@diffx/ui/components/disclosure-row";
@@ -87,6 +88,7 @@ export function HeaderBrand() {
   return (
     <>
       <a className="brand" href="/" aria-label="diffx home">
+        <BrandMark />
         <span>diffx</span>
       </a>
       <Separator

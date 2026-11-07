@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs-website/public/logo-dark.svg">
+  <img src="docs-website/public/logo-light.svg" alt="diffx" height="48">
+</picture>
+
 # diffx
 
 Review Git changes in desktop or browser without touching your working tree or

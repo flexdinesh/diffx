@@ -3,6 +3,7 @@ Type=Application
 Name=Diffx Desktop
 Comment=Review local changes with the experimental desktop client
 Exec=diffx-desktop --desktop-launch
+Icon=diffx-desktop
 Terminal=false
 Categories=Development;
 StartupNotify=true

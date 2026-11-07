@@ -1,9 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Full-bleed "[x]" mark for maskable and Apple touch icons; the brackets'
-       corners stay inside the central 80% safe-zone circle. -->
-  <rect width="512" height="512" fill="#e2e2e3"/>
-  <g stroke="#3f5fd6" fill="none" stroke-linecap="butt" stroke-linejoin="miter" transform="translate(256 256) scale(0.75) translate(-256 -256)">
-    <path stroke-width="64" d="M160 96H96V416H160M352 96H416V416H352"/>
-    <path stroke-width="56" d="M192 192L320 320M320 192L192 320"/>
-  </g>
+  <!-- Full-bleed X for maskable and Apple touch icons; every corner stays inside
+       the central 80% safe-zone circle. -->
+  <rect width="512" height="512" fill="#06080c"/>
+  <path fill="#4a4e63" d="M113.9 113.9L214.6 113.9L242 156.5L141.4 156.5ZM297.4 113.9L398.1 113.9L370.6 156.5L270 156.5ZM191.9 234.7L320.1 234.7L306.3 256L320.1 277.3L191.9 277.3L205.7 256ZM141.4 355.5L242 355.5L214.6 398.1L113.9 398.1ZM270 355.5L370.6 355.5L398.1 398.1L297.4 398.1Z"/>
+  <path fill="#ff3b4e" d="M115.9 183.4L321.3 165.4L297.6 210.3L147.1 223.4Z"/>
+  <path fill="#1fdc7c" d="M214.4 301.7L364.9 288.6L396.1 328.6L190.7 346.6Z"/>
 </svg>

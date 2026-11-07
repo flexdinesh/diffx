@@ -151,8 +151,16 @@ test("only the remote server links the manifest and registers the service worker
     "/icons/icon-maskable-512.png",
     "/icons/apple-touch-icon.png",
     "/icons/badge-96.png",
+    "/og.png",
   ])
     expect((await remotePage.request.get(icon)).ok()).toBe(true);
+  await expect(remotePage.locator('meta[property="og:image"]')).toHaveAttribute(
+    "content",
+    "https://diffx.app/og.png",
+  );
+  await expect(
+    remotePage.locator('meta[property="og:description"]'),
+  ).toHaveAttribute("content", "A review bench for your changes.");
 });
 
 test("turning on notifications asks permission on click and registers the device", async ({

@@ -30,7 +30,7 @@
   padding-top: var(--space-16);
 }
 .auth-page .brand {
-  display: inline-block;
+  display: inline-flex;
   margin-bottom: var(--space-8);
 }
 .account-form {

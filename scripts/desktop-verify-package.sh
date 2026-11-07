@@ -31,11 +31,13 @@ case "$target" in
     resources=$payload/Contents/Resources
     [ -x "$payload/Contents/MacOS/launch" ] || fail 'missing bundle launcher'
     [ -s "$payload/Contents/Info.plist" ] || fail 'missing bundle metadata'
+    [ -s "$resources/diffx-desktop.icns" ] || fail 'missing bundle icon'
     ;;
   linux/*)
     resources=$stage/diffx-desktop
     app=$resources/diffx-desktop
     [ -s "$resources/diffx-desktop.desktop" ] || fail 'missing Linux desktop entry'
+    [ -s "$resources/diffx-desktop.png" ] || fail 'missing Linux desktop icon'
     ;;
   *) fail 'unsupported target' ;;
 esac

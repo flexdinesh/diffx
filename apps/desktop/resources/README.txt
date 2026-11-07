@@ -8,8 +8,9 @@ It exposes both diffx and diffx-desktop on PATH through one active installation
 pointer, replacing existing command aliases. CLI-only installers remain separate.
 macOS: extract the .app into a user-owned Applications directory.
 Linux: keep the diffx-desktop directory together and put its executable on PATH
-before registering diffx-desktop.desktop. Desktop launches use --desktop-launch
-to attach or choose a folder. Shell launches retain local PATH/stdin arguments.
+before registering diffx-desktop.desktop; copy diffx-desktop.png to
+~/.local/share/icons/hicolor/512x512/apps/ for its icon. Desktop launches use
+--desktop-launch to attach or choose a folder. Shell launches retain local PATH/stdin arguments.
 
 Requires modern system WebKit (Safari 16.4 or equivalent). Linux requires
 GTK3 and WebKitGTK 4.1 (WebKit 2.40+); macOS requires 13.3+. macOS runtime acceptance requires a Mac; cross-compiling

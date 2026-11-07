@@ -46,6 +46,7 @@
 .brand {
   display: flex;
   align-items: center;
+  gap: var(--space-1-5);
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   color: var(--text-secondary);

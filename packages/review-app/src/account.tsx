@@ -1,6 +1,7 @@
 import { api, errorDetail, readBootstrap } from "@diffx/api";
 import { ArrowLeftIcon, UserRoundIcon } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { BrandMark } from "@diffx/ui/components/brand-mark";
 import { ErrorState } from "@diffx/ui/components/error-state";
 import { IconButton } from "@diffx/ui/components/icon-button";
 import { Button } from "@diffx/ui/components/ui/button";
@@ -135,6 +136,7 @@ export function AuthPage({
   return (
     <main className="account-page auth-page">
       <a className="brand" href="/">
+        <BrandMark />
         diffx
       </a>
       <h1 className="mb-4 text-xl font-semibold">{title}</h1>

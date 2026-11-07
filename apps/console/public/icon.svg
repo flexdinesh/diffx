@@ -1,17 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- diffx "[x]" mark and favicon. Source of the PNG icons; colors are the
-       shell and accent tokens, light and dark. -->
+  <!-- diffx "changed line" X, favicon drawing: rows of code, one removed and
+       one added. Follows the OS theme; the raster icons use icon-app.svg. -->
   <style>
-    .tile { fill: #e2e2e3; }
-    .ink { stroke: #3f5fd6; }
+    .tile { fill: #f4f5f7; }
+    .row { fill: #4a4e63; }
+    .removed { fill: #e8283c; }
+    .added { fill: #0fb461; }
     @media (prefers-color-scheme: dark) {
-      .tile { fill: #3b414d; }
-      .ink { stroke: #74ade8; }
+      .tile { fill: #06080c; }
+      .removed { fill: #ff3b4e; }
+      .added { fill: #1fdc7c; }
     }
   </style>
   <rect class="tile" width="512" height="512"/>
-  <g class="ink" fill="none" stroke-linecap="butt" stroke-linejoin="miter">
-    <path stroke-width="64" d="M160 96H96V416H160M352 96H416V416H352"/>
-    <path stroke-width="56" d="M192 192L320 320M320 192L192 320"/>
-  </g>
+  <path class="row" d="M32 32L190.7 32L231.9 96L73.3 96ZM321.3 32L480 32L438.7 96L280.1 96ZM156 224L356 224L335.3 256L356 288L156 288L176.7 256ZM73.3 416L231.9 416L190.7 480L32 480ZM280.1 416L438.7 416L480 480L321.3 480Z"/>
+  <path class="removed" d="M42.8 142.2L365.6 114L330 181.4L89.6 202.4Z"/>
+  <path class="added" d="M182 330.6L422.4 309.6L469.2 369.8L146.4 398Z"/>
 </svg>

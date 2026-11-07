@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { BrandMark } from "@diffx/ui/components/brand-mark";
 import { LinkButton } from "@diffx/ui/components/link-button";
 import { navigate, useAdmin } from "./session.tsx";
 
@@ -31,7 +32,10 @@ export function Shell({
             navigate("/accounts");
           }}
         >
-          diffx <span className="brand-product">Console</span>
+          <BrandMark />
+          <span>
+            diffx <span className="brand-product">Console</span>
+          </span>
         </a>
         <nav className="console-nav" aria-label="Console">
           {sections.map((section) => (

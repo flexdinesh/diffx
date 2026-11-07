@@ -30,12 +30,13 @@ if [ "$GOOS" = darwin ]; then
   sed "s/@VERSION@/$bundle_version/g" apps/desktop/resources/Info.plist > "$payload/Contents/Info.plist"
   cp apps/desktop/resources/launch "$app_dir/launch"
   chmod 755 "$app_dir/launch"
+  cp apps/desktop/resources/diffx-desktop.icns "$resources/"
 else
   payload=$stage/diffx-desktop
   app_dir=$payload
   resources=$payload
   mkdir -p "$payload"
-  cp apps/desktop/resources/diffx-desktop.desktop "$payload/"
+  cp apps/desktop/resources/diffx-desktop.desktop apps/desktop/resources/diffx-desktop.png "$payload/"
 fi
 go -C apps/desktop list -deps -tags mygo_noinspector \
   -f '{{.ImportPath}}' ./cmd/diffx-desktop > "$stage/dependencies"

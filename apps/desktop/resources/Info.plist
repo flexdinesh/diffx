@@ -6,6 +6,7 @@
   <key>CFBundleDisplayName</key><string>Diffx Desktop</string>
   <key>CFBundleIdentifier</key><string>dev.diffx.desktop</string>
   <key>CFBundleExecutable</key><string>launch</string>
+  <key>CFBundleIconFile</key><string>diffx-desktop</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>@VERSION@</string>
   <key>CFBundleVersion</key><string>@VERSION@</string>
