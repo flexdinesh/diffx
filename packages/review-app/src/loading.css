@@ -38,7 +38,6 @@
 .loading-file {
   margin-bottom: var(--diff-gutter);
   overflow: clip;
-  border-radius: var(--radius-md);
   outline: 1px solid var(--border-muted);
   background: var(--bg);
 }

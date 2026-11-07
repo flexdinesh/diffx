@@ -1,8 +1,8 @@
 import type { ComponentProps } from "react";
 import { cn } from "@diffx/ui/lib/utils";
 
-// Review objects: a neutral header, a 12px body and a neutral action row.
-// `inline` sits in Pierre annotations; `panel` is the denser sidebar card.
+// Review objects: a 28px neutral header, an 8px body and a 28px neutral action
+// row. `inline` sits in Pierre annotations; `panel` is the sidebar card.
 function Card({
   className,
   density = "inline",
@@ -20,7 +20,7 @@ function Card({
       data-active={active || undefined}
       className={cn(
         "group/card flex min-w-0 flex-col overflow-hidden border border-border font-sans text-base leading-copy text-fg",
-        density === "inline" ? "rounded-md bg-raised" : "rounded-lg bg-bg",
+        density === "inline" ? "bg-raised" : "bg-bg",
         className,
       )}
       {...props}
@@ -33,8 +33,7 @@ function CardHeader({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="card-header"
       className={cn(
-        "flex min-h-panel-header items-center gap-1.5 border-b border-border bg-panel px-2 py-0.5 text-sm text-muted",
-        "group-data-[density=panel]/card:min-h-control group-data-[density=panel]/card:gap-1 group-data-[density=panel]/card:px-1.5",
+        "flex min-h-control-small items-center gap-1.5 border-b border-border bg-panel px-2 text-sm text-muted",
         "group-data-active/card:bg-selected group-data-[expanded=false]/card:border-b-0",
         className,
       )}
@@ -65,7 +64,7 @@ function CardAction({ className, ...props }: ComponentProps<"div">) {
 
 function CardContent({ className, ...props }: ComponentProps<"div">) {
   return (
-    <div data-slot="card-content" className={cn("p-3", className)} {...props} />
+    <div data-slot="card-content" className={cn("p-2", className)} {...props} />
   );
 }
 
@@ -74,8 +73,7 @@ function CardFooter({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="card-footer"
       className={cn(
-        "flex min-h-panel-header items-center justify-end gap-1.5 border-t border-border bg-panel px-2 py-0.5 max-md:flex-wrap",
-        "group-data-[density=panel]/card:min-h-control group-data-[density=panel]/card:flex-wrap group-data-[density=panel]/card:gap-1 group-data-[density=panel]/card:px-1.5",
+        "flex min-h-control-small items-center justify-end gap-1.5 border-t border-border bg-panel px-2 max-md:flex-wrap group-data-[density=panel]/card:flex-wrap",
         className,
       )}
       {...props}

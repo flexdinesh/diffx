@@ -240,3 +240,7 @@ export function swatchPalette(
 export function themeCode(preference: ThemePreference): ThemesType {
   return themeFor(preference).code;
 }
+
+export function themeKind(preference: ThemePreference): "base" | "palette" {
+  return themeFor(preference).kind;
+}

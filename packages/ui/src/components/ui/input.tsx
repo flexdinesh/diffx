@@ -4,7 +4,7 @@ import { cn } from "@diffx/ui/lib/utils";
 
 // Touch-sized text prevents mobile browsers from zooming into the field.
 const textEntryClassName =
-  "w-full min-w-0 rounded-control border border-control bg-bg text-fg placeholder:text-muted disabled:pointer-events-none disabled:opacity-60 aria-invalid:border-error max-md:text-input-touch pointer-coarse:text-input-touch";
+  "w-full min-w-0 border border-control bg-bg text-fg placeholder:text-muted disabled:pointer-events-none disabled:opacity-60 aria-invalid:border-error max-md:text-input-touch pointer-coarse:text-input-touch";
 
 function Input({
   className,

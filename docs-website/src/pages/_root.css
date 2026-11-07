@@ -1,0 +1,6 @@
+/* Sharp corners, matching the app. Vocs loads this file on every page. */
+*,
+*::before,
+*::after {
+  border-radius: 0;
+}

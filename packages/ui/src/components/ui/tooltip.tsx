@@ -39,7 +39,7 @@ function TooltipContent({
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"
           className={cn(
-            "inline-flex w-fit max-w-(--reading-width) items-center gap-2 rounded-control bg-raised px-2 py-1 text-xs text-fg shadow-overlay ring-1 ring-border",
+            "inline-flex w-fit max-w-(--reading-width) items-center gap-2 bg-raised px-2 py-1 text-xs text-fg shadow-overlay ring-1 ring-border",
             className,
           )}
           {...props}

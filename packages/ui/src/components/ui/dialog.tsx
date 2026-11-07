@@ -39,7 +39,7 @@ function DialogOverlay({
 
 // Every dialog keeps a visible title and explicit actions; no corner close.
 const dialogContentVariants = cva(
-  "fixed top-1/2 left-1/2 z-(--layer-popover) grid max-h-[calc(100dvh-2*var(--page-gutter))] w-[min(var(--reading-width),calc(100%-2*var(--page-gutter)))] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-auto rounded-lg border border-border bg-raised p-6 text-md text-fg shadow-overlay outline-none",
+  "fixed top-1/2 left-1/2 z-(--layer-popover) grid max-h-[calc(100dvh-2*var(--page-gutter))] w-[min(var(--reading-width),calc(100%-2*var(--page-gutter)))] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-auto border border-border bg-raised p-6 text-md text-fg shadow-overlay outline-none",
   {
     variants: {
       variant: {

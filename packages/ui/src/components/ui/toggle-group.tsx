@@ -7,7 +7,7 @@ import { cn } from "@diffx/ui/lib/utils";
 import { toggleVariants } from "@diffx/ui/components/ui/toggle";
 
 const toggleGroupVariants = cva(
-  "group/toggle-group flex w-fit flex-row items-center rounded-control data-vertical:flex-col data-vertical:items-stretch",
+  "group/toggle-group flex w-fit flex-row items-center data-vertical:flex-col data-vertical:items-stretch",
   {
     variants: {
       variant: {

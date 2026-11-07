@@ -5,11 +5,11 @@ import { cn } from "@diffx/ui/lib/utils";
 
 /** Menu and combobox popups share one raised surface. */
 export const menuPopupClassName =
-  "min-w-32 rounded-control bg-raised text-fg shadow-overlay ring-1 ring-border outline-none";
+  "min-w-32 bg-raised text-fg shadow-overlay ring-1 ring-border outline-none";
 
 /** Menu and combobox rows share one highlighted/disabled look. */
 export const menuItemClassName =
-  "relative flex min-h-control cursor-default items-center gap-2 rounded-control py-1 pr-8 pl-2 text-sm outline-hidden select-none focus:bg-selected focus:text-accent data-highlighted:bg-selected data-highlighted:text-accent data-disabled:pointer-events-none data-disabled:opacity-60 [&_svg]:pointer-events-none [&_svg]:size-icon [&_svg]:shrink-0";
+  "relative flex min-h-control cursor-default items-center gap-2 py-1 pr-8 pl-2 text-sm outline-hidden select-none focus:bg-selected focus:text-accent data-highlighted:bg-selected data-highlighted:text-accent data-disabled:pointer-events-none data-disabled:opacity-60 [&_svg]:pointer-events-none [&_svg]:size-icon [&_svg]:shrink-0";
 
 function DropdownMenu(props: MenuPrimitive.Root.Props) {
   return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />;

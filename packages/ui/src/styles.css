@@ -49,7 +49,6 @@
     background-color: transparent;
     background-clip: padding-box;
     border: var(--scrollbar-thumb-inset) solid transparent;
-    border-radius: var(--radius-lg);
   }
   :hover::-webkit-scrollbar-thumb,
   :focus-within::-webkit-scrollbar-thumb {
@@ -95,7 +94,6 @@
   kbd {
     font: var(--text-xs) var(--font-mono);
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
     padding: 1px var(--space-1);
     color: var(--muted);
   }
@@ -160,12 +158,6 @@
   --leading-tree: var(--leading-tree);
   --tracking-heading: var(--tracking-heading);
   --tracking-label: var(--tracking-label);
-  --radius-xs: var(--radius-xs);
-  --radius-sm: var(--radius-sm);
-  --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
-  --radius-control: var(--radius-control);
-  --radius-round: var(--radius-round);
   --shadow-overlay: var(--shadow-overlay);
 }
 

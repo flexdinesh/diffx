@@ -100,7 +100,7 @@ never the deployment mode. The policy's `reviewColumn` is `always` remotely and
 reaches two and keeps it for the page session. Its `collection` names the Sync
 scope.
 `use-sidebar.ts` owns file sidebar visibility and width and which mobile drawer
-is open, with its focus. `Navigation.tsx` owns the island and both resize
+is open, with its focus. `Navigation.tsx` owns the navigation pane and both resize
 handles. The selected context scopes every request. The session owner exposes
 local checkout sync when bootstrap reports `collect`; loading `/` or a live
 `/streams/{streamId}` URL, the header's “Sync checkout” or “Sync all checkouts” icon and Alt+R call

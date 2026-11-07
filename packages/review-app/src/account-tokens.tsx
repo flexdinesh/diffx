@@ -258,7 +258,7 @@ export function AccountTokens() {
       )}
       {created && (
         <div
-          className="mb-4 rounded-control border border-separator bg-panel p-4"
+          className="mb-4 border border-separator bg-panel p-4"
           role="status"
         >
           <h3 className="mb-2 text-md font-semibold">Save your token now</h3>

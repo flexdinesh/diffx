@@ -29,7 +29,7 @@ test("semantic tokens compose colors, type, geometry and spacing", () => {
     check(`.control {
     color: var(--fg); background: color-mix(in srgb, var(--accent) 10%, transparent);
     font: var(--weight-medium) var(--text-sm) var(--font-sans);
-    border: 1px solid currentColor; border-radius: var(--radius-control) 0;
+    border: 1px solid currentColor; border-radius: 0;
     box-shadow: var(--shadow-overlay); padding: 0 var(--space-3); margin-left: auto;
   }`),
     [],
@@ -122,23 +122,66 @@ test("type, radius, shadows and layout lengths require tokens", () => {
 
 test("optical exceptions remain exact in selector, value and source", () => {
   assert.deepEqual(
-    check(".file-reviewed-check { border-radius: 50% }", `${web}review.css`),
+    check(".file-icon { line-height: 1 }", `${web}review.css`),
     [],
   );
+  assert.equal(check(".new { line-height: 1 }", `${web}review.css`).length, 1);
   assert.equal(
-    check(".new { border-radius: 50% }", `${web}review.css`).length,
+    check(".file-icon { line-height: 2 }", `${web}review.css`).length,
     1,
   );
-  assert.equal(
-    check(".file-reviewed-check { border-radius: 25% }", `${web}review.css`)
-      .length,
-    1,
-  );
-  assert.equal(
-    check(".file-reviewed-check { border-radius: 50% }", "new.css").length,
-    1,
-  );
+  assert.equal(check(".file-icon { line-height: 1 }", "new.css").length, 1);
   assert.deepEqual(check(".new { padding: 1px var(--space-2) }"), []);
+});
+
+test("every corner is square: no radius value, token, utility or SVG attribute", () => {
+  for (const declaration of [
+    "border-radius: 50%",
+    "border-radius: var(--radius-control)",
+    "border-top-left-radius: 2px",
+    "rx: var(--space-1)",
+    "--radius-control: 4px",
+    "--local-radius: 0",
+  ])
+    assert.equal(check(`.new { ${declaration} }`).length, 1, declaration);
+  assert.equal(
+    check(":root { --radius-sm: 4px }", `${ui}tokens.css`).length,
+    1,
+  );
+  for (const token of [
+    "rounded",
+    "rounded-none",
+    "rounded-md",
+    "rounded-t-lg",
+    "hover:rounded-full",
+    "rounded-[var(--radius-sm)]",
+    "[border-radius:4px]",
+  ])
+    assert.equal(
+      check(`const classes = ${JSON.stringify(token)};`, "new.tsx").length,
+      1,
+      token,
+    );
+  for (const element of [
+    '<rect rx="3" />',
+    "<rect rx={3} />",
+    '<rect ry="3" />',
+    "<rect rx={radius} />",
+  ])
+    assert.equal(
+      check(`const View = () => <svg>${element}</svg>;`, "new.tsx").length,
+      1,
+      element,
+    );
+  assert.deepEqual(check(".new { border-radius: 0 }"), []);
+  assert.deepEqual(
+    check('const View = () => <svg><rect rx="0" /></svg>;', "new.tsx"),
+    [],
+  );
+  assert.deepEqual(
+    check("@theme { --radius-*: initial; }", `${ui}styles.css`),
+    [],
+  );
 });
 
 test("inline styles and named style objects cannot bypass rules", () => {
@@ -232,7 +275,7 @@ test("utility styling covers variants, arbitrary properties and escaped JS strin
   assert.equal(check(`.new { @apply hover:bg-red-500; }`).length, 1);
   assert.deepEqual(
     check(
-      `const classes = "hover:bg-[var(--hover)] text-[length:var(--text-xs)] rounded-[var(--radius-sm)] gap-[var(--space-2)]";`,
+      `const classes = "hover:bg-[var(--hover)] text-[length:var(--text-xs)] gap-[var(--space-2)]";`,
       "new.tsx",
     ),
     [],
@@ -321,7 +364,7 @@ const theme = [
   {
     path: `${ui}styles.css`,
     text: `@theme inline { --color-hover: var(--hover); --spacing-icon-sm: var(--icon-sm); }
-@theme inline reference { --radius-control: var(--radius-control); --text-xs: var(--text-xs); }`,
+@theme inline reference { --text-xs: var(--text-xs); }`,
   },
   {
     path: `${ui}tokens.css`,
@@ -339,7 +382,6 @@ test("arbitrary token variables use the utility that already renders them", () =
   // Audited: ProjectsNav icons and the shadcn tabs trigger before migration.
   for (const token of [
     "size-(--icon-sm)",
-    "rounded-[var(--radius-control)]",
     "hover:bg-[var(--hover)]",
     "text-[length:var(--text-xs)]",
     "gap-[var(--space-1)]",

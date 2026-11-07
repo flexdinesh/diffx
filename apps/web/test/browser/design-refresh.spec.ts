@@ -142,16 +142,104 @@ test("view options expose secondary display settings and persist them", async ({
     .toBe("true");
 });
 
-test("interactive controls share the semantic control radius", async ({
+test("every rendered corner is square, inside Pierre's shadow roots too", async ({
   page,
 }) => {
   await page.goto("/");
   await showDiff(page);
+  await expect(
+    page.locator("#viewer [data-diffs-header]").first(),
+  ).toBeAttached();
+
+  const curved = await page.evaluate(() => {
+    const found: string[] = [];
+    const visit = (root: Document | ShadowRoot) => {
+      for (const element of root.querySelectorAll("*")) {
+        for (const pseudo of [null, "::before", "::after"]) {
+          const style = getComputedStyle(element, pseudo);
+          if (pseudo && style.content === "none") continue;
+          if (
+            parseFloat(style.borderTopLeftRadius) > 0 ||
+            parseFloat(style.borderTopRightRadius) > 0 ||
+            parseFloat(style.borderBottomLeftRadius) > 0 ||
+            parseFloat(style.borderBottomRightRadius) > 0
+          )
+            found.push(`${element.tagName} ${pseudo ?? ""}`);
+        }
+        if (element.shadowRoot) visit(element.shadowRoot);
+      }
+    };
+    visit(document);
+    return found;
+  });
+  expect(curved).toEqual([]);
+  // Pierre's status sprites are rounded paths; square masks replace them.
+  const sprites = await page.evaluate(() =>
+    [...document.querySelectorAll("#viewer *")]
+      .flatMap((element) =>
+        element.shadowRoot
+          ? [...element.shadowRoot.querySelectorAll("[data-change-icon] use")]
+          : [],
+      )
+      .map((sprite) => getComputedStyle(sprite).display),
+  );
+  expect(sprites.length).toBeGreaterThan(0);
+  expect(new Set(sprites)).toEqual(new Set(["none"]));
+});
+
+test("Diffx themes put context code on the shell surface; palettes keep theirs", async ({
+  page,
+}) => {
+  await page.route("**/api/v2/bootstrap", (route) =>
+    route.fulfill({
+      json: {
+        mode: "remote",
+        publicPullRequests: false,
+        googleEnabled: false,
+        signupEnabled: false,
+        passwordSignupEnabled: false,
+        user: null,
+        csrfToken: null,
+      },
+    }),
+  );
+  const useTheme = (theme: string) =>
+    page.evaluate((id) => localStorage.setItem("theme-v2", id), theme);
+  const read = () =>
+    page.locator(".landing-diff").evaluate((diff) => {
+      const line = [...diff.querySelectorAll("*")]
+        .flatMap((element) => element.shadowRoot ?? [])
+        .map((root) => root.querySelector("[data-line-type^=context]"))
+        .find((found) => found !== null);
+      if (!line) throw new Error("Missing context line");
+      return {
+        line: getComputedStyle(line).backgroundColor,
+        surface: getComputedStyle(diff).getPropertyValue("--code-surface"),
+      };
+    });
+  await page.goto("/");
+  await useTheme("dark");
+  await page.reload();
+  await expect(page.locator(".landing-diff")).toHaveAttribute(
+    "data-code-surface",
+    "shell",
+  );
+  await expect.poll(async () => (await read()).line).toBe("rgb(40, 44, 51)");
+  await useTheme("tokyo-night");
+  await page.reload();
+  await expect(page.locator(".landing-diff")).not.toHaveAttribute(
+    "data-code-surface",
+    "shell",
+  );
+  expect((await read()).surface).toBe("");
+});
+
+test("interactive controls are square", async ({ page }) => {
+  await page.goto("/");
+  await showDiff(page);
 
   const viewOptions = page.getByRole("button", { name: "View options" });
-  const controlRadius = await viewOptions.evaluate(
-    (control) => getComputedStyle(control).borderTopLeftRadius,
-  );
+  const controlRadius = "0px";
   const controls = [
     page.getByRole("searchbox", { name: "Filter files" }).locator(".."),
     page.getByRole("button", { name: /^Collapse folder / }).first(),
@@ -165,10 +253,6 @@ test("interactive controls share the semantic control radius", async ({
   for (const control of controls)
     await expect(control).toHaveCSS("border-radius", controlRadius);
 
-  await expect(page.locator(".review-checkbox rect").first()).toHaveCSS(
-    "rx",
-    controlRadius,
-  );
   await viewOptions.click();
   const menu = page.getByRole("menu", { name: "View options" });
   await expect(menu).toHaveCSS("border-radius", controlRadius);
@@ -228,9 +312,7 @@ test("review actions use progressive disclosure, status filters, and confirmed d
   ).toBeVisible();
   const copyReview = page.getByRole("button", { name: "Copy review" });
   await expect(copyReview).toBeVisible();
-  const controlRadius = await copyReview.evaluate(
-    (button) => getComputedStyle(button).borderTopLeftRadius,
-  );
+  const controlRadius = "0px";
   await expect(
     page.getByRole("button", { name: "WebMCP instruction" }),
   ).toBeVisible();
@@ -371,9 +453,7 @@ test("bulk comment deletion selects a status and defaults to all", async ({
     name: "Delete",
     exact: true,
   });
-  const controlRadius = await page
-    .getByRole("button", { name: "Copy review" })
-    .evaluate((button) => getComputedStyle(button).borderTopLeftRadius);
+  const controlRadius = "0px";
   // Bulk delete rests quiet; the confirm dialog carries the destructive fill.
   await expect(remove).toHaveAttribute("data-variant", "destructive");
   await expect(remove).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");

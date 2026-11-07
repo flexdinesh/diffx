@@ -1889,8 +1889,11 @@ test("local first launch waits for collection with an empty catalog", async ({
   await expect(
     page.getByRole("button", { name: "Search reviews" }),
   ).toBeVisible();
-  const reviewBounds = await page.locator(".workspace").boundingBox();
-  if (!reviewBounds) throw new Error("Missing loaded workspace");
+  // Loading fills the workspace inside its leading hairline.
+  const reviewBounds = await page.locator(".workspace").evaluate((element) => ({
+    x: element.getBoundingClientRect().x + element.clientLeft,
+    width: element.clientWidth,
+  }));
   expect(reviewBounds.x).toBeCloseTo(loadingBounds.x, 0);
   expect(reviewBounds.width).toBeCloseTo(loadingBounds.width, 0);
 });

@@ -6,7 +6,7 @@ function Kbd({ className, ...props }: ComponentProps<"kbd">) {
     <kbd
       data-slot="kbd"
       className={cn(
-        "inline-flex w-fit items-center rounded-sm border border-border px-1 py-px font-mono text-xs leading-ui text-muted select-none",
+        "inline-flex w-fit items-center border border-border px-1 py-px font-mono text-xs leading-ui text-muted select-none",
         className,
       )}
       {...props}

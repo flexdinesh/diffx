@@ -73,7 +73,7 @@ const components: Components = {
   code: ({ className, children }) => (
     <code
       className={cn(
-        "rounded-sm bg-panel px-1 font-mono text-code",
+        "bg-panel px-1 font-mono text-code",
         className?.includes("language-") && "bg-transparent px-0",
       )}
     >
@@ -81,7 +81,7 @@ const components: Components = {
     </code>
   ),
   pre: ({ children }) => (
-    <pre className="mt-0 mb-2 overflow-x-auto rounded-md border border-border bg-panel p-3 font-mono text-code [&>code]:bg-transparent [&>code]:px-0">
+    <pre className="mt-0 mb-2 overflow-x-auto border border-border bg-panel p-3 font-mono text-code [&>code]:bg-transparent [&>code]:px-0">
       {children}
     </pre>
   ),
