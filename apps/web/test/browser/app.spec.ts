@@ -1928,6 +1928,14 @@ test("header icons use design-system sizes and the active tab fuses with its pan
     const headerElement = find(".topbar [aria-label='Hide file sidebar']");
     const rail = find(".stream-rail").getBoundingClientRect();
     const railView = railViewButton.getBoundingClientRect();
+    const railHead = find(".stream-rail-head");
+    const railHeadBox = railHead.getBoundingClientRect();
+    const railHeadBorder = parseFloat(
+      getComputedStyle(railHead).borderBottomWidth,
+    );
+    const tabHeader = tab.closest("[data-slot='panel-header']");
+    if (!tabHeader) throw new Error("Missing sidebar tab header");
+    const tabHeaderBox = tabHeader.getBoundingClientRect();
     const headerButton = headerElement.getBoundingClientRect();
     const panel = document.querySelector(".navigation-island");
     const inactiveTab = document.querySelector("#comments-tab");
@@ -1959,6 +1967,13 @@ test("header icons use design-system sizes and the active tab fuses with its pan
       railWidth: rail.width,
       railViewSize: [railView.width, railView.height],
       railViewInset: railView.left - rail.left,
+      railViewCenterOffset: Math.abs(
+        railHeadBox.top +
+          (railHeadBox.height - railHeadBorder) / 2 -
+          (railView.top + railView.height / 2),
+      ),
+      railHeadEdges: [railHeadBox.top, railHeadBox.bottom],
+      tabHeaderEdges: [tabHeaderBox.top, tabHeaderBox.bottom],
       headerButtonSize: [headerButton.width, headerButton.height],
       headerButtonInset: headerButton.top - topbarBox.top,
       railViewRadius: getComputedStyle(railViewButton).borderRadius,
@@ -1982,6 +1997,10 @@ test("header icons use design-system sizes and the active tab fuses with its pan
   expect(styles.railViewSize).toEqual(styles.headerButtonSize);
   expect(styles.railViewInset).toBe(styles.headerButtonInset);
   expect(styles.railViewRadius).toBe(styles.headerButtonRadius);
+  // Expand reviews centers in a head cell whose border continues the
+  // neighboring panel header's.
+  expect(styles.railViewCenterOffset).toBeLessThanOrEqual(0.5);
+  expect(styles.railHeadEdges).toEqual(styles.tabHeaderEdges);
   expect(styles.chromeStrokes.every((stroke) => stroke === "1.7px")).toBe(true);
   expect(styles.dividerCenterOffset).toBeLessThanOrEqual(0.5);
   expect(styles.tabBackground).toBe(styles.panelBackground);

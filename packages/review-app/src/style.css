@@ -150,15 +150,17 @@
 .stream-rail {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: var(--space-1);
   width: 100%;
   min-height: 0;
-  /* Match the header's inset around its buttons on every edge. */
-  padding: calc((var(--activity-width) - var(--activity-item)) / 2);
 }
-.stream-rail-divider {
-  margin-block: var(--space-1);
+/* A square header cell: centers its button like the header's inset and
+   continues the neighboring panel header's bottom border. */
+.stream-rail-head {
+  display: flex;
+  flex: 0 0 var(--activity-width);
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--border);
 }
 .stream-rail-list {
   display: flex;
@@ -167,7 +169,7 @@
   gap: var(--space-1);
   min-height: 0;
   margin: 0;
-  padding: 0;
+  padding: var(--space-2) 0;
   overflow: auto;
   list-style: none;
 }

@@ -307,16 +307,17 @@ function StreamRail({
   const streams = useStreamNavState();
   return (
     <nav id="projects-nav" className="stream-rail" aria-label="Reviews">
-      <IconButton
-        id="reviews-expand"
-        variant="rail"
-        touch
-        label="Expand reviews"
-        onClick={() => streams.expand()}
-      >
-        <PanelLeftOpenIcon aria-hidden="true" />
-      </IconButton>
-      <Separator className="stream-rail-divider" />
+      <div className="stream-rail-head">
+        <IconButton
+          id="reviews-expand"
+          variant="rail"
+          touch
+          label="Expand reviews"
+          onClick={() => streams.expand()}
+        >
+          <PanelLeftOpenIcon aria-hidden="true" />
+        </IconButton>
+      </div>
       <ul className="stream-rail-list" aria-label="Repositories">
         {groups.map((group) => {
           const unread = group.streams.filter((stream) => stream.unseen).length;
