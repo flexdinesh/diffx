@@ -138,7 +138,8 @@ function server({ enabled = true, github = "absent", handle }: Server = {}) {
         ? json({}, 404)
         : json({
             connected: false,
-            installUrl: "https://github.com/apps/diffx/installations/new",
+            installUrl:
+              "https://github.com/apps/diffx/installations/select_target",
           });
     if (path === "/api/v2/push" && request.method === "GET")
       return json(

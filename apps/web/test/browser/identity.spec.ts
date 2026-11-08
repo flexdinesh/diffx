@@ -318,7 +318,7 @@ test("connecting GitHub starts authorization with CSRF and reports the callback 
     return route.fulfill({
       json: {
         connected: false,
-        installUrl: "https://github.com/apps/diffx/installations/new",
+        installUrl: "https://github.com/apps/diffx/installations/select_target",
       },
     });
   });
@@ -338,7 +338,10 @@ test("connecting GitHub starts authorization with CSRF and reports the callback 
   await expect(steps.getByRole("button")).toHaveText(["Connect GitHub"]);
   await expect(
     steps.getByRole("link", { name: "Choose repositories on GitHub" }),
-  ).toHaveAttribute("href", "https://github.com/apps/diffx/installations/new");
+  ).toHaveAttribute(
+    "href",
+    "https://github.com/apps/diffx/installations/select_target",
+  );
   await expect(page.getByText(/repositor(y|ies) available/)).toHaveCount(0);
   await page
     .getByRole("button", { name: "Connect GitHub", exact: true })
@@ -357,7 +360,7 @@ test("followed repositories toggle with CSRF, resync, and lost access stays list
         connected: true,
         login: "alice-gh",
         state: "active",
-        installUrl: "https://github.com/apps/diffx/installations/new",
+        installUrl: "https://github.com/apps/diffx/installations/select_target",
       },
     }),
   );
@@ -432,7 +435,8 @@ test("choosing repositories on GitHub reloads the list once on return", async ({
         connected: true,
         login: "alice-gh",
         state: "active",
-        installUrl: "https://github.test/apps/diffx/installations/new",
+        installUrl:
+          "https://github.test/apps/diffx/installations/select_target",
       },
     }),
   );
@@ -508,11 +512,13 @@ test("expired GitHub authorization asks to connect again and disconnect confirms
             connected: true,
             login: "alice-gh",
             state: "expired",
-            installUrl: "https://github.com/apps/diffx/installations/new",
+            installUrl:
+              "https://github.com/apps/diffx/installations/select_target",
           }
         : {
             connected: false,
-            installUrl: "https://github.com/apps/diffx/installations/new",
+            installUrl:
+              "https://github.com/apps/diffx/installations/select_target",
           },
     });
   });
@@ -605,7 +611,7 @@ test("settings scroll at the window edge with a nav that marks the current page"
         connected: true,
         login: "alice-gh",
         state: "active",
-        installUrl: "https://github.com/apps/diffx/installations/new",
+        installUrl: "https://github.com/apps/diffx/installations/select_target",
       },
     }),
   );

@@ -250,7 +250,7 @@ test("a repository bell mutes notifications and rolls back when refused", async 
         connected: true,
         login: "alice-gh",
         state: "active",
-        installUrl: "https://github.com/apps/diffx/installations/new",
+        installUrl: "https://github.com/apps/diffx/installations/select_target",
       },
     }),
   );

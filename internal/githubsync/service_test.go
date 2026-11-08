@@ -275,7 +275,7 @@ func TestAuthorizationIsBoundToStartingAccountAndSealed(t *testing.T) {
 		}
 	}
 	status, err := f.service.Status(t.Context(), f.alice)
-	if err != nil || !status.Connected || status.State != "active" || status.InstallURL != "https://github.com/apps/diffx-test/installations/new" {
+	if err != nil || !status.Connected || status.State != "active" || status.InstallURL != "https://github.com/apps/diffx-test/installations/select_target" {
 		t.Fatalf("status %+v %v", status, err)
 	}
 }
