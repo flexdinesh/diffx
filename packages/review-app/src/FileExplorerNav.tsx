@@ -136,6 +136,7 @@ export function FileExplorerNav() {
             <>
               <IconButton
                 label={`${foldersCollapsed ? "Expand" : "Collapse"} all folders`}
+                variant="shell"
                 size="icon-sm"
                 disabled={folderPaths.length === 0}
                 onClick={() => {
@@ -152,7 +153,7 @@ export function FileExplorerNav() {
               </IconButton>
               <IconButton
                 label="Close review sidebar"
-                variant="subtle"
+                variant="shell"
                 size="icon-sm"
                 className="lg:hidden"
                 onClick={sidebar.closeMobile}
