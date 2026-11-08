@@ -43,61 +43,68 @@ export function ComparisonPicker() {
       : "Unavailable comparison";
   const localSelected =
     !commit && scopeAvailable && local.some(({ scope }) => scope === mode);
+  const commitsOffered = commitCount > 0 || commit !== null;
+  // A lone comparison with no commits to step through has nothing to choose.
+  const lone = choices.length === 1 && !commitsOffered && scopeAvailable;
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant="outline-muted"
-              size="xs"
-              touch
-              aria-label={`Comparison: ${selected}`}
-            >
-              {selected}
-              <ChevronDownIcon aria-hidden="true" />
-            </Button>
-          }
-        />
-        <DropdownMenuContent align="start" aria-label="Comparison">
-          <DropdownMenuRadioGroup
-            value={selected}
-            onValueChange={(value) => {
-              if (value === commitsLabel) {
-                if (!commit) openCommits();
-                return;
-              }
-              const next = choices.find(
-                ({ kind }) => comparisonLabel(kind) === value,
-              );
-              if (next) changeMode(next.scope);
-            }}
-          >
-            {choices.map(({ scope, kind }) => (
-              <DropdownMenuRadioItem
-                closeOnClick
-                key={scope}
-                value={comparisonLabel(kind)}
+      {lone ? (
+        <span className="px-2 text-sm text-secondary">{selected}</span>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="outline-muted"
+                size="xs"
+                touch
+                aria-label={`Comparison: ${selected}`}
               >
-                {comparisonLabel(kind)}
-              </DropdownMenuRadioItem>
-            ))}
-            {(commitCount > 0 || commit) && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuRadioItem closeOnClick value={commitsLabel}>
-                  {commitsLabel}
-                  <CountBadge
-                    className="ml-auto"
-                    count={commitCount}
-                    label={pluralize(commitCount, "commit")}
-                  />
+                {selected}
+                <ChevronDownIcon aria-hidden="true" />
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="start" aria-label="Comparison">
+            <DropdownMenuRadioGroup
+              value={selected}
+              onValueChange={(value) => {
+                if (value === commitsLabel) {
+                  if (!commit) openCommits();
+                  return;
+                }
+                const next = choices.find(
+                  ({ kind }) => comparisonLabel(kind) === value,
+                );
+                if (next) changeMode(next.scope);
+              }}
+            >
+              {choices.map(({ scope, kind }) => (
+                <DropdownMenuRadioItem
+                  closeOnClick
+                  key={scope}
+                  value={comparisonLabel(kind)}
+                >
+                  {comparisonLabel(kind)}
                 </DropdownMenuRadioItem>
-              </>
-            )}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+              ))}
+              {commitsOffered && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuRadioItem closeOnClick value={commitsLabel}>
+                    {commitsLabel}
+                    <CountBadge
+                      className="ml-auto"
+                      count={commitCount}
+                      label={pluralize(commitCount, "commit")}
+                    />
+                  </DropdownMenuRadioItem>
+                </>
+              )}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       {localSelected && local.length > 1 && (
         <div className="comparison-subcontrol">
           <SegmentedControl

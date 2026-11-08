@@ -39,7 +39,7 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
       data-slot="tabs-trigger"
       className={cn(
         "relative -mb-px flex min-w-0 flex-1 items-center justify-center gap-1 border-r border-border bg-shell px-1 text-sm font-medium whitespace-nowrap text-secondary hover:text-fg disabled:pointer-events-none disabled:opacity-60 data-active:bg-panel data-active:text-fg [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-icon",
-        "not-data-active:border-b data-active:last:border-r-0",
+        "not-data-active:border-b",
         className,
       )}
       {...props}

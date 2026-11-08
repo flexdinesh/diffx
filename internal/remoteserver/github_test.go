@@ -135,7 +135,7 @@ func TestGitHubConnectFollowAndWebhookBoundaries(t *testing.T) {
 		t.Fatalf("callback: %d %s", w.Code, w.Header().Get("Location"))
 	}
 	w = identityRequest(handler, "GET", "/api/v2/github/connection", "", cookie, "", "")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"login":"mona"`) || !strings.Contains(w.Body.String(), "apps/diffx-test/installations/new") {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"login":"mona"`) || !strings.Contains(w.Body.String(), "apps/diffx-test/installations/select_target") {
 		t.Fatalf("connection: %d %s", w.Code, w.Body.String())
 	}
 	if w := identityRequest(handler, "PUT", "/api/v2/github/follows/99", "", cookie, csrf, ""); w.Code != 403 {

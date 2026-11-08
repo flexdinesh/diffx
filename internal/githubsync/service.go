@@ -244,7 +244,7 @@ func (s *Service) installURL(ctx context.Context) (string, error) {
 		}
 		s.slug = slug
 	}
-	return "https://github.com/apps/" + s.slug + "/installations/new", nil
+	return "https://github.com/apps/" + s.slug + "/installations/select_target", nil
 }
 
 func (s *Service) Disconnect(ctx context.Context, ownerID string) error {

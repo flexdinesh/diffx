@@ -638,10 +638,11 @@ at `/design.html` (see `docs/frontend.md`).
   the accent for about one second. Reduced-motion mode uses static feedback that
   remains visible long enough to identify the destination without animation.
 - Sidebar tabs fuse with their panel: the active tab shares `--panel`, inactive
-  tabs recess into `--shell` and draw their own edges. A tab strip's header has no
-  hairline of its own, and an active last tab has no trailing edge, so header
-  actions sit directly on the panel with no box around them. Segmented choices and pressed
-  toggles use accent text on `--accent-bg`. Expose state with native/ARIA semantics.
+  tabs recess into `--shell` and draw their own edges. A tab strip's header
+  recesses into `--shell` too, with the bottom hairline the active tab covers, so
+  header actions share the inactive tabs' surface and use the `shell` button
+  variant. Every tab keeps its trailing edge, separating it from the actions.
+  Segmented choices and pressed toggles use accent text on `--accent-bg`. Expose state with native/ARIA semantics.
 - Badges use compact text and neutral surfaces. Status color is
   supplemental; retain “Open”, “Resolved”, Git letters, counts, and staging shapes.
 - Future menus or tables inherit these text, row, surface, and selection rules.
@@ -958,6 +959,8 @@ Do not add motion for decoration. New animation must honor
   chrome. Synchronize drawer behavior with `use-sidebar.ts`.
 - The compact comparison menu offers only captured choices: Uncommitted,
   Branch changes, Combined, Piped patch, or Commits. Selection closes the menu.
+  A lone available comparison with no commits shows its name as plain text
+  instead of a menu.
   Uncommitted exposes All / Staged / Unstaged in that semantic order when
   captured. The footer describes the selected comparison's captured baseline.
   An unavailable URL scope remains selected with an explanation and the

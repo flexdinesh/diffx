@@ -793,24 +793,29 @@ test("default themes keep diff tints, numbers and the hatch on the shell surface
   }
 });
 
-test("a tab strip leaves its actions without a surrounding box", async ({
+test("a tab strip's actions share the inactive tabs' shell surface", async ({
   page,
 }) => {
   await page.goto("/");
   await showDiff(page);
   const header = page.locator('#sidebar [data-slot="panel-header"]');
-  const transparent = "rgba(0, 0, 0, 0)";
-  await expect(header).toHaveCSS("border-bottom-color", transparent);
+  const tabs = header.getByRole("tab");
+  const shell = await tabs
+    .last()
+    .evaluate((tab) => getComputedStyle(tab).backgroundColor);
+  await expect(tabs.last()).toHaveAttribute("aria-selected", "false");
+  await expect(header).toHaveCSS("background-color", shell);
+  await expect(header).toHaveCSS("border-bottom-width", "1px");
+  await expect(tabs.first()).not.toHaveCSS("background-color", shell);
   const collapse = page.getByRole("button", {
     name: /^(?:Collapse|Expand) all folders$/,
   });
-  await expect(collapse).toHaveCSS("border-top-color", transparent);
-  const tabs = header.getByRole("tab");
-  await expect(tabs.last()).toHaveAttribute("aria-selected", "false");
+  await expect(collapse).toHaveCSS("border-top-color", "rgba(0, 0, 0, 0)");
   await expect(tabs.last()).toHaveCSS("border-right-width", "1px");
   await expect(tabs.last()).toHaveCSS("border-bottom-width", "1px");
   await tabs.last().click();
   await expect(tabs.last()).toHaveAttribute("aria-selected", "true");
-  await expect(tabs.last()).toHaveCSS("border-right-width", "0px");
-  await expect(tabs.first()).toHaveCSS("border-right-width", "1px");
+  await expect(tabs.last()).toHaveCSS("border-right-width", "1px");
+  await expect(tabs.last()).toHaveCSS("border-bottom-width", "0px");
+  await expect(header).toHaveCSS("background-color", shell);
 });

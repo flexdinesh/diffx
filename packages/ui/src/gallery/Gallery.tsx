@@ -331,7 +331,11 @@ function Components() {
           <Tabs defaultValue="files">
             <PanelHeader
               actions={
-                <IconButton label="Collapse all folders" size="icon-sm">
+                <IconButton
+                  label="Collapse all folders"
+                  variant="shell"
+                  size="icon-sm"
+                >
                   <DisclosureIcon open />
                 </IconButton>
               }
