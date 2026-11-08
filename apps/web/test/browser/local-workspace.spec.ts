@@ -2439,6 +2439,22 @@ async function chooseComparison(page: Page, label: string) {
   ).toBeHidden();
 }
 
+test("a lone comparison without commits shows its name instead of a picker", async ({
+  page,
+}) => {
+  const state = await localWorkspace(page);
+  state.context.capabilities.diff.scopes.values = ["committed"];
+  state.context.scopeSummaries = [
+    { scope: "committed", comparisonKind: "committed", fileCount: 1 },
+  ];
+  await page.goto("/contexts/local-review");
+  await ready(page, "committed-v1");
+  await expect(page.locator(".toolbar")).toContainText("Branch changes");
+  await expect(page.getByRole("button", { name: /^Comparison:/ })).toHaveCount(
+    0,
+  );
+});
+
 test("captured comparison default, saved stream choice, and explicit URL precedence", async ({
   page,
 }) => {

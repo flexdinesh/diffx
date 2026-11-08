@@ -565,7 +565,8 @@ func TestDesktopWebKitReviewMutationExportKeyboardAndOwnedLease(t *testing.T) {
 	// The shared application defaults local edits to the uncommitted scope.
 	// Mutations, reviewed marks and export must retain that captured scope.
 	const scope = "uncommitted"
-	w.wait("default local comparison", `document.querySelector('[aria-label="Comparison: Uncommitted"]')`)
+	// A lone comparison shows its name instead of a menu; either form names it.
+	w.wait("default local comparison", `document.querySelector('.toolbar')?.textContent.includes('Uncommitted')`)
 	var diff goclient.RepositoryDiff
 	_, err = viewerRequest(w.ctx, s, "GET", base+"/diffs/current?scope="+scope, nil, &diff)
 	must(t, err)

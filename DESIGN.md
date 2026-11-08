@@ -959,6 +959,8 @@ Do not add motion for decoration. New animation must honor
   chrome. Synchronize drawer behavior with `use-sidebar.ts`.
 - The compact comparison menu offers only captured choices: Uncommitted,
   Branch changes, Combined, Piped patch, or Commits. Selection closes the menu.
+  A lone available comparison with no commits shows its name as plain text
+  instead of a menu.
   Uncommitted exposes All / Staged / Unstaged in that semantic order when
   captured. The footer describes the selected comparison's captured baseline.
   An unavailable URL scope remains selected with an explanation and the
