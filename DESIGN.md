@@ -358,7 +358,8 @@ such detail into a token. New layout spacing must use the scale.
 - Review rail: the collapsed column is a fixed `--activity-width` column equal
   to `--topbar-height` (36px; 44px for coarse pointers). Items match header icon
   buttons (32px desktop, 44px touch) with the header's inset. “Expand reviews”
-  leads a separator, then one `rail` button per repository showing a
+  centers in a square head cell whose bottom border continues the neighboring
+  panel header's, then one `rail` button per repository showing a
   two-letter monogram, an accent dot for unopened streams, and
   `aria-current="true"` with accent text on `--selected` for the open review's
   repository. A mark (“Open latest in {repo}”) opens that repository's most
