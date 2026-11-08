@@ -425,6 +425,71 @@ test("followed repositories toggle with CSRF, resync, and lost access stays list
   expect(resynced).toBe(true);
 });
 
+test("following flips at once, leaves other repositories usable, and rolls back when refused", async ({
+  page,
+}) => {
+  await remote(page);
+  await page.route("**/api/v2/github/connection", (route) =>
+    route.fulfill({
+      json: {
+        connected: true,
+        login: "alice-gh",
+        state: "active",
+        installUrl: "https://github.com/apps/diffx/installations/select_target",
+      },
+    }),
+  );
+  await page.route("**/api/v2/github/repositories", (route) =>
+    route.fulfill({
+      json: {
+        repositories: [
+          {
+            id: 10,
+            fullName: "octo/app",
+            private: false,
+            followed: false,
+            lost: false,
+          },
+          {
+            id: 11,
+            fullName: "octo/docs",
+            private: false,
+            followed: false,
+            lost: false,
+          },
+        ],
+      },
+    }),
+  );
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/v2/github/follows/10", async (route) => {
+    await held;
+    return route.fulfill({
+      status: 503,
+      json: { detail: "GitHub unavailable" },
+    });
+  });
+  await page.route("**/api/v2/github/follows/11", (route) =>
+    route.fulfill({ status: 204 }),
+  );
+  await page.goto("/settings/github");
+  const app = page.getByRole("checkbox", { name: "octo/app" });
+  const docs = page.getByRole("checkbox", { name: "octo/docs" });
+  await app.click();
+  await expect(app).toBeChecked();
+  await expect(docs).toBeEnabled();
+  await docs.click();
+  await expect(docs).toBeChecked();
+  await expect(page.getByText("Following octo/docs.")).toBeVisible();
+  release();
+  await expect(page.getByRole("alert")).toHaveText("GitHub unavailable");
+  await expect(app).not.toBeChecked();
+  await expect(docs).toBeChecked();
+});
+
 test("choosing repositories on GitHub reloads the list once on return", async ({
   page,
 }) => {

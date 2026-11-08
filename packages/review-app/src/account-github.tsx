@@ -365,14 +365,28 @@ function FollowedRepositories({
 }) {
   const { repositories, setRepositories, loaded, error, setError, reload } =
     list;
-  const [pending, setPending] = useState<number | null>(null);
+  const [saving, setSaving] = useState<ReadonlySet<number>>(new Set());
   const [resyncing, setResyncing] = useState(false);
   const [notifying, setNotifying] = useState<ReadonlySet<number>>(new Set());
   const [status, setStatus] = useState("");
+  /** A repository with a follow or bell request in flight ignores new input. */
+  const busy = (id: number) => saving.has(id) || notifying.has(id);
+  /**
+   * Optimistic: the checkbox flips at once and rolls back if the server
+   * refuses. Other repositories stay usable meanwhile.
+   */
   async function setFollowed(repository: ApiGitHubRepository, follow: boolean) {
-    setPending(repository.id);
+    if (busy(repository.id)) return;
+    setSaving((ids) => new Set(ids).add(repository.id));
     setError("");
     setStatus("");
+    setRepositories((items) =>
+      items.map((item) =>
+        item.id === repository.id
+          ? { ...item, followed: follow, notify: follow }
+          : item,
+      ),
+    );
     try {
       const params = { params: { path: { repositoryId: repository.id } } };
       const { response, error } = follow
@@ -385,13 +399,13 @@ function FollowedRepositories({
             `Unable to ${follow ? "follow" : "unfollow"} ${repository.fullName}. Try again.`,
           ),
         );
-      setRepositories((value) =>
-        value.flatMap((item) =>
+      setRepositories((items) =>
+        items.flatMap((item) =>
           item.id !== repository.id
             ? [item]
             : !follow && item.lost
               ? []
-              : [{ ...item, followed: follow, lost: false, notify: follow }],
+              : [{ ...item, lost: false }],
         ),
       );
       setStatus(
@@ -400,14 +414,26 @@ function FollowedRepositories({
           : `Stopped following ${repository.fullName}.`,
       );
     } catch (failure: unknown) {
-      setError(errorDetail(failure, "Unable to update. Try again."));
+      setRepositories((items) =>
+        items.map((item) => (item.id === repository.id ? repository : item)),
+      );
+      setError(
+        errorDetail(
+          failure,
+          `Unable to ${follow ? "follow" : "unfollow"} ${repository.fullName}. Try again.`,
+        ),
+      );
     } finally {
-      setPending(null);
+      setSaving((ids) => {
+        const next = new Set(ids);
+        next.delete(repository.id);
+        return next;
+      });
     }
   }
   /** Optimistic: the bell flips at once and rolls back if the server refuses. */
   async function setNotify(repository: ApiGitHubRepository, notify: boolean) {
-    if (notifying.has(repository.id)) return;
+    if (busy(repository.id)) return;
     const update = (value: boolean) =>
       setRepositories((items) =>
         items.map((item) =>
@@ -516,7 +542,7 @@ function FollowedRepositories({
                 <Checkbox
                   id={id}
                   checked={repository.followed}
-                  disabled={pending !== null}
+                  aria-busy={saving.has(repository.id)}
                   onCheckedChange={(checked) =>
                     void setFollowed(repository, checked)
                   }
@@ -546,7 +572,7 @@ function FollowedRepositories({
                           touch
                           aria-label={`Notify for ${repository.fullName}`}
                           pressed={repository.notify}
-                          aria-busy={notifying.has(repository.id)}
+                          aria-busy={busy(repository.id)}
                           onPressedChange={(pressed) =>
                             void setNotify(repository, pressed)
                           }
