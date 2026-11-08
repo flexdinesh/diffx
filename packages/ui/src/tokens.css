@@ -99,6 +99,8 @@
   --reading-width: 42.5rem;
   /* Content column of the signed-out landing page. */
   --landing-width: 72rem;
+  /* The landing page's boxed surface; Diffx light makes it white below. */
+  --landing-surface: var(--bg);
   --layer-sidebar: 10;
   --layer-backdrop: 9;
   --layer-resizer: 12;
@@ -109,6 +111,12 @@
   --duration-spin: 800ms;
   --duration-pulse: 1800ms;
   --ease-standard: ease-out;
+}
+
+/* Diffx light only: palettes and dark keep the landing surface on --bg. */
+:root[data-theme="light"]:not([data-palette]),
+[data-palette="diffx-light"] {
+  --landing-surface: #fff;
 }
 
 :root[data-theme="dark"],
