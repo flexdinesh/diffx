@@ -1,8 +1,16 @@
-import { CheckIcon, CopyIcon, GitPullRequestIcon } from "lucide-react";
+import {
+  ArrowRightIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CopyIcon,
+  GitPullRequestIcon,
+} from "lucide-react";
 import {
   useEffect,
   useRef,
   useState,
+  type ComponentProps,
   type FormEvent,
   type MouseEvent,
   type ReactNode,
@@ -13,7 +21,12 @@ import { LinkButton } from "@diffx/ui/components/link-button";
 import { Button } from "@diffx/ui/components/ui/button";
 import { Input } from "@diffx/ui/components/ui/input";
 import { navigate } from "./identity-context.tsx";
-import { demoAgentReview, demoPath, demoStat } from "./landing-demo.ts";
+import {
+  demoAgentReview,
+  demoRepository,
+  demoSummary,
+  demoTree,
+} from "./landing-demo.ts";
 import {
   demoPullRequests,
   parsePullRequestInput,
@@ -25,22 +38,8 @@ const invalidLink =
   "Enter a GitHub pull request link, like github.com/owner/repo/pull/123.";
 const docsUrl = "https://docs.diffx.app";
 const repositoryUrl = "https://github.com/flexdinesh/diffx";
-const installCommand = "brew install flexdinesh/tap/diffx";
-
-type Act = "run" | "review" | "handoff";
-const acts: readonly { id: Act; label: string; caption: string }[] = [
-  { id: "run", label: "Run", caption: "diffx" },
-  { id: "review", label: "Review", caption: demoPath },
-  { id: "handoff", label: "Hand off", caption: "code-review-comments.xml" },
-];
-
-function actElementId(act: Act) {
-  return `landing-act-${act}`;
-}
-
-function reducedMotion() {
-  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-}
+const installCommand =
+  "curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install.sh | sh";
 
 /** In-app links keep client routing; the URL stays a real href. */
 function appLink(to: string) {
@@ -54,10 +53,10 @@ function appLink(to: string) {
 }
 
 /**
- * The signed-out home on a remote server: what diffx does, shown as one
- * review session (run, review, hand off) on the real review surface. With
- * public pull request previews on, pasting a link is the primary action;
- * otherwise "Go to app" is.
+ * The signed-out home on a remote server: one boxed column that says what
+ * diffx does, shows a review in the app's own window, and what it hands an
+ * agent. With public pull request previews on, pasting a link is the primary
+ * action; otherwise "Go to app" is.
  */
 export function Landing({
   previews,
@@ -69,88 +68,120 @@ export function Landing({
 }) {
   return (
     <div className="landing">
-      <div className="landing-topbar-band">
-        <header className="landing-topbar landing-frame">
-          <a className="brand" href="/">
+      <div className="landing-box">
+        <header className="landing-topbar">
+          <a className="brand landing-topbar-brand" href="/">
             <BrandMark />
             diffx
           </a>
-          <nav className="landing-topbar-actions" aria-label="diffx">
-            <LinkButton variant="ghost" href={docsUrl} touch>
-              Docs
-            </LinkButton>
-            <LinkButton variant="ghost" href={repositoryUrl} touch>
-              GitHub
-            </LinkButton>
-            <LinkButton variant="outline" touch {...appLink("/signin")}>
+          <p className="landing-motto">A review bench for your changes.</p>
+          <nav className="landing-topbar-nav" aria-label="diffx">
+            <a href={docsUrl}>Docs</a>
+            <a href={repositoryUrl}>GitHub</a>
+            <a className="landing-topbar-app" {...appLink("/signin")}>
               Go to app
-            </LinkButton>
+              <ArrowRightIcon aria-hidden="true" />
+            </a>
           </nav>
         </header>
-      </div>
-      <main>
-        <section
-          className="landing-hero landing-frame"
-          aria-labelledby="landing-title"
-        >
-          <h1 id="landing-title" className="landing-display">
-            <span>Review the diff.</span>{" "}
-            <span>Hand the fixes to your agent.</span>
-          </h1>
-          <p className="landing-lede">
-            diffx opens your Git changes as a readable diff in the browser,
-            keeps your review comments, and turns them into instructions a
-            coding agent can act on.
-          </p>
-          {previews ? (
-            <PullRequestAddress />
-          ) : (
-            <div className="landing-actions">
-              <LinkButton
-                variant="default"
-                size="lg"
-                touch
-                {...appLink("/signin")}
-              >
-                Go to app
-              </LinkButton>
-              <LinkButton variant="outline" size="lg" touch href={docsUrl}>
-                Read the docs
-              </LinkButton>
+        <main>
+          <section
+            className="landing-band landing-hero"
+            aria-labelledby="landing-title"
+          >
+            <h1 id="landing-title" className="landing-display">
+              <span>Review the diff.</span>{" "}
+              <span>Hand the fixes to your agent.</span>
+            </h1>
+            <p className="landing-lede">
+              diffx opens your Git changes as a readable diff in the browser,
+              keeps your review comments, and turns them into instructions a
+              coding agent can act on.
+            </p>
+            {previews ? (
+              <PullRequestAddress />
+            ) : (
+              <div className="landing-actions">
+                <LinkButton
+                  variant="default"
+                  size="lg"
+                  touch
+                  {...appLink("/signin")}
+                >
+                  Go to app
+                </LinkButton>
+                <LinkButton variant="outline" size="lg" touch href={docsUrl}>
+                  Read the docs
+                </LinkButton>
+              </div>
+            )}
+          </section>
+          <section
+            className="landing-band landing-demo"
+            aria-label="A diffx review"
+          >
+            <DemoWindow demoDiff={demoDiff} />
+            <div className="landing-handoff">
+              <p className="landing-handoff-intro">
+                Copy the review into any coding agent. Agents also read the same
+                comments over <a href={`${docsUrl}/mcp`}>MCP</a> and{" "}
+                <a href={`${docsUrl}/webmcp`}>WebMCP</a>.
+              </p>
+              <AgentReview />
             </div>
-          )}
-        </section>
-        <div className="landing-frame">
-          <ReviewSession demoDiff={demoDiff} />
-        </div>
-        <section
-          className="landing-close"
-          aria-labelledby="landing-close-title"
-        >
-          <h2 id="landing-close-title" className="landing-heading">
-            Start with your own changes
-          </h2>
-          <p className="landing-copy">
-            Install the CLI and run it in any Git repository. Your browser opens
-            the captured changes.
-          </p>
-          <CommandRow command={installCommand} label="Copy install command" />
-          <div className="landing-actions">
-            <LinkButton variant="default" touch {...appLink("/signin")}>
-              Go to app
-            </LinkButton>
-            <LinkButton
-              variant="outline"
-              touch
-              href={`${docsUrl}/getting-started`}
-            >
-              Getting started
-            </LinkButton>
-          </div>
-        </section>
-      </main>
-      <div className="landing-footer-band">
-        <footer className="landing-footer landing-frame">
+          </section>
+          <section className="landing-band landing-steps" aria-label="Steps">
+            <ol>
+              <li>
+                <h2>
+                  <span aria-hidden="true">01</span> Run
+                </h2>
+                <p>
+                  Run <code>diffx</code> in any Git repository. Your browser
+                  opens all, staged, or unstaged changes.
+                </p>
+              </li>
+              <li>
+                <h2>
+                  <span aria-hidden="true">02</span> Review
+                </h2>
+                <p>
+                  Read the diff, mark files reviewed, and comment on the lines
+                  that need work.
+                </p>
+              </li>
+              <li>
+                <h2>
+                  <span aria-hidden="true">03</span> Hand off
+                </h2>
+                <p>
+                  Copy the review as agent-ready XML, or let agents read it over{" "}
+                  <a href={`${docsUrl}/mcp`}>MCP</a> and{" "}
+                  <a href={`${docsUrl}/webmcp`}>WebMCP</a>.
+                </p>
+              </li>
+            </ol>
+          </section>
+          <section
+            className="landing-band landing-close"
+            aria-labelledby="landing-close-title"
+          >
+            <h2 id="landing-close-title" className="landing-heading">
+              Also works locally, without signing in
+            </h2>
+            <p className="landing-copy">
+              This hosted app needs a sign-in. The diffx CLI runs on your
+              machine: install it, run it in any Git repository, and review your
+              changes in the browser. No account needed.
+            </p>
+            <CommandRow command={installCommand} label="Copy install command" />
+            <p className="landing-note">
+              macOS and Linux. No Go or Node.js required.{" "}
+              <a href={`${docsUrl}/getting-started`}>Getting started</a>
+            </p>
+          </section>
+        </main>
+        <footer className="landing-band landing-footer">
           <span>diffx</span>
           <a href={docsUrl}>Docs</a>
           <a href={repositoryUrl}>GitHub</a>
@@ -240,155 +271,119 @@ function PullRequestAddress() {
   );
 }
 
-/** The current act: the last one whose top has passed the strip. */
-function useCurrentAct() {
-  const [current, setCurrent] = useState<Act>("run");
-  useEffect(() => {
-    if (typeof IntersectionObserver === "undefined") return;
-    const visible = new Map<Act, boolean>();
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const act = acts.find(
-            (act) => actElementId(act.id) === entry.target.id,
-          );
-          if (act) visible.set(act.id, entry.isIntersecting);
-        }
-        const first = acts.find((act) => visible.get(act.id));
-        if (first) setCurrent(first.id);
-      },
-      { rootMargin: "-30% 0px -50% 0px" },
-    );
-    for (const act of acts) {
-      const element = document.getElementById(actElementId(act.id));
-      if (element) observer.observe(element);
-    }
-    return () => observer.disconnect();
-  }, []);
-  return { current, setCurrent };
-}
-
-/** One review session in three acts on the review surface. */
-function ReviewSession({ demoDiff }: { demoDiff: ReactNode }) {
-  const { current, setCurrent } = useCurrentAct();
+/**
+ * The demo review inside a static copy of the app's window: header, file
+ * tree, the Pierre diff and the status bar. Only the diff is content; the
+ * chrome is decoration and stays out of the accessibility tree.
+ */
+function DemoWindow({ demoDiff }: { demoDiff: ReactNode }) {
   return (
-    <section
-      className="landing-stage"
-      aria-label="A diffx review, step by step"
-    >
-      <nav className="landing-acts" aria-label="Steps">
-        <ol>
-          {acts.map((act) => (
-            <li key={act.id}>
-              <a
-                href={`#${actElementId(act.id)}`}
-                aria-current={current === act.id ? "step" : undefined}
-                onClick={(event) => {
-                  event.preventDefault();
-                  setCurrent(act.id);
-                  document
-                    .getElementById(actElementId(act.id))
-                    ?.scrollIntoView({
-                      behavior: reducedMotion() ? "auto" : "smooth",
-                      block: "start",
-                    });
+    <figure className="landing-window">
+      <div className="landing-window-frame">
+        <div className="landing-window-header" aria-hidden="true">
+          <BrandMark />
+          <span className="landing-window-sep">/</span>
+          <span className="landing-window-repo">{demoRepository.name}</span>
+          <span className="landing-window-branch">{demoRepository.branch}</span>
+          <span className="landing-window-controls">
+            <span className="landing-window-segment">
+              <span data-selected="">All</span>
+              <span>Staged</span>
+              <span>Unstaged</span>
+            </span>
+            <span className="landing-window-segment">
+              <span>Split</span>
+              <span data-selected="">Unified</span>
+            </span>
+          </span>
+        </div>
+        <div className="landing-window-body">
+          <div className="landing-window-files" aria-hidden="true">
+            <div className="landing-window-pane-header">
+              <span>
+                Changes{" "}
+                <span className="landing-window-count">
+                  {demoSummary.files}
+                </span>
+              </span>
+              <kbd>Alt+/</kbd>
+            </div>
+            <ul className="landing-window-tree">
+              {demoTree.map((entry) => (
+                <li
+                  key={`${entry.depth}-${entry.name}`}
+                  data-kind={entry.kind}
+                  data-selected={entry.selected ? "" : undefined}
+                  style={{
+                    paddingLeft: `calc(var(--space-3) + ${entry.depth} * var(--space-4))`,
+                  }}
+                >
+                  {entry.kind === "directory" &&
+                    (entry.open ? <ChevronDownIcon /> : <ChevronRightIcon />)}
+                  <span className="landing-window-name">{entry.name}</span>
+                  {entry.status && (
+                    <span
+                      className="landing-window-status"
+                      data-status={entry.status}
+                    >
+                      {entry.status}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <div className="landing-window-summary">
+              <dl>
+                <div>
+                  <dt>Files changed</dt>
+                  <dd>{demoSummary.files}</dd>
+                </div>
+                <div>
+                  <dt>Additions</dt>
+                  <dd className="text-success">+{demoSummary.additions}</dd>
+                </div>
+                <div>
+                  <dt>Deletions</dt>
+                  <dd className="text-error">−{demoSummary.deletions}</dd>
+                </div>
+              </dl>
+              <span
+                className="landing-window-bar"
+                style={{
+                  gridTemplateColumns: `${demoSummary.additions}fr ${demoSummary.deletions}fr`,
                 }}
               >
-                <span className="landing-act-label">{act.label}</span>
-                <span className="landing-act-caption">{act.caption}</span>
-              </a>
-            </li>
-          ))}
-        </ol>
-        <DiffStat />
-      </nav>
-      <div id={actElementId("run")} className="landing-act landing-act-run">
-        <p className="landing-act-intro">Run it in any Git repository.</p>
-        <CommandRow command="diffx" label="Copy command" />
+                <span data-kind="addition" />
+                <span data-kind="deletion" />
+              </span>
+            </div>
+          </div>
+          <div className="landing-window-diff">{demoDiff}</div>
+        </div>
+        <div className="landing-window-status-bar" aria-hidden="true">
+          <span className="landing-window-live">Local</span>
+          <span>Working tree · uncommitted</span>
+          <span className="landing-window-keys">Alt+J / Alt+K files</span>
+        </div>
       </div>
-      <div id={actElementId("review")} className="landing-act">
-        <p className="landing-act-intro">
-          Read the diff and leave comments on the lines that need work.
-          <span className="landing-demo-note">
-            {" "}
-            Demo change, not a real repository.
-          </span>
-        </p>
-        {demoDiff}
-      </div>
-      <div id={actElementId("handoff")} className="landing-act">
-        <p className="landing-act-intro">
-          Copy the review into any coding agent. Agents also read the same
-          comments over <a href={`${docsUrl}/mcp`}>MCP</a>, browser agents
-          through <a href={`${docsUrl}/webmcp`}>WebMCP</a>, and{" "}
-          <a href={`${docsUrl}/plugins`}>agent plugins</a> sync each checkout to
-          a <a href={`${docsUrl}/agent-hooks`}>remote diffx server</a>.
-        </p>
-        <AgentReview />
-      </div>
-    </section>
+      <figcaption>
+        The review, with a demo change. Not a real repository.
+      </figcaption>
+    </figure>
   );
 }
 
-/** The demo's added and deleted lines, drawn in proportion. */
-function DiffStat() {
-  const total = demoStat.additions + demoStat.deletions;
-  const blocks = 10;
-  const added = Math.round((demoStat.additions / total) * blocks);
-  return (
-    <p className="landing-diffstat">
-      <span className="sr-only">
-        {demoStat.additions} additions and {demoStat.deletions} deletions
-      </span>
-      <span aria-hidden="true" className="landing-diffstat-counts">
-        <span className="text-success">+{demoStat.additions}</span>{" "}
-        <span className="text-error">−{demoStat.deletions}</span>
-      </span>
-      <span aria-hidden="true" className="landing-diffstat-bar">
-        {Array.from({ length: blocks }, (_, index) => (
-          <span
-            key={index}
-            data-kind={index < added ? "addition" : "deletion"}
-          />
-        ))}
-      </span>
-    </p>
-  );
-}
-
-/** Shows the exported review once, revealed as it scrolls into view. */
+/** Shows exactly what "Copy review" exports for the demo comment. */
 function AgentReview() {
-  const block = useRef<HTMLPreElement>(null);
-  const [reveal, setReveal] = useState<"idle" | "pending" | "revealed">("idle");
-  useEffect(() => {
-    const element = block.current;
-    if (
-      !element ||
-      reducedMotion() ||
-      typeof IntersectionObserver === "undefined"
-    )
-      return;
-    const top = element.getBoundingClientRect().top;
-    if (top < window.innerHeight) return;
-    setReveal("pending");
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        setReveal("revealed");
-        observer.disconnect();
-      },
-      { rootMargin: "0px 0px -20% 0px" },
-    );
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
   return (
     <div className="landing-agent">
       <div className="landing-agent-header">
         <span className="font-mono">code-review-comments.xml</span>
-        <CopyButton text={demoAgentReview} label="Copy demo review" />
+        <CopyButton text={demoAgentReview} label="Copy demo review">
+          Copy review
+        </CopyButton>
       </div>
-      <pre ref={block} data-reveal={reveal} className="landing-agent-xml">
+      <pre className="landing-agent-xml">
         <code>{demoAgentReview}</code>
       </pre>
     </div>
@@ -404,12 +399,22 @@ function CommandRow({ command, label }: { command: string; label: string }) {
         </span>
         {command}
       </code>
-      <CopyButton text={command} label={label} />
+      <CopyButton text={command} label={label} variant="default" />
     </div>
   );
 }
 
-function CopyButton({ text, label }: { text: string; label: string }) {
+function CopyButton({
+  text,
+  label,
+  variant = "outline",
+  children = "Copy",
+}: {
+  text: string;
+  label: string;
+  variant?: ComponentProps<typeof Button>["variant"];
+  children?: ReactNode;
+}) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -419,7 +424,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   return (
     <>
       <Button
-        variant="ghost"
+        variant={variant}
         size="sm"
         touch
         aria-label={label}
@@ -435,7 +440,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
         ) : (
           <CopyIcon aria-hidden="true" />
         )}
-        {copied ? "Copied" : "Copy"}
+        {copied ? "Copied" : children}
       </Button>
       <span className="sr-only" role="status">
         {copied ? "Copied" : ""}

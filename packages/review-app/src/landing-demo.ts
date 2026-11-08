@@ -71,5 +71,26 @@ export const demoComment: ReviewComment = {
 /** Exactly what "Copy review" would hand an agent for the demo comment. */
 export const demoAgentReview = formatComments([demoComment], false);
 
-/** Added and deleted lines in the demo patch, for its diffstat. */
-export const demoStat = { additions: 8, deletions: 1 };
+/** The demo window's synthetic checkout: its branch and changed files. */
+export const demoRepository = { name: "acme/api", branch: "retry-backoff" };
+
+export type DemoTreeEntry = {
+  name: string;
+  depth: number;
+  kind: "directory" | "file";
+  open?: boolean;
+  status?: "M" | "A";
+  selected?: boolean;
+};
+
+export const demoTree: readonly DemoTreeEntry[] = [
+  { name: "src", depth: 0, kind: "directory", open: true },
+  { name: "retry.ts", depth: 1, kind: "file", status: "M", selected: true },
+  { name: "http.ts", depth: 1, kind: "file", status: "M" },
+  { name: "retry.test.ts", depth: 1, kind: "file", status: "A" },
+  { name: "docs", depth: 0, kind: "directory", open: false },
+  { name: "CHANGELOG.md", depth: 0, kind: "file", status: "M" },
+];
+
+/** Totals for every file in the demo tree, not only the rendered patch. */
+export const demoSummary = { files: 4, additions: 41, deletions: 6 };

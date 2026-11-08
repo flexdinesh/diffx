@@ -788,13 +788,18 @@ at `/design.html` (see `docs/frontend.md`).
 
 ### Signed-out landing page
 
-The one Persuade surface: it tells what diffx does as one review session (Run,
-Review, Hand off) on the real review surface, in the same world as the app.
+The one Persuade surface: it tells what diffx does by showing a review in the
+app's own window, then what that review hands an agent, in the same world as
+the app.
 
-- One centered column, `--landing-width`, with `--page-gutter` insets. Bands:
-  a `--shell-canvas` top bar (quiet brand; ghost Docs and GitHub links; outline
-  "Go to app" to `/signin`), the hero, the stage, a closing install band and a
-  neutral footer.
+- One boxed column, `--landing-width`, on `--landing-surface` (white in Diffx
+  light, `--bg` in every other theme). The box has 1px `--border` sides and a
+  full-width hairline under every band; bands inset by `--page-gutter`. Bands:
+  top bar, hero, demo, steps, local CLI close and footer.
+- Top bar: cells split by hairlines, editor-tab style: brand, the mono motto
+  "A review bench for your changes." (hidden below 768px), mono Docs and
+  GitHub links, and "Go to app" to `/signin`, filled with `--fg` on
+  `--landing-surface`.
 - Hero: the `--text-display` headline breaks at its sentence boundary at every
   width, then one `--text-lg` prose line. With public pull requests on, the
   labeled "Pull request URL" field with the one primary "Open" action, its
@@ -802,19 +807,27 @@ Review, Hand off) on the real review surface, in the same world as the app.
   requests in one subgrid of icon, mono `owner/repo`, mono `#n` and title.
   With previews off, "Go to app" is the filled primary beside an outline
   "Read the docs".
-- Stage: one `--shell-canvas` frame (1px `--border`). A sticky
-  act strip (labels plus mono captions, a proportional diffstat) marks the act
-  in view with the selected surface and accent text, and scrolls to an act on
-  click; below 1012px it becomes a top tab row. Run shows the `diffx` command
-  row; Review renders a synthetic demo diff with Pierre (unified, wrapped,
-  simple hunk separators) and one static inline comment card, labelled as a
-  demo; Hand off shows exactly what `formatComments` exports for it.
+- Demo: a static copy of the app window (1px `--border`): a `--shell-canvas`
+  header with the brand mark only, repository, branch chip and static scope
+  and view segments; a `--panel` "Changes" tree with its summary and bar; the
+  Pierre demo diff (unified, wrapped, simple hunk separators, one static
+  inline comment card) flush to its pane, its file header level with the
+  tree's; and a status bar. The chrome is `aria-hidden`; the figure caption
+  labels it a demo. Below 1012px the tree and segments drop and only the diff
+  remains. Under the window, one prose line and exactly what `formatComments`
+  exports for the demo comment, with "Copy review". There is no comments pane
+  and no scroll-driven motion.
+- Steps: three hairline-split cells, Run, Review and Hand off, numbered because
+  the order is the workflow; they stack below 768px.
+- Close: "Also works locally, without signing in" separates the hosted app,
+  which needs a sign-in, from the local CLI, which needs no account. The
+  `curl` installer command with its Copy action, then supported platforms and
+  Getting started.
 - The comment card must stay fully visible in the first viewport at
-  1440x900. The Hand off export reveals once, top to bottom, as it enters view
-  (static under reduced motion).
-- Accent is limited to the primary action, the active act and inline prose
-  links. Claims come only from the user docs; there are no feature card grids,
-  kickers or decorative imagery.
+  1440x900.
+- Accent is limited to the primary actions, the selected demo states and inline
+  prose links. Claims come only from the user docs; demo data is labelled;
+  there are no feature card grids, kickers or decorative imagery.
 
 ### Public pull request previews
 
