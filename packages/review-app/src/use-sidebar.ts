@@ -2,16 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { save, saved } from "@diffx/ui/lib/storage";
 import { useModalDrawer } from "./use-modal-drawer.ts";
 
-/** Below the 1012px breakpoint, navigation opens as one modal drawer at a time. */
-export type NavigationDrawer = "reviews" | "files";
+/** Below the 1012px breakpoint, the file sidebar opens as a modal drawer. */
+export type NavigationDrawer = "files";
 
-const drawers = {
-  reviews: { drawer: "#projects-nav", toggle: "#projects-toggle" },
-  files: { drawer: "#sidebar", toggle: "#sidebar-toggle" },
-} satisfies Record<NavigationDrawer, { drawer: string; toggle: string }>;
-
-// Owns the file sidebar's desktop preferences and both mobile drawers; the
-// review column's desktop state lives in use-stream-nav.ts.
+// Owns the file sidebar's desktop preferences and its mobile drawer.
 export function useSidebar() {
   const [mobile, setMobile] = useState(
     () => matchMedia("(max-width: 1011px)").matches,
@@ -40,8 +34,7 @@ export function useSidebar() {
       document.removeEventListener("keydown", onEscape);
     };
   }, []);
-  const modal = drawers[drawer ?? "files"];
-  useModalDrawer(mobile && drawer !== null, modal.drawer, modal.toggle);
+  useModalDrawer(mobile && drawer !== null, "#sidebar", "#sidebar-toggle");
   useEffect(() => {
     save("sidebar-collapsed", String(collapsed));
   }, [collapsed]);
@@ -76,12 +69,10 @@ export function useSidebar() {
       if (mobile) setDrawer((value) => (value === "files" ? null : "files"));
       else setCollapsed((value) => !value);
     },
-    toggleReviews: () =>
-      setDrawer((value) => (value === "reviews" ? null : "reviews")),
-    /** `reserved` is the review column's width, kept beside a 320px diff. */
-    setWidth: (next: number, reserved: number) =>
+    /** Keeps the diff at least 320px wide beside the sidebar. */
+    setWidth: (next: number) =>
       setWidthState(
-        Math.max(200, Math.min(520, window.innerWidth - 320 - reserved, next)),
+        Math.max(200, Math.min(520, window.innerWidth - 320, next)),
       ),
   };
 }

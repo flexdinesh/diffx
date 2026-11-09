@@ -9,6 +9,8 @@ for (const name of [
   "document",
   "navigator",
   "HTMLElement",
+  "HTMLInputElement",
+  "HTMLTextAreaElement",
   "Element",
   "Node",
   "MutationObserver",

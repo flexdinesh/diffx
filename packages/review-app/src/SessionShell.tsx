@@ -5,18 +5,20 @@ import { WorkspaceLoading } from "./WorkspaceLoading.tsx";
 import { navigate } from "./identity-context.tsx";
 import { Button } from "@diffx/ui/components/ui/button";
 import { ProjectPicker } from "./ProjectPicker.tsx";
+import { ReviewBench } from "./ReviewBench.tsx";
 import { Navigation } from "./Navigation.tsx";
 import { SyncButton, Topbar } from "./Topbar.tsx";
 import { useCatalog, useSessionShell } from "./session-context.tsx";
 import { useShellPolicy } from "./use-shell-policy.ts";
 
 /**
- * Presents the selected review once ready, or the loading, empty and failure
- * shell while SessionProvider resolves it. The picker spans both states
+ * Presents the Review bench at the root, the selected review once ready, or
+ * the loading, empty and failure shell while SessionProvider resolves it. The picker spans both states
  * wherever the shell offers review navigation.
  */
 export function SessionShell({ children }: { children: ReactNode }) {
-  const { current, selectedId, select, pickerOpen, heads } = useCatalog();
+  const { current, selectedId, select, pickerOpen, heads, bench } =
+    useCatalog();
   const {
     ready,
     loading,
@@ -37,7 +39,9 @@ export function SessionShell({ children }: { children: ReactNode }) {
     <>
       <div className="app-shell">
         <div className="app-main">
-          {ready ? (
+          {bench ? (
+            <ReviewBench />
+          ) : ready ? (
             children
           ) : (
             <>

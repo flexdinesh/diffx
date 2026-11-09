@@ -86,31 +86,32 @@ navigation, draft, review, reviewed files, and collapse state. Collapsed diff
 files (per stream and scope), closed tree folders and Hide reviewed files (per
 stream) persist in `sessionStorage`, so reloads and newer snapshots keep them within a tab; piped
 snapshots key by context. One draft persists
-across scopes. Context selection uses the Reviews column and rail
-(`ProjectsNav.tsx`), the header repository and branch comboboxes
-(`ContextIdentity.tsx`) and the popup picker (Cmd/Ctrl+K or the header's
-“Search reviews” magnifier); `project-nav.ts` owns their grouping, ordering,
-latest-stream, pull request filter, section and branch-filter rules. Selecting
-a stream keeps the column and file sidebar open. `use-stream-nav.ts`, provided
-by `stream-nav-context.tsx`, owns the column's rail/list state, width,
-grouping and pull request filter (`streams-pr-filter`, default open).
-The shell policy's `pullRequests`, from bootstrap `githubEnabled`, enables
-the filter and the column's “Pull requests” / “From your machines” sections;
-`streamCount` and so local column visibility count current work only. `shell-policy.ts`
+across scopes. `/` is the Review bench (`ReviewBench.tsx`) wherever the
+shell offers review navigation: facets, a sectioned review table and a peek.
+`review-bench.ts` owns its pure rules (attention state, views, sections,
+facets, query string, first-visit baseline); `use-bench-marks.ts` owns the
+per-browser opened and viewed heads (`projects-seen[:account]`,
+`bench-viewed[:account]`) behind the session catalog's `marks`, `markViewed`
+and `markUnread`; `bench-trail.ts` keeps the bench's last URL and row order
+in `sessionStorage` for the Reviews breadcrumb and review stepper
+(`review-navigation.tsx`); `ReviewCompleteNotice.tsx` offers the next review.
+The header repository and branch comboboxes (`ContextIdentity.tsx`) and the
+popup picker (Cmd/Ctrl+K or the header's “Search reviews” magnifier) switch
+reviews too; `project-nav.ts` owns their grouping, ordering, latest-stream and
+branch-filter rules. The shell policy's `pullRequests`, from bootstrap
+`githubEnabled`, enables the bench's follow guidance and the branch
+combobox's “Pull requests” / “From your machines” groups. `shell-policy.ts`
 resolves review navigation once from the bootstrap (`input: "capture"` hides
 all of it) and `use-shell-policy.ts` reads it; components read that policy,
-never the deployment mode. The policy's `reviewColumn` is `always` remotely and
-`multiple` locally: the session owner shows the column once `streamCount`
-reaches two and keeps it for the page session. Its `collection` names the Sync
-scope.
-`use-sidebar.ts` owns file sidebar visibility and width and which mobile drawer
-is open, with its focus. `Navigation.tsx` owns the navigation pane and both resize
-handles. The selected context scopes every request. The session owner exposes
+never the deployment mode. Its `collection` names the Sync scope.
+`use-sidebar.ts` owns file sidebar visibility and width and its mobile drawer,
+with its focus. `Navigation.tsx` owns the navigation pane and its resize
+handle. The selected context scopes every request. The session owner exposes
 local checkout sync when bootstrap reports `collect`; loading `/` or a live
 `/streams/{streamId}` URL, the header's “Sync checkout” or “Sync all checkouts” icon and Alt+R call
 `POST /api/v2/collections`. Load-time sync runs in the background while a live
-URL opens its stream's first available stored head; `/` waits for the
-collection's `defaultContextId`. Collection completion never replaces an
+URL opens its stream's first available stored head; the bench at `/` lists
+heads as they arrive and preselects the collection's `defaultContextId`. Collection completion never replaces an
 open review; the newer-head notice offers “View latest”. A workspace skeleton
 with “Collecting latest changes” appears only while no review is available.
 Skeletons retain shell geometry and display preferences, hide decorative placeholders from assistive

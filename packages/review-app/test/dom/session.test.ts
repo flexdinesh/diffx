@@ -76,6 +76,7 @@ function mount() {
 function serve(
   handler: (request: Request) => Response | Promise<Response>,
   collect = false,
+  input: "checkouts" | "capture" = "checkouts",
 ) {
   requests((request) =>
     new URL(request.url).pathname === "/api/v2/bootstrap"
@@ -85,15 +86,23 @@ function serve(
           user: null,
           csrfToken: null,
           collect,
-          input: "checkouts",
+          input,
         })
       : handler(request),
   );
 }
 
-test("landing selects the most active usable diff across catalog pages", async () => {
+/** A capture's root still opens its most active diff; review navigation
+ *  lands on the bench instead. */
+function serveCapture(
+  handler: (request: Request) => Response | Promise<Response>,
+) {
+  serve(handler, false, "capture");
+}
+
+test("a capture's root selects the most active usable diff across catalog pages", async () => {
   const cursors: (string | null)[] = [];
-  serve((request) => {
+  serveCapture((request) => {
     const url = new URL(request.url);
     if (url.pathname !== "/api/v2/contexts") return json(context);
     const cursor = url.searchParams.get("cursor");
@@ -129,9 +138,9 @@ test("landing selects the most active usable diff across catalog pages", async (
   assert.deepEqual(cursors, [null, "next"]);
 });
 
-test("landing selects a diff when a catalog refresh adds changes", async () => {
+test("a capture's root selects a diff when a catalog refresh adds changes", async () => {
   let changedFileCount = 0;
-  serve((request) =>
+  serveCapture((request) =>
     new URL(request.url).pathname === "/api/v2/contexts"
       ? json({ contexts: [{ ...context, changedFileCount }], nextCursor: null })
       : json(context),
@@ -147,7 +156,7 @@ test("landing selects a diff when a catalog refresh adds changes", async () => {
 
 test("session failure retries without reloading the page", async () => {
   let fail = true;
-  serve((request) =>
+  serveCapture((request) =>
     new URL(request.url).pathname === "/api/v2/contexts"
       ? json({ contexts: [context], nextCursor: null })
       : fail
@@ -201,7 +210,7 @@ test("live URLs resolve once; refreshed heads do not replace the selected snapsh
   assert.equal(missing.result.current.shell.ready, false);
 });
 
-test("local root waits for collection's default; review column remains after fewer heads", async () => {
+test("local root shows the bench, collects once and offers the launched checkout", async () => {
   const pending = deferred<Response>();
   const active = {
     ...context,
@@ -237,25 +246,33 @@ test("local root waits for collection's default; review column remains after few
   }, true);
   const { result } = mount();
   await waitFor(() => assert.equal(result.current?.shell.collecting, true));
-  assert.equal(result.current.catalog.selectedId, "");
-  assert.equal(result.current.catalog.reviewColumn, false);
-  assert.deepEqual(opened, []);
+  assert.equal(result.current.catalog.bench, true);
+  assert.equal(result.current.shell.collectOnLoad, true);
+  assert.equal(result.current.shell.loading, false);
+  assert.equal(result.current.catalog.benchDefaultId, "");
   heads = [active, launched];
   await act(async () =>
     pending.resolve(
       json({ contexts: heads, failures: [], defaultContextId: launched.id }),
     ),
   );
-  await waitFor(() => assert.equal(result.current.shell.ready, true));
-  assert.equal(result.current.catalog.selectedId, launched.id);
-  assert.equal(window.location.pathname, "/streams/launched-stream");
-  assert.equal(result.current.catalog.reviewColumn, true);
-  heads = [launched];
-  await act(async () => result.current.catalog.collect?.());
   await waitFor(() =>
-    assert.equal(result.current.catalog.heads.contexts.length, 1),
+    assert.equal(result.current.catalog.benchDefaultId, launched.id),
   );
-  assert.equal(result.current.catalog.reviewColumn, true);
+  assert.equal(result.current.shell.collectOnLoad, false);
+  assert.equal(result.current.catalog.bench, true);
+  assert.equal(result.current.catalog.selectedId, "");
+  assert.equal(window.location.pathname, "/");
+  assert.deepEqual(opened, []);
+  assert.equal(collections, 1);
+  act(() => result.current.catalog.openStream(launched));
+  await waitFor(() => assert.equal(result.current.shell.ready, true));
+  assert.equal(result.current.catalog.bench, false);
+  assert.equal(window.location.pathname, "/streams/launched-stream");
+  act(() => result.current.catalog.openBench());
+  await waitFor(() => assert.equal(result.current.catalog.bench, true));
+  assert.equal(window.location.pathname, "/");
+  assert.equal(result.current.catalog.selectedId, "");
 });
 
 test("unresolved navigation joins collection without declaring a missing stream", async () => {
@@ -325,13 +342,19 @@ for (const path of ["/", "/streams/local-stream"]) {
         }),
       ),
     );
-    await waitFor(() => assert.equal(result.current.shell.ready, true));
+    if (path === "/") {
+      // The bench stays put and offers the launched checkout.
+      await waitFor(() =>
+        assert.equal(result.current.catalog.benchDefaultId, context.id),
+      );
+      assert.equal(result.current.catalog.bench, true);
+    } else await waitFor(() => assert.equal(result.current.shell.ready, true));
     assert.equal(result.current.shell.collectError, "");
-    assert.equal(window.location.pathname, "/streams/local-stream");
+    assert.equal(window.location.pathname, path);
   });
 }
 
-test("local startup reports failed checkouts while opening collected changes", async () => {
+test("local startup reports failed checkouts on the bench", async () => {
   const snapshot = { ...context, streamId: "local-stream" };
   serve((request) => {
     const path = new URL(request.url).pathname;
@@ -348,10 +371,12 @@ test("local startup reports failed checkouts while opening collected changes", a
     );
   }, true);
   const { result } = mount();
-  await waitFor(() => assert.equal(result.current?.shell.ready, true));
-  assert.equal(
-    result.current.shell.collectError,
-    "Unable to sync 1 checkout: /broken (git failed)",
+  await waitFor(() =>
+    assert.equal(
+      result.current?.shell.collectError,
+      "Unable to sync 1 checkout: /broken (git failed)",
+    ),
   );
-  assert.equal(window.location.pathname, "/streams/local-stream");
+  assert.equal(result.current.catalog.bench, true);
+  assert.equal(window.location.pathname, "/");
 });

@@ -2,20 +2,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ApiContext, ApiPullRequest } from "@diffx/api";
 import {
-  baselineSeen,
   branchSections,
   defaultContext,
   latestStream,
   newerHead,
   projectGroups,
   readSeen,
-  recentStreams,
   relativeAge,
-  repoMonogram,
   streamMatches,
-  streamCount,
   streamMeta,
-  streamSections,
   streamTitle,
 } from "../src/project-nav.ts";
 import {
@@ -23,6 +18,8 @@ import {
   contextActivity,
   latestChangedContext,
 } from "../src/context-activity.ts";
+
+const none = () => false;
 
 function head(
   id: string,
@@ -73,7 +70,7 @@ test("projects list current changed streams by recent activity", () => {
       head("stale", "api", 50, { stale: true }),
       head("gone", "web", 60, { availability: "unavailable" }),
     ],
-    null,
+    none,
   );
   assert.deepEqual(
     groups.map((group) => [
@@ -88,29 +85,13 @@ test("projects list current changed streams by recent activity", () => {
   assert.equal(groups[1]?.lastActivity, 20);
 });
 
-test("stream count matches the streams the review column lists", () => {
-  assert.equal(streamCount([]), 0);
-  assert.equal(
-    streamCount([
-      head("api", "api", 10),
-      head("clean", "api", 40, { changedFileCount: 0 }),
-      head("stale", "api", 50, { stale: true }),
-    ]),
-    1,
-  );
-  assert.equal(
-    streamCount([head("main", "api", 10), head("other", "api", 20)]),
-    2,
-  );
-});
-
 test("a repository opens to its most active stream", () => {
   const [api] = projectGroups(
     [
       head("quiet", "api", 10, { lastChangedAt: 10 }),
       head("busy", "api", 5, { lastChangedAt: 90 }),
     ],
-    null,
+    none,
   );
   assert.ok(api);
   assert.equal(latestStream(api)?.context.id, "busy");
@@ -121,7 +102,7 @@ test("activity orders streams and repositories independently of submission time"
   const submitted = head("submitted", "web", 500, { lastChangedAt: 100 });
   const groups = projectGroups(
     [submitted, head("old", "api", 900, { lastChangedAt: 50 }), active],
-    null,
+    none,
   );
   assert.deepEqual(
     groups.map((group) => [
@@ -197,7 +178,7 @@ test("activity ties use stream then context identity, including same-name projec
   for (const heads of [contexts, [...contexts].reverse()]) {
     assert.equal(latestChangedContext(heads)?.id, "a");
     assert.deepEqual(
-      projectGroups(heads, null).map((group) => group.id),
+      projectGroups(heads, none).map((group) => group.id),
       ["repo-b", "repo-a"],
     );
   }
@@ -209,7 +190,7 @@ test("equal-activity repository order aligns the initial target over names", () 
     head("last", "repo-a", 50, { name: "Alpha", streamId: "stream-z" }),
   ];
   for (const heads of [contexts, [...contexts].reverse()]) {
-    const top = projectGroups(heads, {}).at(0)?.streams.at(0)?.context;
+    const top = projectGroups(heads, none).at(0)?.streams.at(0)?.context;
     assert.equal(top?.id, "first");
     assert.equal(top, latestChangedContext(heads));
   }
@@ -226,7 +207,7 @@ test("stray stdin contexts group like any repository, by name and activity", () 
         name: "Piped diff",
       }),
     ],
-    null,
+    none,
   );
   assert.deepEqual(
     groups.map((group) => [group.id, group.name]),
@@ -237,21 +218,20 @@ test("stray stdin contexts group like any repository, by name and activity", () 
   );
 });
 
-test("unseen marks follow the newest opened snapshot per stream", () => {
-  const first = head("first", "api", 1);
-  const seen = baselineSeen([first]);
+test("unread marks come from the caller's attention rule", () => {
   const update = head("second", "api", 2, { streamId: "stream-first" });
   const arrival = head("third", "api", 3);
-  const [group] = projectGroups([update, arrival], seen);
+  const [group] = projectGroups(
+    [update, arrival],
+    (context) => context.id === "third",
+  );
   assert.deepEqual(
     group?.streams.map((stream) => [stream.context.id, stream.unseen]),
     [
       ["third", true],
-      ["second", true],
+      ["second", false],
     ],
   );
-  const [baseline] = projectGroups([first], null);
-  assert.equal(baseline?.streams[0]?.unseen, false);
   assert.equal(readSeen("not json"), null);
   assert.deepEqual(readSeen('{"a":"b","c":1}'), { a: "b" });
 });
@@ -357,47 +337,6 @@ function observed(
   });
 }
 
-test("recent streams interleave repositories by activity", () => {
-  const groups = projectGroups(
-    [
-      head("api-old", "api", 10),
-      head("web-new", "web", 30),
-      head("api-new", "api", 20),
-    ],
-    null,
-  );
-  assert.deepEqual(
-    groups.map((group) => group.id),
-    ["web", "api"],
-  );
-  assert.deepEqual(
-    recentStreams(groups).map(({ context, group }) => [context.id, group.id]),
-    [
-      ["web-new", "web"],
-      ["api-new", "api"],
-      ["api-old", "api"],
-    ],
-  );
-});
-
-test("recent stream activity ties keep stable stream identity order", () => {
-  const groups = projectGroups(
-    [head("b", "web", 5), head("a", "api", 5), head("c", "api", 5)],
-    null,
-  );
-  assert.deepEqual(
-    recentStreams(groups).map(({ context }) => context.id),
-    ["a", "b", "c"],
-  );
-});
-
-test("repository marks use word initials or the name's first letters", () => {
-  assert.equal(repoMonogram("diffx"), "Di");
-  assert.equal(repoMonogram("agent-skills"), "AS");
-  assert.equal(repoMonogram("tokenInsights"), "TI");
-  assert.equal(repoMonogram("x"), "X");
-});
-
 test("branch filter matches every word across branch, worktree, host and sessions", () => {
   const [group] = projectGroups(
     [
@@ -407,7 +346,7 @@ test("branch filter matches every word across branch, worktree, host and session
       }),
       observed("main", "api", 2, { hostname: "ci" }),
     ],
-    null,
+    none,
   );
   assert.ok(group);
   const ids = (query: string) =>
@@ -475,7 +414,7 @@ test("closed and merged pull requests leave current work beside open ones", () =
       pullRequestHead("merged", { number: 15, state: "merged" }),
       head("local", "app", 5),
     ],
-    null,
+    none,
   );
   assert.deepEqual(
     groups.flatMap((group) => group.streams.map((stream) => stream.context.id)),
@@ -503,12 +442,6 @@ test("pull request streams show number, title, GitHub, state and author", () => 
   assert.ok(streamMatches(stream, "#12"));
 });
 
-function streamIds(groups: { streams: { context: ApiContext }[] }[]) {
-  return groups.flatMap((group) =>
-    group.streams.map((stream) => stream.context.id),
-  );
-}
-
 const pullRequestStates = [
   pullRequestHead("open", { number: 1 }),
   pullRequestHead("draft", { number: 2, draft: true }),
@@ -518,67 +451,8 @@ const pullRequestStates = [
   head("other", "web", 4),
 ];
 
-test("the pull request filter narrows pull requests and never other streams", () => {
-  assert.deepEqual(streamIds(projectGroups(pullRequestStates, null, "open")), [
-    "draft",
-    "open",
-    "local",
-    "other",
-  ]);
-  assert.deepEqual(
-    streamIds(projectGroups(pullRequestStates, null, "merged")),
-    ["merged", "local", "other"],
-  );
-  assert.deepEqual(streamIds(projectGroups(pullRequestStates, null, "all")), [
-    "closed",
-    "draft",
-    "merged",
-    "open",
-    "local",
-    "other",
-  ]);
-  // Local column visibility counts current work whatever the filter.
-  assert.equal(streamCount(pullRequestStates), 4);
-});
-
-test("sections split pull requests from machines; the filter reaches only pull requests", () => {
-  for (const [filter, pulls] of [
-    ["open", ["draft", "open"]],
-    ["merged", ["merged"]],
-    ["all", ["closed", "draft", "merged", "open"]],
-  ] as const) {
-    const sections = streamSections(pullRequestStates, null, filter);
-    assert.deepEqual(streamIds(sections.pullRequests), pulls);
-    assert.deepEqual(
-      sections.machines.map((group) => [group.name, streamIds([group])]),
-      [
-        ["app", ["local"]],
-        ["web", ["other"]],
-      ],
-    );
-  }
-  const empty = streamSections([head("local", "app", 5)], null, "merged");
-  assert.deepEqual(empty.pullRequests, []);
-  assert.equal(empty.machines.length, 1);
-});
-
-test("rail repositories include any visible stream in either section", () => {
-  const onlyMerged = [
-    pullRequestHead("merged", { state: "merged" }),
-    head("local", "web", 5),
-  ];
-  assert.deepEqual(
-    projectGroups(onlyMerged, null, "open").map((group) => group.name),
-    ["web"],
-  );
-  assert.deepEqual(
-    projectGroups(onlyMerged, null, "merged").map((group) => group.name),
-    ["app", "web"],
-  );
-});
-
 test("branch rows group by section only when both sections list streams", () => {
-  const [app] = projectGroups(pullRequestStates, null, "open");
+  const [app] = projectGroups(pullRequestStates, none);
   assert.ok(app);
   assert.deepEqual(
     branchSections(app.streams)?.map((section) => [
@@ -590,10 +464,10 @@ test("branch rows group by section only when both sections list streams", () => 
       ["From your machines", ["local"]],
     ],
   );
-  const [web] = projectGroups([head("other", "web", 4)], null);
+  const [web] = projectGroups([head("other", "web", 4)], none);
   assert.ok(web);
   assert.equal(branchSections(web.streams), null);
-  const [pulls] = projectGroups([pullRequestHead("open")], null);
+  const [pulls] = projectGroups([pullRequestHead("open")], none);
   assert.ok(pulls);
   assert.equal(branchSections(pulls.streams), null);
 });

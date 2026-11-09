@@ -6,7 +6,7 @@ import {
   reviewedToggle,
   test,
   withReviewNavigation,
-  withSecondReview,
+  openFixtureReview,
 } from "./fixtures.ts";
 import { resetFixtureState } from "./fixture-state.ts";
 
@@ -1795,10 +1795,11 @@ test("a capture shows only its diff: no review navigation, search or switcher", 
   // Static piped identity replaces the repository and branch comboboxes.
   await expect(banner.locator(".context-identity")).toContainText("Piped");
   await expect(banner.getByRole("combobox")).toHaveCount(0);
-  await expect(page.getByRole("navigation", { name: "Reviews" })).toHaveCount(
+  // No bench: the root is the diff, without a Reviews breadcrumb or stepper.
+  await expect(banner.getByRole("link", { name: /^Reviews/ })).toHaveCount(0);
+  await expect(banner.getByRole("button", { name: "Next review" })).toHaveCount(
     0,
   );
-  await expect(page.locator(".stream-column")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Search reviews" }),
   ).toHaveCount(0);
@@ -1829,8 +1830,7 @@ test("header icons use design-system sizes and the active tab fuses with its pan
   page,
 }) => {
   await withReviewNavigation(page);
-  await withSecondReview(page);
-  await page.goto("/");
+  await openFixtureReview(page);
   const brand = page.locator(".topbar .brand");
   const filesToggle = page.getByRole("button", { name: "Hide file sidebar" });
   await expect(page.locator("#file-count")).not.toHaveText("0");
@@ -1852,8 +1852,8 @@ test("header icons use design-system sizes and the active tab fuses with its pan
   await expect(
     page.getByRole("button", { name: "Delete snapshot", exact: true }),
   ).toHaveCount(0);
-  // Desktop shows the review column and the file sidebar together; only the
-  // file sidebar toggles from the header, which also leads review search.
+  // Only the file sidebar toggles from the header, which also leads review
+  // search.
   await expect(
     page
       .getByRole("banner")
@@ -1868,43 +1868,19 @@ test("header icons use design-system sizes and the active tab fuses with its pan
     }),
   ).toHaveCount(0);
   await expect(filesToggle).toHaveAttribute("aria-expanded", "true");
-  const reviews = page.getByRole("navigation", { name: "Reviews" });
-  await expect(reviews).toBeVisible();
   await expect(page.locator("#sidebar")).toBeVisible();
-  const filter = page.getByRole("searchbox", { name: "Filter files" });
-  await filter.fill("value");
-  const before = await brand.boundingBox();
   const workspace = await page.locator(".workspace").boundingBox();
-  for (const panel of ["#projects-nav", "#sidebar"]) {
-    const box = await page.locator(panel).boundingBox();
-    if (!box || !workspace) throw new Error("Missing workspace panels");
-    expect(box.y).toBe(workspace.y);
-    expect(box.height).toBe(workspace.height);
-  }
-  // Collapsing the column to its rail keeps the open review's navigation.
-  await page.getByRole("button", { name: "Collapse reviews" }).click();
-  await expect(
-    reviews.getByRole("list", { name: "Repositories" }),
-  ).toBeVisible();
-  await expect(filter).toHaveValue("value");
-  expect(await brand.boundingBox()).toEqual(before);
-  await page.reload();
-  await expect(
-    page.getByRole("button", { name: "Expand reviews" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Expand reviews" }).click();
-  await expect(
-    page.getByRole("button", { name: "Collapse reviews" }),
-  ).toBeVisible();
+  const sidebarBox = await page.locator("#sidebar").boundingBox();
+  if (!sidebarBox || !workspace) throw new Error("Missing workspace panels");
+  expect(sidebarBox.y).toBe(workspace.y);
+  expect(sidebarBox.height).toBe(workspace.height);
   await filesToggle.click();
   await expect(page.locator("#sidebar")).toBeHidden();
   const showFiles = page.getByRole("button", { name: "Show file sidebar" });
   await expect(showFiles).toHaveAttribute("aria-expanded", "false");
-  await expect(reviews).toBeVisible();
   await showFiles.click();
   await expect(page.locator("#sidebar")).toBeVisible();
   await expect(page.locator('img[src="/logo.png"]')).toHaveCount(0);
-  await page.getByRole("button", { name: "Collapse reviews" }).click();
 
   const styles = await page.evaluate(() => {
     const size = (selector: string) => {
@@ -1924,19 +1900,8 @@ test("header icons use design-system sizes and the active tab fuses with its pan
       if (!element) throw new Error(`Missing ${selector}`);
       return element;
     };
-    const railViewButton = find("#reviews-expand");
+    const back = find(".topbar > a");
     const headerElement = find(".topbar [aria-label='Hide file sidebar']");
-    const rail = find(".stream-rail").getBoundingClientRect();
-    const railView = railViewButton.getBoundingClientRect();
-    const railHead = find(".stream-rail-head");
-    const railHeadBox = railHead.getBoundingClientRect();
-    const railHeadBorder = parseFloat(
-      getComputedStyle(railHead).borderBottomWidth,
-    );
-    const tabHeader = tab.closest("[data-slot='panel-header']");
-    if (!tabHeader) throw new Error("Missing sidebar tab header");
-    const tabHeaderBox = tabHeader.getBoundingClientRect();
-    const headerButton = headerElement.getBoundingClientRect();
     const panel = document.querySelector(".navigation-island");
     const inactiveTab = document.querySelector("#comments-tab");
     if (!panel || !inactiveTab) throw new Error("Missing sidebar tabs");
@@ -1945,10 +1910,10 @@ test("header icons use design-system sizes and the active tab fuses with its pan
       viewOptions: size("#view-options svg"),
       refresh: size("[aria-label='Retry loading changes'] svg"),
       headerIcon: size(".topbar [aria-label='Hide file sidebar'] svg"),
-      view: size("#reviews-expand svg"),
+      back: size(".topbar > a svg.lucide"),
       chromeStrokes: Array.from(
         document.querySelectorAll(
-          ".topbar button svg, .toolbar button svg, .stream-rail button svg",
+          ".topbar button svg, .topbar > a svg.lucide, .toolbar button svg",
         ),
         (element) => getComputedStyle(element).strokeWidth,
       ),
@@ -1964,19 +1929,7 @@ test("header icons use design-system sizes and the active tab fuses with its pan
       ),
       dividerHeight: dividerBox.height,
       headerHeight: topbarBox.height,
-      railWidth: rail.width,
-      railViewSize: [railView.width, railView.height],
-      railViewInset: railView.left - rail.left,
-      railViewCenterOffset: Math.abs(
-        railHeadBox.top +
-          (railHeadBox.height - railHeadBorder) / 2 -
-          (railView.top + railView.height / 2),
-      ),
-      railHeadEdges: [railHeadBox.top, railHeadBox.bottom],
-      tabHeaderEdges: [tabHeaderBox.top, tabHeaderBox.bottom],
-      headerButtonSize: [headerButton.width, headerButton.height],
-      headerButtonInset: headerButton.top - topbarBox.top,
-      railViewRadius: getComputedStyle(railViewButton).borderRadius,
+      backRadius: getComputedStyle(back).borderRadius,
       headerButtonRadius: getComputedStyle(headerElement).borderRadius,
     };
   });
@@ -1984,23 +1937,15 @@ test("header icons use design-system sizes and the active tab fuses with its pan
   expect(styles).toMatchObject({
     refresh: "16px",
     headerIcon: "16px",
-    view: "16px",
+    back: "16px",
     tabBorderWidth: "0px",
     inactiveTabBorderWidth: "1px",
     dividerHeight: 16,
     headerHeight: 36,
   });
   expect(styles.identity).toBe(styles.viewOptions);
-  // The collapsed review rail mirrors the header: width equals header height,
-  // items match header buttons.
-  expect(styles.railWidth).toBe(styles.headerHeight);
-  expect(styles.railViewSize).toEqual(styles.headerButtonSize);
-  expect(styles.railViewInset).toBe(styles.headerButtonInset);
-  expect(styles.railViewRadius).toBe(styles.headerButtonRadius);
-  // Expand reviews centers in a head cell whose border continues the
-  // neighboring panel header's.
-  expect(styles.railViewCenterOffset).toBeLessThanOrEqual(0.5);
-  expect(styles.railHeadEdges).toEqual(styles.tabHeaderEdges);
+  // The Reviews breadcrumb is a header action like its neighbors.
+  expect(styles.backRadius).toBe(styles.headerButtonRadius);
   expect(styles.chromeStrokes.every((stroke) => stroke === "1.7px")).toBe(true);
   expect(styles.dividerCenterOffset).toBeLessThanOrEqual(0.5);
   expect(styles.tabBackground).toBe(styles.panelBackground);
@@ -2096,18 +2041,11 @@ test("header actions show a visible hover surface in both themes", async ({
   }
 });
 
-test("review column and file sidebar resize independently and persist", async ({
-  page,
-}) => {
+test("the file sidebar resizes and persists", async ({ page }) => {
   await withReviewNavigation(page);
-  await withSecondReview(page);
-  await page.goto("/");
-  const column = page.locator(".stream-column");
-  const files = page.locator(".navigation-panel");
-  const panes = [
-    { name: "Resize reviews column", pane: column },
-    { name: "Resize file sidebar", pane: files },
-  ];
+  await openFixtureReview(page);
+  const pane = page.locator(".navigation-panel");
+  const name = "Resize file sidebar";
   const paneGap = () =>
     page.locator(".workspace").evaluate((element) => {
       const navigation = document.querySelector(".navigation-island");
@@ -2117,49 +2055,31 @@ test("review column and file sidebar resize independently and persist", async ({
         navigation.getBoundingClientRect().right
       );
     });
-  const widths: number[] = [];
-  for (const { name, pane } of panes) {
-    const resizer = page.getByRole("separator", { name });
-    await expect(resizer).toBeVisible();
-    const before = Number(await resizer.getAttribute("aria-valuenow"));
-    await expect(pane).toHaveCSS("width", `${before}px`);
-    const box = await resizer.boundingBox();
-    const paneBox = await pane.boundingBox();
-    if (!box || !paneBox) throw new Error(`Missing ${name} bounds`);
-    expect(box.height).toBe(paneBox.height);
-    expect(box.x + 3).toBe(paneBox.x + paneBox.width);
-    await page.mouse.move(box.x + box.width / 2, box.y + 20);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width / 2 + 40, box.y + 20);
-    await page.mouse.up();
-    await expect(resizer).toHaveAttribute("aria-valuenow", String(before + 40));
-    await expect(pane).toHaveCSS("width", `${before + 40}px`);
-    expect(await paneGap()).toBe(0);
-    await resizer.focus();
-    await page.keyboard.press("ArrowLeft");
-    await expect(pane).toHaveCSS("width", `${before + 20}px`);
-    widths.push(before + 20);
-  }
+  const resizer = page.getByRole("separator", { name });
+  await expect(resizer).toBeVisible();
+  const before = Number(await resizer.getAttribute("aria-valuenow"));
+  await expect(pane).toHaveCSS("width", `${before}px`);
+  const box = await resizer.boundingBox();
+  const paneBox = await pane.boundingBox();
+  if (!box || !paneBox) throw new Error(`Missing ${name} bounds`);
+  expect(box.height).toBe(paneBox.height);
+  expect(box.x + 3).toBe(paneBox.x + paneBox.width);
+  await page.mouse.move(box.x + box.width / 2, box.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 40, box.y + 20);
+  await page.mouse.up();
+  await expect(resizer).toHaveAttribute("aria-valuenow", String(before + 40));
+  await expect(pane).toHaveCSS("width", `${before + 40}px`);
+  expect(await paneGap()).toBe(0);
+  await resizer.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(pane).toHaveCSS("width", `${before + 20}px`);
   await page.reload();
-  for (const [index, { pane }] of panes.entries())
-    await expect(pane).toHaveCSS("width", `${widths[index]}px`);
-  // The rail has no handle; collapsing either pane keeps the other's width.
-  await page.getByRole("button", { name: "Collapse reviews" }).click();
-  await expect(
-    page.getByRole("separator", { name: "Resize reviews column" }),
-  ).toBeHidden();
-  await expect(files).toHaveCSS("width", `${widths[1]}px`);
-  await page.getByRole("button", { name: "Expand reviews" }).click();
+  await expect(pane).toHaveCSS("width", `${before + 20}px`);
   await page.getByRole("button", { name: "Hide file sidebar" }).click();
-  await expect(
-    page.getByRole("separator", { name: "Resize file sidebar" }),
-  ).toBeHidden();
-  await expect(column).toHaveCSS("width", `${widths[0]}px`);
+  await expect(resizer).toBeHidden();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Show reviews" }).click();
-  await expect(page.getByRole("dialog", { name: "Reviews" })).toBeVisible();
-  for (const { name } of panes)
-    await expect(page.getByRole("separator", { name })).toBeHidden();
+  await expect(resizer).toBeHidden();
 });
 
 test("copy dialog reports clipboard status and restores focus", async ({
@@ -2439,9 +2359,8 @@ test("drawer aligns its header and retains desktop navigation density", async ({
   page,
 }) => {
   await withReviewNavigation(page);
-  await withSecondReview(page);
   await page.setViewportSize({ width: 1280, height: 844 });
-  await page.goto("/");
+  await openFixtureReview(page);
   await showDiff(page);
   await expect(page.locator("#file-tree [data-path]").first()).toBeVisible();
   const sidebar = page.locator("#sidebar");
@@ -2492,7 +2411,7 @@ test("drawer aligns its header and retains desktop navigation density", async ({
       const toolbar = await page.locator(".toolbar").boundingBox();
       const action = await page
         .locator(".topbar")
-        .getByRole("button", { name: "Show reviews" })
+        .getByRole("button", { name: "Search reviews" })
         .boundingBox();
       const options = await page.locator("#view-options").boundingBox();
       const collapse = await page.locator("#toggle-all-files").boundingBox();

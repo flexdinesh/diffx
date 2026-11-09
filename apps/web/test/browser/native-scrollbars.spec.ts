@@ -2,7 +2,7 @@ import {
   expect,
   test,
   withReviewNavigation,
-  withSecondReview,
+  openFixtureReview,
 } from "./fixtures.ts";
 import { resetFixtureState } from "./fixture-state.ts";
 
@@ -97,14 +97,13 @@ test("the diff thumb stays visible at rest while other panes wait for hover", as
 test("diff tracks fill frames and headers align with their gutters", async ({
   page,
 }) => {
-  // Header geometry is measured against the compact "Show reviews" toggle.
+  // Header geometry is measured against the compact "Search reviews" action.
   await withReviewNavigation(page);
-  await withSecondReview(page);
   const colorSchemes: ("light" | "dark")[] = ["light", "dark"];
   for (const colorScheme of colorSchemes) {
     await page.emulateMedia({ colorScheme });
     await page.setViewportSize({ width: 1440, height: 4_000 });
-    await page.goto("/");
+    await openFixtureReview(page);
     const files = page.locator("#viewer diffs-container");
     await expect(files).toHaveCount(12);
     await expect
@@ -232,7 +231,7 @@ test("diff tracks fill frames and headers align with their gutters", async ({
     const toolbar = await page.locator(".toolbar").boundingBox();
     const action = await page
       .locator(".topbar")
-      .getByRole("button", { name: "Show reviews" })
+      .getByRole("button", { name: "Search reviews" })
       .boundingBox();
     if (!header) throw new Error("Missing header");
     // The wrapping toolbar keeps a 44px control row plus its bottom border.

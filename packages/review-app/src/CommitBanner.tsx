@@ -7,7 +7,7 @@ import { Badge } from "@diffx/ui/components/ui/badge";
 import { useDiffSource } from "./app-state.tsx";
 import { shortOid } from "./commit-view.ts";
 import { relativeAge } from "./project-nav.ts";
-import { useNow } from "./ProjectsNav.tsx";
+import { useNow } from "./StreamParts.tsx";
 
 /**
  * The viewed commit above its diff: SHA, subject, author and age, with the

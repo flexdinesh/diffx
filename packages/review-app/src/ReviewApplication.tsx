@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { App } from "./App.tsx";
 import { AppearanceProvider } from "./appearance-context.tsx";
 import { SidebarProvider } from "./sidebar-context.tsx";
-import { StreamNavProvider } from "./stream-nav-context.tsx";
 import { AppProvider } from "./app-state.tsx";
 import { highlighterOptions, poolOptions } from "./diff-workers.ts";
 import { SessionProvider } from "./session-context.tsx";
@@ -148,15 +147,13 @@ function ApplicationRoutes({ platform }: ReviewApplicationProps) {
 export function ReviewApplication({ platform }: ReviewApplicationProps) {
   return (
     <SidebarProvider>
-      <StreamNavProvider>
-        <AppearanceProvider>
-          <IdentityProvider>
-            <TooltipProvider>
-              <ApplicationRoutes platform={platform} />
-            </TooltipProvider>
-          </IdentityProvider>
-        </AppearanceProvider>
-      </StreamNavProvider>
+      <AppearanceProvider>
+        <IdentityProvider>
+          <TooltipProvider>
+            <ApplicationRoutes platform={platform} />
+          </TooltipProvider>
+        </IdentityProvider>
+      </AppearanceProvider>
     </SidebarProvider>
   );
 }

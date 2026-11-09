@@ -6,13 +6,12 @@ description: Review open GitHub pull requests on a diffx server.
 # GitHub pull requests
 
 A `diffx-server` can review the open pull requests of GitHub repositories you
-follow. Each pull request is its own review, listed in the Reviews column's
-Pull requests section above reviews from your machines. Its row shows its
-number, title, GitHub and author. A banner above the diff shows its state,
-branches, a link to GitHub and its description. Closed and merged pull
-requests leave the Reviews column unless you choose Merged or All under Pull
-requests in its Review list view menu; their reviews also stay reachable
-through search until they expire.
+follow. Each pull request is its own review on the Reviews bench, beside
+reviews from your machines. Its row shows its number, title, GitHub and
+author. A banner above the diff shows its state, branches, a link to GitHub
+and its description. Drafts wait under **All open** until they are ready.
+Closed and merged pull requests move to the bench's **Closed** view; their
+reviews also stay reachable through search until they expire.
 
 This needs the distributed server, a GitHub App you create, and the
 `diffx-fetcher` container. Local `diffx` has no GitHub integration.
@@ -126,7 +125,7 @@ fetcher needs Git 2.44 or later and HTTPS access to github.com.
    you and the app can read. Organization repositories may need an owner's
    approval. The list updates when you return to Settings.
 3. Check the repositories to follow. Their open pull requests, drafts
-   included, appear in the Reviews column shortly.
+   included, appear on the Reviews bench shortly.
 
 **Resync pull requests** rechecks access and refreshes every followed
 repository, including pull requests that closed without an event. Resync also

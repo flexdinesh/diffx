@@ -5,7 +5,8 @@ import { DiffWorkspace } from "./DiffWorkspace.tsx";
 import { FileExplorerNav } from "./FileExplorerNav.tsx";
 import { Header } from "./Header.tsx";
 import { Navigation } from "./Navigation.tsx";
-import { NewerSnapshotNotice } from "./ProjectsNav.tsx";
+import { NewerSnapshotNotice } from "./StreamParts.tsx";
+import { ReviewCompleteNotice } from "./ReviewCompleteNotice.tsx";
 import { PullRequestBanner } from "./PullRequestBanner.tsx";
 import { CopyDialog } from "./review.tsx";
 import { capabilityEnabled, useSession } from "./session-context.tsx";
@@ -25,6 +26,7 @@ export function App() {
         <div className="workspace">
           <PullRequestBanner />
           <NewerSnapshotNotice />
+          <ReviewCompleteNotice />
           <OutdatedCommentsNotice />
           <DiffWorkspace />
         </div>

@@ -1,16 +1,11 @@
 import { useRef, type ReactNode } from "react";
 import { FileTreeSkeleton } from "./WorkspaceLoading.tsx";
-import { ProjectsNav } from "./ProjectsNav.tsx";
-import { useCatalog } from "./session-context.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
-import { useStreamNavState } from "./stream-nav-context.tsx";
 
 /**
- * One navigation island: the review column, then the open review's file
- * sidebar. Each pane owns its width and resize boundary. Without the review
- * column (a capture, or a local process with one review to switch to) only
- * the file sidebar remains; the island hides, still mounted, while that
- * sidebar is collapsed.
+ * The open review's navigation pane: its file sidebar, with its width and
+ * resize boundary. The pane hides, still mounted, while that sidebar is
+ * collapsed. Switching reviews belongs to the Review bench and the header.
  */
 export function Navigation({
   children,
@@ -20,28 +15,10 @@ export function Navigation({
   loading?: boolean;
 }) {
   const sidebar = useSidebarState();
-  const streams = useStreamNavState();
-  const { reviewColumn } = useCatalog();
   const files = Boolean(children) || loading;
-  const filesWidth = files && !sidebar.collapsed ? sidebar.width : 0;
-  const rail = !reviewColumn || streams.state === "rail";
-  const empty =
-    !reviewColumn && !sidebar.mobile && (!files || sidebar.collapsed);
+  const empty = !sidebar.mobile && (!files || sidebar.collapsed);
   return (
     <div className="navigation-island" data-empty={empty || undefined}>
-      {reviewColumn && (
-        <div className={`stream-column${rail ? " is-rail" : ""}`}>
-          <ProjectsNav />
-          <PaneResizer
-            label="Resize reviews column"
-            min={200}
-            max={400}
-            width={streams.width}
-            hidden={rail || sidebar.mobile}
-            onResize={(width) => streams.setWidth(width, filesWidth)}
-          />
-        </div>
-      )}
       {files && (
         <div
           className="navigation-panel"
@@ -55,9 +32,7 @@ export function Navigation({
             max={520}
             width={sidebar.width}
             hidden={sidebar.mobile}
-            onResize={(width) =>
-              sidebar.setWidth(width, rail ? 0 : streams.width)
-            }
+            onResize={(width) => sidebar.setWidth(width)}
           />
         </div>
       )}

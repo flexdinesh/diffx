@@ -272,9 +272,9 @@ such detail into a token. New layout spacing must use the scale.
   landing page is the one exception (see
   [Signed-out landing page](#signed-out-landing-page)).
 - The shell has no outer gutter and panes no gaps: header, navigation and review
-  meet flush at 1px `--border` hairlines, without elevation. The review column
-  and file sidebar form one continuous navigation pane; notices, toolbar, viewer,
-  and status bar form the review pane. Keep these hairlines outside Pierre's
+  meet flush at 1px `--border` hairlines, without elevation. The file sidebar
+  forms the navigation pane; notices, toolbar, viewer, and status bar form the
+  review pane. The Review bench replaces both panes at `/`. Keep these hairlines outside Pierre's
   measured file geometry. At compact widths, remove the empty navigation pane and
   let the review pane fill the window; modal drawers span the window's full
   height from its leading edge, without clipping focus or menus.
@@ -321,78 +321,61 @@ such detail into a token. New layout spacing must use the scale.
   monospace labels without clipping ascenders or descenders.
 - Header lead: the brand mark, without the product name, and divider identify the
   app; the link's accessible name is “diffx home”. The file-sidebar toggle
-  leads the review toolbar. Below 1012px a “Show reviews” toggle in the header
-  opens the review column as a drawer. “Search reviews” (magnifier, Cmd/Ctrl+K)
+  leads the review toolbar. A review's header then shows the Reviews
+  breadcrumb before its identity. “Search reviews” (magnifier, Cmd/Ctrl+K)
   leads the header's trailing actions in every layout and opens the review
   picker. Account actions are the header's trailing action in every layout.
 - Review navigation is a shell policy (`shell-policy.ts`), resolved once from
   the server bootstrap: checkout and remote processes switch between reviews;
   a capture (piped stdin or a fixture) serves one fixed diff. A capture shows
-  no review column, rail, drawer toggle, search, Cmd/Ctrl+K, header
-  comboboxes or sync; its header keeps the brand, file-sidebar toggle and the
+  no Review bench, Reviews breadcrumb, review stepper, search, Cmd/Ctrl+K,
+  header comboboxes or sync; `/` opens its diff; its header keeps the brand, file-sidebar toggle and the
   static Piped identity, and the navigation pane holds only the file sidebar (hidden,
   still mounted, while collapsed). Piped wording, icons and grouping appear
   only there; elsewhere a stored stdin snapshot reads like any review.
   Components read the policy, never the deployment mode.
-- Review column visibility is part of that policy: a remote server always shows
-  the column; a local checkout process shows the column, rail and “Show
-  reviews” drawer toggle only once the column would list two current streams,
-  then keeps them for the page session so a stream leaving never reflows the
-  review. Until then the navigation pane holds only the file sidebar, exactly as a
-  capture's, with no placeholder or motion; search, Cmd/Ctrl+K, the header
-  comboboxes and sync remain. The column appears instantly in its persisted
-  list or rail state.
-- Review column: the leading pane of the navigation column, titled “Reviews”,
-  on `--panel`, sharing the file tree and diff's top and bottom edges below the
-  header. Switching streams changes everything to its right; the column stays.
-  It has two states, list and rail, persisted per browser; there is no
-  auto-collapse.
-  Its header matches the compact sidebar tabs and display toolbar and holds the
-  title (UI label size, medium, secondary text) and ghost actions: “Review list
-  view” (“Show reviews”: Group by repo / Recent first, persisted, default by
-  repo; with the server's GitHub integration, a separator and “Pull requests”:
-  Open / Merged / All, persisted, default Open) and
-  “Collapse reviews” on desktop or “Close reviews” in the drawer. Selecting a
-  stream loads its diff and keeps the column and file sidebar open.
-  With GitHub (bootstrap `githubEnabled`) the body splits into
-  `collapsible-section`s, “Pull requests” then “From your machines”, each
-  collapsing per browser; the first has no top border under the panel header.
-  The pull request header shows the active filter as muted text. The filter
-  narrows only that section: Open lists current pull requests, Merged only
-  merged ones, All every state; machine streams are never filtered. Grouping
-  applies within each section. An empty pull request section reads, muted and
-  indented like rows, “No open pull requests. Follow repositories in
-  Settings.” (linking to Settings › GitHub), “No merged pull requests.” or “No
-  pull requests.”; an empty machine section reads “Agent hooks and diffx sync
-  publish changed checkouts here.” Without GitHub there are no section headers
-  or filter, and the column lists current work as one list.
-  A repository row is a `disclosure-row`: its chevron alone collapses or
-  expands the group; its name (“Open latest in {repo}”) opens the repository's
-  most active stream and expands the group.
-  Repositories sort by their most active visible stream. Streams sort by
-  estimated code activity, with captured collection time as fallback and stable
-  identity ties. Recent first is one flat activity-ordered list labeling each
-  row with its repository. Rows retain compact tree density,
-  truncation, ages and metadata.
-  Show heads with changes; closed and merged GitHub pull requests are not
-  current and show only through the pull request filter. A pull request row
-  shows a pull request, draft, merged (git-merge) or closed icon labeled for
-  assistive technology and muted like other row icons, `#N title`, and
-  “GitHub · @author” first in its metadata, with “Draft”, “Merged” or “Closed”
-  after “GitHub”. The current stream uses `--accent-bg`,
-  accent text and `aria-current="page"`. Unopened arrivals show a small accent
-  dot labeled “New changes”; collapsed repositories carry their streams' dots.
-  Repository collapse state persists per browser.
-- Review rail: the collapsed column is a fixed `--activity-width` column equal
-  to `--topbar-height` (36px; 44px for coarse pointers). Items match header icon
-  buttons (32px desktop, 44px touch) with the header's inset. “Expand reviews”
-  centers in a square head cell whose bottom border continues the neighboring
-  panel header's, then one `rail` button per repository with any stream the
-  column lists in either section (pull request filter applied; no sections)
-  showing a two-letter monogram, an accent dot for unopened streams, and
-  `aria-current="true"` with accent text on `--selected` for the open review's
-  repository. A mark (“Open latest in {repo}”) opens that repository's most
-  active stream; the rail stays collapsed.
+- Review bench: with review navigation, `/` lists every review stream's head
+  with changes, for local and remote servers alike, even with one review; a
+  capture's `/` opens its diff. Three panes meet at hairlines below the
+  header, whose identity is the h1 “Reviews” (inbox icon) with sync when the
+  process collects. A `--bench-facets-width` facet pane on `--panel` lists
+  Views (“Needs attention”, “All open”, “Closed”, each with a count), then
+  Repositories and, once an agent published, Agents; a facet filters on click
+  and clears on a second click. The table pane on `--bg` has a toolbar (“Filter
+  reviews…”, Alt+/, “Clear filters”, and a “Peek” toggle with Space), muted
+  column headers (Review, Repository, Source, State, Files, Activity), and
+  sections “New and updated” (with “Mark all viewed”) then “Everything else”
+  (“Closed” in that view). Rows are `ListRow` links at tree density on one
+  grid: unread dot, stream icon, title (semibold while unread; mono for
+  branches), mono repository, source (“GitHub · @author”, or harness and
+  host), state, file count and age. One row is selected (`aria-current`,
+  roving tab stop) and takes focus on load; ↑/↓/Home/End move it, Enter opens
+  the review, Space toggles the peek, Esc closes it, Alt+Shift+V/U mark it.
+  The `--bench-peek-width` peek on `--panel` shows the selected review before
+  opening it, never marking it: origin, title, status badges, author or
+  source, age; “Open review”, “Mark viewed”/“Mark unread” and “Open on
+  GitHub”; changed files with +/−, commits, worktree and reviewed progress;
+  the pull request description bounded and scrolling; agent sessions; and the
+  top directories it changes. The view, facets and filter live in the URL
+  (`/?view=open&repo=…&agent=…&q=…`, defaults omitted); views and facets add
+  history, typing replaces it. Collection failures show above the list with
+  Retry; empty views explain themselves (“You're caught up” offers “Show all
+  open”), and without any pull request a GitHub server adds “Follow
+  repositories in Settings.” The status bar keeps shortcuts, the review count,
+  server status and Settings. Below 1012px the facets and peek leave; below
+  768px a view menu leads the toolbar, column headers hide and rows wrap
+  repository under the title.
+- Reviews breadcrumb: a review's header leads with a shell `LinkButton` “‹
+  Reviews” (chevron only below 768px; an unread dot while anything needs
+  attention; Alt+Shift+B) and a muted “/” before the repository and branch
+  comboboxes. It returns to the bench's last URL in this tab.
+- Review stepper: the header's trailing actions start with a viewed toggle
+  (“Mark viewed” check-check / “Mark unread” mail, `aria-pressed`,
+  Alt+Shift+V/U) and Previous/Next review (Alt+Shift+K/J) around a muted mono
+  “n of N”, stepping through the order the bench last listed in this tab; a
+  review opened elsewhere leads the Needs attention order. Once every file is
+  reviewed, a notice offers “Back to Reviews” and “Next review”. Below 768px
+  the stepper hides; the breadcrumb returns to the bench.
 - A GitHub pull request review shows a banner on `--panel` above the review
   notices: a state icon, muted `#N` and the semibold title, a status `Badge`
   (Open success, Draft neutral, Merged accent, Closed error), `@author`, muted
@@ -420,10 +403,15 @@ such detail into a token. New layout spacing must use the scale.
   changes” action. The footer reads `abc1234^ → abc1234`.
 - A newer head for the viewed stream shows a one-line `--accent-bg` notice below
   the header with an outline-muted “View latest” action. Never swap the open review.
-- Unopened arrivals are marked only by the column's and rail's accent dots and
-  the header combobox rows; there is no header counter. Share the per-browser
-  seen state, baseline existing heads on first visit, and clear a head's mark
-  when opened. Unchanged submissions must not create unread marks.
+- Attention is per browser and account: a head is New until its stream was
+  opened or marked viewed, Updated when its stream has a newer head than the
+  one opened or viewed, and Viewed otherwise. Merged or closed pull requests
+  and stale branches are Closed; drafts wait until ready. Only New and Updated
+  need attention; the first visit counts work idle for a day as opened.
+  Opening a review marks its head opened; peeking does not. Unread shows as
+  accent dots on bench rows, the Reviews breadcrumb and header combobox rows;
+  there is no header counter. Unchanged submissions must not create unread
+  marks.
 - Status bars: `--statusbar-height` (28: a compact control plus 2px insets,
   border included) for the sidebar, review and loading footers alike,
   with shortcuts shed before server status. At mobile widths or coarse pointers
@@ -445,11 +433,11 @@ such detail into a token. New layout spacing must use the scale.
   current theme. Clicking or arrowing applies and saves immediately; there is
   no hover preview. Add future browser preferences as further sections.
 - The diff display toolbar uses `--panel`, matching the header and status bar.
-- Desktop navigation widths: `--streams-width` defaults to 240px and
-  `--sidebar-width` to 330px. `Navigation.tsx` owns the pane and one resize
-  handle per pane; `use-stream-nav.ts` owns the review column width (200–400px)
-  and `use-sidebar.ts` the file sidebar width (200–520px), both bounded by
-  available viewport space. The header file-sidebar toggle hides and reopens
+- Desktop navigation widths: `--sidebar-width` defaults to 330px.
+  `Navigation.tsx` owns the pane and its resize handle; `use-sidebar.ts` owns
+  the file sidebar width (200–520px), bounded by available viewport space. The
+  bench's facets (`--bench-facets-width`, 240px) and peek
+  (`--bench-peek-width`, 400px) are fixed. The header file-sidebar toggle hides and reopens
   the file sidebar.
   Do not add competing CSS defaults or override a saved width at tablet sizes.
 - Sidebar interiors share a 16px inset. Rows run edge to edge so selection and
@@ -467,9 +455,9 @@ such detail into a token. New layout spacing must use the scale.
   an empty gutter. Firefox uses
   `scrollbar-width: thin`; set `scrollbar-color` only there, since it inherits
   into Pierre's shadow roots and disables their Chromium styling. Long-lived panes
-  that gain and lose overflow (diff viewport, file tree, comments, Reviews
-  column) set `scrollbar-gutter: stable` so content and toolbar edges never
-  shift. Menus, popovers, dialogs, the outer sidebar and the collapsed rail keep
+  that gain and lose overflow (diff viewport, file tree, comments, bench
+  facets, table and peek) set `scrollbar-gutter: stable` so content and toolbar edges never
+  shift. Menus, popovers, dialogs and the outer sidebar keep
   `auto`. Pierre owns its in-file horizontal tracks.
 - `--reading-width` (680px default) bounds dialogs and explanatory text, never code.
 - Use flex layouts for action groups; use grids only for genuine aligned data.
@@ -874,7 +862,8 @@ the app.
 ### Public pull request previews
 
 - `/{owner}/{repo}/pull/{n}` is a standalone review shell for everyone, like a
-  capture: no Reviews column, rail, drawer toggle, search, comboboxes or sync.
+  capture: no Review bench, Reviews breadcrumb, stepper, search, comboboxes or
+  sync.
   The header keeps the brand, a static `owner/repo` with `PR #n`, and the
   account slot: a "Sign in" button signed out, the account menu signed in.
   GitHub tab suffixes normalize to that path.
@@ -974,7 +963,7 @@ Do not add motion for decoration. New animation must honor
 
 ### Loading
 
-- Keep the real shell, review column and Settings available while review
+- Keep the real shell and Settings available while review
   data loads; the loading status bar carries the Settings trigger. Reserve both navigation widths and split/unified layout
   with neutral skeletons for review rows, file rows, the toolbar and diff frames.
   Narrow screens hide the placeholder file sidebar and follow the narrow layout.
@@ -1017,9 +1006,6 @@ Do not add motion for decoration. New animation must honor
   Keep the linked-worktree icon visible when its text label is hidden.
 - Collapse navigation to the toggle-controlled modal drawer; its width is
   `min(320px, 88vw)`. Keep file selection, comments, and export reachable there.
-  The review column becomes a drawer with the same modal pattern from its own
-  header toggle; opening it closes the file drawer. Choosing a stream closes it
-  and shows the diff.
   Its tab strip matches `--topbar-height`, including the tablet header height.
   File/folder rows, filter, summary toggle, and review progress retain desktop
   control heights and spacing; do not apply the general mobile enlargement here.

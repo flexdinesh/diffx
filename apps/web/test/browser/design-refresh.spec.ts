@@ -845,7 +845,7 @@ test.describe("iOS-standard phone chrome", () => {
     expect((await box(page, ".main-footer")).height).toBe(1 + 44);
 
     const controls = page.locator(
-      ".topbar-lead button:visible, .topbar > button:visible, .header-actions button:visible, .main-footer button:visible",
+      ".topbar > button:visible, .header-actions button:visible, .main-footer button:visible",
     );
     expect(await controls.count()).toBeGreaterThan(3);
     for (const control of await controls.all()) {

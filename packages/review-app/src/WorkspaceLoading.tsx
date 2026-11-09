@@ -83,25 +83,6 @@ export function FileTreeSkeleton() {
   );
 }
 
-export function ProjectsSkeleton() {
-  return (
-    <div className="projects-skeleton" aria-hidden="true">
-      {["first", "second", "third"].map((group) => (
-        <div className="loading-project" key={group}>
-          <div className="loading-project-name">
-            <Skeleton shape="icon" />
-            <Skeleton className="skeleton-name" />
-          </div>
-          <div className="loading-project-stream">
-            <Skeleton className="skeleton-name" />
-            <Skeleton className="skeleton-title" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /**
  * The loading review surface. Its status line names what is happening; the
  * pulsing detail is optional.

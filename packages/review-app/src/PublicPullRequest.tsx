@@ -17,7 +17,7 @@ import { Button } from "@diffx/ui/components/ui/button";
 import { save, saved } from "@diffx/ui/lib/storage";
 import { navigate, useIdentity } from "./identity-context.tsx";
 import { Navigation } from "./Navigation.tsx";
-import { NewerNotice, useNow } from "./ProjectsNav.tsx";
+import { NewerNotice, useNow } from "./StreamParts.tsx";
 import { pullRequestOf } from "./project-nav.ts";
 import { PullRequestSummary } from "./PullRequestBanner.tsx";
 import {

@@ -223,7 +223,8 @@ Live testing against a real GitHub App is pending; see
 The remote server optionally integrates a GitHub App, enabled only when every
 `DIFFX_SERVER_GITHUB_*` setting is present; secrets come from the environment
 only. Remote bootstrap reports it as `githubEnabled`; Settings › GitHub and
-the Reviews column's pull request section depend on it. Local composition has
+the Review bench's follow-repositories guidance and the branch combobox's pull
+request group depend on it. Local composition has
 no GitHub routes and its bootstrap no such field.
 
 Access is the intersection of the GitHub user and the app installation. An
@@ -465,54 +466,52 @@ list or Alt+[ and Alt+], shows the commit message, and offers “Open in Branch
 changes” on file headers. `?commit=<oid>` selects a commit. Review state stays on
 comparison scopes.
 
-Navigation is project-driven. The Reviews column queries
+Navigation is project-driven. The Review bench queries
 `/api/v2/contexts?latest=true`, which omits stale snapshots, and groups stream
 heads by repository. A stream is one owner, source, repository, checkout, branch
 and comparison policy; every context carries its opaque `streamId` and the
-stream's current `latestContextId`. The column hides clean, unavailable and
-unknown-status heads, orders streams by recent code activity and repositories by
-their most active visible stream, and marks heads this account has not opened in
-this browser.
-Equal activity uses stable stream and context identities. Unopened heads carry
-accent marks in the column, rail and header combobox rows; there is no global
-counter. First visits mark existing heads as seen; opening a head clears its mark. Ingestion events reload
+stream's current `latestContextId`. The bench hides clean, unavailable and
+unknown-status heads and orders streams by recent code activity. Equal activity
+uses stable stream and context identities. Attention is per account and
+browser (phase 1; the server owns none of it yet): a head is New until its
+stream was opened or marked viewed, Updated when the stream has a newer head
+than the one opened or viewed, Viewed otherwise; merged or closed pull requests
+and stale branches are Closed and drafts wait until ready. Only New and Updated
+need attention and carry accent marks on bench rows, the Reviews breadcrumb
+and header combobox rows; there is no global counter. First visits count heads
+idle for a day as opened; opening a head marks it opened, and “Mark all
+viewed”, “Mark viewed” and “Mark unread” set or clear a stream's mark. Ingestion events reload
 the heads; when the viewed context's stream has a newer head, a notice offers it
 without replacing the open review. URLs are live or pinned: `/streams/{streamId}`
 opens the stream's latest head when loaded or navigated to, while
-`/contexts/{contextId}` pins one snapshot. Review rows, rail marks, header
-combobox choices, and “View latest” open
+`/contexts/{contextId}` pins one snapshot. Bench rows, the review stepper,
+header combobox choices, and “View latest” open
 live URLs; the picker opens pinned ones; piped snapshots have no stream and stay
 pinned. A live URL resolves once, so later arrivals raise the notice instead of
 swapping the open review. With local collection enabled, loading `/` or a live
 URL syncs the checkouts in the background, joining startup on the first load
 through `POST /api/v2/collections?initial=true`. A live URL opens the requested
-stream's first available head immediately. `/` waits for collection, because
-heads appear as each checkout finishes, then opens the collection's default:
-current changed heads first, preferring the checkout containing the process's
-path, so `diffx .` in a worktree opens that worktree, then the most recently
-active. The open snapshot stays selected when collection finishes; a newer head
-raises the “Newer snapshot” notice with “View latest”. Without an available
-head, the UI waits for collection; failures remain visible and offer Retry.
-Otherwise `/` opens the most recently active changed head's live URL. Startup
-selection and the local default MCP context use the same collection default.
-The Reviews column leads the navigation pane, beside the open review's file
-sidebar, aligned with the diff below the header. A remote server always shows
-it. A local checkout process shows it, its rail and the compact drawer toggle
-only once the column would list two current streams, then keeps it for the
-page session; until then the navigation pane holds only the file sidebar, while search,
-the header comboboxes and sync remain. Switching streams replaces
-everything to its right and keeps the column. It collapses to a rail of
-repository marks. A repository (its rail mark or its name in the list) opens
-its most active stream; the list's chevron alone collapses or expands it. The
-column lists streams grouped by repository or as one recent-first list. List
-or rail state, grouping and each pane's width persist per browser. The header
-names the open review as repository and branch comboboxes that filter as you
-type and switch streams. Compact layouts open the column and file sidebar as
-drawers from header toggles; choosing a stream closes the drawer. The header's
-“Search reviews” magnifier opens the review picker. A capture process
+stream's first available head immediately. With review navigation `/` is the
+Review bench for local and remote servers alike: it lists heads as each
+checkout finishes collecting and preselects the collection's default (current
+changed heads first, preferring the checkout containing the process's path,
+then the most recently active) without opening it. Collection failures remain
+visible above the list and offer Retry. A capture's `/` opens its most
+recently active changed head. The local default MCP context uses the same
+collection default.
+The bench's view (Needs attention, All open, Closed), repository and agent
+facets and filter live in its query string. A review's header leads with a
+“Reviews” breadcrumb back to the bench's last URL in this tab and names the
+open review as repository and branch comboboxes that filter as you type and
+switch streams. Its stepper moves to the previous or next review in the order
+the bench last listed in this tab and marks the open stream viewed or unread;
+once every file is reviewed a notice offers the next review. The navigation
+pane holds only the file sidebar; compact layouts open it as a drawer. The
+header's “Search reviews” magnifier opens the review picker. A capture process
 (`input: "capture"` in the local bootstrap: piped stdin or a fixture) serves
-one fixed diff, so the shell shows no column, rail, comboboxes, search or
-picker; only checkout and remote processes navigate between reviews. An
+one fixed diff, so the shell shows no bench, breadcrumb, stepper, comboboxes,
+search or picker; only checkout and remote processes navigate between
+reviews. An
 explicit local sync, like an arrival,
 raises the notice instead of replacing the open review. Scrolling the diff
 selects its top file in the tree; a file chosen from the tree, the keyboard or a

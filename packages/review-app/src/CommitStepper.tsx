@@ -19,7 +19,7 @@ import { useDiffSource } from "./app-state.tsx";
 import { commitMatches, shortOid } from "./commit-view.ts";
 import { formatCount, pluralize } from "@diffx/ui/lib/format";
 import { relativeAge } from "./project-nav.ts";
-import { useNow } from "./ProjectsNav.tsx";
+import { useNow } from "./StreamParts.tsx";
 
 /** Older/newer steps around a filterable list of the branch's commits. */
 export function CommitStepper() {
