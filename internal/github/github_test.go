@@ -437,9 +437,11 @@ func TestUserRepositories(t *testing.T) {
 		io.WriteString(writer, `{"total_count": 2, "installations": [{"id": 10, "account": {"login": "me"}}]}`)
 	})
 	mux.HandleFunc("GET /user/installations/10/repositories", func(writer http.ResponseWriter, request *http.Request) {
-		io.WriteString(writer, `{"total_count": 1, "repositories": [{"id": 1, "full_name": "me/a", "clone_url": "https://github.com/me/a.git", "private": true}]}`)
+		io.WriteString(writer, `{"total_count": 2, "repositories": [{"id": 1, "full_name": "me/a", "clone_url": "https://github.com/me/a.git", "private": true, "has_pull_requests": true},
+			{"id": 3, "full_name": "me/dotfiles", "clone_url": "https://github.com/me/dotfiles.git", "private": true, "has_pull_requests": false}]}`)
 	})
 	mux.HandleFunc("GET /user/installations/20/repositories", func(writer http.ResponseWriter, request *http.Request) {
+		// Payloads without has_pull_requests keep pull requests enabled.
 		io.WriteString(writer, `{"total_count": 1, "repositories": [{"id": 2, "full_name": "org/b", "clone_url": "https://github.com/org/b.git"}]}`)
 	})
 	server = httptest.NewServer(mux)
@@ -455,6 +457,7 @@ func TestUserRepositories(t *testing.T) {
 	}
 	want := []Repository{
 		{ID: 1, FullName: "me/a", CloneURL: "https://github.com/me/a.git", Private: true, InstallationID: 10},
+		{ID: 3, FullName: "me/dotfiles", CloneURL: "https://github.com/me/dotfiles.git", Private: true, InstallationID: 10, PullRequestsDisabled: true},
 		{ID: 2, FullName: "org/b", CloneURL: "https://github.com/org/b.git", InstallationID: 20},
 	}
 	if !reflect.DeepEqual(repositories, want) {

@@ -563,6 +563,15 @@ function FollowedRepositories({
                 {repository.lost && (
                   <span className="text-sm text-warning">Access lost</span>
                 )}
+                {!repository.lost && repository.pullRequests === false && (
+                  <span className="text-sm text-muted">
+                    Pull requests off
+                    <span className="sr-only">
+                      {" "}
+                      on GitHub; they appear here once turned on
+                    </span>
+                  </span>
+                )}
                 {notify && repository.followed && (
                   <Tooltip>
                     <TooltipTrigger

@@ -237,9 +237,18 @@ Lost access, uninstalls, removed repositories, revoked authorizations and
 rejected refreshes mark follows lost; lost follows receive nothing until access
 is verified again. GitHub management routes need a browser session and CSRF
 token, like account management, because they handle GitHub credentials.
+A repository may turn pull requests off on GitHub, which then answers 404 for
+its pull requests while the repository stays readable. The repository listing's
+`has_pull_requests` (absent means on) marks it, and Settings shows it;
+following still works, so pull requests appear once turned on. Following, Resync
+and startup reconciliation skip listing such a repository and treat a 404 list
+as no open pull requests, never as a failure; known-open pull requests are
+still refreshed, and their leases record them closed.
 
 Webhooks arrive at `POST /api/v2/github/webhooks`, authenticated only by the
-`X-Hub-Signature-256` HMAC, verified before parsing. A delivery ID is recorded
+`X-Hub-Signature-256` HMAC, verified before parsing. Every rejected signature
+logs the event name and delivery ID (bounded, never the signature), because a
+mismatched webhook secret otherwise fails every delivery silently. A delivery ID is recorded
 only after its effects apply, and recorded IDs are acknowledged without effect,
 so GitHub redeliveries are safe; every effect is idempotent. Pull request events
 for actively followed repositories coalesce into one refresh intent per pull

@@ -1369,6 +1369,8 @@ export interface components {
       lost: boolean;
       /** @description Whether new pull request diffs from this followed repository send push notifications. True unless muted; false when not followed. */
       notify: boolean;
+      /** @description False when the repository turned pull requests off on GitHub. It can still be followed; its pull requests appear once they are turned on. True for lost follows. */
+      pullRequests: boolean;
     };
     PushSettings: {
       /** @description False when the server has no HTTPS public URL (or loopback HTTP for development). */

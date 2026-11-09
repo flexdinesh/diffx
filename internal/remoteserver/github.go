@@ -107,6 +107,15 @@ func (remote *transport) githubPublic(w http.ResponseWriter, r *http.Request) bo
 	return false
 }
 
+// clipHeader bounds an unauthenticated header value before it is logged.
+func clipHeader(value string) string {
+	const limit = 64
+	if len(value) <= limit {
+		return value
+	}
+	return value[:limit] + "…"
+}
+
 func (remote *transport) githubWebhook(w http.ResponseWriter, r *http.Request) {
 	if remote.github == nil {
 		http.NotFound(w, r)
@@ -124,6 +133,8 @@ func (remote *transport) githubWebhook(w http.ResponseWriter, r *http.Request) {
 	err = remote.github.Webhook(r.Context(), r.Header.Get("X-GitHub-Event"), r.Header.Get("X-GitHub-Delivery"), r.Header.Get("X-Hub-Signature-256"), body)
 	switch {
 	case errors.Is(err, githubsync.ErrSignature):
+		// A mismatched webhook secret rejects every delivery, so each one logs.
+		log.Printf("GitHub webhook: rejected signature for event %q delivery %q", clipHeader(r.Header.Get("X-GitHub-Event")), clipHeader(r.Header.Get("X-GitHub-Delivery")))
 		authhttp.Problem(w, 401, "Invalid webhook signature")
 	case err != nil:
 		log.Printf("GitHub webhook: %v", err)
