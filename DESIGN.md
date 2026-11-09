@@ -291,8 +291,10 @@ such detail into a token. New layout spacing must use the scale.
   (15px); drawer rows and the toolbar keep desktop glyphs.
 - Safe areas: `viewport-fit=cover` lets chrome own the device insets
   (`--safe-top/right/bottom/left`, 0 off iOS). The header's `--shell-canvas`
-  extends under the status bar (`--topbar-height` plus `--safe-top`) so the
-  system never blurs or tints its controls; status bars extend under the home
+  extends under the status bar (`--topbar-height` plus `--safe-top`) and the
+  header is `position: sticky` at the top edge: Safari 26 ignores `theme-color`
+  and samples only fixed or sticky edge elements for a solid status bar,
+  otherwise blurring the header's controls. Status bars extend under the home
   indicator with content above it; drawers pad their top, bottom and leading
   edge; the app shell pads landscape side insets with canvas. A `theme-color`
   meta follows the active theme's `--shell-canvas` for the iOS status bar and

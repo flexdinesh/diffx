@@ -14,9 +14,12 @@
   place-content: center;
   min-height: 0;
 }
-/* The solid canvas extends under the iOS status bar so the system never
-   blurs or tints the header's controls. */
+/* The solid canvas extends under the iOS status bar. Sticky (inert: the
+   document never scrolls) makes Safari 26 extend this canvas into its status
+   bar instead of blurring the header's controls. */
 .topbar {
+  position: sticky;
+  top: 0;
   height: calc(var(--topbar-height) + var(--safe-top));
   display: flex;
   gap: var(--space-1-5);
