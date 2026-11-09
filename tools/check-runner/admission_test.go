@@ -12,19 +12,22 @@ import (
 
 func TestAdmissionBoundsConcurrentRunsAndCancellation(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
-	first, err := admit(t.Context())
+	firstSlot, first, err := admit(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer first()
-	second, err := admit(t.Context())
+	secondSlot, second, err := admit(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer second()
+	if firstSlot == secondSlot {
+		t.Fatalf("concurrent runs share slot %d; their Docker resources would collide", firstSlot)
+	}
 	waiting, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	defer cancel()
-	if release, err := admit(waiting); !errors.Is(err, context.DeadlineExceeded) {
+	if _, release, err := admit(waiting); !errors.Is(err, context.DeadlineExceeded) {
 		if release != nil {
 			release()
 		}
@@ -33,9 +36,12 @@ func TestAdmissionBoundsConcurrentRunsAndCancellation(t *testing.T) {
 	first()
 	available, stop := context.WithTimeout(t.Context(), time.Second)
 	defer stop()
-	third, err := admit(available)
+	thirdSlot, third, err := admit(available)
 	if err != nil {
 		t.Fatal("released slot was not reusable:", err)
+	}
+	if thirdSlot != firstSlot {
+		t.Fatalf("reused slot %d, want released slot %d", thirdSlot, firstSlot)
 	}
 	third()
 }
@@ -44,7 +50,7 @@ func TestAdmissionDoesNotAcquireForCancelledInvocation(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	release, err := admit(ctx)
+	_, release, err := admit(ctx)
 	if release != nil {
 		release()
 	}

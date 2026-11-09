@@ -11,8 +11,6 @@ task.source_freshness_hash_contents = true
 [env]
 # Use the mise Go pin; never download a toolchain go.mod asks for.
 GOTOOLCHAIN = "local"
-# Never let a Dagger bootstrap remove another repository's engine.
-DAGGER_LEAVE_OLD_ENGINE = "true"
 
 [tools]
 go = "1.27.3"
@@ -376,7 +374,6 @@ run = [{ task = "check:release" }]
 
 [tasks.check]
 description = "Run host static checks and isolated tests against working files"
-tools = { "aqua:dagger/dagger" = "0.21.11" }
 shell = "bash -e -o pipefail -c"
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner check"
 
@@ -410,7 +407,6 @@ run = "node --test --test-reporter=dot test/contracts/*.test.ts"
 [tasks."check:pr"]
 description = "Validate clean committed HEAD before creating or updating a PR"
 alias = "check:push"
-tools = { "aqua:dagger/dagger" = "0.21.11" }
 shell = "bash -e -o pipefail -c"
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner pr"
 
@@ -418,68 +414,52 @@ run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner pr"
 description = "Report matching validation records for committed HEAD"
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner status"
 
-[tasks."check:engine:setup"]
-description = "Explicitly provision the owned diffx validation engine"
-tools = { "aqua:dagger/dagger" = "0.21.11" }
-run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner engine-setup"
-
 [tasks."check:static"]
 description = "Run static checks on a private host snapshot; no Docker required"
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group static"
 
 [tasks."check:go"]
 description = "Run Go tests in an isolated snapshot"
-tools = { "aqua:dagger/dagger" = "0.21.11" }
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group go"
 
 [tasks."check:desktop"]
 description = "Run desktop webview host, bridge and real local-session tests in isolation"
-tools = { "aqua:dagger/dagger" = "0.21.11" }
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group desktop"
 
 [tasks."check:desktop:window"]
 description = "Run real Linux desktop window, clipboard and shared-server acceptance"
-tools = { "aqua:dagger/dagger" = "0.21.11" }
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group desktop-window"
 
 [tasks."check:desktop:package"]
 description = "Build and verify actual experimental desktop archives for all supported targets"
-tools = { "aqua:dagger/dagger" = "0.21.11" }
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group desktop-package"
 
 [tasks."check:contracts"]
 description = "Run architecture and shared-rule contracts in isolation"
-tools = { "aqua:dagger/dagger" = "0.21.11" }
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group contracts"
 
 [tasks."check:unit"]
 description = "Run JavaScript unit, DOM and plugin tests in isolation"
-tools = { "aqua:dagger/dagger" = "0.21.11" }
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group unit"
 
 [tasks."check:browser"]
 description = "Run web and console browser tests in isolation"
-tools = { "aqua:dagger/dagger" = "0.21.11" }
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group browser"
 
 [tasks."check:conformance"]
 description = "Run API conformance tests in isolation"
-tools = { "aqua:dagger/dagger" = "0.21.11" }
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group conformance"
 
 [tasks."check:docs"]
 description = "Build and check the docs site in isolation"
-tools = { "aqua:dagger/dagger" = "0.21.11" }
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group docs"
 
 [tasks."check:release"]
 description = "Run release-tool tests in isolation"
-tools = { "aqua:dagger/dagger" = "0.21.11" }
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group release"
 
 [tasks."check:generated"]
 description = "Regenerate and check API, SQL and plugin outputs in isolation"
-tools = { "aqua:dagger/dagger" = "0.21.11" }
 run = "GOMAXPROCS=2 GOFLAGS='-p=2' go run ./tools/check-runner group generated"
 
 [tasks."docker:build"]

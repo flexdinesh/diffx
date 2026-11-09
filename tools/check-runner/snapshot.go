@@ -233,7 +233,7 @@ func initializeSnapshotGit(ctx context.Context, root string) error {
 		{"-c", "core.hooksPath=/dev/null", "add", "--force", "--all"},
 		{"-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "-c", "user.name=Validation", "-c", "user.email=validation@localhost", "commit", "--quiet", "--allow-empty", "--date=2000-01-01T00:00:00Z", "-m", "Validation source"},
 		// Rebuild the index from the tree so host inode/mtime data does not enter
-		// Dagger's imported directory identity.
+		// the snapshot's Git state used by host checks.
 		{"read-tree", "--empty"},
 		{"read-tree", "HEAD"},
 	} {

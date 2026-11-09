@@ -108,7 +108,7 @@ type fixture struct {
 func setup(t *testing.T) fixture {
 	t.Helper()
 	if os.Getenv("DIFFX_DESKTOP_ACCEPTANCE") != "1" {
-		t.Skip("real window acceptance requires DIFFX_DESKTOP_ACCEPTANCE=1 in desktop Dagger or an actual macOS desktop session")
+		t.Skip("real window acceptance requires DIFFX_DESKTOP_ACCEPTANCE=1 in the desktop check container or an actual macOS desktop session")
 	}
 	if runtime.GOOS != "linux" {
 		t.Skip("this acceptance suite drives Linux GTK/X11; establish macOS runtime acceptance separately on a Mac")
