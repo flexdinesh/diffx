@@ -501,6 +501,10 @@ main {
   .main-footer .footer-details {
     --icon-base: var(--icon-chrome-touch);
   }
+  /* Server status pins its glyph to the small size; match the gear. */
+  .main-footer .footer-details {
+    --icon-sm: var(--icon-chrome-touch);
+  }
   .topbar .context-identity {
     font-size: var(--text-chrome-touch);
   }
