@@ -30,6 +30,12 @@ export type ShellPolicy = {
    * remote server, so a signed-out reader of a public preview has none.
    */
   serverStatus: boolean;
+  /**
+   * The Reviews column's pull request section and its state filter. They
+   * need the server's GitHub integration; without it the column lists every
+   * current stream together.
+   */
+  pullRequests: boolean;
 };
 
 export function shellPolicy(bootstrap: ApiBootstrap): ShellPolicy {
@@ -40,6 +46,7 @@ export function shellPolicy(bootstrap: ApiBootstrap): ShellPolicy {
       collection: null,
       reviewMarks: true,
       serverStatus: true,
+      pullRequests: bootstrap.githubEnabled,
     };
   const collection = bootstrap.input === "capture" ? null : bootstrap.input;
   return {
@@ -48,6 +55,7 @@ export function shellPolicy(bootstrap: ApiBootstrap): ShellPolicy {
     collection,
     reviewMarks: true,
     serverStatus: true,
+    pullRequests: false,
   };
 }
 
@@ -62,6 +70,7 @@ export function publicPreviewPolicy(bootstrap: ApiBootstrap): ShellPolicy {
     collection: null,
     reviewMarks: false,
     serverStatus: bootstrap.user !== null,
+    pullRequests: false,
   };
 }
 

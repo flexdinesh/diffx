@@ -113,6 +113,7 @@ function bootstrap(signedIn: boolean) {
   return {
     mode: "remote",
     publicPullRequests: true,
+    githubEnabled: false,
     googleEnabled: true,
     signupEnabled: true,
     passwordSignupEnabled: true,

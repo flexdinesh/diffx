@@ -47,12 +47,13 @@ type bootstrapJSON struct {
 	User                  *accountJSON `json:"user"`
 	CSRFToken             *string      `json:"csrfToken"`
 	PublicPullRequests    bool         `json:"publicPullRequests"`
+	GitHubEnabled         bool         `json:"githubEnabled"`
 }
 
 func (remote *transport) bootstrap(w http.ResponseWriter, r *http.Request, p principal) {
 	settings := remote.identity.Settings()
 	result := bootstrapJSON{Mode: "remote", GoogleEnabled: remote.identity.GoogleEnabled(), SignupEnabled: settings.Signup, PasswordSignupEnabled: settings.PasswordSignup,
-		PublicPullRequests: remote.publicPullRequests()}
+		PublicPullRequests: remote.publicPullRequests(), GitHubEnabled: remote.github != nil}
 	if p.session != nil {
 		result.User = &accountJSON{ID: p.account.ID, Email: p.account.Email, Method: p.account.Method}
 		result.CSRFToken = &p.session.CSRFToken

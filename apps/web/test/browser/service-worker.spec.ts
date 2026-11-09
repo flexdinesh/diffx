@@ -18,6 +18,7 @@ test("the service worker shows pushed pull requests and a fallback for unreadabl
       json: {
         mode: "remote",
         publicPullRequests: false,
+        githubEnabled: false,
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,

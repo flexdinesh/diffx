@@ -65,6 +65,7 @@ async function publicServer(
       json: {
         mode: "remote",
         publicPullRequests: true,
+        githubEnabled: false,
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,

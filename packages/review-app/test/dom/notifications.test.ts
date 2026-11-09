@@ -122,6 +122,7 @@ function server({ enabled = true, github = "absent", handle }: Server = {}) {
       return json({
         mode: "remote",
         publicPullRequests: false,
+        githubEnabled: false,
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,

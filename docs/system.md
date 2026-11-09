@@ -222,7 +222,9 @@ Live testing against a real GitHub App is pending; see
 
 The remote server optionally integrates a GitHub App, enabled only when every
 `DIFFX_SERVER_GITHUB_*` setting is present; secrets come from the environment
-only. Local composition has no GitHub routes.
+only. Remote bootstrap reports it as `githubEnabled`; Settings › GitHub and
+the Reviews column's pull request section depend on it. Local composition has
+no GitHub routes and its bootstrap no such field.
 
 Access is the intersection of the GitHub user and the app installation. An
 account connects GitHub in Settings through the app's OAuth web flow; the

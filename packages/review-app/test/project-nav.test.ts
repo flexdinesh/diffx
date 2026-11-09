@@ -3,6 +3,8 @@ import { test } from "node:test";
 import type { ApiContext, ApiPullRequest } from "@diffx/api";
 import {
   baselineSeen,
+  branchSections,
+  defaultContext,
   latestStream,
   newerHead,
   projectGroups,
@@ -13,6 +15,7 @@ import {
   streamMatches,
   streamCount,
   streamMeta,
+  streamSections,
   streamTitle,
 } from "../src/project-nav.ts";
 import {
@@ -480,14 +483,143 @@ test("closed and merged pull requests leave current work beside open ones", () =
   );
 });
 
-test("pull request streams show number, title, GitHub and author", () => {
+test("pull request streams show number, title, GitHub, state and author", () => {
   const open = pullRequestHead("open");
   const draft = pullRequestHead("draft", { draft: true });
   assert.equal(streamTitle(open), "#12 Add search");
   assert.equal(streamTitle(head("local", "app", 5)), "branch-local");
   assert.equal(streamMeta(open, true, 10), "GitHub · @mona · now");
   assert.equal(streamMeta(draft, false, 10), "GitHub · Draft · @mona · now");
+  assert.equal(
+    streamMeta(pullRequestHead("merged", { state: "merged" }), false, 10),
+    "GitHub · Merged · @mona · now",
+  );
+  assert.equal(
+    streamMeta(pullRequestHead("closed", { state: "closed" }), false, 10),
+    "GitHub · Closed · @mona · now",
+  );
   const stream = { id: "open", context: open, unseen: false };
   assert.ok(streamMatches(stream, "search mona"));
   assert.ok(streamMatches(stream, "#12"));
+});
+
+function streamIds(groups: { streams: { context: ApiContext }[] }[]) {
+  return groups.flatMap((group) =>
+    group.streams.map((stream) => stream.context.id),
+  );
+}
+
+const pullRequestStates = [
+  pullRequestHead("open", { number: 1 }),
+  pullRequestHead("draft", { number: 2, draft: true }),
+  pullRequestHead("closed", { number: 3, state: "closed" }),
+  pullRequestHead("merged", { number: 4, state: "merged" }),
+  head("local", "app", 5),
+  head("other", "web", 4),
+];
+
+test("the pull request filter narrows pull requests and never other streams", () => {
+  assert.deepEqual(streamIds(projectGroups(pullRequestStates, null, "open")), [
+    "draft",
+    "open",
+    "local",
+    "other",
+  ]);
+  assert.deepEqual(
+    streamIds(projectGroups(pullRequestStates, null, "merged")),
+    ["merged", "local", "other"],
+  );
+  assert.deepEqual(streamIds(projectGroups(pullRequestStates, null, "all")), [
+    "closed",
+    "draft",
+    "merged",
+    "open",
+    "local",
+    "other",
+  ]);
+  // Local column visibility counts current work whatever the filter.
+  assert.equal(streamCount(pullRequestStates), 4);
+});
+
+test("sections split pull requests from machines; the filter reaches only pull requests", () => {
+  for (const [filter, pulls] of [
+    ["open", ["draft", "open"]],
+    ["merged", ["merged"]],
+    ["all", ["closed", "draft", "merged", "open"]],
+  ] as const) {
+    const sections = streamSections(pullRequestStates, null, filter);
+    assert.deepEqual(streamIds(sections.pullRequests), pulls);
+    assert.deepEqual(
+      sections.machines.map((group) => [group.name, streamIds([group])]),
+      [
+        ["app", ["local"]],
+        ["web", ["other"]],
+      ],
+    );
+  }
+  const empty = streamSections([head("local", "app", 5)], null, "merged");
+  assert.deepEqual(empty.pullRequests, []);
+  assert.equal(empty.machines.length, 1);
+});
+
+test("rail repositories include any visible stream in either section", () => {
+  const onlyMerged = [
+    pullRequestHead("merged", { state: "merged" }),
+    head("local", "web", 5),
+  ];
+  assert.deepEqual(
+    projectGroups(onlyMerged, null, "open").map((group) => group.name),
+    ["web"],
+  );
+  assert.deepEqual(
+    projectGroups(onlyMerged, null, "merged").map((group) => group.name),
+    ["app", "web"],
+  );
+});
+
+test("branch rows group by section only when both sections list streams", () => {
+  const [app] = projectGroups(pullRequestStates, null, "open");
+  assert.ok(app);
+  assert.deepEqual(
+    branchSections(app.streams)?.map((section) => [
+      section.value,
+      section.items.map((stream) => stream.context.id),
+    ]),
+    [
+      ["Pull requests", ["draft", "open"]],
+      ["From your machines", ["local"]],
+    ],
+  );
+  const [web] = projectGroups([head("other", "web", 4)], null);
+  assert.ok(web);
+  assert.equal(branchSections(web.streams), null);
+  const [pulls] = projectGroups([pullRequestHead("open")], null);
+  assert.ok(pulls);
+  assert.equal(branchSections(pulls.streams), null);
+});
+
+test("the root opens current work before a closed or merged pull request", () => {
+  const merged = pullRequestHead("merged", { state: "merged" });
+  const recentMerge = { ...merged, lastChangedAt: 900 };
+  const local = head("local", "app", 100);
+  const open = pullRequestHead("open");
+  assert.equal(defaultContext([recentMerge, local]), local);
+  assert.equal(
+    defaultContext([recentMerge, { ...open, lastChangedAt: 50 }])?.id,
+    "open",
+  );
+  // Stale and unchanged current work does not count.
+  assert.equal(
+    defaultContext([recentMerge, { ...local, stale: true }]),
+    recentMerge,
+  );
+  assert.equal(
+    defaultContext([
+      { ...recentMerge, stale: true },
+      { ...merged, lastChangedAt: 500 },
+      pullRequestHead("closed", { state: "closed" }),
+    ])?.id,
+    "merged",
+  );
+  assert.equal(defaultContext([]), undefined);
 });

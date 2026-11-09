@@ -3,6 +3,8 @@ import type { ApiContext } from "@diffx/api";
 import {
   FolderGit2Icon,
   GitBranchIcon,
+  GitMergeIcon,
+  GitPullRequestClosedIcon,
   GitPullRequestDraftIcon,
   GitPullRequestIcon,
   HistoryIcon,
@@ -13,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { BrandMark } from "@diffx/ui/components/brand-mark";
+import { CollapsibleSection } from "@diffx/ui/components/collapsible-section";
 import { ContextIcon } from "@diffx/ui/components/context-icon";
 import { CountBadge } from "@diffx/ui/components/count-badge";
 import { DisclosureRow } from "@diffx/ui/components/disclosure-row";
@@ -32,6 +35,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@diffx/ui/components/ui/dropdown-menu";
 import { Separator } from "@diffx/ui/components/ui/separator";
@@ -49,12 +53,17 @@ import {
   repoMonogram,
   streamKey,
   streamMeta,
+  streamSections,
   streamTitle,
   type ProjectGroup,
+  type PullRequestFilter,
   type StreamGroupMode,
 } from "./project-nav.ts";
+import { navigate } from "./identity-context.tsx";
 import { useCatalog, useSession } from "./session-context.tsx";
 import { streamPath } from "./review-route.ts";
+import { settingsPath } from "./settings-layout.tsx";
+import { useShellPolicy } from "./use-shell-policy.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
 import { useStreamNavState } from "./stream-nav-context.tsx";
 
@@ -62,6 +71,28 @@ const groupModes = [
   { value: "repo", label: "Group by repo" },
   { value: "recent", label: "Recent first" },
 ] satisfies { value: StreamGroupMode; label: string }[];
+
+const pullFilters = [
+  { value: "open", label: "Open" },
+  { value: "merged", label: "Merged" },
+  { value: "all", label: "All" },
+] satisfies { value: PullRequestFilter; label: string }[];
+
+/**
+ * The pull requests the review column, rail and header comboboxes list, or
+ * null while the server has no GitHub integration and the column keeps one
+ * list of current work.
+ */
+export function usePullRequestFilter(): PullRequestFilter | null {
+  const { pullRequests } = useShellPolicy();
+  const { pullFilter } = useStreamNavState();
+  return pullRequests ? pullFilter : null;
+}
+
+/** Collapse keys for pull request repositories stay apart from machines'. */
+function collapseKey(group: ProjectGroup, pullRequests: boolean) {
+  return pullRequests ? `pr:${group.id}` : group.id;
+}
 
 /** Drawer entry point below 1012px, where the review column is hidden. */
 export function ProjectsToggle() {
@@ -137,9 +168,11 @@ export function ProjectsNav() {
   const sidebar = useSidebarState();
   const streams = useStreamNavState();
   const { heads, current, openStream, seen, collecting } = useCatalog();
+  const pulls = usePullRequestFilter();
   const [closed, setClosed] = useState(readCollapsedGroups);
   const now = useNow();
-  const groups = projectGroups(heads.contexts, seen);
+  const groups = projectGroups(heads.contexts, seen, pulls ?? "open");
+  const sections = pulls && streamSections(heads.contexts, seen, pulls);
   const currentStream = current ? streamKey(current) : "";
   const drawerOpen = sidebar.drawer === "reviews";
   const rail = !sidebar.mobile && streams.state === "rail";
@@ -156,17 +189,35 @@ export function ProjectsNav() {
   };
   const open = (event: MouseEvent<HTMLElement>, head: ApiContext) =>
     streamClick(event, () => openStream(head));
-  // A repository opens to its most active stream, and its group expands.
+  // A repository opens to its most active stream, and the group listing that
+  // stream expands.
   const openLatest = (group: ProjectGroup) => {
     const latest = latestStream(group);
     if (!latest) return;
-    if (closed.has(group.id)) {
+    const key = collapseKey(
+      group,
+      pulls !== null && pullRequestOf(latest.context) !== undefined,
+    );
+    if (closed.has(key)) {
       const next = new Set(closed);
-      next.delete(group.id);
+      next.delete(key);
       updateClosed(next);
     }
     openStream(latest.context);
   };
+  const list = (listed: ProjectGroup[], pullRequests: boolean) => (
+    <StreamGroups
+      groups={listed}
+      mode={streams.group}
+      closed={closed}
+      pullRequests={pullRequests}
+      onToggle={toggleGroup}
+      onOpenLatest={openLatest}
+      currentStream={currentStream}
+      now={now}
+      onOpen={open}
+    />
+  );
   if (rail)
     return (
       <StreamRail
@@ -195,6 +246,8 @@ export function ProjectsNav() {
               <GroupModeMenu
                 value={streams.group}
                 onChange={streams.setGroup}
+                pulls={pulls}
+                onPullsChange={streams.setPullFilter}
               />
               <IconButton
                 id="reviews-collapse"
@@ -217,35 +270,45 @@ export function ProjectsNav() {
           }
         />
         <div className="projects-scroll">
-          {!groups.length ? (
+          {!groups.length &&
+          (!sections || heads.error || collecting || !heads.loaded) ? (
             <ProjectsEmpty
               loaded={heads.loaded}
               collecting={collecting}
               error={heads.error}
               onRetry={heads.retry}
             />
-          ) : streams.group === "recent" ? (
-            <RecentList
-              groups={groups}
-              currentStream={currentStream}
-              now={now}
-              onOpen={open}
-            />
+          ) : sections ? (
+            <>
+              <CollapsibleSection
+                title="Pull requests"
+                meta={
+                  pullFilters.find((filter) => filter.value === pulls)?.label
+                }
+                storageKey="reviews-pull-requests-collapsed"
+                leading
+              >
+                {sections.pullRequests.length ? (
+                  list(sections.pullRequests, true)
+                ) : (
+                  <PullRequestsEmpty filter={pulls} />
+                )}
+              </CollapsibleSection>
+              <CollapsibleSection
+                title="From your machines"
+                storageKey="reviews-machines-collapsed"
+              >
+                {sections.machines.length ? (
+                  list(sections.machines, false)
+                ) : (
+                  <SectionNote>
+                    Agent hooks and diffx sync publish changed checkouts here.
+                  </SectionNote>
+                )}
+              </CollapsibleSection>
+            </>
           ) : (
-            <ul className="projects-list">
-              {groups.map((group) => (
-                <ProjectItem
-                  key={group.id}
-                  group={group}
-                  expanded={!closed.has(group.id)}
-                  onToggle={() => toggleGroup(group.id)}
-                  onOpenLatest={() => openLatest(group)}
-                  currentStream={currentStream}
-                  now={now}
-                  onOpen={open}
-                />
-              ))}
-            </ul>
+            list(groups, false)
           )}
         </div>
       </div>
@@ -253,12 +316,98 @@ export function ProjectsNav() {
   );
 }
 
+/** One section's repositories, grouped by repository or recent first. */
+function StreamGroups({
+  groups,
+  mode,
+  closed,
+  pullRequests,
+  onToggle,
+  onOpenLatest,
+  currentStream,
+  now,
+  onOpen,
+}: {
+  groups: ProjectGroup[];
+  mode: StreamGroupMode;
+  closed: Set<string>;
+  pullRequests: boolean;
+  onToggle: (key: string) => void;
+  onOpenLatest: (group: ProjectGroup) => void;
+  currentStream: string;
+  now: number;
+  onOpen: (event: MouseEvent<HTMLElement>, head: ApiContext) => void;
+}) {
+  if (mode === "recent")
+    return (
+      <RecentList
+        groups={groups}
+        currentStream={currentStream}
+        now={now}
+        onOpen={onOpen}
+      />
+    );
+  return (
+    <ul className="projects-list">
+      {groups.map((group) => {
+        const key = collapseKey(group, pullRequests);
+        return (
+          <ProjectItem
+            key={group.id}
+            group={group}
+            listId={`project-${key}`}
+            expanded={!closed.has(key)}
+            onToggle={() => onToggle(key)}
+            onOpenLatest={() => onOpenLatest(group)}
+            currentStream={currentStream}
+            now={now}
+            onOpen={onOpen}
+          />
+        );
+      })}
+    </ul>
+  );
+}
+
+/** Muted copy in place of a section's rows, indented like them. */
+function SectionNote({ children }: { children: ReactNode }) {
+  return <p className="m-0 px-4 py-1.5 text-xs text-muted">{children}</p>;
+}
+
+function PullRequestsEmpty({ filter }: { filter: PullRequestFilter }) {
+  if (filter === "merged")
+    return <SectionNote>No merged pull requests.</SectionNote>;
+  if (filter === "all") return <SectionNote>No pull requests.</SectionNote>;
+  const settings = settingsPath("github");
+  return (
+    <SectionNote>
+      No open pull requests.{" "}
+      <a
+        href={settings}
+        className="text-accent underline underline-offset-(--space-1)"
+        onClick={(event) => {
+          event.preventDefault();
+          navigate(settings);
+        }}
+      >
+        Follow repositories
+      </a>{" "}
+      in Settings.
+    </SectionNote>
+  );
+}
+
 function GroupModeMenu({
   value,
   onChange,
+  pulls,
+  onPullsChange,
 }: {
   value: StreamGroupMode;
   onChange: (value: StreamGroupMode) => void;
+  /** The pull request filter, shown only while the server has GitHub. */
+  pulls: PullRequestFilter | null;
+  onPullsChange: (value: PullRequestFilter) => void;
 }) {
   return (
     <DropdownMenu>
@@ -286,6 +435,31 @@ function GroupModeMenu({
             ))}
           </DropdownMenuRadioGroup>
         </DropdownMenuGroup>
+        {pulls && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Pull requests</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                aria-label="Pull request state"
+                value={pulls}
+                onValueChange={(next) => {
+                  if (next === "open" || next === "merged" || next === "all")
+                    onPullsChange(next);
+                }}
+              >
+                {pullFilters.map((filter) => (
+                  <DropdownMenuRadioItem
+                    key={filter.value}
+                    value={filter.value}
+                  >
+                    {filter.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuGroup>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -357,6 +531,7 @@ function StreamRail({
 
 function ProjectItem({
   group,
+  listId,
   expanded,
   onToggle,
   onOpenLatest,
@@ -365,6 +540,7 @@ function ProjectItem({
   onOpen,
 }: {
   group: ProjectGroup;
+  listId: string;
   expanded: boolean;
   onToggle: () => void;
   onOpenLatest: () => void;
@@ -373,7 +549,6 @@ function ProjectItem({
   onOpen: (event: MouseEvent<HTMLElement>, head: ApiContext) => void;
 }) {
   const unseen = group.streams.some((stream) => stream.unseen);
-  const listId = `project-${group.id}`;
   return (
     <li>
       <DisclosureRow
@@ -511,14 +686,15 @@ export function StreamIcon({
   const pull = pullRequestOf(context);
   const className = muted ? "text-muted" : undefined;
   if (!pull) return <GitBranchIcon className={className} aria-hidden="true" />;
-  const Icon = pull.draft ? GitPullRequestDraftIcon : GitPullRequestIcon;
-  return (
-    <Icon
-      className={className}
-      role="img"
-      aria-label={pull.draft ? "Draft pull request" : "Pull request"}
-    />
-  );
+  const [Icon, label] =
+    pull.state === "merged"
+      ? [GitMergeIcon, "Merged pull request"]
+      : pull.state === "closed"
+        ? [GitPullRequestClosedIcon, "Closed pull request"]
+        : pull.draft
+          ? [GitPullRequestDraftIcon, "Draft pull request"]
+          : [GitPullRequestIcon, "Pull request"];
+  return <Icon className={className} role="img" aria-label={label} />;
 }
 
 export function NewMark() {

@@ -1,8 +1,13 @@
 import type { ApiContext } from "@diffx/api";
-import { compareContextActivity, contextActivity } from "./context-activity.ts";
+import {
+  compareContextActivity,
+  contextActivity,
+  latestChangedContext,
+} from "./context-activity.ts";
 import { contextHasChanges, searchWords } from "./project-picker.ts";
 
-// The review column shows only current work: each stream's head with changes.
+// The review column shows each stream's head with changes: current work, plus
+// closed and merged pull requests when its pull request filter asks for them.
 // Stale snapshots stay reachable through the review picker (Cmd/Ctrl+K).
 
 export type ProjectStream = {
@@ -41,7 +46,22 @@ function currentWork(context: ApiContext) {
   return state !== "closed" && state !== "merged";
 }
 
-/** How many streams the review column lists across every repository. */
+/**
+ * Which pull requests the review column lists: current ones (open), merged
+ * ones, or every state. Streams without a pull request are never filtered.
+ */
+export type PullRequestFilter = "open" | "merged" | "all";
+
+function listed(context: ApiContext, pulls: PullRequestFilter) {
+  const state = pullRequestOf(context)?.state;
+  if (state === undefined || pulls === "all") return true;
+  return pulls === "merged" ? state === "merged" : currentWork(context);
+}
+
+/**
+ * How many current streams the review column lists across every repository;
+ * the local column visibility policy counts current work only.
+ */
 export function streamCount(heads: ApiContext[]) {
   return projectGroups(heads, null).reduce(
     (total, group) => total + group.streams.length,
@@ -49,10 +69,66 @@ export function streamCount(heads: ApiContext[]) {
   );
 }
 
-export function projectGroups(heads: ApiContext[], seen: SeenStreams | null) {
+/** The review column's sections while the server integrates GitHub. */
+export type StreamSections = {
+  /** GitHub pull request streams, narrowed by the pull request filter. */
+  pullRequests: ProjectGroup[];
+  /** Every other stream, collected from machines; never filtered. */
+  machines: ProjectGroup[];
+};
+
+export function streamSections(
+  heads: ApiContext[],
+  seen: SeenStreams | null,
+  pulls: PullRequestFilter,
+): StreamSections {
+  return {
+    pullRequests: projectGroups(
+      heads.filter((context) => pullRequestOf(context)),
+      seen,
+      pulls,
+    ),
+    machines: projectGroups(
+      heads.filter((context) => !pullRequestOf(context)),
+      seen,
+    ),
+  };
+}
+
+/** A titled run of one repository's streams in the header branch combobox. */
+export type StreamSection = {
+  value: "Pull requests" | "From your machines";
+  items: ProjectStream[];
+};
+
+/**
+ * The branch combobox's rows for one repository: grouped under "Pull
+ * requests" and "From your machines" only when both list streams.
+ */
+export function branchSections(
+  streams: ProjectStream[],
+): StreamSection[] | null {
+  const pulls = streams.filter((stream) => pullRequestOf(stream.context));
+  const machines = streams.filter((stream) => !pullRequestOf(stream.context));
+  if (!pulls.length || !machines.length) return null;
+  return [
+    { value: "Pull requests", items: pulls },
+    { value: "From your machines", items: machines },
+  ];
+}
+
+/**
+ * Repositories and their listed streams: heads with changes whose pull
+ * request, if any, passes `pulls` (current work by default).
+ */
+export function projectGroups(
+  heads: ApiContext[],
+  seen: SeenStreams | null,
+  pulls: PullRequestFilter = "open",
+) {
   const groups = new Map<string, ProjectGroup>();
   for (const context of heads) {
-    if (context.stale || !contextHasChanges(context) || !currentWork(context))
+    if (context.stale || !contextHasChanges(context) || !listed(context, pulls))
       continue;
     const id = projectKey(context);
     const group = groups.get(id) ?? {
@@ -189,6 +265,8 @@ export function streamMeta(
   const pull = pullRequestOf(context);
   return [
     pull ? "GitHub" : "",
+    pull?.state === "merged" ? "Merged" : "",
+    pull?.state === "closed" ? "Closed" : "",
     pull?.draft ? "Draft" : "",
     pull ? `@${pull.author.login}` : "",
     worktree,
@@ -207,6 +285,17 @@ export function relativeAge(timestamp: number, now: number) {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
   return `${Math.floor(hours / 24)}d`;
+}
+
+/**
+ * The review root `/` opens: the most active current work, falling back to a
+ * closed or merged pull request only when nothing current changed.
+ */
+export function defaultContext(contexts: ApiContext[]) {
+  return (
+    latestChangedContext(contexts.filter(currentWork)) ??
+    latestChangedContext(contexts)
+  );
 }
 
 /** First visit marks current work as seen so only later arrivals stand out. */

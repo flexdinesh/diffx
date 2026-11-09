@@ -1664,6 +1664,7 @@ for (const mode of ["local", "remote"]) {
           googleEnabled: false,
           ...(mode === "remote" && {
             publicPullRequests: false,
+            githubEnabled: false,
             signupEnabled: false,
             passwordSignupEnabled: true,
           }),
@@ -2251,6 +2252,7 @@ test("each remote account baselines its own seen heads", async ({ page }) => {
       json: {
         mode: "remote",
         publicPullRequests: false,
+        githubEnabled: false,
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,
@@ -2375,6 +2377,7 @@ test("a remote server shows the review column for a single review", async ({
       json: {
         mode: "remote",
         publicPullRequests: false,
+        githubEnabled: false,
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,
@@ -2963,6 +2966,7 @@ test("saved comparison preferences belong to the active account", async ({
       json: {
         mode: "remote",
         publicPullRequests: false,
+        githubEnabled: false,
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,
@@ -2988,7 +2992,7 @@ test("saved comparison preferences belong to the active account", async ({
   await ready(page, "committed-v1");
 });
 
-test("pull request reviews show GitHub identity and a sanitized description; closed ones leave the column", async ({
+test("pull request reviews show GitHub identity and a sanitized description; closed ones leave the column until shown", async ({
   page,
 }) => {
   const state = await localWorkspace(page);
@@ -2997,6 +3001,7 @@ test("pull request reviews show GitHub identity and a sanitized description; clo
       json: {
         mode: "remote",
         publicPullRequests: false,
+        githubEnabled: true,
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,
@@ -3073,10 +3078,24 @@ test("pull request reviews show GitHub identity and a sanitized description; clo
   await page.goto("/contexts/local-review?scope=all");
   await ready(page);
   const nav = page.getByRole("navigation", { name: "Reviews", exact: true });
-  const row = nav.getByRole("link", { name: /#12 Add search/ });
+  const pulls = nav.getByRole("region", { name: "Pull requests" });
+  const row = pulls.getByRole("link", { name: /#12 Add search/ });
   await expect(row).toContainText("GitHub · @mona");
   await expect(row.getByRole("img", { name: "Pull request" })).toBeVisible();
   await expect(nav.getByText(/Old work/)).toHaveCount(0);
+  await expect(
+    nav.getByRole("region", { name: "From your machines" }),
+  ).toContainText("Agent hooks and diffx sync publish changed checkouts here.");
+  // The Review list view menu shows merged pull requests on request.
+  await nav.getByRole("button", { name: "Review list view" }).click();
+  await page.getByRole("menuitemradio", { name: "All" }).click();
+  await page.keyboard.press("Escape");
+  const old = pulls.getByRole("link", { name: /#9 Old work/ });
+  await expect(old).toContainText("GitHub · Merged · @mona");
+  await expect(
+    old.getByRole("img", { name: "Merged pull request" }),
+  ).toBeVisible();
+  await expect(row).toBeVisible();
 
   const banner = page.getByRole("region", { name: "Pull request #12" });
   await expect(

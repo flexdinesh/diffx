@@ -21,6 +21,7 @@ function bootstrap(
   return {
     mode: "remote",
     publicPullRequests: false,
+    githubEnabled: false,
     googleEnabled,
     signupEnabled,
     passwordSignupEnabled,

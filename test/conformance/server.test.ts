@@ -404,6 +404,7 @@ test("Go distribution implements the API contract", async (t) => {
     user: null,
     csrfToken: null,
     publicPullRequests: false,
+    githubEnabled: false,
   });
   // Defaults open password signup; admin setup belongs to the console.
   const handleSignup = await remote.POST("/api/v2/auth/signup", {

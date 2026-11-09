@@ -118,6 +118,31 @@ function ComboboxItem({
   );
 }
 
+/** Rows under a label; pass the group's rows as `items` and render them in a `ComboboxCollection`. */
+function ComboboxGroup(props: ComboboxPrimitive.Group.Props) {
+  return <ComboboxPrimitive.Group data-slot="combobox-group" {...props} />;
+}
+
+/** A group's heading, styled like `DropdownMenuLabel`. */
+function ComboboxGroupLabel({
+  className,
+  ...props
+}: ComboboxPrimitive.GroupLabel.Props) {
+  return (
+    <ComboboxPrimitive.GroupLabel
+      data-slot="combobox-group-label"
+      className={cn(
+        "px-2 pt-2 pb-1 text-xs font-semibold text-secondary",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Renders a group's filtered rows. */
+const ComboboxCollection = ComboboxPrimitive.Collection;
+
 /** Shown in place of the list when the filter matches nothing. */
 function ComboboxEmpty({ className, ...props }: ComboboxPrimitive.Empty.Props) {
   return (
@@ -134,8 +159,11 @@ function ComboboxEmpty({ className, ...props }: ComboboxPrimitive.Empty.Props) {
 
 export {
   Combobox,
+  ComboboxCollection,
   ComboboxContent,
   ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxGroupLabel,
   ComboboxItem,
   ComboboxList,
   ComboboxSearch,

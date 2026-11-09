@@ -21,7 +21,12 @@ import { useIdentity } from "./identity-context.tsx";
 import { showsReviewColumn } from "./shell-policy.ts";
 import { useShellPolicy } from "./use-shell-policy.ts";
 import { latestChangedContext } from "./context-activity.ts";
-import { streamCount, streamKey, type SeenStreams } from "./project-nav.ts";
+import {
+  defaultContext,
+  streamCount,
+  streamKey,
+  type SeenStreams,
+} from "./project-nav.ts";
 import { useSeenStreams } from "./use-seen-streams.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
 import {
@@ -362,7 +367,7 @@ export function SessionProvider({
     const findHead = (contexts: ApiContext[]) =>
       route.kind === "live"
         ? contexts.find((context) => context.streamId === route.stream)
-        : latestChangedContext(contexts);
+        : defaultContext(contexts);
     const collectedHead =
       collectionResult?.route !== route
         ? undefined

@@ -1227,6 +1227,8 @@ export interface components {
           mode: "remote";
           /** @description Whether anyone, signed in or not, can open read-only previews of public GitHub pull requests. Admins turn it on in the console; it also needs the server's GitHub integration and public installation. */
           publicPullRequests: boolean;
+          /** @description Whether the server's GitHub integration is configured; Settings › GitHub and the Reviews pull request section depend on it. */
+          githubEnabled: boolean;
           /** @description Whether people can sign in with Google. */
           googleEnabled: boolean;
           /** @description Whether people can create accounts without an invite. Admins set it in the console; invites work either way. */

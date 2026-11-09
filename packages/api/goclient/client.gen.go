@@ -983,6 +983,9 @@ type Bootstrap0Mode string
 type Bootstrap1 struct {
 	CsrfToken nullable.Nullable[string] `json:"csrfToken"`
 
+	// GithubEnabled Whether the server's GitHub integration is configured; Settings › GitHub and the Reviews pull request section depend on it.
+	GithubEnabled bool `json:"githubEnabled"`
+
 	// GoogleEnabled Whether people can sign in with Google.
 	GoogleEnabled bool           `json:"googleEnabled"`
 	Mode          Bootstrap1Mode `json:"mode"`

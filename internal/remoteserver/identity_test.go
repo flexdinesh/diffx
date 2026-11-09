@@ -230,7 +230,7 @@ func TestPasswordLoginAdmitsPasswordAccounts(t *testing.T) {
 	// Admins use the web app like every other account.
 	cookie, _ := loginIdentity(t, handler, "alice")
 	w := identityRequest(handler, "GET", "/api/v2/bootstrap", "", cookie, "", "")
-	if strings.Contains(w.Body.String(), "admin") || !strings.Contains(w.Body.String(), `"googleEnabled":false,"signupEnabled":true,"passwordSignupEnabled":true`) || !strings.Contains(w.Body.String(), `"email":"alice@example.com","method":"password"`) {
+	if strings.Contains(w.Body.String(), "admin") || !strings.Contains(w.Body.String(), `"googleEnabled":false,"signupEnabled":true,"passwordSignupEnabled":true`) || !strings.Contains(w.Body.String(), `"email":"alice@example.com","method":"password"`) || !strings.Contains(w.Body.String(), `"githubEnabled":false`) {
 		t.Fatalf("bootstrap: %s", w.Body.String())
 	}
 	for _, path := range []string{"/api/v2/setup", "/api/v2/manage/users", "/api/v2/manage/invites"} {

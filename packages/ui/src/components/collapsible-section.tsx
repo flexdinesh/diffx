@@ -20,18 +20,24 @@ export function useSavedOpen(storageKey: string, defaultOpen = true) {
 /** A titled sidebar section whose body collapses under a full-width toggle. */
 export function CollapsibleSection({
   title,
+  meta,
   label,
   storageKey,
   contentId,
+  leading = false,
   className,
   children,
 }: {
   title: string;
+  /** Muted text after the title, such as the active filter. */
+  meta?: ReactNode;
   /** Accessible section name; defaults to the title. */
   label?: string;
   /** Persists the collapsed state per browser. */
   storageKey: string;
   contentId?: string;
+  /** Leads its panel below the header's own hairline, so draws no top border. */
+  leading?: boolean;
   className?: string;
   children: ReactNode;
 }) {
@@ -40,7 +46,11 @@ export function CollapsibleSection({
   const id = contentId ?? generatedId;
   return (
     <section
-      className={cn("shrink-0 border-t border-border", className)}
+      className={cn(
+        "shrink-0 border-border",
+        !leading && "border-t",
+        className,
+      )}
       aria-label={label ?? title}
     >
       <Button
@@ -52,7 +62,14 @@ export function CollapsibleSection({
         aria-label={`${open ? "Hide" : "Show"} ${(label ?? title).toLowerCase()}`}
         onClick={() => setOpen((value) => !value)}
       >
-        {title}
+        {meta === undefined ? (
+          title
+        ) : (
+          <span className="flex min-w-0 items-baseline gap-1.5">
+            <span className="truncate">{title}</span>
+            <span className="truncate text-xs text-muted">{meta}</span>
+          </span>
+        )}
         <DisclosureIcon open={open} />
       </Button>
       <div id={id} hidden={!open}>

@@ -3,6 +3,7 @@ package remoteserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -134,7 +135,7 @@ func publicStatus(t *testing.T, w *httptest.ResponseRecorder) githubsync.PublicP
 
 func TestAnonymousPublicPreviewIsFetchedOnceAndReadOnly(t *testing.T) {
 	store, handler, internal := publicServer(t, "", publicOn)
-	if body := identityRequest(handler, "GET", "/api/v2/bootstrap", "", nil, "", "").Body.String(); !strings.Contains(body, `"publicPullRequests":true`) {
+	if body := identityRequest(handler, "GET", "/api/v2/bootstrap", "", nil, "", "").Body.String(); !strings.Contains(body, `"publicPullRequests":true,"githubEnabled":true`) {
 		t.Fatalf("bootstrap: %s", body)
 	}
 	path := "/api/v2/public/pull-requests/octo/app/1"
@@ -247,7 +248,9 @@ func TestPublicRoutesAbsentUnlessConfiguredAndOn(t *testing.T) {
 	}
 	t.Cleanup(func() { closeServices() })
 	for name, handler := range map[string]http.Handler{"setting off": off, "no GitHub": unconfigured, "no public installation": withoutInstallation} {
-		if body := identityRequest(handler, "GET", "/api/v2/bootstrap", "", nil, "", "").Body.String(); !strings.Contains(body, `"publicPullRequests":false`) {
+		// The pull request section needs only the GitHub integration.
+		github := fmt.Sprintf(`"githubEnabled":%t`, name != "no GitHub")
+		if body := identityRequest(handler, "GET", "/api/v2/bootstrap", "", nil, "", "").Body.String(); !strings.Contains(body, `"publicPullRequests":false`) || !strings.Contains(body, github) {
 			t.Fatalf("%s bootstrap: %s", name, body)
 		}
 		for _, request := range []struct{ method, path string }{
