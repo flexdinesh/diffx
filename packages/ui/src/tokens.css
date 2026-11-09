@@ -87,6 +87,12 @@
   --panel-header-height: calc(var(--control-small) + 2 * var(--space-1));
   /* Status bars fit compact controls with a 2px inset, border included. */
   --statusbar-height: calc(var(--control-compact) + var(--space-1));
+  /* Device safe areas (notch, status bar, home indicator, rounded corners);
+     viewport-fit=cover makes them nonzero on iOS, 0 everywhere else. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
   --page-gutter: var(--space-6);
   --diff-gutter: var(--space-3);
   --sidebar-width: 330px;

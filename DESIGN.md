@@ -286,6 +286,18 @@ such detail into a token. New layout spacing must use the scale.
   tabs share the compact 36px desktop rhythm (`--control-small` plus two
   `--space-1` insets). The narrow toolbar uses 44px rows matching the page header;
   its icon buttons match the header's 44px touch targets and 16px icons.
+  Below 768px the header follows iOS bar metrics: action glyphs use
+  `--icon-chrome-touch` (20px) and the review identity `--text-chrome-touch`
+  (15px); drawer rows and the toolbar keep desktop glyphs.
+- Safe areas: `viewport-fit=cover` lets chrome own the device insets
+  (`--safe-top/right/bottom/left`, 0 off iOS). The header's `--shell-canvas`
+  extends under the status bar (`--topbar-height` plus `--safe-top`) so the
+  system never blurs or tints its controls; status bars extend under the home
+  indicator with content above it; drawers pad their top, bottom and leading
+  edge; the app shell pads landscape side insets with canvas. A `theme-color`
+  meta follows the active theme's `--shell-canvas` for the iOS status bar and
+  browser chrome. Do not use `black-translucent`: it forces white status text
+  over light themes.
   Uncommitted's subcontrol occupies a second row below the comparison picker
   and display actions. Its items fill that row without extra border/padding
   height; “All” retains the accessible name “All changes”.
@@ -414,7 +426,12 @@ such detail into a token. New layout spacing must use the scale.
   when opened. Unchanged submissions must not create unread marks.
 - Status bars: `--statusbar-height` (28: a compact control plus 2px insets,
   border included) for the sidebar, review and loading footers alike,
-  with shortcuts shed before server status.
+  with shortcuts shed before server status. At mobile widths or coarse pointers
+  the review and loading bars become 44px rows below their hairline (iOS
+  toolbar rhythm, matching the header) above `--safe-bottom`, with 44px trigger
+  targets; the drawer's sidebar footer keeps desktop density but clears
+  `--safe-bottom`. Below 768px status text is
+  `--text-sm` and action glyphs `--icon-chrome-touch`.
   Server status is an icon-only compact ghost trigger at the trailing edge:
   success check when ready, reduced-motion-safe spinner while connecting, and
   error alert when metrics are unreachable; its accessible name carries the
@@ -1011,7 +1028,8 @@ Do not add motion for decoration. New animation must honor
   visible in the drawer. Use file icons, semantic status colors, hover labels,
   and accessible names; wrap the group when the sidebar is too narrow.
 - At mobile widths or coarse pointers, app-owned controls target 44px hit heights;
-  icon controls also reach 44px width. Text-input sizing uses `--text-input-touch`.
+  icon controls also reach 44px width, including status bar triggers.
+  Text-input sizing uses `--text-input-touch`.
   The compact View options and collapse/expand icons match the header
   controls' 44px size within the narrow toolbar’s first row, matching the header touch targets.
   Drawer navigation and summary controls retain desktop density, per the same brief.
@@ -1103,24 +1121,24 @@ scrolling checks. Record this evidence in the PR template.
 
 This audit records the starting points, not permission to reuse legacy values.
 
-| Area             | Existing pattern / inconsistency                                                            | Consolidation                                                                               |
-| ---------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Surfaces         | White / `#f8f9fb`; dark `#151619` / `#1b1c20`                                               | Retain neutral shell; add a semantic elevated surface                                       |
-| Text             | `#24252a` / `#e1e2e7`; most supporting text shared `#787c86` / `#91949e`                    | Distinguish secondary/muted; strengthen muted contrast                                      |
-| Borders/hover    | `#e5e7ec` / `#303137`; `#eeeef4` / `#282930`                                                | Retain separators; distinguish control boundaries                                           |
-| Accent/brand     | Violet `#6260df` / `#aba7ff`, pale violet fills; former yellow logo                         | Blue `#3f5fd6` / `#74ade8`; `[x]` icons only, text-only header                              |
-| Status           | Green `#24844c` / `#70cc95`, red `#cf4b51` / `#ed8a8e`, shared gold `#b58a29`               | Semantic success/error/warning with theme-equivalent contrast                               |
-| File kinds       | Four inline light/dark blue, gold, orange, purple pairs                                     | Bounded semantic file-kind tokens                                                           |
-| Type             | System sans/mono; 9, 10, 11, 12, 13, 14, 15, 17, 18px; 400/550/600/650/700 weights          | Five UI sizes; three weights; separate functional touch-input size                          |
-| Leading/tracking | Browser defaults, 18/13 tree, 22/13 code, 1.5/1.6/1.7 prose; −0.6px and 1.1px tracking      | Explicit UI/copy leading, semantic tracking; preserve measured code leading                 |
-| Spacing          | Repeated 3/5/6/7/9/10/11/14/15/17/18/20/22px padding, margins, gaps mixed with 4/8/12/16/24 | 4px rhythm; documented optical exceptions only                                              |
-| Radii            | 3, 4, 5, 6, 7, 8, 10px plus circles                                                         | None; every corner is square                                                                |
-| Shadows          | Tiny button and segmented shadows; sidebar shadow; dialog backdrop                          | One overlay shadow; non-geometric file outlines without elevation                           |
-| Geometry         | Header 58px, toolbar 40px; 24/28/30px icon controls and content-sized buttons               | 56/44px shell rhythm, 32px controls, 24px Pierre slots, 44px touch targets                  |
-| Width/gutters    | Competing 260/220/280px sidebar rules; 10/12/14/22/24px gutters; 680px dialog               | One user-owned sidebar width; flush panes, shared reading width; measured 12px diff spacing |
-| Review           | Inline 12×14px padding versus sidebar/mobile 10px; 85px editor, 300px XML area              | Shared 8px comment inset, readable editor, viewport-bounded overlay                         |
-| States           | Search removed input focus; textarea/select lacked shared focus; reviewed rows faded to 55% | Group/field focus, readable reviewed state, explicit destructive action                     |
-| Responsive       | 1000/760px breakpoints; toolbar wrapped only below 760px                                    | 1012px drawer, 768px compact chrome, unified narrow default                                 |
+| Area             | Existing pattern / inconsistency                                                            | Consolidation                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Surfaces         | White / `#f8f9fb`; dark `#151619` / `#1b1c20`                                               | Retain neutral shell; add a semantic elevated surface                                        |
+| Text             | `#24252a` / `#e1e2e7`; most supporting text shared `#787c86` / `#91949e`                    | Distinguish secondary/muted; strengthen muted contrast                                       |
+| Borders/hover    | `#e5e7ec` / `#303137`; `#eeeef4` / `#282930`                                                | Retain separators; distinguish control boundaries                                            |
+| Accent/brand     | Violet `#6260df` / `#aba7ff`, pale violet fills; former yellow logo                         | Blue `#3f5fd6` / `#74ade8`; `[x]` icons only, text-only header                               |
+| Status           | Green `#24844c` / `#70cc95`, red `#cf4b51` / `#ed8a8e`, shared gold `#b58a29`               | Semantic success/error/warning with theme-equivalent contrast                                |
+| File kinds       | Four inline light/dark blue, gold, orange, purple pairs                                     | Bounded semantic file-kind tokens                                                            |
+| Type             | System sans/mono; 9, 10, 11, 12, 13, 14, 15, 17, 18px; 400/550/600/650/700 weights          | Five UI sizes; three weights; separate functional touch-input size                           |
+| Leading/tracking | Browser defaults, 18/13 tree, 22/13 code, 1.5/1.6/1.7 prose; −0.6px and 1.1px tracking      | Explicit UI/copy leading, semantic tracking; preserve measured code leading                  |
+| Spacing          | Repeated 3/5/6/7/9/10/11/14/15/17/18/20/22px padding, margins, gaps mixed with 4/8/12/16/24 | 4px rhythm; documented optical exceptions only                                               |
+| Radii            | 3, 4, 5, 6, 7, 8, 10px plus circles                                                         | None; every corner is square                                                                 |
+| Shadows          | Tiny button and segmented shadows; sidebar shadow; dialog backdrop                          | One overlay shadow; non-geometric file outlines without elevation                            |
+| Geometry         | Header 58px, toolbar 40px; 24/28/30px icon controls and content-sized buttons               | 56/44px shell rhythm, 32px controls, 24px Pierre slots, 44px touch targets, safe-area chrome |
+| Width/gutters    | Competing 260/220/280px sidebar rules; 10/12/14/22/24px gutters; 680px dialog               | One user-owned sidebar width; flush panes, shared reading width; measured 12px diff spacing  |
+| Review           | Inline 12×14px padding versus sidebar/mobile 10px; 85px editor, 300px XML area              | Shared 8px comment inset, readable editor, viewport-bounded overlay                          |
+| States           | Search removed input focus; textarea/select lacked shared focus; reviewed rows faded to 55% | Group/field focus, readable reviewed state, explicit destructive action                      |
+| Responsive       | 1000/760px breakpoints; toolbar wrapped only below 760px                                    | 1012px drawer, 768px compact chrome, unified narrow default                                  |
 
 ### Decisions needing product judgment
 

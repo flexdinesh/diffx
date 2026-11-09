@@ -20,7 +20,7 @@ export function SettingsButton() {
     <Popover>
       <PopoverTrigger
         render={
-          <IconButton id="settings" label="Settings" size="icon-xs">
+          <IconButton id="settings" label="Settings" size="icon-xs" touch>
             <SettingsIcon aria-hidden="true" />
           </IconButton>
         }

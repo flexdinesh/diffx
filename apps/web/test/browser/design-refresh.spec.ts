@@ -820,3 +820,94 @@ test("a tab strip's actions share the inactive tabs' shell surface", async ({
   await expect(tabs.last()).toHaveCSS("border-bottom-width", "0px");
   await expect(header).toHaveCSS("background-color", shell);
 });
+
+test.describe("iOS-standard phone chrome", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  async function box(page: Page, selector: string) {
+    const bounds = await page.locator(selector).first().boundingBox();
+    if (!bounds) throw new Error(`${selector} is not rendered`);
+    return bounds;
+  }
+
+  test("header and status bar use 44px rows, targets and iOS glyph scale", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await expect(page.locator(".main-footer")).toBeVisible();
+
+    await expect(page.locator('meta[name="viewport"]')).toHaveAttribute(
+      "content",
+      /viewport-fit=cover/,
+    );
+    expect((await box(page, ".topbar")).height).toBe(44);
+    // A 44px row below the status bar's 1px top hairline.
+    expect((await box(page, ".main-footer")).height).toBe(1 + 44);
+
+    const controls = page.locator(
+      ".topbar-lead button:visible, .topbar > button:visible, .header-actions button:visible, .main-footer button:visible",
+    );
+    expect(await controls.count()).toBeGreaterThan(3);
+    for (const control of await controls.all()) {
+      const bounds = await control.boundingBox();
+      if (!bounds) throw new Error("Control is not rendered");
+      expect(bounds.height).toBeGreaterThanOrEqual(44);
+    }
+    for (const selector of [
+      ".topbar > button:visible svg",
+      ".main-footer .footer-details button:visible svg",
+    ])
+      expect((await box(page, selector)).width).toBe(20);
+    await expect(page.locator(".topbar .context-identity")).toHaveCSS(
+      "font-size",
+      "15px",
+    );
+    await expect(page.locator(".main-footer")).toHaveCSS("font-size", "13px");
+  });
+
+  test("chrome clears the status bar, home indicator and drawer insets", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await expect(page.locator(".main-footer")).toBeVisible();
+    // Chromium has no device insets; stand in for an iPhone's.
+    await page.addStyleTag({
+      content: ":root { --safe-top: 47px; --safe-bottom: 34px; }",
+    });
+
+    const topbar = await box(page, ".topbar");
+    expect(topbar.y).toBe(0);
+    expect(topbar.height).toBe(44 + 47);
+    const footer = await box(page, ".main-footer");
+    expect(footer.height).toBe(1 + 44 + 34);
+    expect(footer.y + footer.height).toBe(844);
+    expect(
+      (await box(page, ".main-footer .footer-details button:visible")).y + 44,
+    ).toBeLessThanOrEqual(844 - 34);
+
+    await page.getByRole("button", { name: "Show file sidebar" }).click();
+    await expect(page.locator("#sidebar")).toHaveCSS("padding-top", "47px");
+    await expect(page.locator(".sidebar-footer")).toHaveCSS(
+      "padding-bottom",
+      "34px",
+    );
+  });
+
+  test("the browser chrome color follows the active theme's canvas", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => localStorage.setItem("theme-v2", "dark"));
+    await page.goto("/");
+    await expect(page.locator(".topbar")).toBeVisible();
+    const canvas = await page.evaluate(() =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--shell-canvas")
+        .trim(),
+    );
+    expect(canvas).not.toBe("#e2e2e3");
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
+      "content",
+      canvas,
+    );
+  });
+});

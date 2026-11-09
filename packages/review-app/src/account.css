@@ -7,6 +7,8 @@
   flex-shrink: 0;
   /* No shell gutter above to replace, unlike the review shell. */
   margin-top: 0;
+  /* Edge to edge, with controls clear of landscape notch insets. */
+  padding-inline: max(var(--diff-gutter), var(--safe-left)) var(--safe-right);
 }
 .account-identity {
   min-width: 0;
@@ -20,7 +22,9 @@
   width: 100%;
   max-width: 48rem;
   margin-inline: auto;
-  padding: var(--space-8) var(--space-6);
+  padding: var(--space-8) max(var(--space-6), var(--safe-right))
+    calc(var(--space-8) + var(--safe-bottom))
+    max(var(--space-6), var(--safe-left));
   overflow: auto;
   min-height: 0;
 }
