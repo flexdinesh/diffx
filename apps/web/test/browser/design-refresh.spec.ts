@@ -878,6 +878,10 @@ test.describe("iOS-standard phone chrome", () => {
     const topbar = await box(page, ".topbar");
     expect(topbar.y).toBe(0);
     expect(topbar.height).toBe(44 + 47);
+    // Safari 26 samples only fixed or sticky edge elements for its status bar
+    // color; a static header gets blurred instead.
+    await expect(page.locator(".topbar")).toHaveCSS("position", "sticky");
+    await expect(page.locator(".topbar")).toHaveCSS("top", "0px");
     const footer = await box(page, ".main-footer");
     expect(footer.height).toBe(1 + 44 + 34);
     expect(footer.y + footer.height).toBe(844);
