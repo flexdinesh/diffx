@@ -96,12 +96,10 @@
   --page-gutter: var(--space-6);
   --diff-gutter: var(--space-3);
   --sidebar-width: 330px;
-  --streams-width: 240px;
+  /* Review bench: the facet pane leads, the peek trails. */
+  --bench-facets-width: 240px;
+  --bench-peek-width: 400px;
   --drawer-width: min(320px, 88vw);
-  /* The collapsed review rail mirrors the header: its width is the header
-     height, items are header buttons. */
-  --activity-item: var(--control-height);
-  --activity-width: var(--topbar-height);
   --reading-width: 42.5rem;
   /* Content column of the signed-out landing page. */
   --landing-width: 72rem;
@@ -1674,6 +1672,5 @@
 @media (max-width: 767px), (pointer: coarse) {
   :root {
     --topbar-height: var(--touch-target);
-    --activity-item: var(--touch-target);
   }
 }

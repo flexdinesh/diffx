@@ -401,7 +401,7 @@ test("rapid scopes ignore old diff responses and reviewed-file failures", async 
   page,
 }) => {
   const state = await localWorkspace(page);
-  await page.goto("/");
+  await page.goto("/contexts/local-review");
   await ready(page);
   state.holdScopes.add("staged");
   await page.getByRole("button", { name: "Staged", exact: true }).click();
@@ -440,7 +440,7 @@ test("draft survives scopes and explicit reload without automatic diff polling",
 }) => {
   await page.clock.install();
   const state = await localWorkspace(page);
-  await page.goto("/");
+  await page.goto("/contexts/local-review");
   await ready(page);
   await showDiff(page);
   const inline = page
@@ -488,7 +488,7 @@ test("full-file context and selection survive layout changes", async ({
   page,
 }) => {
   const state = await localWorkspace(page);
-  await page.goto("/");
+  await page.goto("/contexts/local-review");
   await ready(page);
   await page.locator("[data-expand-button]").first().click();
   await expect.poll(() => state.contentsRequests).toBe(1);
@@ -519,7 +519,7 @@ test("full-file context and selection survive layout changes", async ({
 test("failed preview retries without a revision change", async ({ page }) => {
   const state = await localWorkspace(page);
   state.failPatch = true;
-  await page.goto("/");
+  await page.goto("/contexts/local-review");
   await expect(page.locator("#notice")).toContainText("Refresh to retry");
   await expect(page.locator("#viewer")).toContainText("Patch rejected");
   state.failPatch = false;
@@ -554,7 +554,7 @@ test("comment navigation changes scope and clears filters after previews load", 
       createdAt: 1,
     },
   ];
-  await page.goto("/");
+  await page.goto("/contexts/local-review");
   await ready(page);
   await showDiff(page);
   await page.getByRole("searchbox", { name: "Filter files" }).fill("unmatched");
@@ -663,7 +663,7 @@ test("stream comments show moved and outdated placements and keep outdated comme
     state.comments = [movedComment, comment];
     return route.fulfill({ json: comment });
   });
-  await page.goto("/");
+  await page.goto("/contexts/local-review");
   await ready(page);
 
   const viewer = page.locator("#viewer");
@@ -768,7 +768,7 @@ test("context switching isolates delayed repository responses and fixed captures
       },
     });
   });
-  await page.goto("/");
+  await page.goto("/contexts/local-review");
   await ready(page);
   delay = true;
   await page.getByRole("button", { name: "Refresh changes" }).click();
@@ -868,7 +868,7 @@ test("picker lists stray stdin snapshots like any review, under repository filte
       },
     });
   });
-  await page.goto("/");
+  await page.goto("/contexts/local-review");
   await ready(page);
   await openReviewPicker(page);
   const dialog = page.getByRole("dialog", { name: "Switch review" });
@@ -1091,7 +1091,7 @@ test("observation picker drills into repositories and searches independent sourc
   });
   await page.route("**/api/v2/events", (route) => route.abort());
   await page.clock.install();
-  await page.goto("/");
+  await page.goto("/contexts/third");
   await ready(page);
   await expect(
     page.getByRole("button", { name: "Refresh changes" }),
@@ -1136,9 +1136,9 @@ test("observation picker drills into repositories and searches independent sourc
   await search.press("Enter");
   await search.press("Enter");
   await expect(page).toHaveURL(/\/contexts\/second$/);
-  // Choosing a review moves focus to its stream in the review column.
+  // Choosing a review moves focus to its branch switcher in the header.
   await expect(
-    page.locator('#projects-nav [aria-current="page"]'),
+    page.locator(".topbar button.context-identity-stream"),
   ).toBeFocused();
   await expect(page.locator(".context-identity-worktree")).toHaveAccessibleName(
     "Linked worktree: main-checkout",
@@ -1243,7 +1243,7 @@ test("picker combines filters before grouping and preserves them across navigati
       json: contexts.find((context) => context.id === id),
     });
   });
-  await page.goto("/");
+  await page.goto("/contexts/first");
   await ready(page);
   await openReviewPicker(page);
   const dialog = page.getByRole("dialog", { name: "Switch review" });
@@ -1321,7 +1321,7 @@ test("picker combines filters before grouping and preserves them across navigati
   await expect(unavailable).toHaveAttribute("aria-selected", "false");
 });
 
-test("repos drawer lists current changed streams and announces newer snapshots", async ({
+test("the bench lists current changed streams, opens them and takes the reader back", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -1380,21 +1380,12 @@ test("repos drawer lists current changed streams and announces newer snapshots",
   await page.goto("/contexts/rate-1");
   await ready(page);
   expect(latestRequests).toContain("true");
-  const nav = page.locator("#projects-nav");
-  // The review column and the open review's file sidebar show together.
-  await expect(nav).toBeVisible();
-  await expect(nav).toHaveAccessibleName("Reviews");
+  const banner = page.getByRole("banner");
+  const back = banner.getByRole("link", { name: /^Reviews/ });
+  // No review column: the breadcrumb leads the header beside the file sidebar.
+  await expect(page.locator("#projects-nav")).toHaveCount(0);
+  await expect(back).toHaveAttribute("href", "/");
   await expect(page.locator("#sidebar")).toBeVisible();
-  await expect(
-    nav.getByRole("button", { name: /^Open latest in / }),
-  ).toHaveText([/web-app/, /acme-api/]);
-  await expect(nav).not.toContainText("infra");
-  await expect(
-    nav.getByRole("link", { name: /feat\/rate-limit/ }),
-  ).toHaveAttribute("aria-current", "page");
-  await expect(
-    nav.getByRole("link", { name: /feat\/rate-limit/ }),
-  ).toHaveAttribute("href", "/streams/stream-feat%2Frate-limit");
   await expect(
     page.getByRole("status").filter({ hasText: "Newer snapshot" }),
   ).toBeHidden();
@@ -1414,24 +1405,53 @@ test("repos drawer lists current changed streams and announces newer snapshots",
   await expect(page).toHaveURL(/\/streams\/stream-feat%2Frate-limit$/);
   await expect(notice).toBeHidden();
 
-  // Choosing a stream replaces the review in place; both panes stay open.
-  const mainStream = nav.getByRole("link", { name: /^main/ });
-  await mainStream.click();
-  await expect(page).toHaveURL(/\/streams\/stream-main$/);
-  await expect(nav).toBeVisible();
-  await expect(page.locator("#sidebar")).toBeVisible();
-  await expect(mainStream).toHaveAttribute("aria-current", "page");
-  await expect(mainStream).toBeFocused();
-  await expect(page.locator(".context-identity")).toContainText("web-app");
-  await expect(nav.getByRole("searchbox")).toHaveCount(0);
-  // Search lives in the header; the column has no search or inbox.
-  await expect(nav.getByRole("button", { name: "Search reviews" })).toHaveCount(
-    0,
+  // The breadcrumb returns to the bench. Day-old work counts as seen on a
+  // first visit, and the opened head is viewed, so nothing needs attention.
+  await back.click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(
+    banner.getByRole("heading", { level: 1, name: "Reviews" }),
+  ).toBeVisible();
+  await expect(page.getByText("You're caught up")).toBeVisible();
+  await page.getByRole("button", { name: "Show all open" }).click();
+  await expect(page).toHaveURL(/\/\?view=open$/);
+  const table = page.getByRole("main", { name: "Reviews" });
+  const rows = table.getByRole("link");
+  await expect(rows).toHaveText([
+    /feat\/rate-limit[\s\S]*acme-api/,
+    /main[\s\S]*web-app/,
+  ]);
+  await expect(table).not.toContainText("infra");
+  await expect(rows.first()).toHaveAttribute(
+    "href",
+    "/streams/stream-feat%2Frate-limit",
   );
-  await expect(page.getByRole("button", { name: /inbox/i })).toHaveCount(0);
-  const search = page
-    .getByRole("banner")
-    .getByRole("button", { name: "Search reviews" });
+  await expect(rows.first()).toBeFocused();
+  await expect(
+    page.getByRole("list", { name: "Repositories" }).getByRole("link"),
+  ).toHaveText([/acme-api/, /web-app/]);
+
+  // Keyboard review: the selected row opens; focus lands on the branch.
+  await page.keyboard.press("ArrowDown");
+  await expect(rows.nth(1)).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/streams\/stream-main$/);
+  await expect(page.locator(".context-identity")).toContainText("web-app");
+  await expect(
+    page.locator(".topbar button.context-identity-stream"),
+  ).toBeFocused();
+  await expect(back).toHaveAttribute("href", "/?view=open");
+  await expect(banner.getByLabel("Review 2 of 2")).toBeVisible();
+  await expect(
+    banner.getByRole("button", { name: "Next review" }),
+  ).toBeDisabled();
+  await banner.getByRole("button", { name: "Previous review" }).click();
+  await expect(page).toHaveURL(/\/streams\/stream-feat%2Frate-limit$/);
+  await page.keyboard.press("Alt+Shift+J");
+  await expect(page).toHaveURL(/\/streams\/stream-main$/);
+
+  // Search lives in the header.
+  const search = banner.getByRole("button", { name: "Search reviews" });
   await search.click();
   const picker = page.getByRole("dialog", { name: "Switch review" });
   await expect(picker).toBeVisible();
@@ -1444,82 +1464,31 @@ test("repos drawer lists current changed streams and announces newer snapshots",
   await expect(picker).toBeHidden();
   await expect(search).toBeFocused();
 
-  // Recent first interleaves repositories by activity, labeling each row.
-  await nav.getByRole("button", { name: "Review list view" }).click();
-  await page.getByRole("menuitemradio", { name: "Recent first" }).click();
-  await page.keyboard.press("Escape");
-  await expect(nav.getByRole("link")).toHaveText([
-    /feat\/rate-limit[\s\S]*acme-api/,
-    /main[\s\S]*web-app/,
-  ]);
-
-  // The rail marks each repository and highlights the open review's.
-  await nav.getByRole("button", { name: "Collapse reviews" }).click();
-  const marks = nav
-    .getByRole("list", { name: "Repositories" })
-    .getByRole("button");
-  await expect(marks).toHaveText(["AA", "WA"]);
-  await expect(marks.nth(1)).toHaveAttribute("aria-current", "true");
-  await expect(marks.nth(0)).not.toHaveAttribute("aria-current");
-  await page.reload();
-  await ready(page);
-  await expect(marks).toHaveCount(2);
-  // A mark opens that repository's latest stream; the rail stays collapsed.
-  await nav
-    .getByRole("button", { name: "Open latest in acme-api", exact: true })
-    .click();
-  await expect(page).toHaveURL(/\/streams\/stream-feat%2Frate-limit$/);
-  await expect(page.locator(".context-identity")).toContainText("acme-api");
-  await expect(marks.nth(0)).toHaveAttribute("aria-current", "true");
-  await expect(
-    nav.getByRole("button", { name: "Expand reviews" }),
-  ).toBeVisible();
-  await nav.getByRole("button", { name: "Expand reviews" }).click();
-  await expect(nav.getByRole("link")).toHaveText([
-    /feat\/rate-limit[\s\S]*acme-api/,
-    /main[\s\S]*web-app/,
-  ]);
-
-  // Grouped by repository, a repository's name opens its latest stream and
-  // expands it; the chevron alone collapses or expands the group.
-  await nav.getByRole("button", { name: "Review list view" }).click();
-  await page.getByRole("menuitemradio", { name: "Group by repo" }).click();
-  await page.keyboard.press("Escape");
-  await nav.getByRole("button", { name: "Collapse web-app" }).click();
-  await expect(nav.getByRole("link", { name: /^main/ })).toHaveCount(0);
-  await expect(page).toHaveURL(/\/streams\/stream-feat%2Frate-limit$/);
-  await nav
-    .getByRole("button", { name: "Open latest in web-app", exact: true })
-    .click();
+  // Alt+Shift+B returns to the bench as it was left.
+  await page.keyboard.press("Alt+Shift+B");
+  await expect(page).toHaveURL(/\/\?view=open$/);
+  await expect(rows).toHaveCount(2);
+  await page.goBack();
   await expect(page).toHaveURL(/\/streams\/stream-main$/);
-  await expect(
-    nav.getByRole("button", { name: "Collapse web-app" }),
-  ).toHaveAttribute("aria-expanded", "true");
-  await expect(nav.getByRole("link", { name: /^main/ })).toBeFocused();
+  await ready(page);
 
+  // Phones list rows only; the chevron returns to the bench.
   await page.setViewportSize({ width: 390, height: 844 });
-  const mobileTrigger = page.getByRole("button", { name: "Show reviews" });
-  await mobileTrigger.click();
-  await expect(nav).toBeVisible();
-  await expect(nav).toHaveAttribute("role", "dialog");
-  await expect(nav).toHaveAttribute("aria-modal", "true");
-  await expect(page.locator("main")).toHaveAttribute("inert", "");
-  await expect(page.locator("#sidebar")).toBeHidden();
-  await page.keyboard.press("Escape");
-  await expect(nav).toBeHidden();
-  await expect(mobileTrigger).toBeFocused();
-  await mobileTrigger.click();
-  // Choosing a stream in the drawer closes it and shows the diff. The drawer
-  // focuses its first action, whose tooltip covers the first row.
-  await nav.getByRole("link", { name: /^feat\/rate-limit/ }).focus();
-  await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/streams\/stream-feat%2Frate-limit$/);
-  await expect(nav).toBeHidden();
-  await expect(page.locator("main")).not.toHaveAttribute("inert", "");
-  await expect(page.locator(".context-identity")).toContainText("acme-api");
+  await back.click();
+  await expect(page).toHaveURL(/\/\?view=open$/);
   await expect(
-    page.getByRole("button", { name: "Show file sidebar" }),
-  ).toBeFocused();
+    page.getByRole("navigation", { name: "Review views" }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("complementary", { name: "Peek" })).toHaveCount(
+    0,
+  );
+  await expect(table.getByRole("button", { name: "All open" })).toBeVisible();
+  await rows.filter({ hasText: "feat/rate-limit" }).click();
+  await expect(page).toHaveURL(/\/streams\/stream-feat%2Frate-limit$/);
+  await expect(back).toBeVisible();
+  await expect(
+    banner.getByRole("button", { name: "Next review" }),
+  ).toBeHidden();
 });
 
 test("header comboboxes filter and open streams over a preserved review", async ({
@@ -1561,8 +1530,8 @@ test("header comboboxes filter and open streams over a preserved review", async 
   await page.setViewportSize({ width: 1280, height: 480 });
   await page.goto("/contexts/rate-1");
   await ready(page);
-  const nav = page.locator("#projects-nav");
   const identity = page.locator(".context-identity");
+  const branchSwitcher = page.locator(".topbar button.context-identity-stream");
 
   // The header repository combobox opens that repository's latest stream.
   const repository = (name: string) =>
@@ -1579,7 +1548,7 @@ test("header comboboxes filter and open streams over a preserved review", async 
   await page.getByRole("option", { name: /web-app/ }).click();
   await expect(page).toHaveURL(/\/streams\/stream-main$/);
   await expect(identity).toContainText("web-app");
-  await expect(nav.getByRole("link", { name: /^main/ })).toBeFocused();
+  await expect(branchSwitcher).toBeFocused();
 
   // Typing filters the rows; Enter opens the first match.
   await repository("web-app").click();
@@ -1619,9 +1588,7 @@ test("header comboboxes filter and open streams over a preserved review", async 
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/streams\/stream-feat%2Frate-limit$/);
   await expect(identity).toContainText("feat/rate-limit");
-  await expect(
-    nav.getByRole("link", { name: /^feat\/rate-limit/ }),
-  ).toBeFocused();
+  await expect(branchSwitcher).toBeFocused();
   await ready(page);
 
   // Opening a combobox never scrolls or replaces the review underneath.
@@ -1720,16 +1687,12 @@ for (const mode of ["local", "remote"]) {
     );
     await page.goto("/contexts/viewed");
     await ready(page);
-    // Unread arrivals are marked in the column; the header has no counter.
-    await expect(
-      page.getByRole("button", { name: /^New changes/ }),
-    ).toHaveCount(0);
-    const nav = page.getByRole("navigation", { name: "Reviews", exact: true });
-    await expect(nav).toBeVisible();
-    const repositories = nav.getByRole("button", { name: /^Open latest in / });
-    await expect(repositories).toHaveText([/^api/, /^web/]);
-    const unread = nav.getByRole("img", { name: "New changes" });
-    await expect(unread).toHaveCount(0);
+    // Unread arrivals mark the Reviews breadcrumb; the header has no counter.
+    const back = page
+      .getByRole("banner")
+      .getByRole("link", { name: /^Reviews/ });
+    await expect(back).toHaveAccessibleName("Reviews");
+    await expect(back.getByRole("img", { name: "New changes" })).toHaveCount(0);
 
     const newerApi = snapshot("api-new", "api", 200, 900);
     const newerWeb = {
@@ -1743,14 +1706,9 @@ for (const mode of ["local", "remote"]) {
     await page.evaluate(() =>
       window.dispatchEvent(new Event("test-ingestion")),
     );
-    await expect(repositories).toHaveText([/^web/, /^api/]);
-    // The open stream's newer head raises the notice instead of a mark.
-    const webStream = nav.getByRole("link", { name: /^fix-login/ });
-    const apiStream = nav.getByRole("link", { name: /^main/ });
-    await expect(
-      webStream.getByRole("img", { name: "New changes" }),
-    ).toBeVisible();
-    await expect(unread).toHaveCount(1);
+    await expect(back).toHaveAccessibleName("Reviews, 2 need attention");
+    await expect(back.getByRole("img", { name: "New changes" })).toBeVisible();
+    // The open stream's newer head raises the notice; the review stays.
     await expect(
       page.getByRole("status").filter({ hasText: "Newer snapshot" }),
     ).toContainText("Newer snapshot");
@@ -1758,25 +1716,30 @@ for (const mode of ["local", "remote"]) {
     await page.clock.fastForward(5 * 60_000);
     expect(collections).toBe(0);
 
-    // Opening a stream clears its mark; leaving the viewed stream marks its
-    // unopened newer head.
-    await webStream.click();
+    // The bench lists both streams as updated, most active first.
+    await back.click();
+    await expect(page).toHaveURL(/\/$/);
+    const unread = page
+      .getByRole("list", { name: "New and updated" })
+      .getByRole("link");
+    await expect(unread).toHaveText([
+      /fix-login[\s\S]*web[\s\S]*Updated/,
+      /main[\s\S]*api[\s\S]*Updated/,
+    ]);
+
+    // Opening a stream clears its mark.
+    await unread.first().click();
     await ready(page);
     await expect(page).toHaveURL(/\/streams\/stream-web$/);
-    await expect(webStream).toHaveAttribute("aria-current", "page");
-    await expect(webStream).toBeFocused();
-    await expect(
-      apiStream.getByRole("img", { name: "New changes" }),
-    ).toBeVisible();
-    await expect(unread).toHaveCount(1);
-    await apiStream.click();
-    await ready(page);
-    await expect(page).toHaveURL(/\/streams\/stream-api$/);
-    await expect(
-      page.getByRole("status").filter({ hasText: "Newer snapshot" }),
-    ).toBeHidden();
-    await expect(unread).toHaveCount(0);
-    // A new submission of the same head may reorder projects, but adds no unread content.
+    await expect(back).toHaveAccessibleName("Reviews, 1 need attention");
+    await back.click();
+    await expect(unread).toHaveText([/main[\s\S]*api/]);
+    // Marking it viewed from the bench empties Needs attention.
+    await expect(unread.first()).toBeFocused();
+    await page.keyboard.press("Alt+Shift+V");
+    await expect(page.getByText("You're caught up")).toBeVisible();
+
+    // A new submission of the same head adds no unread content.
     heads = [
       { ...newerApi, lastSubmittedAt: 1000, lastChangedAt: 500 },
       newerWeb,
@@ -1784,20 +1747,19 @@ for (const mode of ["local", "remote"]) {
     await page.evaluate(() =>
       window.dispatchEvent(new Event("test-ingestion")),
     );
-    await expect(repositories).toHaveText([/^api/, /^web/]);
-    await expect(unread).toHaveCount(0);
-    expect(collections).toBe(0);
-
-    // Root selection shares activity ordering for stored and collected heads.
-    heads = [newerWeb, { ...newerApi, lastChangedAt: 500 }];
-    await page.goto("/");
-    await ready(page);
-    await expect(page).toHaveURL(/\/streams\/stream-api$/);
-    expect(collections).toBe(mode === "local" ? 1 : 0);
+    await page.getByRole("button", { name: "Show all open" }).click();
+    const rows = page.getByRole("main", { name: "Reviews" }).getByRole("link");
+    await expect(rows).toHaveText([/main[\s\S]*api/, /fix-login[\s\S]*web/]);
+    await expect(
+      page.getByRole("list", { name: "New and updated" }),
+    ).toHaveCount(0);
+    // Only a local process collects, each time the bench loads.
+    if (mode === "local") expect(collections).toBeGreaterThan(0);
+    else expect(collections).toBe(0);
   });
 }
 
-test("local first launch waits for collection with an empty catalog", async ({
+test("local first launch shows the bench collecting, then its checkouts", async ({
   page,
 }) => {
   const state = await localWorkspace(page);
@@ -1833,45 +1795,32 @@ test("local first launch waits for collection with an empty catalog", async ({
   });
 
   await page.goto("/");
-  const status = page.locator("main.session-status");
-  await expect(status).toContainText("Collecting latest changes");
-  await expect(status).toHaveAttribute("aria-busy", "true");
-  await expect(status.locator(".diff-skeleton")).toBeVisible();
-  // Themes stay reachable while the review loads.
+  const bench = page.getByRole("main", { name: "Reviews" });
+  const list = bench.locator(".bench-scroll");
+  await expect(list).toHaveAttribute("aria-busy", "true");
+  await expect(bench.getByRole("status")).toContainText("Collecting reviews");
+  // Themes stay reachable while the bench collects.
   await expect(
-    status.getByRole("button", { name: "Settings", exact: true }),
+    bench.getByRole("button", { name: "Settings", exact: true }),
   ).toBeVisible();
-  const loadingBounds = await status.boundingBox();
-  if (!loadingBounds) throw new Error("Missing loading workspace");
   await page.emulateMedia({ reducedMotion: "reduce" });
   expect(
-    await status
+    await bench
       .locator('[data-slot="skeleton"]')
       .first()
       .evaluate((element) => getComputedStyle(element).animationName),
   ).toBe("none");
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator(".loading-sidebar")).toBeHidden();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-  await page.setViewportSize({ width: 1280, height: 720 });
-  // Without two reviews to switch between, a local process shows no review
-  // column; only the file tree's placeholders load.
-  const projects = page.getByRole("navigation", {
-    name: "Reviews",
-    exact: true,
-  });
-  await expect(projects).toHaveCount(0);
-  await expect(page.locator(".loading-sidebar")).toBeVisible();
+  // Phones drop the facets and peek before anything is measured.
   await expect(
-    page.getByRole("separator", { name: "Resize file sidebar" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("separator", { name: "Resize reviews column" }),
+    page.getByRole("navigation", { name: "Review views" }),
   ).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    )
+    .toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
   await expect(
     page.getByRole("heading", { name: "No review contexts yet" }),
   ).toHaveCount(0);
@@ -1882,21 +1831,19 @@ test("local first launch waits for collection with an empty catalog", async ({
   await pending.fulfill({
     json: { contexts: heads, failures: [], defaultContextId: snapshot.id },
   });
+  // The collected checkout is listed and selected, never opened for the reader.
+  const row = bench.getByRole("link", { name: /Local review/ });
+  await expect(row).toHaveAttribute("aria-current", "true");
+  await expect(list).not.toHaveAttribute("aria-busy", "true");
+  await expect(page).toHaveURL(/\/$/);
+  expect(collections).toBe(1);
+  await row.click();
   await ready(page);
   await expect(page).toHaveURL(/\/streams\/local-stream$/);
   expect(collections).toBe(1);
-  await expect(page.locator(".session-status")).toHaveCount(0);
-  await expect(projects).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Search reviews" }),
   ).toBeVisible();
-  // Loading fills the workspace inside its leading hairline.
-  const reviewBounds = await page.locator(".workspace").evaluate((element) => ({
-    x: element.getBoundingClientRect().x + element.clientLeft,
-    width: element.clientWidth,
-  }));
-  expect(reviewBounds.x).toBeCloseTo(loadingBounds.x, 0);
-  expect(reviewBounds.width).toBeCloseTo(loadingBounds.width, 0);
 });
 
 for (const initialHeads of ["stored", "arriving"]) {
@@ -2287,19 +2234,20 @@ test("each remote account baselines its own seen heads", async ({ page }) => {
       ),
     }),
   );
-  await page.goto("/contexts/api-head");
-  await ready(page);
-  const nav = page.getByRole("navigation", { name: "Reviews", exact: true });
+  await page.goto("/");
+  // Day-old heads baseline as seen for this account alone: nothing is new.
+  await expect(page.getByText("You're caught up")).toBeVisible();
+  await page.getByRole("button", { name: "Show all open" }).click();
   await expect(
-    nav.getByRole("button", { name: /^Open latest in / }),
-  ).toHaveText([/^api/, /^web/]);
-  await expect(nav.getByRole("img", { name: "New changes" })).toHaveCount(0);
+    page.getByRole("main", { name: "Reviews" }).getByRole("link"),
+  ).toHaveText([/api/, /web/]);
+  await expect(page.getByRole("img", { name: "New changes" })).toHaveCount(0);
   expect(
     await page.evaluate(() => localStorage.getItem("projects-seen:account-b")),
   ).toContain("web-head");
 });
 
-test("a single local checkout shows no review column but keeps search, comboboxes and sync", async ({
+test("a single local checkout lands on the bench; its review keeps search, comboboxes and sync", async ({
   page,
 }) => {
   const state = await localWorkspace(page);
@@ -2332,16 +2280,22 @@ test("a single local checkout shows no review column but keeps search, comboboxe
       },
     }),
   );
-  await page.goto("/");
-  await ready(page);
-  await expect(
-    page.getByRole("navigation", { name: "Reviews", exact: true }),
-  ).toHaveCount(0);
-  await expect(page.locator(".stream-column")).toHaveCount(0);
-  await expect(
-    page.getByRole("separator", { name: "Resize reviews column" }),
-  ).toHaveCount(0);
+  await page.goto("/?view=open");
   const banner = page.getByRole("banner");
+  // Even one review lands on the bench; sync stays in its header.
+  await expect(
+    banner.getByRole("heading", { level: 1, name: "Reviews" }),
+  ).toBeVisible();
+  await expect(
+    banner.getByRole("button", { name: "Sync checkout" }),
+  ).toBeVisible();
+  await page
+    .getByRole("main", { name: "Reviews" })
+    .getByRole("link", { name: /Local review/ })
+    .click();
+  await ready(page);
+  await expect(page).toHaveURL(/\/streams\/local-stream$/);
+  await expect(banner.getByLabel("Review 1 of 1")).toBeVisible();
   await expect(
     banner.getByRole("button", { name: "Search reviews" }),
   ).toBeVisible();
@@ -2368,9 +2322,7 @@ test("a single local checkout shows no review column but keeps search, comboboxe
   ).toBeVisible();
 });
 
-test("a remote server shows the review column for a single review", async ({
-  page,
-}) => {
+test("a remote server lists a single review on the bench", async ({ page }) => {
   const state = await localWorkspace(page);
   await page.route("**/api/v2/bootstrap", (route) =>
     route.fulfill({
@@ -2405,13 +2357,20 @@ test("a remote server shows the review column for a single review", async ({
   await page.route("**/api/v2/contexts/*", (route) =>
     route.fulfill({ json: head }),
   );
-  await page.goto("/contexts/api-head");
-  await ready(page);
-  const nav = page.getByRole("navigation", { name: "Reviews", exact: true });
-  await expect(nav).toBeVisible();
+  await page.goto("/");
+  const banner = page.getByRole("banner");
   await expect(
-    nav.getByRole("button", { name: /^Open latest in / }),
-  ).toHaveText([/^api/]);
+    banner.getByRole("heading", { level: 1, name: "Reviews" }),
+  ).toBeVisible();
+  await expect(banner.getByRole("button", { name: /^Sync/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Show all open" }).click();
+  const row = page
+    .getByRole("main", { name: "Reviews" })
+    .getByRole("link", { name: /api/ });
+  await expect(row).toHaveAttribute("href", "/streams/stream-api");
+  await row.click();
+  await ready(page);
+  await expect(page).toHaveURL(/\/streams\/stream-api$/);
 });
 
 async function capturedWorkspace(page: Page) {
@@ -2992,7 +2951,7 @@ test("saved comparison preferences belong to the active account", async ({
   await ready(page, "committed-v1");
 });
 
-test("pull request reviews show GitHub identity and a sanitized description; closed ones leave the column until shown", async ({
+test("pull request reviews show GitHub identity and a sanitized description; closed ones move to the bench's Closed view", async ({
   page,
 }) => {
   const state = await localWorkspace(page);
@@ -3075,27 +3034,36 @@ test("pull request reviews show GitHub identity and a sanitized description; clo
       json: { contexts: [state.context, closed], nextCursor: null },
     }),
   );
-  await page.goto("/contexts/local-review?scope=all");
-  await ready(page);
-  const nav = page.getByRole("navigation", { name: "Reviews", exact: true });
-  const pulls = nav.getByRole("region", { name: "Pull requests" });
-  const row = pulls.getByRole("link", { name: /#12 Add search/ });
+  await page.goto("/?view=open");
+  const table = page.getByRole("main", { name: "Reviews" });
+  const row = table.getByRole("link", { name: /#12 Add search/ });
   await expect(row).toContainText("GitHub · @mona");
   await expect(row.getByRole("img", { name: "Pull request" })).toBeVisible();
-  await expect(nav.getByText(/Old work/)).toHaveCount(0);
+  await expect(table.getByText(/Old work/)).toHaveCount(0);
+  // The peek previews the pull request before opening it.
+  const peek = page.getByRole("complementary", { name: "Peek" });
   await expect(
-    nav.getByRole("region", { name: "From your machines" }),
-  ).toContainText("Agent hooks and diffx sync publish changed checkouts here.");
-  // The Review list view menu shows merged pull requests on request.
-  await nav.getByRole("button", { name: "Review list view" }).click();
-  await page.getByRole("menuitemradio", { name: "All" }).click();
-  await page.keyboard.press("Escape");
-  const old = pulls.getByRole("link", { name: /#9 Old work/ });
-  await expect(old).toContainText("GitHub · Merged · @mona");
+    peek.getByRole("heading", { name: "#12 Add search" }),
+  ).toBeVisible();
+  await expect(
+    peek.getByRole("link", { name: /Open on GitHub/ }),
+  ).toHaveAttribute("href", pull.url);
+  await expect(peek.locator("script, img")).toHaveCount(0);
+  // Merged pull requests wait under Closed.
+  await page
+    .getByRole("navigation", { name: "Review views" })
+    .getByRole("link", { name: /Closed/ })
+    .click();
+  await expect(page).toHaveURL(/\/\?view=closed$/);
+  const old = table.getByRole("link", { name: /#9 Old work/ });
+  await expect(old).toContainText("Closed");
   await expect(
     old.getByRole("img", { name: "Merged pull request" }),
   ).toBeVisible();
-  await expect(row).toBeVisible();
+  await expect(row).toHaveCount(0);
+
+  await page.goto("/contexts/local-review?scope=all");
+  await ready(page);
 
   const banner = page.getByRole("region", { name: "Pull request #12" });
   await expect(

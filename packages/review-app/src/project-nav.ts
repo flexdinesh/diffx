@@ -6,9 +6,9 @@ import {
 } from "./context-activity.ts";
 import { contextHasChanges, searchWords } from "./project-picker.ts";
 
-// The review column shows each stream's head with changes: current work, plus
-// closed and merged pull requests when its pull request filter asks for them.
-// Stale snapshots stay reachable through the review picker (Cmd/Ctrl+K).
+// The header comboboxes list each stream's head with changes in current work;
+// the Review bench (review-bench.ts) lists every state. Stale snapshots stay
+// reachable through the review picker (Cmd/Ctrl+K).
 
 export type ProjectStream = {
   id: string;
@@ -46,55 +46,6 @@ function currentWork(context: ApiContext) {
   return state !== "closed" && state !== "merged";
 }
 
-/**
- * Which pull requests the review column lists: current ones (open), merged
- * ones, or every state. Streams without a pull request are never filtered.
- */
-export type PullRequestFilter = "open" | "merged" | "all";
-
-function listed(context: ApiContext, pulls: PullRequestFilter) {
-  const state = pullRequestOf(context)?.state;
-  if (state === undefined || pulls === "all") return true;
-  return pulls === "merged" ? state === "merged" : currentWork(context);
-}
-
-/**
- * How many current streams the review column lists across every repository;
- * the local column visibility policy counts current work only.
- */
-export function streamCount(heads: ApiContext[]) {
-  return projectGroups(heads, null).reduce(
-    (total, group) => total + group.streams.length,
-    0,
-  );
-}
-
-/** The review column's sections while the server integrates GitHub. */
-export type StreamSections = {
-  /** GitHub pull request streams, narrowed by the pull request filter. */
-  pullRequests: ProjectGroup[];
-  /** Every other stream, collected from machines; never filtered. */
-  machines: ProjectGroup[];
-};
-
-export function streamSections(
-  heads: ApiContext[],
-  seen: SeenStreams | null,
-  pulls: PullRequestFilter,
-): StreamSections {
-  return {
-    pullRequests: projectGroups(
-      heads.filter((context) => pullRequestOf(context)),
-      seen,
-      pulls,
-    ),
-    machines: projectGroups(
-      heads.filter((context) => !pullRequestOf(context)),
-      seen,
-    ),
-  };
-}
-
 /** A titled run of one repository's streams in the header branch combobox. */
 export type StreamSection = {
   value: "Pull requests" | "From your machines";
@@ -117,18 +68,14 @@ export function branchSections(
   ];
 }
 
-/**
- * Repositories and their listed streams: heads with changes whose pull
- * request, if any, passes `pulls` (current work by default).
- */
+/** Repositories and their current streams: heads with changes, unread marked. */
 export function projectGroups(
   heads: ApiContext[],
-  seen: SeenStreams | null,
-  pulls: PullRequestFilter = "open",
+  unread: (context: ApiContext) => boolean,
 ) {
   const groups = new Map<string, ProjectGroup>();
   for (const context of heads) {
-    if (context.stale || !contextHasChanges(context) || !listed(context, pulls))
+    if (context.stale || !contextHasChanges(context) || !currentWork(context))
       continue;
     const id = projectKey(context);
     const group = groups.get(id) ?? {
@@ -142,7 +89,7 @@ export function projectGroups(
     group.streams.push({
       id: stream,
       context,
-      unseen: seen !== null && seen[stream] !== context.id,
+      unseen: unread(context),
     });
     group.lastActivity = Math.max(group.lastActivity, contextActivity(context));
     groups.set(id, group);
@@ -171,25 +118,7 @@ export function streamHost(context: ApiContext) {
   return context.observation?.hostname ?? context.observation?.sourceId ?? "";
 }
 
-/** The review column lists streams grouped by repository or as one recent list. */
-export type StreamGroupMode = "repo" | "recent";
-
-export type RecentStream = ProjectStream & { group: ProjectGroup };
-
-/**
- * Every visible stream across repositories, most active first, so hopping
- * between agents ignores repository boundaries.
- */
-export function recentStreams(groups: ProjectGroup[]): RecentStream[] {
-  return groups
-    .flatMap((group) => group.streams.map((stream) => ({ ...stream, group })))
-    .sort((left, right) => compareContextActivity(left.context, right.context));
-}
-
-/**
- * The stream a repository opens to from the rail, its name in the column, or
- * the header repository combobox: its most active current stream.
- */
+/** The stream the header repository combobox opens: its most active one. */
 export function latestStream(group: ProjectGroup): ProjectStream | undefined {
   return group.streams[0];
 }
@@ -217,10 +146,18 @@ export function streamSessions(context: ApiContext) {
   ];
 }
 
-/** Every query word appears in the stream's branch, worktree, host or sessions. */
-export function streamMatches(stream: ProjectStream, query: string) {
+/**
+ * Every query word appears in the stream's branch, worktree, host, sessions
+ * or `extra` text, such as its repository name on the bench.
+ */
+export function streamMatches(
+  stream: ProjectStream,
+  query: string,
+  extra = "",
+) {
   const { context } = stream;
   const text = [
+    extra,
     streamTitle(context),
     context.branch ?? "",
     pullRequestOf(context)?.author.login ?? "",
@@ -233,21 +170,21 @@ export function streamMatches(stream: ProjectStream, query: string) {
   return searchWords(query).every((word) => text.includes(word));
 }
 
-/** One or two letters marking a repository in the collapsed review rail. */
-export function repoMonogram(name: string) {
-  const words = name
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter(Boolean);
-  const [first = "", second = ""] = words;
-  if (second) return `${first.charAt(0)}${second.charAt(0)}`.toUpperCase();
-  return first.charAt(0).toUpperCase() + first.slice(1, 2).toLowerCase();
-}
-
 export function streamTitle(context: ApiContext) {
   const pull = pullRequestOf(context);
   if (pull) return `#${pull.number} ${pull.title}`;
   return context.branch ?? context.observation?.branch ?? "Detached HEAD";
+}
+
+/** The agent harness that last touched the stream, or empty. */
+export function streamHarness(context: ApiContext) {
+  return (
+    [...(context.sessions ?? [])].sort(
+      (left, right) => right.lastObservedAt - left.lastObservedAt,
+    )[0]?.harness ??
+    context.observation?.agentSession?.harness ??
+    ""
+  );
 }
 
 export function streamMeta(
@@ -256,12 +193,7 @@ export function streamMeta(
   now: number,
 ) {
   const worktree = streamWorktree(context);
-  const harness =
-    [...(context.sessions ?? [])].sort(
-      (left, right) => right.lastObservedAt - left.lastObservedAt,
-    )[0]?.harness ??
-    context.observation?.agentSession?.harness ??
-    "";
+  const harness = streamHarness(context);
   const pull = pullRequestOf(context);
   return [
     pull ? "GitHub" : "",
@@ -288,20 +220,14 @@ export function relativeAge(timestamp: number, now: number) {
 }
 
 /**
- * The review root `/` opens: the most active current work, falling back to a
- * closed or merged pull request only when nothing current changed.
+ * The review a capture's root `/` opens: the most active current work,
+ * falling back to a closed or merged pull request only when nothing current
+ * changed. Review navigation shows the Review bench at `/` instead.
  */
 export function defaultContext(contexts: ApiContext[]) {
   return (
     latestChangedContext(contexts.filter(currentWork)) ??
     latestChangedContext(contexts)
-  );
-}
-
-/** First visit marks current work as seen so only later arrivals stand out. */
-export function baselineSeen(heads: ApiContext[]): SeenStreams {
-  return Object.fromEntries(
-    heads.map((context) => [streamKey(context), context.id]),
   );
 }
 

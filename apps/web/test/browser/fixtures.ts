@@ -1,4 +1,9 @@
-import { test as base, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  test as base,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { preview } from "vite";
 import { startFixtureProcess } from "../fixture-server.ts";
@@ -81,8 +86,8 @@ export function fileToggle(scope: Page | Locator, state?: ToggleState) {
 /**
  * The fixture server is a capture (one fixed patch), so the shell hides review
  * navigation. Serving a checkout-process bootstrap restores the header
- * comboboxes and search for tests that mock several contexts; the Reviews
- * column also needs two current reviews (see withSecondReview). Later
+ * comboboxes and search for tests that mock several contexts, and makes `/`
+ * the Review bench (see openFixtureReview). Later
  * `page.route` registrations take precedence, so tests can still override it.
  */
 export async function withReviewNavigation(
@@ -104,36 +109,15 @@ export async function withReviewNavigation(
 }
 
 /**
- * A local process shows the Reviews column once it lists two current reviews.
- * Adds a second repository's copy of the fixture's review to every catalog
- * page, so layout tests over the single fixture review get the column.
+ * With review navigation `/` is the Review bench. Opens the fixture's review
+ * from the bench's All open view, as a reader would.
  */
-export async function withSecondReview(page: Page) {
-  await page.route("**/api/v2/contexts?*", async (route) => {
-    const response = await route.fetch();
-    const body: unknown = await response.json();
-    if (
-      typeof body !== "object" ||
-      body === null ||
-      !("contexts" in body) ||
-      !Array.isArray(body.contexts)
-    )
-      return route.fulfill({ response });
-    const contexts: unknown[] = body.contexts;
-    const first = contexts[0];
-    if (typeof first !== "object" || first === null)
-      return route.fulfill({ response });
-    const second = {
-      ...first,
-      id: "second-review",
-      streamId: "second-review",
-      latestContextId: "second-review",
-      name: "second-repo",
-      repositoryId: "second-repo",
-    };
-    return route.fulfill({
-      response,
-      json: { ...body, contexts: [...contexts, second] },
-    });
-  });
+export async function openFixtureReview(page: Page) {
+  await page.goto("/?view=open");
+  await page
+    .getByRole("main", { name: "Reviews" })
+    .getByRole("link")
+    .first()
+    .click();
+  await expect(page.locator("#viewer")).toBeVisible();
 }

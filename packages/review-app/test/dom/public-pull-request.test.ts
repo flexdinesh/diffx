@@ -25,7 +25,6 @@ import {
   PublicPullRequest,
 } from "../../src/PublicPullRequest.tsx";
 import { SidebarProvider } from "../../src/sidebar-context.tsx";
-import { StreamNavProvider } from "../../src/stream-nav-context.tsx";
 import { json, requests } from "./setup.ts";
 
 // The appearance owner reads window.matchMedia; setup supplies the global.
@@ -144,16 +143,12 @@ function providers(content: ReturnType<typeof createElement>) {
     SidebarProvider,
     null,
     createElement(
-      StreamNavProvider,
+      AppearanceProvider,
       null,
       createElement(
-        AppearanceProvider,
+        IdentityProvider,
         null,
-        createElement(
-          IdentityProvider,
-          null,
-          createElement(TooltipProvider, null, content),
-        ),
+        createElement(TooltipProvider, null, content),
       ),
     ),
   );

@@ -6,18 +6,13 @@ import type { ApiBootstrap } from "@diffx/api";
  */
 export type ShellPolicy = {
   /**
-   * Switching between reviews: the Reviews column and rail, header
-   * repository/branch comboboxes, search (Cmd/Ctrl+K) and sync. A local
-   * capture (piped stdin or a fixture) serves one fixed diff with nothing to
-   * switch to, so it shows only that diff and its file sidebar.
+   * Switching between reviews: the Review bench at `/`, the header's Reviews
+   * breadcrumb, review stepper and repository/branch comboboxes, search
+   * (Cmd/Ctrl+K) and sync. A local capture (piped stdin or a fixture) serves
+   * one fixed diff with nothing to switch to, so `/` opens that diff with only
+   * its file sidebar.
    */
   reviewNavigation: boolean;
-  /**
-   * When the Reviews column, rail and compact drawer toggle show. A remote
-   * server always shows them; a local checkout process waits until there are
-   * two current reviews to switch between.
-   */
-  reviewColumn: "always" | "multiple";
   /** What Sync collects: one selected checkout or every discovered one. */
   collection: "checkout" | "checkouts" | null;
   /**
@@ -31,9 +26,9 @@ export type ShellPolicy = {
    */
   serverStatus: boolean;
   /**
-   * The Reviews column's pull request section and its state filter. They
-   * need the server's GitHub integration; without it the column lists every
-   * current stream together.
+   * GitHub pull requests: the bench's follow-repositories guidance and the
+   * header branch combobox's pull request group. They need the server's
+   * GitHub integration.
    */
   pullRequests: boolean;
 };
@@ -42,7 +37,6 @@ export function shellPolicy(bootstrap: ApiBootstrap): ShellPolicy {
   if (bootstrap.mode === "remote")
     return {
       reviewNavigation: true,
-      reviewColumn: "always",
       collection: null,
       reviewMarks: true,
       serverStatus: true,
@@ -51,7 +45,6 @@ export function shellPolicy(bootstrap: ApiBootstrap): ShellPolicy {
   const collection = bootstrap.input === "capture" ? null : bootstrap.input;
   return {
     reviewNavigation: collection !== null,
-    reviewColumn: "multiple",
     collection,
     reviewMarks: true,
     serverStatus: true,
@@ -66,17 +59,9 @@ export function shellPolicy(bootstrap: ApiBootstrap): ShellPolicy {
 export function publicPreviewPolicy(bootstrap: ApiBootstrap): ShellPolicy {
   return {
     reviewNavigation: false,
-    reviewColumn: "multiple",
     collection: null,
     reviewMarks: false,
     serverStatus: bootstrap.user !== null,
     pullRequests: false,
   };
-}
-
-/** Whether the Reviews column shows while it lists `streams` streams. */
-export function showsReviewColumn(policy: ShellPolicy, streams: number) {
-  return (
-    policy.reviewNavigation && (policy.reviewColumn === "always" || streams > 1)
-  );
 }

@@ -8,7 +8,8 @@ import {
 import { IconButton } from "@diffx/ui/components/icon-button";
 import { AccountButton } from "./account.tsx";
 import { ContextIdentity } from "./ContextIdentity.tsx";
-import { HeaderBrand, ProjectsToggle } from "./ProjectsNav.tsx";
+import { BenchLink, useBenchShortcut } from "./review-navigation.tsx";
+import { HeaderBrand } from "./StreamParts.tsx";
 import { useCatalog } from "./session-context.tsx";
 import { useShellPolicy } from "./use-shell-policy.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
@@ -112,14 +113,14 @@ export function Topbar({
   /** Actions placed before account. */
   actions?: ReactNode;
 }) {
-  const { mobile } = useSidebarState();
   const { reviewNavigation } = useShellPolicy();
-  const { reviewColumn } = useCatalog();
+  const { bench } = useCatalog();
+  useBenchShortcut(reviewNavigation);
   return (
     <header className="topbar">
-      {mobile && reviewColumn && <ProjectsToggle />}
       <HeaderBrand />
       {lead}
+      {reviewNavigation && !bench && <BenchLink />}
       {identity ?? <CurrentContext />}
       {children}
       <div className="header-actions">

@@ -421,6 +421,8 @@ export function useFileNavigation({
           ) ||
         event.metaKey ||
         event.ctrlKey ||
+        // Alt+Shift chords step between reviews (review-navigation.tsx).
+        event.shiftKey ||
         !event.altKey
       )
         return;

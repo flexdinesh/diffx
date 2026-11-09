@@ -4,7 +4,6 @@ import { shellPolicy, type ShellPolicy } from "./shell-policy.ts";
 
 const unresolved: ShellPolicy = {
   reviewNavigation: false,
-  reviewColumn: "multiple",
   collection: null,
   reviewMarks: true,
   serverStatus: false,

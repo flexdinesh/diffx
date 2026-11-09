@@ -37,12 +37,8 @@ import {
   type ProjectStream,
   type StreamSection,
 } from "./project-nav.ts";
-import {
-  NewMark,
-  StreamIcon,
-  useNow,
-  usePullRequestFilter,
-} from "./ProjectsNav.tsx";
+import { benchState, needsAttention } from "./review-bench.ts";
+import { NewMark, StreamIcon, useNow } from "./StreamParts.tsx";
 import { useCatalog } from "./session-context.tsx";
 import { useShellPolicy } from "./use-shell-policy.ts";
 
@@ -85,16 +81,18 @@ export function ContextIdentity({ current }: { current: ApiContext }) {
 }
 
 function ContextSwitcher({ current }: { current: ApiContext }) {
-  const { heads, seen, openStream } = useCatalog();
-  const pulls = usePullRequestFilter();
+  const { heads, marks, openStream } = useCatalog();
+  const { pullRequests } = useShellPolicy();
   const now = useNow();
-  const groups = projectGroups(heads.contexts, seen, pulls ?? "open");
+  const groups = projectGroups(heads.contexts, (context) =>
+    needsAttention(benchState(context, marks)),
+  );
   const repository = groups.find((group) => group.id === projectKey(current));
   const stream = repository?.streams.find(
     (candidate) => candidate.id === streamKey(current),
   );
   const sections =
-    pulls && repository ? branchSections(repository.streams) : null;
+    pullRequests && repository ? branchSections(repository.streams) : null;
   return (
     <>
       <Combobox
@@ -149,7 +147,7 @@ function ContextSwitcher({ current }: { current: ApiContext }) {
           autoHighlight
           isItemEqualToValue={(item, value) => item.id === value.id}
           itemToStringLabel={(item) => streamTitle(item.context)}
-          filter={streamMatches}
+          filter={(item, query) => streamMatches(item, query)}
           onValueChange={(item) => {
             if (item) openStream(item.context);
           }}

@@ -156,27 +156,6 @@
   padding: var(--space-4);
   border-top: 1px solid var(--border-muted);
 }
-.projects-skeleton {
-  padding: var(--space-4);
-}
-.loading-project + .loading-project {
-  margin-top: var(--space-6);
-}
-.loading-project-name {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  height: var(--control-small);
-}
-.loading-project-stream {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-2) 0 var(--space-2) var(--space-6);
-}
-.loading-project:nth-child(2) .loading-project-name .skeleton-name {
-  width: 44%;
-}
 @media (max-width: 1011px) {
   .loading-sidebar {
     display: none;

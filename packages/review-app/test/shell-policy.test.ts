@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ApiBootstrap } from "@diffx/api";
-import {
-  publicPreviewPolicy,
-  shellPolicy,
-  showsReviewColumn,
-} from "../src/shell-policy.ts";
+import { publicPreviewPolicy, shellPolicy } from "../src/shell-policy.ts";
 
 function local(input: "checkout" | "checkouts" | "capture"): ApiBootstrap {
   return {
@@ -34,7 +30,6 @@ const remote: ApiBootstrap = {
 test("shell policy follows what the server serves", () => {
   assert.deepEqual(shellPolicy(local("checkout")), {
     reviewNavigation: true,
-    reviewColumn: "multiple",
     collection: "checkout",
     reviewMarks: true,
     serverStatus: true,
@@ -42,7 +37,6 @@ test("shell policy follows what the server serves", () => {
   });
   assert.deepEqual(shellPolicy(local("checkouts")), {
     reviewNavigation: true,
-    reviewColumn: "multiple",
     collection: "checkouts",
     reviewMarks: true,
     serverStatus: true,
@@ -50,7 +44,6 @@ test("shell policy follows what the server serves", () => {
   });
   assert.deepEqual(shellPolicy(local("capture")), {
     reviewNavigation: false,
-    reviewColumn: "multiple",
     collection: null,
     reviewMarks: true,
     serverStatus: true,
@@ -58,7 +51,6 @@ test("shell policy follows what the server serves", () => {
   });
   assert.deepEqual(shellPolicy(remote), {
     reviewNavigation: true,
-    reviewColumn: "always",
     collection: null,
     reviewMarks: true,
     serverStatus: true,
@@ -70,13 +62,11 @@ test("a public preview is one read-only snapshot without review navigation", () 
   const visitor = publicPreviewPolicy(remote);
   assert.deepEqual(visitor, {
     reviewNavigation: false,
-    reviewColumn: "multiple",
     collection: null,
     reviewMarks: false,
     serverStatus: false,
     pullRequests: false,
   });
-  assert.equal(showsReviewColumn(visitor, 3), false);
   const member = publicPreviewPolicy({
     ...remote,
     user: { id: "account-a", email: "alice@example.com", method: "google" },
@@ -98,16 +88,4 @@ test("the pull request section follows the server's GitHub integration", () => {
   );
   for (const input of inputs)
     assert.equal(shellPolicy(local(input)).pullRequests, false);
-});
-
-test("a local review column waits for a second review; remote always shows", () => {
-  for (const input of inputs) {
-    const policy = shellPolicy(local(input));
-    assert.equal(showsReviewColumn(policy, 0), false);
-    assert.equal(showsReviewColumn(policy, 1), false);
-    assert.equal(showsReviewColumn(policy, 2), true);
-  }
-  assert.equal(showsReviewColumn(shellPolicy(remote), 0), true);
-  assert.equal(showsReviewColumn(shellPolicy(remote), 1), true);
-  assert.equal(showsReviewColumn(shellPolicy(local("capture")), 3), false);
 });

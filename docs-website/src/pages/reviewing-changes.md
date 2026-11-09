@@ -5,15 +5,24 @@ description: Navigate projects, snapshots, comments and reviewed marks.
 
 # Reviewing changes
 
-The Reviews column lists repositories by recent activity, each with its current
-streams: one per source, checkout, branch and comparison. A local diffx shows
-the column once there are at least two current streams to switch between; a
-remote server always shows it. Each stream shows its
-newest snapshot only; clean or merged streams and superseded snapshots are hidden.
-A dot marks streams with changes you have not opened in this browser. Click a
-repository's name to open its most active stream; its chevron expands or
-collapses the list. Collapse the column to a rail of repository marks; it stays
-collapsed across visits, and each mark opens that repository's latest stream.
+diffx opens on **Reviews**, your review bench: every current stream with
+changes, one per source, checkout, branch and comparison, newest activity
+first. Each stream shows its newest snapshot only; clean streams and
+superseded snapshots are hidden. **Needs attention** lists new streams and
+streams updated since you opened or marked them viewed; **All open** lists
+every current stream and **Closed** merged or closed pull requests and stale
+branches. Drafts wait under All open until they are ready. On a first visit,
+work idle for a day counts as already seen. Filter by repository or agent,
+or type to search. Move with ↑ and ↓, press Space to peek at a review's size,
+progress and description without opening it, and Enter to open it. **Mark all
+viewed** clears Needs attention; Alt+Shift+V and Alt+Shift+U mark the selected
+review viewed or unread. Views and filters stay in the address, so you can
+bookmark them.
+
+Inside a review, **‹ Reviews** (Alt+Shift+B) returns to the bench as you left
+it. The header's arrows (Alt+Shift+J and Alt+Shift+K) step to the next or
+previous review in the bench's order, and its check marks the review viewed or
+unread. Once every file is reviewed, a notice offers the next review.
 The header names the open review's repository, branch and worktree; the
 repository and branch are menus you can type into to filter, then press Enter
 to switch. In a local checkout

@@ -18,16 +18,12 @@ import {
   useState,
 } from "react";
 import { useIdentity } from "./identity-context.tsx";
-import { showsReviewColumn } from "./shell-policy.ts";
 import { useShellPolicy } from "./use-shell-policy.ts";
 import { latestChangedContext } from "./context-activity.ts";
-import {
-  defaultContext,
-  streamCount,
-  streamKey,
-  type SeenStreams,
-} from "./project-nav.ts";
-import { useSeenStreams } from "./use-seen-streams.ts";
+import { defaultContext, streamKey } from "./project-nav.ts";
+import type { BenchMarks } from "./review-bench.ts";
+import { benchTrail } from "./bench-trail.ts";
+import { useBenchMarks } from "./use-bench-marks.ts";
 import { useSidebarState } from "./sidebar-context.tsx";
 import {
   useContextCatalog,
@@ -84,8 +80,17 @@ interface Catalog {
   heads: ContextCatalog;
   /** The selected review once loaded, otherwise its catalog entry if known. */
   current: ApiContext | undefined;
-  seen: SeenStreams | null;
+  /** Opened and viewed heads; null until the browser's marks load. */
+  marks: BenchMarks | null;
+  markViewed: (contexts: ApiContext[]) => void;
+  markUnread: (context: ApiContext) => void;
   selectedId: string;
+  /** Whether `/` shows the Review bench instead of a selected review. */
+  bench: boolean;
+  /** Returns to the Review bench with its last filters. */
+  openBench: () => void;
+  /** The launched checkout's head from load-time collection, if any. */
+  benchDefaultId: string;
   /** Pins one snapshot. */
   select: (id: string, options?: { restoreFocus?: boolean }) => void;
   /**
@@ -106,8 +111,6 @@ interface Catalog {
   collect: (() => Promise<SyncSummary | null>) | null;
   collecting: boolean;
   collectError: string;
-  /** Whether the shell shows the Reviews column, rail and drawer toggle. */
-  reviewColumn: boolean;
 }
 /** Loading, empty and failure state for the shell shown until a review is ready. */
 export interface SessionShellState {
@@ -129,13 +132,14 @@ const CatalogContext = createContext<Catalog | null>(null);
 const SessionContext = createContext<ApiContext | null>(null);
 const SessionShellContext = createContext<SessionShellState | null>(null);
 
-/** Focuses the opened stream in the review column, else the file sidebar toggle. */
+/** Focuses the opened review's file sidebar toggle. */
+/** Focus lands on the open review's branch switcher, its header identity. */
 function focusCurrentReview() {
-  const selected = document.querySelector<HTMLElement>(
-    '#projects-nav [aria-current="page"], #projects-nav [aria-current="true"]',
+  const stream = document.querySelector<HTMLElement>(
+    ".topbar button.context-identity-stream",
   );
-  const target = selected?.getClientRects().length
-    ? selected
+  const target = stream?.getClientRects().length
+    ? stream
     : document.querySelector<HTMLElement>("#sidebar-toggle");
   target?.focus();
 }
@@ -217,6 +221,9 @@ export function SessionProvider({
   const statusRef = useRef<HTMLElement>(null);
   const restorePickerFocus = useRef(false);
   const { openDiff } = useSidebarState();
+  const { reviewNavigation } = useShellPolicy();
+  // Review navigation shows the bench at `/`; a capture opens its one diff.
+  const bench = publicId === null && reviewNavigation && route.kind === "root";
   const openPicker = useCallback(() => setPickerOpen(true), []);
   const show = useCallback(
     (
@@ -231,8 +238,9 @@ export function SessionProvider({
     ) => {
       if (!options?.preserveNavigation) openDiff();
       // Initial live/root resolution retains an explicit scope. Selecting a new
-      // snapshot uses that stream's saved preference.
-      if (!selectedRef.current) path += window.location.search;
+      // snapshot, including from the bench, uses that stream's saved preference.
+      if (!selectedRef.current && options?.replace)
+        path += window.location.search;
       else {
         setRequestedScope(null);
         setRequestedCommit(null);
@@ -302,13 +310,19 @@ export function SessionProvider({
       removeHead(id);
       removeHistory(id);
       if (selectedRef.current === id) {
-        const next = latestChangedContext(
-          heads.contexts.filter((context) => context.id !== id),
-        );
+        const next = reviewNavigation
+          ? undefined
+          : latestChangedContext(
+              heads.contexts.filter((context) => context.id !== id),
+            );
         if (next) openStream(next, { replace: true });
         else {
-          restorePickerFocus.current = true;
-          window.history.replaceState(null, "", "/");
+          restorePickerFocus.current = !reviewNavigation;
+          window.history.replaceState(
+            null,
+            "",
+            reviewNavigation ? benchTrail().path : "/",
+          );
           setRoute({ kind: "root" });
           setSelectedId("");
           setState({ status: "loading" });
@@ -316,8 +330,27 @@ export function SessionProvider({
       }
       reloadHeads();
     },
-    [heads.contexts, removeHead, removeHistory, reloadHeads, openStream],
+    [
+      heads.contexts,
+      removeHead,
+      removeHistory,
+      reloadHeads,
+      openStream,
+      reviewNavigation,
+    ],
   );
+  const openBench = useCallback(() => {
+    openDiff();
+    const path = benchTrail().path;
+    if (route.kind === "root") window.history.replaceState(null, "", path);
+    else window.history.pushState(null, "", path);
+    setRequestedScope(null);
+    setRequestedCommit(null);
+    setRoute({ kind: "root" });
+    setMissing(false);
+    setSelectedId("");
+    setState({ status: "loading" });
+  }, [openDiff, route.kind]);
   useEffect(() => {
     const handleNavigation = () => {
       setRequestedScope(scopeFromUrl());
@@ -333,18 +366,23 @@ export function SessionProvider({
     window.addEventListener("popstate", handleNavigation);
     return () => window.removeEventListener("popstate", handleNavigation);
   }, [route, publicId]);
-  // Live URLs open available catalog data while local collection continues; the
-  // root waits for the collection's default. Once selected, a snapshot stays
-  // open; collection only announces newer heads.
+  // Live URLs open available catalog data while local collection continues; a
+  // capture's root waits for the collection's default, and the bench lists
+  // heads as they arrive. Once selected, a snapshot stays open; collection only
+  // announces newer heads.
   const collected = useRef<Route | null>(null);
   const [collectionResult, setCollectionResult] = useState<{
     route: Route;
     contexts: ApiContext[];
     defaultContextId: string;
   } | null>(null);
-  const resolving = route.kind !== "pinned" && !selectedId && !missing;
+  const resolving =
+    route.kind !== "pinned" && !selectedId && !missing && !bench;
   const collectionFinished = collectionResult?.route === route;
-  const collectOnLoad = resolving && collectEnabled && !collectionFinished;
+  const collectOnLoad =
+    (resolving || bench) && collectEnabled && !collectionFinished;
+  const benchDefaultId =
+    bench && collectionFinished ? collectionResult.defaultContextId : "";
   useEffect(() => {
     if (!collectOnLoad || collected.current === route) return;
     // Effect replay must not start another collection. Completion only publishes
@@ -551,24 +589,23 @@ export function SessionProvider({
         rememberCommit,
       }
     : null;
-  const seen = useSeenStreams(
+  const { marks, markViewed, markUnread } = useBenchMarks(
     identity.status === "ready" ? (identity.bootstrap.user?.id ?? null) : null,
     heads.contexts,
     heads.loaded,
     ready ? current : undefined,
   );
-  const policy = useShellPolicy();
-  const [reviewColumn, setReviewColumn] = useState(false);
-  // Once shown, the column stays for the page session, so a stream leaving the
-  // list never reflows the review beneath the reader.
-  if (!reviewColumn && showsReviewColumn(policy, streamCount(heads.contexts)))
-    setReviewColumn(true);
   const catalog = useMemo(
     () => ({
       heads,
       current,
-      seen,
+      marks,
+      markViewed,
+      markUnread,
       selectedId,
+      bench,
+      openBench,
+      benchDefaultId,
       select,
       openStream,
       deleteContext,
@@ -577,13 +614,17 @@ export function SessionProvider({
       collect,
       collecting,
       collectError,
-      reviewColumn,
     }),
     [
       heads,
       current,
-      seen,
+      marks,
+      markViewed,
+      markUnread,
       selectedId,
+      bench,
+      openBench,
+      benchDefaultId,
       select,
       openStream,
       deleteContext,
@@ -592,15 +633,19 @@ export function SessionProvider({
       collect,
       collecting,
       collectError,
-      reviewColumn,
     ],
   );
-  // The root URL keeps waiting for changed work while showing the empty state.
+  // A capture's root keeps waiting for changed work while showing the empty
+  // state; the bench explains its own empty views.
   const empty =
-    heads.loaded && !selectedId && route.kind === "root" && !collectOnLoad;
+    heads.loaded &&
+    !selectedId &&
+    route.kind === "root" &&
+    !bench &&
+    !collectOnLoad;
   const statusError =
     state.status === "error" ? state.detail : heads.error || collectError;
-  const loading = !statusError && !empty && !missing;
+  const loading = !statusError && !empty && !missing && !bench;
   useEffect(() => {
     if (!restorePickerFocus.current || (!empty && state.status === "loading"))
       return;

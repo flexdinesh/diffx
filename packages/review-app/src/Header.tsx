@@ -5,6 +5,8 @@ import { useCatalog, useSession } from "./session-context.tsx";
 import { SidebarToggle, SyncButton, Topbar } from "./Topbar.tsx";
 import { contextDiagnostics, observationSummary } from "./project-picker.ts";
 import { useCompactChrome } from "./use-compact-chrome.ts";
+import { ReviewStepper } from "./review-navigation.tsx";
+import { useShellPolicy } from "./use-shell-policy.ts";
 
 export function Header() {
   const { repository, piped, diff, refresh, refreshEnabled } = useDiffSource();
@@ -12,31 +14,39 @@ export function Header() {
   const { observation } = session;
   const { collect, collecting } = useCatalog();
   const compact = useCompactChrome();
+  const { reviewNavigation } = useShellPolicy();
   return (
     <Topbar
       lead={<SidebarToggle />}
       actions={
-        collect ? (
-          <SyncButton busy={collecting || diff.busy} onClick={refresh} />
-        ) : (
-          // Compact chrome drops the visible text, leaving a 44px icon target.
-          <IconButton
-            variant="shell"
-            size={compact ? "icon" : "default"}
-            touch
-            label={refreshEnabled ? "Refresh changes" : "Retry loading changes"}
-            {...(refreshEnabled && { shortcut: { alt: true, key: "R" } })}
-            hidden={!refreshEnabled && !diff.notice}
-            aria-busy={diff.busy}
-            onClick={refresh}
-          >
-            <RefreshCwIcon
-              className={diff.busy ? "motion-safe:animate-spinner" : undefined}
-              aria-hidden="true"
-            />
-            {!compact && (refreshEnabled ? "Refresh" : "Retry")}
-          </IconButton>
-        )
+        <>
+          {reviewNavigation && <ReviewStepper />}
+          {collect ? (
+            <SyncButton busy={collecting || diff.busy} onClick={refresh} />
+          ) : (
+            // Compact chrome drops the visible text, leaving a 44px icon target.
+            <IconButton
+              variant="shell"
+              size={compact ? "icon" : "default"}
+              touch
+              label={
+                refreshEnabled ? "Refresh changes" : "Retry loading changes"
+              }
+              {...(refreshEnabled && { shortcut: { alt: true, key: "R" } })}
+              hidden={!refreshEnabled && !diff.notice}
+              aria-busy={diff.busy}
+              onClick={refresh}
+            >
+              <RefreshCwIcon
+                className={
+                  diff.busy ? "motion-safe:animate-spinner" : undefined
+                }
+                aria-hidden="true"
+              />
+              {!compact && (refreshEnabled ? "Refresh" : "Retry")}
+            </IconButton>
+          )}
+        </>
       }
     >
       <div className="header-heading">
