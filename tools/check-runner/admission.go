@@ -12,31 +12,34 @@ import (
 	"github.com/flexdinesh/diffx/internal/processlock"
 )
 
-func admit(ctx context.Context) (func(), error) {
+// admit acquires one of two user-level slots shared across worktrees and
+// repositories. The slot index names this run's Docker resources, so the
+// holder may remove anything a dead run left under the same slot.
+func admit(ctx context.Context) (int, func(), error) {
 	cache, err := os.UserCacheDir()
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 	directory := filepath.Join(cache, "local-validation", "slots")
 	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 	for {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return 0, nil, err
 		}
 		for slot := range 2 {
 			lock, err := processlock.TryAcquire(filepath.Join(directory, fmt.Sprintf("%d.lock", slot)))
 			if err == nil {
-				return func() { _ = lock.Close() }, nil
+				return slot, func() { _ = lock.Close() }, nil
 			}
 			if !errors.Is(err, processlock.ErrLocked) {
-				return nil, err
+				return 0, nil, err
 			}
 		}
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return 0, nil, ctx.Err()
 		case <-time.After(200 * time.Millisecond):
 		}
 	}

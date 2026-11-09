@@ -1,0 +1,59 @@
+# One project per check group run (diffx-check-s<slot>-<group>): a private
+# network, a private Postgres when needed, no published ports, no host
+# networking and no Docker socket. check-runner supplies DIFFX_CHECK_IMAGE.
+services:
+  runner:
+    image: ${DIFFX_CHECK_IMAGE:?check-runner supplies the check image}
+    pull_policy: never
+    init: true
+    working_dir: /workspace
+    cpus: 2
+    mem_limit: 5g
+    environment:
+      GOFLAGS: -p=2 -count=1
+      DIFFX_CHECK_RUNNER: "1"
+      DIFFX_VALIDATION_EXECUTION: ${DIFFX_VALIDATION_EXECUTION:-}
+      DIFFX_FIXTURE_BINARY: /workspace/dist/diffx
+      DIFFX_FIXTURE_SERVER_BINARY: /workspace/dist/diffx-server
+      DIFFX_FIXTURE_CONSOLE_BINARY: /workspace/dist/diffx-console
+      DIFFX_FIXTURE_WEB_DIR: /workspace/apps/web/dist
+      DIFFX_DESKTOP_SIDECAR: /workspace/dist/diffx
+    volumes:
+      # Content-addressed and safe for concurrent runs across worktrees.
+      - gocache:/root/.cache/go-build
+
+  runner-db:
+    extends:
+      service: runner
+    environment:
+      DIFFX_TEST_DATABASE_URL: postgres://diffx:diffx@postgres:5432/postgres?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+    cpus: 1
+    mem_limit: 1g
+    environment:
+      POSTGRES_USER: diffx
+      POSTGRES_PASSWORD: diffx
+      POSTGRES_DB: postgres
+    command: >-
+      postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+      -c max_connections=300
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      # TCP only: the initialization server listens on the Unix socket alone.
+      test: pg_isready --host=127.0.0.1 --username=diffx --dbname=postgres
+      interval: 1s
+      timeout: 3s
+      retries: 120
+
+volumes:
+  # External and unlabeled by any project, so project cleanup never removes
+  # the cache other runs share.
+  gocache:
+    name: diffx-check-gocache
+    external: true

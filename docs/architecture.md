@@ -24,7 +24,7 @@ review data and public local-session ownership rules remain unchanged.
 ## Local validation
 
 `tools/check-runner` owns immutable source capture, group selection, successful
-validation records, reporting and Dagger orchestration. Mise owns the underlying
+validation records, reporting and Docker Compose orchestration. Mise owns the underlying
 commands. Tests and stateful checks run in private Linux x64 containers. Static
 checks run on the host against a private temporary source/dependency snapshot,
 without requiring Docker. Hosted workflows publish releases and edge builds;
@@ -35,8 +35,9 @@ whereas interactive checks snapshot working files without certifying HEAD.
 Preparation and build outputs are immutable reusable inputs. Every executing
 group owns its writable files and temporary state. Container groups own their test services. Browser clients
 and fixture servers share the group's container; application ports are never
-published to the host. Postgres is supplied through a private Dagger service
-binding. Existing per-test database isolation still applies within each group.
+published to the host. Postgres is supplied by a private service in the
+group's own Compose project. Existing per-test database isolation still applies
+within each group.
 
 Successful results are reusable only for matching source, configuration,
 toolchain and runner inputs. Commit identity records provenance but is not a
@@ -55,12 +56,12 @@ commits. CLI-only shell installers distribute `diffx`; the separate desktop
 installer exposes a matching `diffx` and `diffx-desktop` pair. Go source installs
 are unsupported because source refs lack embedded assets. See [release.md](release.md).
 
-One explicitly managed, version-pinned engine and dedicated cache volume serve
-this repository's worktrees. Engine lifetime is independent of invocation
-lifetime: cancellation releases the session, never the shared engine. Setup
-rejects foreign or ambiguous ownership and does not replace existing resources.
-Engine upgrades and cleanup require explicit coordination; automatic provisioning
-and broad pruning are forbidden.
+One multi-stage check image serves every worktree through the Docker build
+cache; identical toolchain, dependency and source inputs reuse the same layers.
+Each run owns resources named by its admission slot and removes them on
+success, failure and cancellation; the next holder of a slot removes anything a
+dead run left. Shared Go build and pnpm caches are content-addressed and safe
+across concurrent runs. Broad pruning is forbidden.
 
 ## Modes are compositions
 
@@ -363,11 +364,12 @@ storage/lifecycle/queue/transport boundary tests) and real HTTP schema
 validation. Local `mise run check` and explicit `check:pr` cover these checks
 alongside web unit/DOM/browser, plugin and docs-site suites. Required check groups
 either execute on their declared host/container executor or reuse matching successful validation.
-Groups run sequentially; Chromium uses one worker and Go parallelism is bounded.
-Two participating invocations may run concurrently through user-level admission.
-The runner owns cancellation and session cleanup before releasing admission;
-failed groups fail the invocation. Immutable preparation and build outputs are
-reusable. Public mise test tasks use Dagger; package.json test scripts and hidden
+Up to three groups run concurrently, each container limited to two CPUs;
+Chromium uses one worker and Go parallelism is bounded. Two participating
+invocations may run concurrently through user-level admission. The runner owns
+cancellation and Compose project cleanup before releasing admission; a failed
+group lets the others finish and fails the invocation. Immutable preparation and
+build outputs are reusable. Public mise test tasks use Compose; package.json test scripts and hidden
 `exec` mise tasks are the raw commands groups run inside containers.
 `test:contracts:rules` holds only the non-Go guards, because aggregate checks run every Go
 package; no hand-maintained package list can miss a new boundary test. All static

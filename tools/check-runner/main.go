@@ -1,4 +1,4 @@
-// check-runner validates immutable sources in explicitly managed Dagger sessions.
+// check-runner validates immutable sources in per-run Docker Compose projects.
 package main
 
 import (
@@ -15,11 +15,10 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"strings"
+	"slices"
+	"sync"
 	"syscall"
 	"time"
-
-	"dagger.io/dagger"
 )
 
 func main() {
@@ -57,7 +56,7 @@ func parseInvocation(args []string) (invocation, error) {
 		return result, fmt.Errorf("unexpected argument %q", arg)
 	}
 	switch result.Mode {
-	case "check", "pr", "status", "engine-setup":
+	case "check", "pr", "status":
 	case "group":
 		for _, group := range groups(true) {
 			if group.Name == result.Group {
@@ -66,7 +65,7 @@ func parseInvocation(args []string) (invocation, error) {
 		}
 		return result, fmt.Errorf("unknown check group %q", result.Group)
 	default:
-		return result, errors.New("usage: check-runner check|pr|status|engine-setup|group NAME [--force]")
+		return result, errors.New("usage: check-runner check|pr|status|group NAME [--force]")
 	}
 	return result, nil
 }
@@ -78,9 +77,6 @@ func run(ctx context.Context, args []string) error {
 	}
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		return errors.New("isolated checks currently require Linux x64")
-	}
-	if inv.Mode == "engine-setup" {
-		return setupEngine(ctx)
 	}
 	root, err := os.Getwd()
 	if err != nil {
@@ -145,7 +141,7 @@ func run(ctx context.Context, args []string) error {
 	if len(pending) == 0 {
 		return checkSnapshotCurrent(ctx, root, snapshot, committed)
 	}
-	release, err := admit(ctx)
+	slot, release, err := admit(ctx)
 	if err != nil {
 		return err
 	}
@@ -164,55 +160,114 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	defer log.Close()
+	var mu sync.Mutex
+	report := func(format string, args ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		fmt.Fprintf(io.MultiWriter(os.Stderr, log), "check-runner: "+format+"\n", args...)
+	}
 	defer func() {
+		mu.Lock()
+		defer mu.Unlock()
 		for group, status := range statuses {
-			if status == "running" {
+			if status == "running" || (status == "pending" && ctx.Err() != nil) {
 				statuses[group] = "interrupted"
 			}
 		}
-		report, err := json.MarshalIndent(struct {
-			Commit, Tree, Source, Engine, Platform string
-			Inputs, Results                        map[string]string
-		}{snapshot.Commit, snapshot.Tree, snapshot.Identity, engineImage, "linux/amd64", keys, statuses}, "", "  ")
+		result, err := json.MarshalIndent(struct {
+			Commit, Tree, Source, Platform string
+			Inputs, Results                map[string]string
+		}{snapshot.Commit, snapshot.Tree, snapshot.Identity, "linux/amd64", keys, statuses}, "", "  ")
 		if err == nil {
-			_ = os.WriteFile(filepath.Join(artifacts, "results.json"), report, 0o644)
+			_ = os.WriteFile(filepath.Join(artifacts, "results.json"), result, 0o644)
 		}
 		_ = os.WriteFile(filepath.Join(artifacts, "complete"), []byte(snapshot.Commit+"\n"), 0o644)
 		_ = pruneArtifacts(filepath.Dir(artifacts))
 	}()
-	var client *dagger.Client
-	defer func() {
-		if client != nil {
-			_ = client.Close()
-		}
-	}()
-	for _, group := range pending {
-		statuses[group.Name] = "running"
-		fmt.Fprintln(os.Stderr, "check-runner: executing", group.Name)
-		started := time.Now()
-		var executionErr error
-		if group.Host {
-			executionErr = executeHost(ctx, snapshot.Root, group, artifacts)
-		} else {
-			if client == nil {
-				client, executionErr = connectValidationEngine(ctx, io.MultiWriter(os.Stderr, log))
-			}
-			if executionErr == nil {
-				executionErr = newPipeline(client, snapshot.Root).execute(ctx, group, id, artifacts)
-			}
-		}
-		if executionErr != nil {
-			if ctx.Err() == nil {
-				statuses[group.Name] = "failed"
-			}
-			return fmt.Errorf("%s: %w (artifacts: %s)", group.Name, executionErr, artifacts)
-		}
-		record := validationRecord{Group: group.Name, Fingerprint: keys[group.Name], Commit: snapshot.Commit, Artifacts: artifacts, CompletedAt: time.Now().UTC()}
-		if err := saveValidationRecord(records, record); err != nil {
+	contexts := ""
+	if slices.ContainsFunc(pending, func(group checkGroup) bool { return !group.Host }) {
+		if contexts, err = prepareContainers(ctx, slot, snapshot.Root); err != nil {
 			return err
 		}
-		statuses[group.Name] = "passed"
-		fmt.Fprintf(os.Stderr, "check-runner: ok %s (%s)\n", group.Name, time.Since(started).Round(time.Second))
+		defer func() {
+			_ = os.RemoveAll(contexts)
+			cleanup, cancel := context.WithTimeout(context.Background(), teardownTimeout)
+			defer cancel()
+			if err := untagSlotImages(cleanup, dockerOutput, slot); err != nil {
+				report("cleanup: %v", err)
+			}
+		}()
+	}
+	starts := make(map[string]time.Time)
+	var recordErrs []error
+	outcomes := schedule(ctx, pending, groupConcurrency, scheduleHooks{
+		build: func(ctx context.Context, target string) error {
+			path := filepath.Join(artifacts, "image-"+target+".log")
+			buildLog, err := os.Create(path)
+			if err != nil {
+				return err
+			}
+			report("building image %s (log: %s)", target, path)
+			err = buildImage(ctx, slot, target, snapshot.Root, contexts, buildLog)
+			if err := errors.Join(err, buildLog.Close()); err != nil {
+				return fmt.Errorf("%w (log: %s)", err, path)
+			}
+			return nil
+		},
+		execute: func(ctx context.Context, group checkGroup) error {
+			if group.Host {
+				return executeHost(ctx, snapshot.Root, group, artifacts)
+			}
+			return runGroup(ctx, dockerOutput, slot, group, id, snapshot.Root, artifacts)
+		},
+		started: func(group checkGroup) {
+			mu.Lock()
+			statuses[group.Name] = "running"
+			starts[group.Name] = time.Now()
+			mu.Unlock()
+			report("executing %s", group.Name)
+		},
+		finished: func(group checkGroup, err error) {
+			mu.Lock()
+			elapsed := time.Since(starts[group.Name]).Round(time.Second)
+			mu.Unlock()
+			if err == nil {
+				record := validationRecord{Group: group.Name, Fingerprint: keys[group.Name], Commit: snapshot.Commit, Artifacts: artifacts, CompletedAt: time.Now().UTC()}
+				err = saveValidationRecord(records, record)
+				if err != nil {
+					mu.Lock()
+					recordErrs = append(recordErrs, err)
+					mu.Unlock()
+				}
+			}
+			status := "passed"
+			switch {
+			case err != nil && ctx.Err() != nil:
+				status = "interrupted"
+			case err != nil:
+				status = "failed"
+			}
+			mu.Lock()
+			statuses[group.Name] = status
+			mu.Unlock()
+			if err != nil {
+				report("%s %s: %v", status, group.Name, err)
+				return
+			}
+			report("ok %s (%s)", group.Name, elapsed)
+		},
+	})
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	var failures []error
+	for _, group := range pending {
+		if err := outcomes[group.Name]; err != nil {
+			failures = append(failures, fmt.Errorf("%s: %w", group.Name, err))
+		}
+	}
+	if err := errors.Join(append(failures, recordErrs...)...); err != nil {
+		return fmt.Errorf("%w\nartifacts: %s", err, artifacts)
 	}
 	if err := checkSnapshotCurrent(ctx, root, snapshot, committed); err != nil {
 		return err
@@ -237,7 +292,9 @@ func groupFingerprint(root string, group checkGroup) (string, error) {
 		return "", err
 	}
 	miseDigest := sha256.Sum256(binary)
-	files += hex.EncodeToString(miseDigest[:]) + engineImage
+	// The Dockerfile and compose.yaml, including pinned image digests, are
+	// already file inputs of every group through tools/check-runner.
+	files += hex.EncodeToString(miseDigest[:])
 	if group.Host {
 		// Host results cannot be reused against different installed runtimes.
 		for _, tool := range []string{"go", "node", "pnpm"} {
@@ -254,42 +311,12 @@ func groupFingerprint(root string, group checkGroup) (string, error) {
 		}
 	}
 	policy, err := json.Marshal(struct {
-		Group                         checkGroup
-		Files, Platform, Base, Dagger string
-	}{group, files, "linux/amd64", runnerImage, daggerVersion})
+		Group           checkGroup
+		Files, Platform string
+	}{group, files, "linux/amd64"})
 	if err != nil {
 		return "", err
 	}
 	hash := sha256.Sum256(policy)
 	return hex.EncodeToString(hash[:]), nil
-}
-
-// Host-only checks never inspect Docker or initialize Dagger.
-func connectValidationEngine(ctx context.Context, log io.Writer) (*dagger.Client, error) {
-	env, err := engineEnvironment(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, item := range os.Environ() {
-		key, _, _ := strings.Cut(item, "=")
-		if strings.HasPrefix(key, "DAGGER_") || strings.HasPrefix(key, "_EXPERIMENTAL_DAGGER_") {
-			os.Unsetenv(key)
-		}
-	}
-	for _, item := range env {
-		key, value, ok := strings.Cut(item, "=")
-		if ok {
-			if err := os.Setenv(key, value); err != nil {
-				return nil, err
-			}
-		}
-	}
-	cli, err := exec.LookPath("dagger")
-	if err != nil {
-		return nil, err
-	}
-	if err := os.Setenv("_EXPERIMENTAL_DAGGER_CLI_BIN", cli); err != nil {
-		return nil, err
-	}
-	return dagger.Connect(ctx, dagger.WithRunnerHost("docker-container://"+engineName), dagger.WithLogOutput(log))
 }

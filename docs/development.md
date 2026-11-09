@@ -25,7 +25,6 @@ mise run install  # builds embedded assets, installs into $GOBIN or $GOPATH/bin
 
 ```sh
 mise trust && mise install && mise run setup  # tools, deps, hooks, Chromium, staged assets
-mise run check:engine:setup                   # once per machine, isolated checks
 mise tasks                                    # list all tasks
 ```
 
@@ -62,7 +61,7 @@ searches PATH for another server. `desktop:frontend` builds the Vite entry;
 Node is a build dependency; the installed app uses system WebKit, not Node.
 Browser and desktop use the same `packages/review-app` implementation.
 
-Desktop checks use the managed Dagger engine. They cover the host and typed
+Desktop checks run in isolated Compose containers. They cover the host and typed
 bridge, real Unix-socket sessions, Linux WebKitGTK windows under Xvfb, and four
 target archives with embedded frontend verification. `desktop:platform-smoke`
 supplements isolation on a real macOS or Linux session. Acceptance builds use

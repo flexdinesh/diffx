@@ -10,7 +10,7 @@ import (
 )
 
 // Host checks get their own source and dependencies. They never build into the
-// user's checkout or contaminate the source subsequently imported by Dagger.
+// user's checkout or contaminate the source subsequently copied into images.
 func executeHost(ctx context.Context, source string, group checkGroup, artifacts string) error {
 	snapshot, cleanup, err := captureSnapshot(ctx, source, false)
 	if err != nil {

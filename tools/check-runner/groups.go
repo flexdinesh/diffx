@@ -10,6 +10,8 @@ type checkGroup struct {
 	Browser  bool
 	Host     bool
 	Desktop  bool
+	// Target is the check image stage the group runs in; empty for host groups.
+	Target string
 }
 
 func groups(race bool) []checkGroup {
@@ -20,18 +22,18 @@ func groups(race bool) []checkGroup {
 		desktopTask = "test:exec:desktop:race"
 	}
 	return []checkGroup{
-		{"static", [][]string{{"mise", "run", "check:exec:static"}, {"mise", "run", "check:format:go"}, {"mise", "run", "check:boundaries"}, {"mise", "run", "check:design"}, {"mise", "run", "check:artifacts"}}, false, false, false, true, false},
-		{"contracts", [][]string{{"mise", "run", "check:exec:contracts"}}, true, false, false, false, false},
-		{"go", [][]string{{"go", "vet", "./..."}, {"mise", "run", goTask}}, true, true, false, false, false},
-		{"unit", [][]string{{"pnpm", "--filter", "@diffx/review-app", "test:unit"}, {"pnpm", "--filter", "@diffx/desktop", "test:unit"}, {"pnpm", "--filter", "@diffx/web", "test:unit"}, {"pnpm", "--filter", "@diffx/console", "test:dom"}, {"pnpm", "--recursive", "--filter", "@diffx/plugin-*", "test"}}, false, false, false, false, false},
-		{"browser", [][]string{{"pnpm", "--filter", "@diffx/web", "test:browser"}, {"pnpm", "--filter", "@diffx/console", "test:browser"}}, true, true, true, false, false},
-		{"conformance", [][]string{{"pnpm", "test:conformance"}}, true, true, false, false, false},
-		{"docs", [][]string{{"mise", "run", "--force", "docs:check"}}, false, false, false, false, false},
-		{"release", [][]string{{"pnpm", "test:release"}}, false, false, false, false, false},
-		{"generated", [][]string{{"mise", "run", "generate"}, {"mise", "run", "check:exec:generated"}}, false, false, false, false, false},
-		{"desktop", [][]string{{"go", "-C", "apps/desktop", "vet", "-mod=readonly", "./..."}, {"mise", "run", desktopTask}, {"mise", "run", "test:exec:desktop:release"}}, true, false, false, false, true},
-		{Name: "desktop-window", Commands: [][]string{{"mise", "run", "test:exec:desktop:window"}}, Build: true, Desktop: true},
-		{Name: "desktop-package", Commands: [][]string{{"mise", "run", "test:exec:desktop:package"}}, Build: true, Desktop: true},
+		{"static", [][]string{{"mise", "run", "check:exec:static"}, {"mise", "run", "check:format:go"}, {"mise", "run", "check:boundaries"}, {"mise", "run", "check:design"}, {"mise", "run", "check:artifacts"}}, false, false, false, true, false, ""},
+		{"contracts", [][]string{{"mise", "run", "check:exec:contracts"}}, true, false, false, false, false, "built-docs"},
+		{"go", [][]string{{"go", "vet", "./..."}, {"mise", "run", goTask}}, true, true, false, false, false, "built"},
+		{"unit", [][]string{{"pnpm", "--filter", "@diffx/review-app", "test:unit"}, {"pnpm", "--filter", "@diffx/desktop", "test:unit"}, {"pnpm", "--filter", "@diffx/web", "test:unit"}, {"pnpm", "--filter", "@diffx/console", "test:dom"}, {"pnpm", "--recursive", "--filter", "@diffx/plugin-*", "test"}}, false, false, false, false, false, "source"},
+		{"browser", [][]string{{"pnpm", "--filter", "@diffx/web", "test:browser"}, {"pnpm", "--filter", "@diffx/console", "test:browser"}}, true, true, true, false, false, "built"},
+		{"conformance", [][]string{{"pnpm", "test:conformance"}}, true, true, false, false, false, "built"},
+		{"docs", [][]string{{"mise", "run", "--force", "docs:check"}}, false, false, false, false, false, "site"},
+		{"release", [][]string{{"pnpm", "test:release"}}, false, false, false, false, false, "source"},
+		{"generated", [][]string{{"mise", "run", "generate"}, {"mise", "run", "check:exec:generated"}}, false, false, false, false, false, "source"},
+		{"desktop", [][]string{{"go", "-C", "apps/desktop", "vet", "-mod=readonly", "./..."}, {"mise", "run", desktopTask}, {"mise", "run", "test:exec:desktop:release"}}, true, false, false, false, true, "desktop"},
+		{Name: "desktop-window", Commands: [][]string{{"mise", "run", "test:exec:desktop:window"}}, Build: true, Desktop: true, Target: "desktop"},
+		{Name: "desktop-package", Commands: [][]string{{"mise", "run", "test:exec:desktop:package"}}, Build: true, Desktop: true, Target: "desktop-docs"},
 	}
 }
 

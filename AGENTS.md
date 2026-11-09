@@ -30,12 +30,12 @@ modules. Run `desktop:stage` before raw desktop Go builds/tests.
   - Web/console browser: `mise run check:browser`
   - API contract: `mise run check:conformance`; boundaries and design tokens: `mise run check:contracts`
   - Docs site: `mise run check:docs`
-- `mise run check` validates working-file snapshots: static checks run on the host; tests and their services run in isolated Linux containers. Public mise test tasks route through Dagger. package.json scripts only wrap JS tooling and never call mise; they and hidden `*:exec:*` mise tasks are raw execution commands, not public test entry points.
+- `mise run check` validates working-file snapshots: static checks run on the host; tests and their services run in isolated Linux containers. Public mise test tasks route through per-run Docker Compose projects built from `tools/check-runner/Dockerfile`. package.json scripts only wrap JS tooling and never call mise; they and hidden `*:exec:*` mise tasks are raw execution commands, not public test entry points.
 - Development, formatting, format verification, lint, type checking and read-only architecture guards stay on the host. Static aggregate checks use a private temporary snapshot and dependencies, without Docker. Go vet stays with Go tests because it requires embedded build assets.
 - Before creating or updating a PR, commit changes and run `mise run check:pr` on clean HEAD. Matching successful group results are reused; use `mise run check:pr --force` to execute checks again.
 - Run long checks in the background and wait for their completion notification; never poll logs or `sleep`.
 - Keep all checks and test suites local through explicit PR validation. GitHub Actions publishes edge and stable releases; it does not validate PRs. Release compilation and checksums remain in publishing workflows.
-- Use only the explicitly managed `diffx-validation-engine-v0.21.11` engine. Run `mise run check:engine:setup` once. Never stop, restart, remove or prune another task's engine or volumes; cancellation closes only this invocation's session. Keep `DAGGER_LEAVE_OLD_ENGINE=true` and never fall back to automatic provisioning.
+- Container checks need Docker with Compose v2 and Buildx. Each run removes only its own `diffx-check-s<slot>-*` projects and tags. Never run broad Docker prune commands or remove other worktrees' or repositories' containers, images or volumes.
 - Never commit application binaries or web build outputs. `mise run check:artifacts`, included in static validation, rejects tracked build outputs. Built plugin distributions and generated API/SQL source remain committed. Run `mise run web:stage` and `mise run console:stage` (or `mise run build`) before Go builds/tests. Publishing stages embedded assets only in its workspace and tags `main` directly; it creates no asset commits.
 - See `docs/development.md` (commands), `docs/validation.md` and `docs/release.md` for workflows.
 

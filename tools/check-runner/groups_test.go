@@ -44,7 +44,7 @@ func TestGroupFingerprintInputsAndHistory(t *testing.T) {
 	if err != nil || baseline != afterDocs {
 		t.Fatalf("docs/history invalidated Go: %v", err)
 	}
-	for _, name := range []string{"internal/review/change.go", "pnpm-lock.yaml", "mise.toml", "apps/desktop/go.mod", "apps/desktop/go.sum", "apps/desktop/mygo.json", "apps/desktop/src/main.tsx", "apps/desktop/vite.config.ts", "packages/review-app/src/DiffWorkspace.tsx", "packages/review-app/package.json", "unknown-contract.txt"} {
+	for _, name := range []string{"internal/review/change.go", "pnpm-lock.yaml", "mise.toml", "apps/desktop/go.mod", "apps/desktop/go.sum", "apps/desktop/mygo.json", "apps/desktop/src/main.tsx", "apps/desktop/vite.config.ts", "packages/review-app/src/DiffWorkspace.tsx", "packages/review-app/package.json", "unknown-contract.txt", "tools/check-runner/Dockerfile", "tools/check-runner/compose.yaml"} {
 		snapshotTestWrite(t, root, name, "changed")
 		next, err := groupFingerprint(root, goGroup)
 		if err != nil || next == baseline {
