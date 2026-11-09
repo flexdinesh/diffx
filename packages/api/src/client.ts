@@ -76,11 +76,13 @@ export function readBootstrap(value: unknown): ApiBootstrap {
     typeof value.googleEnabled !== "boolean" ||
     typeof value.signupEnabled !== "boolean" ||
     typeof value.passwordSignupEnabled !== "boolean" ||
-    typeof value.publicPullRequests !== "boolean"
+    typeof value.publicPullRequests !== "boolean" ||
+    typeof value.githubEnabled !== "boolean"
   )
     throw new Error("Invalid server identity response");
   const methods = {
     publicPullRequests: value.publicPullRequests,
+    githubEnabled: value.githubEnabled,
     googleEnabled: value.googleEnabled,
     signupEnabled: value.signupEnabled,
     passwordSignupEnabled: value.passwordSignupEnabled,

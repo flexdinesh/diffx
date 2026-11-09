@@ -509,7 +509,8 @@ function FollowedRepositories({
       </h3>
       <p className={prose}>
         Follow repositories to review their open pull requests, drafts included.
-        Closed and merged pull requests leave the Reviews column.
+        Closed and merged pull requests leave the Reviews column unless you show
+        them from its Review list view menu.
       </p>
       {error && (
         <ErrorState

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { save, saved } from "@diffx/ui/lib/storage";
-import type { StreamGroupMode } from "./project-nav.ts";
+import type { PullRequestFilter, StreamGroupMode } from "./project-nav.ts";
 
 /** The desktop review column: a repository rail or the stream list. */
 export type StreamColumnState = "rail" | "list";
@@ -18,12 +18,19 @@ export function useStreamNav() {
   const [group, setGroup] = useState<StreamGroupMode>(() =>
     saved("streams-group") === "recent" ? "recent" : "repo",
   );
+  const [pullFilter, setPullFilter] = useState<PullRequestFilter>(() => {
+    const value = saved("streams-pr-filter");
+    return value === "merged" || value === "all" ? value : "open";
+  });
   useEffect(() => {
     save("streams-column", state);
   }, [state]);
   useEffect(() => {
     save("streams-group", group);
   }, [group]);
+  useEffect(() => {
+    save("streams-pr-filter", pullFilter);
+  }, [pullFilter]);
   useEffect(() => {
     save("streams-width", String(width));
     document.documentElement.style.setProperty("--streams-width", `${width}px`);
@@ -35,6 +42,9 @@ export function useStreamNav() {
     width,
     group,
     setGroup,
+    /** Which pull requests the column lists while the server has GitHub. */
+    pullFilter,
+    setPullFilter,
     expand,
     collapse,
     /** `reserved` is the file sidebar's width, kept beside a 320px diff. */

@@ -186,7 +186,7 @@ func TestBootstrapRoundTrips(t *testing.T) {
 			if user != "null" {
 				token = `"csrf-token"`
 			}
-			fixture := `{"mode":"remote","googleEnabled":true,"signupEnabled":false,"passwordSignupEnabled":true,"publicPullRequests":false,"user":` + user + `,"csrfToken":` + token + `}`
+			fixture := `{"mode":"remote","googleEnabled":true,"signupEnabled":false,"passwordSignupEnabled":true,"publicPullRequests":false,"githubEnabled":false,"user":` + user + `,"csrfToken":` + token + `}`
 			remote := roundTrip[goclient.Bootstrap1](t, "Bootstrap", fixture)
 			if remote.User.IsNull() != (user == "null") || remote.CsrfToken.IsNull() != (token == "null") {
 				t.Fatal("remote nullable fields lost null/value distinction")

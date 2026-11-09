@@ -337,9 +337,23 @@ such detail into a token. New layout spacing must use the scale.
   auto-collapse.
   Its header matches the compact sidebar tabs and display toolbar and holds the
   title (UI label size, medium, secondary text) and ghost actions: “Review list
-  view” (Group by repo / Recent first, persisted, default by repo) and
+  view” (“Show reviews”: Group by repo / Recent first, persisted, default by
+  repo; with the server's GitHub integration, a separator and “Pull requests”:
+  Open / Merged / All, persisted, default Open) and
   “Collapse reviews” on desktop or “Close reviews” in the drawer. Selecting a
   stream loads its diff and keeps the column and file sidebar open.
+  With GitHub (bootstrap `githubEnabled`) the body splits into
+  `collapsible-section`s, “Pull requests” then “From your machines”, each
+  collapsing per browser; the first has no top border under the panel header.
+  The pull request header shows the active filter as muted text. The filter
+  narrows only that section: Open lists current pull requests, Merged only
+  merged ones, All every state; machine streams are never filtered. Grouping
+  applies within each section. An empty pull request section reads, muted and
+  indented like rows, “No open pull requests. Follow repositories in
+  Settings.” (linking to Settings › GitHub), “No merged pull requests.” or “No
+  pull requests.”; an empty machine section reads “Agent hooks and diffx sync
+  publish changed checkouts here.” Without GitHub there are no section headers
+  or filter, and the column lists current work as one list.
   A repository row is a `disclosure-row`: its chevron alone collapses or
   expands the group; its name (“Open latest in {repo}”) opens the repository's
   most active stream and expands the group.
@@ -348,10 +362,12 @@ such detail into a token. New layout spacing must use the scale.
   identity ties. Recent first is one flat activity-ordered list labeling each
   row with its repository. Rows retain compact tree density,
   truncation, ages and metadata.
-  Show only current heads with changes; closed and merged GitHub pull requests
-  are not current. A pull request row shows a pull request (or draft) icon
-  labeled for assistive technology, `#N title`, and “GitHub · @author” first in
-  its metadata. The current stream uses `--accent-bg`,
+  Show heads with changes; closed and merged GitHub pull requests are not
+  current and show only through the pull request filter. A pull request row
+  shows a pull request, draft, merged (git-merge) or closed icon labeled for
+  assistive technology and muted like other row icons, `#N title`, and
+  “GitHub · @author” first in its metadata, with “Draft”, “Merged” or “Closed”
+  after “GitHub”. The current stream uses `--accent-bg`,
   accent text and `aria-current="page"`. Unopened arrivals show a small accent
   dot labeled “New changes”; collapsed repositories carry their streams' dots.
   Repository collapse state persists per browser.
@@ -359,8 +375,9 @@ such detail into a token. New layout spacing must use the scale.
   to `--topbar-height` (36px; 44px for coarse pointers). Items match header icon
   buttons (32px desktop, 44px touch) with the header's inset. “Expand reviews”
   centers in a square head cell whose bottom border continues the neighboring
-  panel header's, then one `rail` button per repository showing a
-  two-letter monogram, an accent dot for unopened streams, and
+  panel header's, then one `rail` button per repository with any stream the
+  column lists in either section (pull request filter applied; no sections)
+  showing a two-letter monogram, an accent dot for unopened streams, and
   `aria-current="true"` with accent text on `--selected` for the open review's
   repository. A mark (“Open latest in {repo}”) opens that repository's most
   active stream; the rail stays collapsed.
@@ -660,9 +677,12 @@ at `/design.html` (see `docs/frontend.md`).
   repositories”; “Filter branches, worktrees, sessions…”), then the matching
   rows; the first match is highlighted so typing and Enter switch, and an
   empty filter result says so. The repository combobox opens a repository's
-  most active stream; the branch combobox lists the open repository's streams
+  most active stream; both list what the column lists, pull request filter
+  applied. The branch combobox lists the open repository's streams
   with new marks, counts and metadata, matching every word against branch,
-  worktree, host and sessions. Both focus the column's current stream after
+  worktree, host and sessions; when it has both pull request and machine
+  rows they group under “Pull requests” and “From your machines” labels
+  styled like dropdown labels, otherwise the list is flat. Both focus the column's current stream after
   switching. Worktree stays static.
   A capture uses static text: a terminal icon, “Piped”, and collection time;
   omit repository, branch, worktree, and directory identity.

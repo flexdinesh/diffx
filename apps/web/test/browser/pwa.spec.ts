@@ -10,6 +10,7 @@ async function remote(page: Page) {
       json: {
         mode: "remote",
         publicPullRequests: false,
+        githubEnabled: false,
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,

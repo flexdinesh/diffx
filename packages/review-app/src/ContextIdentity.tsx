@@ -5,8 +5,11 @@ import { CountBadge } from "@diffx/ui/components/count-badge";
 import { Button } from "@diffx/ui/components/ui/button";
 import {
   Combobox,
+  ComboboxCollection,
   ComboboxContent,
   ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxGroupLabel,
   ComboboxItem,
   ComboboxList,
   ComboboxSearch,
@@ -21,6 +24,7 @@ import {
   contextTimestampLabel,
 } from "./project-picker.ts";
 import {
+  branchSections,
   latestStream,
   projectGroups,
   projectKey,
@@ -31,8 +35,14 @@ import {
   streamTitle,
   type ProjectGroup,
   type ProjectStream,
+  type StreamSection,
 } from "./project-nav.ts";
-import { NewMark, StreamIcon, useNow } from "./ProjectsNav.tsx";
+import {
+  NewMark,
+  StreamIcon,
+  useNow,
+  usePullRequestFilter,
+} from "./ProjectsNav.tsx";
 import { useCatalog } from "./session-context.tsx";
 import { useShellPolicy } from "./use-shell-policy.ts";
 
@@ -76,12 +86,15 @@ export function ContextIdentity({ current }: { current: ApiContext }) {
 
 function ContextSwitcher({ current }: { current: ApiContext }) {
   const { heads, seen, openStream } = useCatalog();
+  const pulls = usePullRequestFilter();
   const now = useNow();
-  const groups = projectGroups(heads.contexts, seen);
+  const groups = projectGroups(heads.contexts, seen, pulls ?? "open");
   const repository = groups.find((group) => group.id === projectKey(current));
   const stream = repository?.streams.find(
     (candidate) => candidate.id === streamKey(current),
   );
+  const sections =
+    pulls && repository ? branchSections(repository.streams) : null;
   return (
     <>
       <Combobox
@@ -131,7 +144,7 @@ function ContextSwitcher({ current }: { current: ApiContext }) {
       </span>
       {repository ? (
         <Combobox
-          items={repository.streams}
+          items={sections ?? repository.streams}
           value={stream ?? null}
           autoHighlight
           isItemEqualToValue={(item, value) => item.id === value.id}
@@ -168,14 +181,30 @@ function ContextSwitcher({ current }: { current: ApiContext }) {
             />
             <ComboboxEmpty>No matching branches</ComboboxEmpty>
             <ComboboxList aria-label={`${repository.name} branches`}>
-              {(item: ProjectStream) => (
-                <BranchItem
-                  key={item.id}
-                  item={item}
-                  multipleHosts={repository.multipleHosts}
-                  now={now}
-                />
-              )}
+              {sections
+                ? (section: StreamSection) => (
+                    <ComboboxGroup key={section.value} items={section.items}>
+                      <ComboboxGroupLabel>{section.value}</ComboboxGroupLabel>
+                      <ComboboxCollection>
+                        {(item: ProjectStream) => (
+                          <BranchItem
+                            key={item.id}
+                            item={item}
+                            multipleHosts={repository.multipleHosts}
+                            now={now}
+                          />
+                        )}
+                      </ComboboxCollection>
+                    </ComboboxGroup>
+                  )
+                : (item: ProjectStream) => (
+                    <BranchItem
+                      key={item.id}
+                      item={item}
+                      multipleHosts={repository.multipleHosts}
+                      now={now}
+                    />
+                  )}
             </ComboboxList>
           </ComboboxContent>
         </Combobox>

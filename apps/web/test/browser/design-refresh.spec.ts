@@ -195,6 +195,7 @@ test("Diffx themes put context code on the shell surface; palettes keep theirs",
       json: {
         mode: "remote",
         publicPullRequests: false,
+        githubEnabled: false,
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,

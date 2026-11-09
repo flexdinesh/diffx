@@ -23,6 +23,7 @@ const inputs: ("checkout" | "checkouts")[] = ["checkout", "checkouts"];
 const remote: ApiBootstrap = {
   mode: "remote",
   publicPullRequests: false,
+  githubEnabled: false,
   googleEnabled: false,
   signupEnabled: false,
   passwordSignupEnabled: false,
@@ -37,6 +38,7 @@ test("shell policy follows what the server serves", () => {
     collection: "checkout",
     reviewMarks: true,
     serverStatus: true,
+    pullRequests: false,
   });
   assert.deepEqual(shellPolicy(local("checkouts")), {
     reviewNavigation: true,
@@ -44,6 +46,7 @@ test("shell policy follows what the server serves", () => {
     collection: "checkouts",
     reviewMarks: true,
     serverStatus: true,
+    pullRequests: false,
   });
   assert.deepEqual(shellPolicy(local("capture")), {
     reviewNavigation: false,
@@ -51,6 +54,7 @@ test("shell policy follows what the server serves", () => {
     collection: null,
     reviewMarks: true,
     serverStatus: true,
+    pullRequests: false,
   });
   assert.deepEqual(shellPolicy(remote), {
     reviewNavigation: true,
@@ -58,6 +62,7 @@ test("shell policy follows what the server serves", () => {
     collection: null,
     reviewMarks: true,
     serverStatus: true,
+    pullRequests: false,
   });
 });
 
@@ -69,6 +74,7 @@ test("a public preview is one read-only snapshot without review navigation", () 
     collection: null,
     reviewMarks: false,
     serverStatus: false,
+    pullRequests: false,
   });
   assert.equal(showsReviewColumn(visitor, 3), false);
   const member = publicPreviewPolicy({
@@ -78,6 +84,20 @@ test("a public preview is one read-only snapshot without review navigation", () 
   });
   assert.equal(member.serverStatus, true);
   assert.equal(member.reviewMarks, false);
+  assert.equal(
+    publicPreviewPolicy({ ...remote, githubEnabled: true }).pullRequests,
+    false,
+  );
+});
+
+test("the pull request section follows the server's GitHub integration", () => {
+  assert.equal(shellPolicy(remote).pullRequests, false);
+  assert.equal(
+    shellPolicy({ ...remote, githubEnabled: true }).pullRequests,
+    true,
+  );
+  for (const input of inputs)
+    assert.equal(shellPolicy(local(input)).pullRequests, false);
 });
 
 test("a local review column waits for a second review; remote always shows", () => {

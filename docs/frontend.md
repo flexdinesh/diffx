@@ -90,9 +90,13 @@ across scopes. Context selection uses the Reviews column and rail
 (`ProjectsNav.tsx`), the header repository and branch comboboxes
 (`ContextIdentity.tsx`) and the popup picker (Cmd/Ctrl+K or the header's
 “Search reviews” magnifier); `project-nav.ts` owns their grouping, ordering,
-latest-stream and branch-filter rules. Selecting a stream keeps the column and
-file sidebar open. `use-stream-nav.ts`, provided by `stream-nav-context.tsx`,
-owns the column's rail/list state, width and grouping. `shell-policy.ts`
+latest-stream, pull request filter, section and branch-filter rules. Selecting
+a stream keeps the column and file sidebar open. `use-stream-nav.ts`, provided
+by `stream-nav-context.tsx`, owns the column's rail/list state, width,
+grouping and pull request filter (`streams-pr-filter`, default open).
+The shell policy's `pullRequests`, from bootstrap `githubEnabled`, enables
+the filter and the column's “Pull requests” / “From your machines” sections;
+`streamCount` and so local column visibility count current work only. `shell-policy.ts`
 resolves review navigation once from the bootstrap (`input: "capture"` hides
 all of it) and `use-shell-policy.ts` reads it; components read that policy,
 never the deployment mode. The policy's `reviewColumn` is `always` remotely and
@@ -133,7 +137,9 @@ header share one per-browser seen-state owner; first visits baseline existing
 heads and unchanged submissions do not create unread prompts. Activity ordering
 uses catalog `lastChangedAt`, falling back to captured collection time, with
 stable stream/context identity ties. Repositories use their most active visible
-stream. Startup and root selection follow the same ordering. Collection triggers
+stream. Startup and root selection follow the same ordering; the root
+(`defaultContext`) prefers current work and opens a closed or merged pull
+request only when nothing current changed. Collection triggers
 are unchanged; no periodic collection or Git watcher is scheduled.
 The “Switch review” picker first selects a repository,
 then an immutable observation. Repository observations retain branch,
@@ -166,8 +172,9 @@ navigation. Filter selections persist while navigating and reopening the picker.
 Switching disposes the previous workspace's request ownership and resets transient
 state.
 GitHub pull request streams read `observation.pullRequest`, which the server
-projects from the stream head: `project-nav.ts` owns their title, metadata and
-the rule that closed and merged pull requests leave current work;
+projects from the stream head: `project-nav.ts` owns their title, metadata,
+the rule that closed and merged pull requests leave current work and the
+filter that shows them;
 `PullRequestBanner.tsx` renders the banner; `account-github.tsx` owns Connect,
 follows, per-repository notification bells and Resync in Settings and renders
 nothing when `GET /api/v2/github/connection` returns 404.
