@@ -53,6 +53,12 @@ function useAppearanceState(mobile: boolean) {
     root.dataset.theme = theme;
     if (palette) root.dataset.palette = palette;
     else delete root.dataset.palette;
+    // The iOS status bar and browser chrome continue the header's canvas.
+    const themeColor = document.querySelector('meta[name="theme-color"]');
+    const canvas = getComputedStyle(root)
+      .getPropertyValue("--shell-canvas")
+      .trim();
+    if (themeColor && canvas) themeColor.setAttribute("content", canvas);
   }, [theme, palette]);
   useEffect(() => {
     save(THEME_STORAGE_KEY, themePreference);

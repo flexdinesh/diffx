@@ -34,6 +34,7 @@ export function DiffComparison() {
           <Button
             variant="ghost"
             size="inline"
+            touch
             className="min-w-0 shrink justify-start"
           />
         }
@@ -51,7 +52,7 @@ export function DiffComparison() {
             <PopoverTitle>Diff comparison</PopoverTitle>
             <PopoverClose
               render={
-                <IconButton size="icon-xs" label="Close diff comparison">
+                <IconButton size="icon-xs" touch label="Close diff comparison">
                   <XIcon aria-hidden="true" />
                 </IconButton>
               }

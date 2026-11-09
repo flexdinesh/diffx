@@ -73,7 +73,7 @@ export function ServerStatus() {
         aria-label={`Server status: ${label}`}
         openOnHover
         delay={150}
-        render={<Button variant="ghost" size="icon-xs" />}
+        render={<Button variant="ghost" size="icon-xs" touch />}
       >
         <StatusIcon health={health} />
       </PopoverTrigger>

@@ -103,9 +103,10 @@
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-3);
-  min-height: var(--statusbar-height);
-  /* Settings keeps the bar's height; wrapped text relies on the row gap. */
-  padding: 0 var(--diff-gutter);
+  min-height: calc(var(--statusbar-height) + var(--safe-bottom));
+  /* Settings keeps the bar's height; wrapped text relies on the row gap.
+     The panel extends under the home indicator; its content stays above it. */
+  padding: 0 var(--diff-gutter) var(--safe-bottom);
   border-top: 1px solid var(--border-muted);
   background: var(--panel);
 }
@@ -181,7 +182,19 @@
     display: none;
   }
 }
+/* Touch status bars match the header's 44px rows, above the home indicator. */
+@media (max-width: 767px), (pointer: coarse) {
+  .loading-status {
+    min-height: calc(var(--touch-target) + var(--safe-bottom));
+  }
+}
 @media (max-width: 767px) {
+  .loading-status {
+    --icon-base: var(--icon-chrome-touch);
+  }
+  .loading-status h1 {
+    font-size: var(--text-sm);
+  }
   .loading-toolbar {
     height: var(--topbar-height);
     gap: var(--space-3);

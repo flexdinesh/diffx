@@ -1,9 +1,12 @@
 /* Signed-out marketing home (Landing.tsx): the diffx world in a Persuade
    register. One boxed column: hairline sides, a hairline under every band. */
 
+/* Safe-area padding keeps the top bar below the iOS status bar and the footer
+   above the home indicator; the surface fills the insets. */
 .landing {
   height: 100dvh;
   overflow-y: auto;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
   background: var(--landing-surface);
 }
 .landing-box {
