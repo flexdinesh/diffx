@@ -533,8 +533,13 @@ func viewerRequest(ctx context.Context, s status, method, route string, body any
 // ready opens the review from the Review bench at `/`, as a reader would,
 // then waits for Pierre to render it.
 func (w *window) ready() {
+	// A review opened before reads as viewed, so the bench may be caught up;
+	// All open still lists it.
 	const row = `document.querySelector('main[aria-labelledby="bench-title"] li a[href]')`
-	w.wait("shared bench or review rendered in WebKit", `!!document.querySelector('#viewer diffs-container') || !!`+row)
+	const showAll = `Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='Show all open')`
+	w.wait("shared bench or review rendered in WebKit", `!!document.querySelector('#viewer diffs-container') || !!`+row+` || !!`+showAll)
+	w.eval(`(()=>{if (!document.querySelector('#viewer') && !`+row+`) `+showAll+`?.click(); return true})()`, nil)
+	w.wait("shared bench row or review rendered in WebKit", `!!document.querySelector('#viewer diffs-container') || !!`+row)
 	w.eval(`(()=>{const row=`+row+`; if (row && !document.querySelector('#viewer')) row.click(); return true})()`, nil)
 	w.wait("shared review rendered in WebKit", `document.querySelector('#viewer diffs-container')`)
 	w.wait("Pierre shadow DOM has measured highlighted lines", `Array.from(document.querySelectorAll('diffs-container')).some(e=>e.shadowRoot && e.shadowRoot.querySelector('[data-line]') && e.getBoundingClientRect().height>0)`)

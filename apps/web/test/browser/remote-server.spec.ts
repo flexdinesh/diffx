@@ -175,6 +175,11 @@ test("a signed-up user syncs a checkout and reviews it on a Postgres server", as
         .getByLabel("Password", { exact: true })
         .fill(account.password);
       await fresh.getByRole("button", { name: "Sign in", exact: true }).click();
+      // A new browser has not opened it: the review is new on the bench.
+      await fresh
+        .getByRole("list", { name: "New and updated" })
+        .getByRole("link")
+        .click();
       await expectStoredReview(fresh);
     } finally {
       await context.close();
