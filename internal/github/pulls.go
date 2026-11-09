@@ -27,6 +27,9 @@ type Repository struct {
 	InstallationID int64
 	Visibility     string
 	Size           int64
+	// PullRequestsDisabled is set when the repository turned pull requests
+	// off; GitHub then answers 404 for its pull requests.
+	PullRequestsDisabled bool
 }
 
 type Ref struct {
@@ -68,11 +71,14 @@ type repositoryJSON struct {
 	Private    bool   `json:"private"`
 	Visibility string `json:"visibility"`
 	Size       int64  `json:"size"`
+	// HasPullRequests is absent from older payloads, which means enabled.
+	HasPullRequests *bool `json:"has_pull_requests"`
 }
 
 func (repository repositoryJSON) repository(installationID int64) Repository {
 	return Repository{ID: repository.ID, FullName: repository.FullName, CloneURL: repository.CloneURL,
-		Private: repository.Private, InstallationID: installationID}
+		Private: repository.Private, InstallationID: installationID,
+		PullRequestsDisabled: repository.HasPullRequests != nil && !*repository.HasPullRequests}
 }
 
 // Repository reads a repository with credential. GitHub answers 404 for

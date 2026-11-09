@@ -382,6 +382,14 @@ test("followed repositories toggle with CSRF, resync, and lost access stays list
             followed: true,
             lost: true,
           },
+          {
+            id: 12,
+            fullName: "octo/dotfiles",
+            private: false,
+            followed: true,
+            lost: false,
+            pullRequests: false,
+          },
         ],
       },
     }),
@@ -402,11 +410,15 @@ test("followed repositories toggle with CSRF, resync, and lost access stays list
   });
   await page.goto("/settings/github");
   await expect(page.getByText("Connected as @alice-gh.")).toBeVisible();
-  await expect(page.getByText("1 repository available.")).toBeVisible();
+  await expect(page.getByText("2 repositories available.")).toBeVisible();
   const app = page.getByRole("checkbox", { name: "octo/app" });
   await expect(app).not.toBeChecked();
   await expect(page.getByRole("img", { name: "Private" })).toBeVisible();
   await expect(page.getByText("Access lost")).toBeVisible();
+  await expect(page.getByText("Pull requests off")).toHaveCount(1);
+  await expect(
+    page.getByRole("checkbox", { name: "octo/dotfiles" }),
+  ).toBeChecked();
   await app.click();
   await expect(app).toBeChecked();
   await expect(page.getByText("Following octo/app.")).toBeVisible();

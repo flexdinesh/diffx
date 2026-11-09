@@ -755,6 +755,9 @@ at `/design.html` (see `docs/frontend.md`).
   owner/repo”, Bell when pressed (accent toggle state) and BellOff when muted.
   It updates optimistically and rolls back with an error on failure. Row labels
   match the bell's height so rows keep one rhythm, 52px on touch.
+- A repository row shows warning “Access lost” for a lost follow, or muted
+  “Pull requests off” (screen readers also hear that they appear once turned
+  on) when GitHub has pull requests turned off; it stays followable.
 - Notifications is scoped to this device first, then other devices, with at
   most one primary action. Prose names what notifies (a followed pull request
   opening or getting new commits) and points to GitHub when nothing is

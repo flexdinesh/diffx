@@ -1292,6 +1292,9 @@ type GitHubRepository struct {
 	// Notify Whether new pull request diffs from this followed repository send push notifications. True unless muted; false when not followed.
 	Notify  bool `json:"notify"`
 	Private bool `json:"private"`
+
+	// PullRequests False when the repository turned pull requests off on GitHub. It can still be followed; its pull requests appear once they are turned on. True for lost follows.
+	PullRequests bool `json:"pullRequests"`
 }
 
 // IngestionCommit defines model for IngestionCommit.

@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -100,8 +101,14 @@ func TestGitHubConnectFollowAndWebhookBoundaries(t *testing.T) {
 	cookie, csrf := memberSession(t, store, "user")
 
 	body := `{"action":"opened","number":1,"installation":{"id":5},"repository":{"id":10,"full_name":"octo/app"}}`
+	var logs syncBuffer
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
 	if code := webhook(handler, "d1", "sha256=00", body); code != 401 {
 		t.Fatalf("forged webhook: %d", code)
+	}
+	if got := logs.String(); !strings.Contains(got, `rejected signature for event "pull_request" delivery "d1"`) || strings.Contains(got, "sha256") {
+		t.Fatalf("rejected delivery log %q", got)
 	}
 	if code := webhook(handler, "d1", signed(body), body); code != 202 {
 		t.Fatalf("signed webhook without diffx credentials: %d", code)

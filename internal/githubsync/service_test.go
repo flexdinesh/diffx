@@ -26,8 +26,12 @@ type fakeGitHub struct {
 	refreshes    int
 	refreshError error
 	listings     int
-	pulls        map[int]github.PullRequest
-	tokens       []tokenGrant
+	// openErr fails a repository's open pull request listing; openListed
+	// records each listed repository.
+	openErr    map[string]error
+	openListed []string
+	pulls      map[int]github.PullRequest
+	tokens     []tokenGrant
 	// public repositories by full name; pullReads records each pull
 	// request read's installation.
 	public    map[string]github.Repository
@@ -101,6 +105,12 @@ func (f *fakeGitHub) UserRepositories(_ context.Context, token string) ([]github
 	return slices.Clone(f.repositories[token]), nil
 }
 func (f *fakeGitHub) OpenPullRequests(_ context.Context, _ int64, fullName string) ([]github.PullRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.openListed = append(f.openListed, fullName)
+	if err := f.openErr[fullName]; err != nil {
+		return nil, err
+	}
 	return f.open[fullName], nil
 }
 
@@ -471,6 +481,64 @@ func TestReconcileRecoversMissedClosesAndResyncExtendsRetention(t *testing.T) {
 	_, again := f.log.take()
 	if again[0] == runs[0] {
 		t.Fatal("each resync needs a fresh retention run")
+	}
+}
+
+func TestPullRequestsOffIsNotAnError(t *testing.T) {
+	f := newFixture(t)
+	dotfiles := github.Repository{ID: 12, FullName: "octo/dotfiles", InstallationID: 5}
+	f.github.repositories["access-alice"] = []github.Repository{appRepo, dotfiles}
+	f.github.open["octo/dotfiles"] = []github.PullRequest{{Number: 7}}
+	f.connect(t, f.alice, "alice")
+	if err := f.service.Follow(t.Context(), f.alice, dotfiles.ID); err != nil {
+		t.Fatal(err)
+	}
+	refs, _ := f.log.take()
+	if len(refs) != 1 || refs[0].Number != 7 {
+		t.Fatalf("open pull request not requested: %+v", refs)
+	}
+	// The owner turns pull requests off: GitHub answers 404 for the list.
+	dotfiles.PullRequestsDisabled = true
+	f.github.repositories["access-alice"] = []github.Repository{appRepo, dotfiles}
+	f.github.openErr = map[string]error{"octo/dotfiles": &github.Error{Status: 404, Message: "Not Found"}}
+	f.github.openListed = nil
+	repositories, err := f.service.Repositories(t.Context(), f.alice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, repository := range repositories {
+		if repository.PullRequests != (repository.ID != dotfiles.ID) {
+			t.Fatalf("pull requests flag %+v", repository)
+		}
+	}
+	if err := f.service.Resync(t.Context(), f.alice); err != nil {
+		t.Fatalf("resync failed on a repository with pull requests off: %v", err)
+	}
+	if err := f.service.Reconcile(t.Context()); err != nil {
+		t.Fatalf("reconcile failed on a repository with pull requests off: %v", err)
+	}
+	if slices.Contains(f.github.openListed, "octo/dotfiles") {
+		t.Fatalf("listed pull requests of a repository with them off: %v", f.github.openListed)
+	}
+	// Known-open pull requests are refreshed so their leases record them closed.
+	refs, _ = f.log.take()
+	if len(refs) != 2 || refs[0].Number != 7 || refs[1].Number != 7 {
+		t.Fatalf("known-open pull request not refreshed: %+v", refs)
+	}
+	// A 404 before the flag catches up is not an error either.
+	dotfiles.PullRequestsDisabled = false
+	f.github.repositories["access-alice"] = []github.Repository{appRepo, dotfiles}
+	if err := f.service.Resync(t.Context(), f.alice); err != nil {
+		t.Fatalf("resync failed on a 404 listing: %v", err)
+	}
+	refs, _ = f.log.take()
+	if len(refs) != 1 || refs[0].Number != 7 {
+		t.Fatalf("known-open pull request not refreshed after 404: %+v", refs)
+	}
+	// Other failures still report.
+	f.github.openErr["octo/dotfiles"] = &github.Error{Status: 502, Message: "Bad Gateway"}
+	if err := f.service.Resync(t.Context(), f.alice); err == nil {
+		t.Fatal("resync hid a GitHub failure")
 	}
 }
 

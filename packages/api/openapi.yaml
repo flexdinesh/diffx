@@ -2221,7 +2221,7 @@ components:
     GitHubRepository:
       type: object
       additionalProperties: false
-      required: [id, fullName, private, followed, lost, notify]
+      required: [id, fullName, private, followed, lost, notify, pullRequests]
       properties:
         id:
           type: integer
@@ -2238,6 +2238,9 @@ components:
         notify:
           type: boolean
           description: Whether new pull request diffs from this followed repository send push notifications. True unless muted; false when not followed.
+        pullRequests:
+          type: boolean
+          description: False when the repository turned pull requests off on GitHub. It can still be followed; its pull requests appear once they are turned on. True for lost follows.
     PushSettings:
       type: object
       additionalProperties: false
