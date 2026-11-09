@@ -115,8 +115,12 @@ test("a signed-up user syncs a checkout and reviews it on a Postgres server", as
       },
     });
 
-    // The synced snapshot opens as the only review.
+    // The synced snapshot is new on the bench; opening it shows its diff.
     await page.getByRole("button", { name: "Reviews", exact: true }).click();
+    await page
+      .getByRole("list", { name: "New and updated" })
+      .getByRole("link")
+      .click();
     const file = page
       .locator("#viewer diffs-container")
       .filter({ hasText: "value.txt" });

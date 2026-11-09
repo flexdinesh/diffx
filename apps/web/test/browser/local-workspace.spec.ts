@@ -1811,11 +1811,15 @@ test("local first launch shows the bench collecting, then its checkouts", async 
       .evaluate((element) => getComputedStyle(element).animationName),
   ).toBe("none");
   await page.setViewportSize({ width: 390, height: 844 });
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
+  // Phones drop the facets and peek before anything is measured.
+  await expect(
+    page.getByRole("navigation", { name: "Review views" }),
+  ).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    )
+    .toBe(true);
   await page.setViewportSize({ width: 1280, height: 720 });
   await expect(
     page.getByRole("heading", { name: "No review contexts yet" }),
