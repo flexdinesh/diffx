@@ -133,10 +133,13 @@ const SessionContext = createContext<ApiContext | null>(null);
 const SessionShellContext = createContext<SessionShellState | null>(null);
 
 /** Focuses the opened review's file sidebar toggle. */
-/** Focus lands on the open review's branch switcher, its header identity. */
+/**
+ * Focus lands on the open review's branch switcher, or compact chrome's title
+ * menu: its header identity.
+ */
 function focusCurrentReview() {
   const stream = document.querySelector<HTMLElement>(
-    ".topbar button.context-identity-stream",
+    ".topbar button:is(.context-identity-stream, .context-identity-title)",
   );
   const target = stream?.getClientRects().length
     ? stream

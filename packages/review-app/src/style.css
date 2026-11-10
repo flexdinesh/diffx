@@ -440,9 +440,16 @@ main {
   .brand {
     font-size: var(--text-md);
   }
-  .topbar .header-divider,
-  .topbar .brand {
-    display: none;
+  /* The 20px mark keeps a 44px home target without moving it. */
+  .topbar > .brand {
+    --brand-touch-inset: calc((var(--touch-target) - var(--icon-base)) / 2);
+    padding: var(--brand-touch-inset);
+    margin-inline: calc(-1 * var(--brand-touch-inset));
+  }
+  /* The title menu takes the room left between the lead and actions. */
+  .topbar .context-identity:has(.context-identity-title) {
+    flex: 1;
+    max-width: none;
   }
   .toolbar {
     gap: var(--space-2);
@@ -474,6 +481,39 @@ main {
 }
 .context-identity svg {
   flex-shrink: 0;
+}
+/* Compact chrome's title menu: the branch over its repository, one target. */
+.context-identity-title {
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+  text-align: start;
+}
+.context-identity-title-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: var(--leading-ui);
+}
+.context-identity-title-branch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--fg);
+  font-size: var(--text-chrome-touch);
+  font-weight: var(--weight-semibold);
+}
+.context-identity-title-repo {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-normal);
+}
+.context-identity-title-branch > span,
+.context-identity-title-repo {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .context-identity-static {
   display: inline-flex;
