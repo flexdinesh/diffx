@@ -1006,7 +1006,7 @@ function PeekBody({
       <div className="flex flex-wrap gap-2">
         <Button type="button" onClick={() => onOpen(row.context)}>
           Open review
-          <Kbd className="border-on-accent/40 text-on-accent">Enter</Kbd>
+          <Kbd>Enter</Kbd>
         </Button>
         <Button
           type="button"

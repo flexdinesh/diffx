@@ -576,7 +576,7 @@ with a semantic variant instead of overriding it.
 | Menus, popovers, tooltips              | `ui/dropdown-menu`, `ui/popover`, `ui/tooltip`                                                                                           |
 | Menu with type-to-filter rows          | `ui/combobox` (shares the `ui/dropdown-menu` surface and rows)                                                                           |
 | Group row: toggle plus its own action  | `disclosure-row` (chevron toggles; label acts)                                                                                           |
-| Keyboard hint                          | `shortcut` (formats per platform), `ui/kbd`                                                                                              |
+| Keyboard hint                          | `shortcut` (formats per platform), `ui/kbd` (solid buttons draw it in their foreground)                                                  |
 | Loading placeholder                    | `ui/skeleton` (shapes mirror real geometry)                                                                                              |
 | Divider, drawer backdrop               | `ui/separator` (`chrome` for the header), `scrim`                                                                                        |
 | Review context icon                    | `context-icon`                                                                                                                           |
