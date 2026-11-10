@@ -2774,3 +2774,63 @@ test("diff file and folder collapse state survives reload within the tab", async
     }),
   ).toBeVisible();
 });
+
+test("the narrow History filter menu opens and filters", async ({ page }) => {
+  const now = Date.now();
+  await page.route("**/api/v2/bootstrap", (route) =>
+    route.fulfill({
+      json: {
+        mode: "remote",
+        publicPullRequests: false,
+        githubEnabled: true,
+        googleEnabled: false,
+        signupEnabled: false,
+        passwordSignupEnabled: false,
+        user: { id: "account-a", email: "alice@example.com", method: "google" },
+        csrfToken: "csrf",
+      },
+    }),
+  );
+  await page.route("**/api/v2/github/history?*", (route) =>
+    route.fulfill({
+      json: {
+        connected: true,
+        login: "mona",
+        following: true,
+        retainedSince: now - 30 * 86_400_000,
+        since: now - 7 * 86_400_000,
+        until: now,
+        opened: 1,
+        merged: 0,
+        repositories: [{ fullName: "octo/app", opened: 1, merged: 0 }],
+        pullRequests: [
+          {
+            repositoryId: 1,
+            fullName: "octo/app",
+            number: 7,
+            title: "Add search",
+            url: "https://github.com/octo/app/pull/7",
+            draft: false,
+            state: "open",
+            createdAt: now - 3_600_000,
+            mergedAt: null,
+            closedAt: null,
+            opened: true,
+            merged: false,
+          },
+        ],
+        truncated: false,
+      },
+    }),
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/history");
+  await expect(page.getByRole("link", { name: /#7 Add search/ })).toBeVisible();
+  await page.getByRole("button", { name: "Filter" }).click();
+  const menu = page.getByRole("menu", { name: "Filter" });
+  await menu.getByRole("menuitemradio", { name: "Merged" }).click();
+  await expect(page).toHaveURL(/\?activity=merged$/);
+  await expect(page.getByRole("link", { name: /#7 Add search/ })).toHaveCount(
+    0,
+  );
+});

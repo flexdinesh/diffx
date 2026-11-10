@@ -24,6 +24,7 @@ import { Button } from "@diffx/ui/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -594,44 +595,48 @@ function HistoryMenus({
           }
         />
         <DropdownMenuContent align="start" aria-label="Filter pull requests">
-          <DropdownMenuLabel>Activity</DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            aria-label="Activity"
-            value={query.activity || "all"}
-            onValueChange={(next) => {
-              const activity: HistoryActivity =
-                next === "opened" || next === "merged" ? next : "";
-              onChange({ ...query, activity });
-            }}
-          >
-            <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
-            {activityFacets.map((facet) => (
-              <DropdownMenuRadioItem key={facet.value} value={facet.value}>
-                {facet.label}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>Activity</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              aria-label="Activity"
+              value={query.activity || "all"}
+              onValueChange={(next) => {
+                const activity: HistoryActivity =
+                  next === "opened" || next === "merged" ? next : "";
+                onChange({ ...query, activity });
+              }}
+            >
+              <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
+              {activityFacets.map((facet) => (
+                <DropdownMenuRadioItem key={facet.value} value={facet.value}>
+                  {facet.label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuGroup>
           {data && data.repositories.length > 0 && (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel>Repositories</DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                aria-label="Repository"
-                value={query.repo || "all"}
-                onValueChange={(next) =>
-                  onChange({ ...query, repo: next === "all" ? "" : next })
-                }
-              >
-                <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
-                {data.repositories.map((repository) => (
-                  <DropdownMenuRadioItem
-                    key={repository.fullName}
-                    value={repository.fullName}
-                  >
-                    {repository.fullName}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Repositories</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  aria-label="Repository"
+                  value={query.repo || "all"}
+                  onValueChange={(next) =>
+                    onChange({ ...query, repo: next === "all" ? "" : next })
+                  }
+                >
+                  <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
+                  {data.repositories.map((repository) => (
+                    <DropdownMenuRadioItem
+                      key={repository.fullName}
+                      value={repository.fullName}
+                    >
+                      {repository.fullName}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuGroup>
             </>
           )}
         </DropdownMenuContent>
