@@ -643,6 +643,7 @@ function BenchRowLink({
   const source = benchSource(context);
   return (
     <ListRow
+      variant="table"
       className="bench-row"
       render={<a ref={linkRef} href={streamPath(context)} />}
       aria-current={selected ? "true" : undefined}

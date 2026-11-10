@@ -350,7 +350,9 @@ such detail into a token. New layout spacing must use the scale.
   (“Closed” in that view). Rows are `ListRow` links at tree density on one
   grid: unread dot, stream icon, title (semibold while unread; mono for
   branches), mono repository, source (“GitHub · @author”, or harness and
-  host), state, file count and age. One row is selected (`aria-current`,
+  host), state, file count and age; rows (`ListRow`'s `table` variant) and
+  column headers end at the sections' 16px inset, so age aligns with “Mark all
+  viewed”. One row is selected (`aria-current`,
   roving tab stop) and takes focus on load; ↑/↓/Home/End move it, Enter opens
   the review, Space toggles the peek, Esc closes it, Alt+Shift+V/U mark it.
   While the peek shows, a click selects and previews a row, and a double click

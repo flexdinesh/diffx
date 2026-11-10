@@ -37,6 +37,26 @@ async function changedCheckout(home: string) {
   return root;
 }
 
+/** Row ages end at the section header's inset, aligned with its action. */
+async function expectBenchRightInset(page: Page) {
+  const section = page.getByRole("region", { name: "New and updated" });
+  const header = section.locator(".bench-section");
+  const action = header.getByRole("button", { name: "Mark all viewed" });
+  const row = section.getByRole("link").first();
+  const age = row.locator(":scope > :last-child");
+  await expect(age).toBeVisible();
+  const [headerBox, actionBox, rowBox, ageBox] = await Promise.all(
+    [header, action, row, age].map((locator) => locator.boundingBox()),
+  );
+  if (!headerBox || !actionBox || !rowBox || !ageBox)
+    throw new Error("Missing bench geometry");
+  const rowInset = rowBox.x + rowBox.width - (ageBox.x + ageBox.width);
+  const headerInset =
+    headerBox.x + headerBox.width - (actionBox.x + actionBox.width);
+  expect(rowInset).toBeCloseTo(16, 0);
+  expect(rowInset).toBeCloseTo(headerInset, 0);
+}
+
 async function createCollectorToken(page: Page) {
   await page.getByRole("button", { name: "Account settings" }).click();
   await page.getByRole("button", { name: "New token" }).click();
@@ -117,6 +137,11 @@ test("a signed-up user syncs a checkout and reviews it on a Postgres server", as
 
     // The synced snapshot is new on the bench; opening it shows its diff.
     await page.getByRole("button", { name: "Reviews", exact: true }).click();
+    await expectBenchRightInset(page);
+    const viewport = page.viewportSize();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectBenchRightInset(page);
+    if (viewport) await page.setViewportSize(viewport);
     await page
       .getByRole("list", { name: "New and updated" })
       .getByRole("link")

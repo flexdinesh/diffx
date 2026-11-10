@@ -18,6 +18,9 @@ const listRowVariants = cva(
         // leading/trailing icons; touch-height rows on coarse pointers.
         option:
           "gap-2 px-3 py-1.5 text-base max-md:px-2 pointer-coarse:min-h-touch [&>svg]:text-muted",
+        // Table rows (review bench): tree density, trailing cells end at the
+        // 16px section inset while fills still run edge to edge.
+        table: "pe-4",
       },
     },
     defaultVariants: { font: "sans", variant: "default" },
