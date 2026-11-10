@@ -42,12 +42,6 @@ export function useSidebar() {
     save("sidebar-width", String(width));
     document.documentElement.style.setProperty("--sidebar-width", `${width}px`);
   }, [width]);
-  useEffect(
-    () => () => {
-      document.body.classList.remove("resizing-sidebar");
-    },
-    [],
-  );
   const show = useCallback(() => {
     if (mobile) setDrawer("files");
     else setCollapsed(false);

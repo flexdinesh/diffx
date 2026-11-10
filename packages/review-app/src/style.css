@@ -654,10 +654,14 @@ main {
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
 }
+/* The peek gives way so the review table keeps at least 30rem. */
 .bench-peek {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 0 0 var(--bench-peek-width);
+  min-width: 320px;
+  max-width: max(320px, calc(100% - var(--bench-facets-width) - 30rem));
   min-height: 0;
   background: var(--panel);
   border-left: 1px solid var(--border);
