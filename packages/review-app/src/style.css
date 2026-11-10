@@ -623,7 +623,8 @@ main {
   font-weight: var(--weight-semibold);
 }
 /* Rows (ListRow keeps its own density) and the column header share one grid:
-   mark, icon, review, repository, source, state, files, activity. */
+   mark, icon, review, repository, source, state, files, activity. Both end at
+   the section header's 16px inset (ListRow's table variant for rows). */
 .bench-row {
   display: grid;
   grid-template-columns:
@@ -634,7 +635,7 @@ main {
 }
 .bench-columns {
   min-height: var(--control-small);
-  padding-inline: var(--space-1);
+  padding-inline: var(--space-1) var(--space-4);
   border-bottom: 1px solid var(--border-muted);
   color: var(--muted);
   font-size: var(--text-xs);
