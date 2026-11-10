@@ -1510,6 +1510,16 @@ test("the bench lists current changed streams, opens them and takes the reader b
     0,
   );
   await expect(table.getByRole("button", { name: "All open" })).toBeVisible();
+  // Choosing a view closes the menu.
+  await table.getByRole("button", { name: "All open" }).click();
+  const viewMenu = page.getByRole("menu");
+  await viewMenu.getByRole("menuitemradio", { name: /Closed/ }).click();
+  await expect(page).toHaveURL(/\/\?view=closed$/);
+  await expect(viewMenu).toBeHidden();
+  await table.getByRole("button", { name: "Closed" }).click();
+  await viewMenu.getByRole("menuitemradio", { name: /All open/ }).click();
+  await expect(page).toHaveURL(/\/\?view=open$/);
+  await expect(viewMenu).toBeHidden();
   await rows.filter({ hasText: "feat/rate-limit" }).click();
   await expect(page).toHaveURL(/\/streams\/stream-feat%2Frate-limit$/);
   await expect(back).toBeVisible();

@@ -603,7 +603,11 @@ function ViewMenu({
           }}
         >
           {benchViews.map((view) => (
-            <DropdownMenuRadioItem key={view.value} value={view.value}>
+            <DropdownMenuRadioItem
+              key={view.value}
+              value={view.value}
+              closeOnClick
+            >
               {view.label} ({counts[view.value]})
             </DropdownMenuRadioItem>
           ))}
