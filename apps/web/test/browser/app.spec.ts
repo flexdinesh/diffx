@@ -1826,6 +1826,70 @@ test("a capture shows only its diff: no review navigation, search or switcher", 
   ).toHaveCount(0);
 });
 
+/** The mark and divider lead the header; the mark keeps a 44px home target. */
+async function expectMobileBrand(page: Page) {
+  const banner = page.getByRole("banner");
+  const home = banner.getByRole("link", { name: "diffx home" });
+  await expect(home).toBeVisible();
+  await expect(banner.locator(".header-divider")).toBeVisible();
+  const box = await home.boundingBox();
+  expect(box?.width).toBe(44);
+  expect(box?.height).toBe(44);
+}
+
+test("mobile headers keep the brand and a review title menu", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.locator("#file-count")).not.toHaveText("0");
+  await expectMobileBrand(page);
+
+  await withReviewNavigation(page);
+  await page.goto("/?view=open");
+  await expect(
+    page.getByRole("banner").getByRole("heading", { name: "Reviews" }),
+  ).toBeVisible();
+  await expectMobileBrand(page);
+
+  await openFixtureReview(page);
+  await expectMobileBrand(page);
+  const banner = page.getByRole("banner");
+  // Repository and branch become one title that opens the review picker.
+  await expect(banner.getByRole("combobox")).toHaveCount(0);
+  const title = banner.getByRole("button", { name: /\. Switch review$/ });
+  await expect(title).toBeVisible();
+  await expect(title).toHaveAttribute("aria-haspopup", "dialog");
+  await expect(title.locator(".context-identity-title-repo")).toHaveText(
+    "Piped",
+  );
+  const titleBox = await title.boundingBox();
+  expect(titleBox?.height).toBe(44);
+  await title.click();
+  const picker = page.getByRole("dialog", { name: "Switch review" });
+  await expect(picker).toBeVisible();
+  await picker.getByRole("combobox", { name: "Search reviews" }).press("Enter");
+  await expect(picker).toBeHidden();
+  await expect(title).toBeFocused();
+
+  // The narrowest phone fits every control without overflow.
+  await page.setViewportSize({ width: 320, height: 640 });
+  const fit = await page.evaluate(() => {
+    const topbar = document.querySelector<HTMLElement>(".topbar");
+    const titleMenu = document.querySelector(".context-identity-title");
+    const search = document.querySelector("#reviews-search");
+    if (!topbar || !titleMenu || !search) throw new Error("Missing header");
+    return {
+      overflow: topbar.scrollWidth - topbar.clientWidth,
+      gap:
+        search.getBoundingClientRect().left -
+        titleMenu.getBoundingClientRect().right,
+    };
+  });
+  expect(fit.overflow).toBe(0);
+  expect(fit.gap).toBeGreaterThanOrEqual(0);
+});
+
 test("header icons use design-system sizes and the active tab fuses with its panel", async ({
   page,
 }) => {

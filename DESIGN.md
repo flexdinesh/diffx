@@ -322,7 +322,8 @@ such detail into a token. New layout spacing must use the scale.
 - Header text uses cap-height trimming with token padding to center UI and
   monospace labels without clipping ascenders or descenders.
 - Header lead: the brand mark, without the product name, and divider identify the
-  app; the link's accessible name is “diffx home”. The file-sidebar toggle
+  app in every layout; the link's accessible name is “diffx home”. Below 768px
+  the mark keeps a 44px target without moving. The file-sidebar toggle
   leads the review toolbar. A review's header then shows the Reviews
   breadcrumb before its identity. “Search reviews” (magnifier, Cmd/Ctrl+K)
   leads the header's trailing actions in every layout and opens the review
@@ -686,8 +687,12 @@ at `/design.html` (see `docs/frontend.md`).
 - The header identifies the open review after the brand divider at control
   height as two ghost `ui/combobox` triggers, repo ▾ / branch ▾: a semibold
   repository name with repository icon, then a quieter branch. Give the
-  repository name priority when long context labels truncate; hide the
-  chevrons below 768px. Each opens a `--surface-raised` popup matching
+  repository name priority when long context labels truncate. Below 768px
+  they become one ghost title menu filling the header's free width: the
+  semibold `--text-chrome-touch` branch with a chevron over the muted
+  `--text-sm` repository, each truncating to one line, at the 44px touch
+  height. It opens “Switch review”, which switches repository and branch
+  together. Each combobox opens a `--surface-raised` popup matching
   `ui/dropdown-menu` with a focused filter field on top (“Filter
   repositories”; “Filter branches, worktrees, sessions…”), then the matching
   rows; the first match is highlighted so typing and Enter switch, and an
@@ -1010,7 +1015,8 @@ Do not add motion for decoration. New animation must honor
 - Keep comparison and desktop layout choice visible. View options and collapse/expand
   all are adjacent icon buttons with action titles. Put wrap, inline detail,
   code theme, and narrow layout choice in View options.
-- Mobile retains the review identity's repository/branch or Piped/time context; truncate long
+- Mobile retains the brand mark and divider, and the review identity's
+  repository/branch, as the title menu, or Piped/time context; truncate long
   labels and hide its shortcut hint. Hide the secondary heading/path and refresh
   text, preserving accessible labels and sidebar controls.
   Keep the linked-worktree icon visible when its text label is hidden.

@@ -40,15 +40,18 @@ import {
 import { benchState, needsAttention } from "./review-bench.ts";
 import { NewMark, StreamIcon, useNow } from "./StreamParts.tsx";
 import { useCatalog } from "./session-context.tsx";
+import { useSidebarState } from "./sidebar-context.tsx";
+import { useCompactChrome } from "./use-compact-chrome.ts";
 import { useShellPolicy } from "./use-shell-policy.ts";
 
 /**
  * The open review's repository, branch and worktree. With review navigation,
- * repository and branch are comboboxes that filter and switch current streams;
- * a capture shows its fixed piped identity.
+ * repository and branch are comboboxes that filter and switch current streams,
+ * or one title menu in compact chrome; a capture shows its fixed piped identity.
  */
 export function ContextIdentity({ current }: { current: ApiContext }) {
   const { reviewNavigation } = useShellPolicy();
+  const compact = useCompactChrome();
   return (
     <div className="context-identity" title={contextDiagnostics(current)}>
       {!reviewNavigation ? (
@@ -59,6 +62,8 @@ export function ContextIdentity({ current }: { current: ApiContext }) {
             · {contextTimestampLabel(current)}
           </span>
         </span>
+      ) : compact ? (
+        <ContextTitleMenu current={current} />
       ) : (
         <ContextSwitcher current={current} />
       )}
@@ -77,6 +82,39 @@ export function ContextIdentity({ current }: { current: ApiContext }) {
         </span>
       )}
     </div>
+  );
+}
+
+/**
+ * Compact chrome's identity: the branch over its repository as one title that
+ * opens the review picker, which switches repository and branch together.
+ */
+function ContextTitleMenu({ current }: { current: ApiContext }) {
+  const { openPicker } = useCatalog();
+  const { closeMobile } = useSidebarState();
+  const detail = contextDetail(current);
+  return (
+    <Button
+      type="button"
+      variant="shell"
+      size="sm"
+      touch
+      className="context-identity-title"
+      aria-haspopup="dialog"
+      aria-label={`Branch ${detail} in ${current.name}. Switch review`}
+      onClick={() => {
+        closeMobile();
+        openPicker();
+      }}
+    >
+      <span className="context-identity-title-text">
+        <span className="context-identity-title-branch">
+          <span>{detail}</span>
+          <ChevronDownIcon className="text-muted" aria-hidden="true" />
+        </span>
+        <span className="context-identity-title-repo">{current.name}</span>
+      </span>
+    </Button>
   );
 }
 
