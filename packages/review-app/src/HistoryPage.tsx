@@ -578,7 +578,11 @@ function HistoryMenus({
             }}
           >
             {historyRanges.map((item) => (
-              <DropdownMenuRadioItem key={item.value} value={item.value}>
+              <DropdownMenuRadioItem
+                key={item.value}
+                value={item.value}
+                closeOnClick
+              >
                 {item.label}
               </DropdownMenuRadioItem>
             ))}

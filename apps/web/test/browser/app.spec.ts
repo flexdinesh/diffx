@@ -2833,4 +2833,14 @@ test("the narrow History filter menu opens and filters", async ({ page }) => {
   await expect(page.getByRole("link", { name: /#7 Add search/ })).toHaveCount(
     0,
   );
+  // Filter facets combine, so that menu stays open until dismissed.
+  await expect(menu).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  // A single-choice menu closes once a range is chosen.
+  await page.getByRole("button", { name: "7 days" }).click();
+  const range = page.getByRole("menu", { name: "7 days" });
+  await range.getByRole("menuitemradio", { name: "30 days" }).click();
+  await expect(page).toHaveURL(/range=30d/);
+  await expect(range).toBeHidden();
 });
