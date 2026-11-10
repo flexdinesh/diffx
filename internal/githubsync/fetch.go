@@ -84,6 +84,11 @@ func (s *Service) prepare(ctx context.Context, lease Lease, now time.Time) (*fet
 	if err != nil {
 		return nil, fmt.Errorf("read pull request %s#%d: %w", ref.FullName, ref.Number, err)
 	}
+	if followed {
+		if err := s.store.PutPullRequestHistory(ctx, historyEntry(ref, pull)); err != nil {
+			return nil, err
+		}
+	}
 	if !followed && !lease.Public {
 		return nil, s.store.CompleteRefresh(ctx, lease, pullState(pull), "", nil, now.UnixMilli())
 	}

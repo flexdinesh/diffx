@@ -191,6 +191,36 @@ func (s *GitHubStore) KnownOpen(ctx context.Context, repositoryID int64) ([]int,
 	return result, nil
 }
 
+func (s *GitHubStore) PutPullRequestHistory(ctx context.Context, entry githubsync.HistoryEntry) error {
+	return s.store.queries.PutGitHubPullRequestHistory(ctx, pgdb.PutGitHubPullRequestHistoryParams{
+		RepositoryID: entry.RepositoryID, Number: int32(entry.Number), FullName: entry.FullName, Title: entry.Title, HtmlUrl: entry.URL,
+		AuthorID: entry.AuthorID, AuthorLogin: entry.AuthorLogin, Draft: entry.Draft, State: entry.State,
+		CreatedAt: entry.CreatedAt, MergedAt: entry.MergedAt, ClosedAt: entry.ClosedAt, UpdatedAt: entry.UpdatedAt,
+	})
+}
+
+func (s *GitHubStore) PullRequestHistory(ctx context.Context, ownerID string, since, until int64, limit int) ([]githubsync.HistoryEntry, error) {
+	rows, err := s.store.queries.GitHubPullRequestHistory(ctx, pgdb.GitHubPullRequestHistoryParams{
+		OwnerID: ownerID, Since: time.UnixMilli(since), Until: time.UnixMilli(until), RowLimit: int32(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]githubsync.HistoryEntry, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, githubsync.HistoryEntry{
+			RepositoryID: row.RepositoryID, FullName: row.FullName, Number: int(row.Number), Title: row.Title, URL: row.HtmlUrl,
+			Draft: row.Draft, State: row.State, CreatedAt: row.CreatedAt, MergedAt: row.MergedAt, ClosedAt: row.ClosedAt,
+		})
+	}
+	return result, nil
+}
+
+func (s *GitHubStore) HistoryRetentionDays(ctx context.Context) (int, error) {
+	days, err := s.store.queries.HistoryRetentionDays(ctx)
+	return int(days), err
+}
+
 func (s *GitHubStore) ClaimRefresh(ctx context.Context, token string, now, leaseUntil int64) (githubsync.Lease, error) {
 	row, err := s.store.queries.ClaimGitHubRefresh(ctx, pgdb.ClaimGitHubRefreshParams{Token: token, LeaseUntil: time.UnixMilli(leaseUntil), Now: time.UnixMilli(now)})
 	if errors.Is(err, pgx.ErrNoRows) {

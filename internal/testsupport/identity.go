@@ -67,11 +67,14 @@ func Identity(t testing.TB, store identityservice.Store, options ...identityserv
 }
 
 // PutSettings stores app settings, as an admin does in the console. An unset
-// public retention stores the default day.
+// public or history retention stores its minimum.
 func PutSettings(t testing.TB, store identityservice.Store, settings identityservice.Settings) {
 	t.Helper()
 	if settings.PublicRetentionDays == 0 {
 		settings.PublicRetentionDays = identityservice.MinPublicRetentionDays
+	}
+	if settings.HistoryRetentionDays == 0 {
+		settings.HistoryRetentionDays = identityservice.MinHistoryRetentionDays
 	}
 	if err := store.PutAppSettings(t.Context(), settings, "", time.Now()); err != nil {
 		t.Fatal(err)

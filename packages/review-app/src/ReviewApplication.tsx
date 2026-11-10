@@ -42,6 +42,8 @@ import {
   type ApplicationPlatform,
 } from "./use-browser-activation.ts";
 import { isSettingsPath, settingsSection } from "./settings-layout.tsx";
+import { HistoryPage } from "./HistoryPage.tsx";
+import { historyRoute } from "./history.ts";
 import { TooltipProvider } from "@diffx/ui/components/ui/tooltip";
 
 export interface ReviewApplicationProps {
@@ -81,12 +83,16 @@ function ApplicationRoutes({ platform }: ReviewApplicationProps) {
     window.history.replaceState(null, "", canonical);
     setPath(window.location.pathname);
   }, [canonical]);
+  // History reads GitHub pull requests, so only GitHub servers offer it.
+  const history =
+    ready && state.bootstrap.mode === "remote" && state.bootstrap.githubEnabled;
   const userId = (ready && state.bootstrap.user?.id) || null;
   useBrowserActivation(platform, remote, userId);
   // Local mode has no account pages; signed-in users have no sign-in pages.
   const misplaced =
     ready &&
     ((!remote && isSettingsPath(path)) ||
+      (!history && path === historyRoute) ||
       (signedIn &&
         (path === "/signin" ||
           path === "/signup" ||
@@ -128,6 +134,7 @@ function ApplicationRoutes({ platform }: ReviewApplicationProps) {
   }
   if (isSettingsPath(path) && state.bootstrap.mode === "remote")
     return <AccountSettings section={settingsSection(path)} />;
+  if (history && path === historyRoute) return <HistoryPage />;
   return (
     <SessionProvider key={state.bootstrap.user?.id ?? "local"}>
       <SessionShell>

@@ -313,6 +313,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v2/github/history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first. The range may span at most 31 days and starts no earlier than retained history (retainedSince); one ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only. */
+    get: operations["getGitHubHistory"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v2/github/repositories": {
     parameters: {
       query?: never;
@@ -1360,6 +1377,61 @@ export interface components {
       state?: "active" | "revoked" | "expired";
       /** @description GitHub page for installing the app on more repositories. */
       installUrl: string;
+    };
+    GitHubHistory: {
+      /** @description False without a GitHub connection; history is then empty. */
+      connected: boolean;
+      /** @description The connected GitHub user's login. */
+      login?: string;
+      /** @description Whether the account actively follows any repository. */
+      following: boolean;
+      /**
+       * Format: int64
+       * @description Oldest instant history is kept for, Unix milliseconds; the admin's history retention before now.
+       */
+      retainedSince: number;
+      /**
+       * Format: int64
+       * @description Range start served, Unix milliseconds; never before retainedSince.
+       */
+      since: number;
+      /** Format: int64 */
+      until: number;
+      /** @description Pull requests opened in the range. */
+      opened: number;
+      /** @description Pull requests merged in the range. */
+      merged: number;
+      /** @description Counts per repository, most active first. */
+      repositories: components["schemas"]["GitHubHistoryRepository"][];
+      pullRequests: components["schemas"]["GitHubHistoryPullRequest"][];
+      /** @description More than 1000 pull requests matched; counts cover only those returned. */
+      truncated: boolean;
+    };
+    GitHubHistoryRepository: {
+      fullName: string;
+      opened: number;
+      merged: number;
+    };
+    GitHubHistoryPullRequest: {
+      /** Format: int64 */
+      repositoryId: number;
+      fullName: string;
+      number: number;
+      title: string;
+      url: string;
+      draft: boolean;
+      /** @enum {string} */
+      state: "open" | "closed" | "merged";
+      /** Format: int64 */
+      createdAt: number;
+      /** Format: int64 */
+      mergedAt: number | null;
+      /** Format: int64 */
+      closedAt: number | null;
+      /** @description Opened in the range. */
+      opened: boolean;
+      /** @description Merged in the range. */
+      merged: boolean;
     };
     GitHubRepository: {
       /** Format: int64 */
@@ -2499,6 +2571,35 @@ export interface operations {
         };
         content?: never;
       };
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  getGitHubHistory: {
+    parameters: {
+      query: {
+        /** @description Range start, Unix milliseconds, inclusive. */
+        since: number;
+        /** @description Range end, Unix milliseconds, exclusive. */
+        until: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Pull request history for the range. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GitHubHistory"];
+        };
+      };
+      400: components["responses"]["Problem"];
       403: components["responses"]["Problem"];
       404: components["responses"]["Problem"];
       default: components["responses"]["Problem"];

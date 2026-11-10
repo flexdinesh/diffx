@@ -33,18 +33,120 @@ const options: {
   },
 ];
 
-const retentionDays = { min: 1, max: 30 };
-const retentionInvalid = `Enter a whole number of days from ${retentionDays.min} to ${retentionDays.max}.`;
+/** A settings field holding a whole number of days within bounds. */
+type Retention = "publicRetentionDays" | "historyRetentionDays";
 
-/** The whole number of days in `value`, or null outside the allowed range. */
-function parseRetention(value: string) {
+type RetentionField = {
+  key: Retention;
+  label: string;
+  submit: string;
+  min: number;
+  max: number;
+  hint: string;
+};
+
+const publicRetention: RetentionField = {
+  key: "publicRetentionDays",
+  label: "Public retention (days)",
+  submit: "Save public retention",
+  min: 1,
+  max: 30,
+  hint: "Days a preview is kept after its last fetch. Applies to previews fetched after the change.",
+};
+
+const historyRetention: RetentionField = {
+  key: "historyRetentionDays",
+  label: "History retention (days)",
+  submit: "Save history retention",
+  min: 30,
+  max: 365,
+  hint: "Days pull request history is kept after a pull request's last event. People page back through History as far as it keeps.",
+};
+
+/** The whole number of days in `value`, or null outside `min` to `max`. */
+function parseDays(value: string, min: number, max: number) {
   const days = Number(value);
   return value.trim() !== "" &&
     Number.isInteger(days) &&
-    days >= retentionDays.min &&
-    days <= retentionDays.max
+    days >= min &&
+    days <= max
     ? days
     : null;
+}
+
+/** Edits one retention; keeps an unsaved edit across other saves. */
+function RetentionForm({
+  field,
+  saved,
+  busy,
+  onSave,
+}: {
+  field: RetentionField;
+  saved: number;
+  busy: boolean;
+  onSave: (days: number) => Promise<boolean>;
+}) {
+  // An unsaved edit; null shows the saved value.
+  const [draft, setDraft] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const invalid = `Enter a whole number of days from ${field.min} to ${field.max}.`;
+  const id = `setting-${field.key}`;
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    const days = parseDays(draft ?? String(saved), field.min, field.max);
+    if (days === null) {
+      setError(invalid);
+      return;
+    }
+    if (await onSave(days)) setDraft(null);
+  }
+  return (
+    <form className="console-form" onSubmit={(event) => void submit(event)}>
+      <label htmlFor={id}>{field.label}</label>
+      <Input
+        id={id}
+        type="number"
+        inputMode="numeric"
+        min={field.min}
+        max={field.max}
+        step={1}
+        required
+        touch
+        value={draft ?? String(saved)}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          setError("");
+        }}
+        onInvalid={() => setError(invalid)}
+        disabled={busy}
+        aria-invalid={error !== ""}
+        aria-describedby={error ? `${id}-hint ${id}-error` : `${id}-hint`}
+      />
+      <p id={`${id}-hint`} className="text-sm leading-copy text-secondary">
+        {field.hint}
+      </p>
+      {error && (
+        <p
+          id={`${id}-error`}
+          className="text-sm leading-copy text-error"
+          role="alert"
+        >
+          {error}
+        </p>
+      )}
+      <Button
+        type="submit"
+        variant="outline"
+        touch
+        className="mt-2 justify-self-start"
+        disabled={busy}
+        aria-busy={busy}
+      >
+        {field.submit}
+      </Button>
+    </form>
+  );
 }
 
 /** Loads the settings and reloads them on demand. */
@@ -76,15 +178,12 @@ function useSettings() {
   };
 }
 
-/** Who can join the diffx app, with which methods, and who can preview public pull requests. */
+/** Who can join the diffx app, with which methods, who can preview public pull requests, and how long history is kept. */
 export function Settings() {
   const { settings, setSettings, error: loadError, reload } = useSettings();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
-  // An unsaved retention edit; null shows the saved value.
-  const [retention, setRetention] = useState<string | null>(null);
-  const [retentionError, setRetentionError] = useState("");
   /** Saves every setting at once; resolves whether the server saved them. */
   async function save(next: ConsoleSettings) {
     setBusy(true);
@@ -109,23 +208,10 @@ export function Settings() {
       setBusy(false);
     }
   }
-  async function saveRetention(event: FormEvent, current: ConsoleSettings) {
-    event.preventDefault();
-    if (busy) return;
-    const days = parseRetention(
-      retention ?? String(current.publicRetentionDays),
-    );
-    if (days === null) {
-      setRetentionError(retentionInvalid);
-      return;
-    }
-    if (await save({ ...current, publicRetentionDays: days }))
-      setRetention(null);
-  }
   return (
     <Page
       title="Settings"
-      description="Who can join the diffx app, and how, and who can preview public pull requests. Changes apply at once. Invites work either way, and existing accounts keep signing in."
+      description="Who can join the diffx app, and how, who can preview public pull requests, and how long pull request history is kept. Changes apply at once. Invites work either way, and existing accounts keep signing in."
     >
       {loadError && (
         <ErrorState
@@ -169,69 +255,28 @@ export function Settings() {
               </p>
             </div>
           ))}
-          <form
-            className="console-form"
-            onSubmit={(event) => void saveRetention(event, settings)}
-          >
-            <label htmlFor="setting-publicRetentionDays">
-              Public retention (days)
-            </label>
-            <Input
-              id="setting-publicRetentionDays"
-              type="number"
-              inputMode="numeric"
-              min={retentionDays.min}
-              max={retentionDays.max}
-              step={1}
-              required
-              touch
-              value={retention ?? String(settings.publicRetentionDays)}
-              onChange={(event) => {
-                setRetention(event.target.value);
-                setRetentionError("");
-              }}
-              onInvalid={() => setRetentionError(retentionInvalid)}
-              disabled={busy}
-              aria-invalid={retentionError !== ""}
-              aria-describedby={
-                retentionError
-                  ? "setting-publicRetentionDays-hint setting-publicRetentionDays-error"
-                  : "setting-publicRetentionDays-hint"
-              }
-            />
-            <p
-              id="setting-publicRetentionDays-hint"
-              className="text-sm leading-copy text-secondary"
-            >
-              Days a preview is kept after its last fetch. Applies to previews
-              fetched after the change.
-            </p>
-            {retentionError && (
-              <p
-                id="setting-publicRetentionDays-error"
-                className="text-sm leading-copy text-error"
-                role="alert"
-              >
-                {retentionError}
-              </p>
-            )}
-            <Button
-              type="submit"
-              variant="outline"
-              touch
-              className="mt-2 justify-self-start"
-              disabled={busy}
-              aria-busy={busy}
-            >
-              Save retention
-            </Button>
-          </form>
+          <RetentionForm
+            field={publicRetention}
+            saved={settings[publicRetention.key]}
+            busy={busy}
+            onSave={(days) =>
+              save({ ...settings, [publicRetention.key]: days })
+            }
+          />
           <p className="text-sm leading-copy wrap-anywhere text-muted">
             Needs the server&apos;s GitHub App and
             DIFFX_SERVER_GITHUB_PUBLIC_INSTALLATION_ID. Without
             DIFFX_SERVER_CLIENT_IP_HEADER, fetches are limited server-wide (30
             per hour) instead of per visitor (5 per hour).
           </p>
+          <RetentionForm
+            field={historyRetention}
+            saved={settings[historyRetention.key]}
+            busy={busy}
+            onSave={(days) =>
+              save({ ...settings, [historyRetention.key]: days })
+            }
+          />
           {error && <ErrorState message={error} />}
         </div>
       )}

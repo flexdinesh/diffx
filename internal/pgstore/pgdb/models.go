@@ -39,13 +39,14 @@ type AgentSession struct {
 }
 
 type AppSetting struct {
-	Singleton           bool
-	SignupOpen          bool
-	PasswordSignup      bool
-	UpdatedAt           time.Time
-	UpdatedBy           *string
-	PublicPullRequests  bool
-	PublicRetentionDays int32
+	Singleton            bool
+	SignupOpen           bool
+	PasswordSignup       bool
+	UpdatedAt            time.Time
+	UpdatedBy            *string
+	PublicPullRequests   bool
+	PublicRetentionDays  int32
+	HistoryRetentionDays int32
 }
 
 type AuthAttempt struct {
@@ -183,6 +184,22 @@ type GithubPullRequest struct {
 	PublicHead          string
 	PublicCheckedAt     *time.Time
 	PublicPull          []byte
+}
+
+type GithubPullRequestHistory struct {
+	RepositoryID int64
+	Number       int32
+	FullName     string
+	Title        string
+	HtmlUrl      string
+	AuthorID     int64
+	AuthorLogin  string
+	Draft        bool
+	State        string
+	CreatedAt    time.Time
+	MergedAt     *time.Time
+	ClosedAt     *time.Time
+	UpdatedAt    time.Time
 }
 
 type GoogleAuthState struct {

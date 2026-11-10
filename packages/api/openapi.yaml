@@ -582,6 +582,42 @@ paths:
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v2/github/history:
+    get:
+      security:
+        - browserSession: []
+      operationId: getGitHubHistory
+      description: The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first. The range may span at most 31 days and starts no earlier than retained history (retainedSince); one ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
+      parameters:
+        - name: since
+          in: query
+          required: true
+          description: Range start, Unix milliseconds, inclusive.
+          schema:
+            type: integer
+            format: int64
+        - name: until
+          in: query
+          required: true
+          description: Range end, Unix milliseconds, exclusive.
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Pull request history for the range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubHistory"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v2/github/repositories:
     get:
       security:
@@ -2222,6 +2258,122 @@ components:
         installUrl:
           type: string
           description: GitHub page for installing the app on more repositories.
+    GitHubHistory:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          connected,
+          following,
+          retainedSince,
+          since,
+          until,
+          opened,
+          merged,
+          repositories,
+          pullRequests,
+          truncated,
+        ]
+      properties:
+        connected:
+          type: boolean
+          description: False without a GitHub connection; history is then empty.
+        login:
+          type: string
+          description: The connected GitHub user's login.
+        following:
+          type: boolean
+          description: Whether the account actively follows any repository.
+        retainedSince:
+          type: integer
+          format: int64
+          description: Oldest instant history is kept for, Unix milliseconds; the admin's history retention before now.
+        since:
+          type: integer
+          format: int64
+          description: Range start served, Unix milliseconds; never before retainedSince.
+        until:
+          type: integer
+          format: int64
+        opened:
+          type: integer
+          description: Pull requests opened in the range.
+        merged:
+          type: integer
+          description: Pull requests merged in the range.
+        repositories:
+          type: array
+          description: Counts per repository, most active first.
+          items:
+            $ref: "#/components/schemas/GitHubHistoryRepository"
+        pullRequests:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitHubHistoryPullRequest"
+        truncated:
+          type: boolean
+          description: More than 1000 pull requests matched; counts cover only those returned.
+    GitHubHistoryRepository:
+      type: object
+      additionalProperties: false
+      required: [fullName, opened, merged]
+      properties:
+        fullName:
+          type: string
+        opened:
+          type: integer
+        merged:
+          type: integer
+    GitHubHistoryPullRequest:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          repositoryId,
+          fullName,
+          number,
+          title,
+          url,
+          draft,
+          state,
+          createdAt,
+          mergedAt,
+          closedAt,
+          opened,
+          merged,
+        ]
+      properties:
+        repositoryId:
+          type: integer
+          format: int64
+        fullName:
+          type: string
+        number:
+          type: integer
+        title:
+          type: string
+        url:
+          type: string
+        draft:
+          type: boolean
+        state:
+          type: string
+          enum: [open, closed, merged]
+        createdAt:
+          type: integer
+          format: int64
+        mergedAt:
+          type: [integer, "null"]
+          format: int64
+        closedAt:
+          type: [integer, "null"]
+          format: int64
+        opened:
+          type: boolean
+          description: Opened in the range.
+        merged:
+          type: boolean
+          description: Merged in the range.
     GitHubRepository:
       type: object
       additionalProperties: false

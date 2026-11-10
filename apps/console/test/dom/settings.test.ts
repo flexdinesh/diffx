@@ -18,6 +18,7 @@ const loaded = {
   passwordSignup: false,
   publicPullRequests: false,
   publicRetentionDays: 7,
+  historyRetentionDays: 90,
 };
 
 function serveSettings(save: (body: unknown) => Response) {
@@ -37,12 +38,12 @@ function checked(name: string) {
   return screen.getByRole("checkbox", { name }).getAttribute("aria-checked");
 }
 
-function retention() {
-  return screen.getByRole("spinbutton", { name: "Public retention (days)" });
+function retention(name = "Public retention (days)") {
+  return screen.getByRole("spinbutton", { name });
 }
 
-function retentionValue() {
-  const input = retention();
+function retentionValue(name?: string) {
+  const input = retention(name);
   return input instanceof HTMLInputElement ? input.value : null;
 }
 
@@ -66,7 +67,7 @@ test("settings load and each toggle saves every value", async () => {
     screen.getByRole("checkbox", { name: "Public pull requests" }),
   );
   await waitFor(() => assert.equal(checked("Public pull requests"), "true"));
-  const rest = { publicRetentionDays: 7 };
+  const rest = { publicRetentionDays: 7, historyRetentionDays: 90 };
   assert.deepEqual(saved, [
     {
       body: {
@@ -105,7 +106,9 @@ test("saving retention sends every value and shows the saved days", async () => 
 
   for (const days of [1, 30]) {
     fireEvent.change(retention(), { target: { value: String(days) } });
-    fireEvent.click(screen.getByRole("button", { name: "Save retention" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save public retention" }),
+    );
     await waitFor(() => assert.equal(saved.length, days === 1 ? 1 : 2));
     await screen.findByText("Settings saved.");
     assert.equal(retentionValue(), String(days));
@@ -129,7 +132,9 @@ test("retention outside 1 to 30 days is refused before saving", async () => {
   for (const value of ["0", "31", "2.5", ""]) {
     fireEvent.change(retention(), { target: { value } });
     assert.equal(retention().getAttribute("aria-invalid"), "false");
-    fireEvent.click(screen.getByRole("button", { name: "Save retention" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save public retention" }),
+    );
     const alert = await screen.findByText(message);
     assert.equal(retention().getAttribute("aria-invalid"), "true");
     assert.ok(
@@ -171,6 +176,7 @@ test("settings show the saved values the server returns", async () => {
       passwordSignup: false,
       publicPullRequests: true,
       publicRetentionDays: 3,
+      historyRetentionDays: 365,
     }),
   );
   renderPage(createElement(Settings));
@@ -182,6 +188,38 @@ test("settings show the saved values the server returns", async () => {
   assert.equal(checked("Password signup"), "false");
   assert.equal(checked("Public pull requests"), "true");
   assert.equal(retentionValue(), "3");
+  assert.equal(retentionValue("History retention (days)"), "365");
+});
+
+test("history retention saves 30 to 365 days and refuses others", async () => {
+  const saved = serveSettings((body) => json(body));
+  renderPage(createElement(Settings));
+  const name = "History retention (days)";
+  await screen.findByRole("spinbutton", { name });
+  assert.equal(retentionValue(name), "90");
+  const message = "Enter a whole number of days from 30 to 365.";
+  for (const value of ["29", "366", ""]) {
+    fireEvent.change(retention(name), { target: { value } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save history retention" }),
+    );
+    await screen.findByText(message);
+    assert.equal(retention(name).getAttribute("aria-invalid"), "true");
+  }
+  assert.equal(saved.length, 0);
+  fireEvent.change(retention(name), { target: { value: "365" } });
+  assert.equal(screen.queryByText(message), null);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Save history retention" }),
+  );
+  await screen.findByText("Settings saved.");
+  assert.equal(retentionValue(name), "365");
+  // The public retention form is untouched by the history form's error.
+  assert.equal(retention().getAttribute("aria-invalid"), "false");
+  assert.deepEqual(
+    saved.map((entry) => entry.body),
+    [{ ...loaded, historyRetentionDays: 365 }],
+  );
 });
 
 test("a failed save keeps the previous value and explains why", async () => {

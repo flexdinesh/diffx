@@ -421,6 +421,21 @@ test("without pull requests the bench points to following repositories", async (
   );
 });
 
+test("GitHub servers link the bench to History", async () => {
+  serve([local], true);
+  mount();
+  await list("New and updated");
+  assert.equal(
+    screen.getByRole("link", { name: "History" }).getAttribute("href"),
+    "/history",
+  );
+  cleanup();
+  serve([local], false);
+  mount();
+  await list("New and updated");
+  assert.equal(screen.queryByRole("link", { name: "History" }), null);
+});
+
 test("the branch switcher groups by section only when both list rows", async () => {
   serve([local, open, merged], true);
   window.history.replaceState(null, "", "/contexts/local");

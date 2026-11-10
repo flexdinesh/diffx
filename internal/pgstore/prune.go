@@ -14,7 +14,8 @@ const (
 )
 
 // PruneExpired removes expired observations with every scope and commit diff,
-// ends streams without observations, and drops finished integration records.
+// ends streams without observations, and drops finished integration records
+// and pull request history past its retention.
 // It returns without pruning while another replica's pass holds the prune
 // lock; reads enforce expiry, so skipping only defers removal.
 func (store *Store) PruneExpired(now time.Time) error {
@@ -47,6 +48,9 @@ func (store *Store) PruneExpired(now time.Time) error {
 			return err
 		}
 		if err := queries.PruneGitHubDeliveries(ctx, now.Add(-deliveryRetention)); err != nil {
+			return err
+		}
+		if err := queries.PruneGitHubPullRequestHistory(ctx, now); err != nil {
 			return err
 		}
 		return queries.PruneFinishedNotifications(ctx, now.Add(-finishedNotificationRetention))

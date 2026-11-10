@@ -44,6 +44,17 @@ func (q *Queries) PruneExpiredObservationDiffs(ctx context.Context, expiresAt *t
 	return err
 }
 
+const pruneGitHubPullRequestHistory = `-- name: PruneGitHubPullRequestHistory :exec
+DELETE FROM github_pull_request_history
+WHERE GREATEST(created_at, merged_at, closed_at) + (SELECT history_retention_days FROM app_settings) * interval '1 day' < $1
+`
+
+// History is kept for the admin's retention after a pull request's last event.
+func (q *Queries) PruneGitHubPullRequestHistory(ctx context.Context, now time.Time) error {
+	_, err := q.db.Exec(ctx, pruneGitHubPullRequestHistory, now)
+	return err
+}
+
 const tryPruneLock = `-- name: TryPruneLock :one
 SELECT pg_try_advisory_xact_lock($1::bigint)
 `

@@ -691,7 +691,7 @@ func TestSettingsDefaultOnAndAnnounceChanges(t *testing.T) {
 	t.Parallel()
 	store, service, _ := identityStore(t)
 	ctx := context.Background()
-	if got := service.Settings(); got != (identityservice.Settings{Signup: true, PasswordSignup: true, PublicRetentionDays: 1}) {
+	if got := service.Settings(); got != (identityservice.Settings{Signup: true, PasswordSignup: true, PublicRetentionDays: 1, HistoryRetentionDays: 30}) {
 		t.Fatalf("default settings: %+v", got)
 	}
 	if got := identityservice.New(store).Settings(); got != (identityservice.Settings{}) {
@@ -717,7 +717,12 @@ func TestSettingsDefaultOnAndAnnounceChanges(t *testing.T) {
 	if err := service.PutSettings(ctx, admin.Account.ID, identityservice.Settings{PublicRetentionDays: 31}); !errors.Is(err, identityservice.ErrInvalidSettings) {
 		t.Fatalf("public retention over 30 days: %v", err)
 	}
-	want := identityservice.Settings{PasswordSignup: true, PublicPullRequests: true, PublicRetentionDays: 30}
+	for _, days := range []int{29, 366} {
+		if err := service.PutSettings(ctx, admin.Account.ID, identityservice.Settings{PublicRetentionDays: 1, HistoryRetentionDays: days}); !errors.Is(err, identityservice.ErrInvalidHistoryRetention) {
+			t.Fatalf("history retention of %d days: %v", days, err)
+		}
+	}
+	want := identityservice.Settings{PasswordSignup: true, PublicPullRequests: true, PublicRetentionDays: 30, HistoryRetentionDays: 365}
 	if err := service.PutSettings(ctx, admin.Account.ID, want); err != nil {
 		t.Fatal(err)
 	}

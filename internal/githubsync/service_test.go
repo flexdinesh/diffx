@@ -30,8 +30,12 @@ type fakeGitHub struct {
 	// records each listed repository.
 	openErr    map[string]error
 	openListed []string
-	pulls      map[int]github.PullRequest
-	tokens     []tokenGrant
+	// closed lists closed pull requests by repository; closedSince records
+	// each closed listing's cutoff.
+	closed      map[string][]github.PullRequest
+	closedSince []time.Time
+	pulls       map[int]github.PullRequest
+	tokens      []tokenGrant
 	// public repositories by full name; pullReads records each pull
 	// request read's installation.
 	public    map[string]github.Repository
@@ -112,6 +116,19 @@ func (f *fakeGitHub) OpenPullRequests(_ context.Context, _ int64, fullName strin
 		return nil, err
 	}
 	return f.open[fullName], nil
+}
+
+func (f *fakeGitHub) ClosedPullRequests(_ context.Context, _ int64, fullName string, since time.Time) ([]github.PullRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closedSince = append(f.closedSince, since)
+	var result []github.PullRequest
+	for _, pull := range f.closed[fullName] {
+		if !pull.UpdatedAt.Before(since) {
+			result = append(result, pull)
+		}
+	}
+	return result, nil
 }
 
 // credentialKey names a read's credential: "installation:N", "user:TOKEN"

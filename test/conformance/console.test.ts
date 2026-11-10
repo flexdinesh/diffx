@@ -191,6 +191,7 @@ test("The console administers the server's accounts over one database", async (t
     passwordSignup: true,
     publicPullRequests: false,
     publicRetentionDays: 1,
+    historyRetentionDays: 30,
   });
   const closed = await console.PUT("/api/v1/settings", {
     headers: admin,
@@ -199,6 +200,7 @@ test("The console administers the server's accounts over one database", async (t
       passwordSignup: true,
       publicPullRequests: false,
       publicRetentionDays: 1,
+      historyRetentionDays: 30,
     },
   });
   assert.equal(closed.response.status, 200);
