@@ -49,18 +49,21 @@ export function ComparisonPicker() {
   return (
     <>
       {lone ? (
-        <span className="px-2 text-sm text-secondary">{selected}</span>
+        <span className="comparison-picker truncate px-2 text-sm text-secondary">
+          {selected}
+        </span>
       ) : (
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
               <Button
+                className="comparison-picker"
                 variant="outline-muted"
                 size="xs"
                 touch
                 aria-label={`Comparison: ${selected}`}
               >
-                {selected}
+                <span className="truncate">{selected}</span>
                 <ChevronDownIcon aria-hidden="true" />
               </Button>
             }

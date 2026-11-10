@@ -566,7 +566,7 @@ test("comment navigation changes scope and clears filters after previews load", 
     .click();
   await expect(
     page.locator(
-      "#viewer [data-additions] [data-line][data-comment-navigation-target]",
+      "#viewer [data-additions] [data-line][data-line-navigation-target]",
     ),
   ).toHaveCount(1);
   await ready(page, "staged-v1");
@@ -2602,19 +2602,22 @@ test("commits step read-only through the branch and link back to its changes", a
     page.getByRole("button", { name: /^Diff comparison:/ }),
   ).toContainText("a100000^ → a100000");
 
+  // Alt+[ / Alt+] step changes; Alt+Shift+[ / Alt+Shift+] step commits.
   await page.keyboard.press("Alt+BracketRight");
+  await expect(stepper).toHaveAccessibleName("Commit 1 of 3: Add value parser");
+  await page.keyboard.press("Alt+Shift+BracketRight");
   await expect(stepper).toHaveAccessibleName(
     "Commit 2 of 3: Merge main into feature",
   );
   await expect(
     page.getByRole("heading", { name: "Merge commit", exact: true }),
   ).toBeVisible();
-  await page.keyboard.press("Alt+BracketRight");
+  await page.keyboard.press("Alt+Shift+BracketRight");
   await ready(page, "commit-c3");
   await expect(
     page.getByRole("button", { name: "Newer commit" }),
   ).toBeDisabled();
-  await page.keyboard.press("Alt+BracketRight");
+  await page.keyboard.press("Alt+Shift+BracketRight");
   await expect(page.locator("#comment-feedback")).toHaveText(
     "This is the newest commit.",
   );
