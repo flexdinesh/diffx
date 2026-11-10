@@ -14,7 +14,9 @@ every current stream and **Closed** merged or closed pull requests and stale
 branches. Drafts wait under All open until they are ready. On a first visit,
 work idle for a day counts as already seen. Filter by repository or agent,
 or type to search. Move with ↑ and ↓, press Space to peek at a review's size,
-progress and description without opening it, and Enter to open it. **Mark all
+progress and description without opening it, and Enter to open it. While the
+peek shows, a click previews a review and a double click opens it; drag the
+peek's edge to resize it. Without the peek, a click opens. **Mark all
 viewed** clears Needs attention; Alt+Shift+V and Alt+Shift+U mark the selected
 review viewed or unread. Views and filters stay in the address, so you can
 bookmark them.

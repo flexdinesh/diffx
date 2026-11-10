@@ -7,8 +7,9 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        // Solid fills carry keyboard hints in their own foreground.
         default:
-          "bg-accent text-on-accent hover:bg-accent-hover active:bg-accent-hover",
+          "bg-accent text-on-accent hover:bg-accent-hover active:bg-accent-hover [&_[data-slot=kbd]]:border-current/40 [&_[data-slot=kbd]]:text-current",
         outline:
           "border-control bg-bg text-fg hover:bg-hover data-popup-open:bg-hover",
         "outline-muted":
@@ -28,7 +29,7 @@ const buttonVariants = cva(
         subtle: "text-muted hover:bg-hover hover:text-fg",
         destructive: "text-error hover:bg-hover data-popup-open:bg-hover",
         "destructive-solid":
-          "bg-error text-on-accent hover:bg-error-hover active:bg-error-hover",
+          "bg-error text-on-accent hover:bg-error-hover active:bg-error-hover [&_[data-slot=kbd]]:border-current/40 [&_[data-slot=kbd]]:text-current",
         link: "text-accent underline-offset-(--space-1) hover:underline",
       },
       size: {

@@ -302,6 +302,77 @@ test("the peek shows a review's size, progress and where it changes", async () =
   assert.equal(localStorage.getItem("bench-peek"), "false");
 });
 
+test("with the peek a click previews a row; a double click opens it", async () => {
+  serve([local, open], true);
+  window.history.replaceState(null, "", "/?view=open");
+  mount();
+  const peek = await screen.findByRole("complementary", { name: "Peek" });
+  const second = within(await list("Everything else")).getByRole("link", {
+    name: /#7 Open work/,
+  });
+  fireEvent.click(second, { detail: 1 });
+  await within(peek).findByRole("heading", { name: "#7 Open work" });
+  assert.equal(second.getAttribute("aria-current"), "true");
+  assert.equal(window.location.pathname, "/");
+  fireEvent.click(second, { detail: 2 });
+  await waitFor(() =>
+    assert.equal(window.location.pathname, "/streams/stream-open"),
+  );
+});
+
+test("without the peek a click opens the row", async () => {
+  serve([local, open], true);
+  localStorage.setItem("bench-peek", "false");
+  window.history.replaceState(null, "", "/?view=open");
+  mount();
+  const second = within(await list("Everything else")).getByRole("link", {
+    name: /#7 Open work/,
+  });
+  assert.equal(screen.queryByRole("complementary", { name: "Peek" }), null);
+  fireEvent.click(second, { detail: 1 });
+  await waitFor(() =>
+    assert.equal(window.location.pathname, "/streams/stream-open"),
+  );
+});
+
+test("the peek resizes from its left edge, persists and resets", async () => {
+  const innerWidth = window.innerWidth;
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: 1600,
+  });
+  try {
+    serve([local, open], true);
+    localStorage.setItem("bench-peek-width", "9000");
+    mount();
+    const peek = await screen.findByRole("complementary", { name: "Peek" });
+    const handle = within(peek).getByRole("separator", { name: "Resize peek" });
+    assert.equal(handle.getAttribute("aria-valuenow"), "400");
+    // The handle sits on the left edge: moving it left widens the peek.
+    fireEvent.keyDown(handle, { key: "ArrowLeft" });
+    assert.equal(handle.getAttribute("aria-valuenow"), "420");
+    assert.equal(localStorage.getItem("bench-peek-width"), "420");
+    assert.equal(
+      document.documentElement.style.getPropertyValue("--bench-peek-width"),
+      "420px",
+    );
+    for (let step = 0; step < 20; step++)
+      fireEvent.keyDown(handle, { key: "ArrowLeft" });
+    assert.equal(handle.getAttribute("aria-valuenow"), "640");
+    for (let step = 0; step < 30; step++)
+      fireEvent.keyDown(handle, { key: "ArrowRight" });
+    assert.equal(handle.getAttribute("aria-valuenow"), "320");
+    fireEvent.doubleClick(handle);
+    assert.equal(handle.getAttribute("aria-valuenow"), "400");
+  } finally {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: innerWidth,
+    });
+    document.documentElement.style.removeProperty("--bench-peek-width");
+  }
+});
+
 test("arrow keys move the selection; opening a row keeps the bench's order", async () => {
   serve([local, open], true);
   window.history.replaceState(null, "", "/?view=open");

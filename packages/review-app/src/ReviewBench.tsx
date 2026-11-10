@@ -54,6 +54,7 @@ import { saveBenchTrail } from "./bench-trail.ts";
 import { contextActivity } from "./context-activity.ts";
 import { defaultScope } from "./diff-mode.ts";
 import { navigate } from "./identity-context.tsx";
+import { PaneResizer } from "./PaneResizer.tsx";
 import {
   pullRequestOf,
   relativeAge,
@@ -87,6 +88,7 @@ import {
 import { streamPath } from "./review-route.ts";
 import { ServerStatus } from "./ServerStatus.tsx";
 import { useCatalog, useSessionShell } from "./session-context.tsx";
+import { benchPeekWidth, useBenchPeekWidth } from "./use-bench-peek-width.ts";
 import { settingsPath } from "./settings-layout.tsx";
 import { SettingsButton } from "./SettingsButton.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
@@ -391,6 +393,7 @@ export function ReviewBench() {
                             row={row}
                             now={now}
                             selected={row === selected}
+                            previews={showPeek}
                             linkRef={(element) => {
                               if (element) rowRefs.current.set(row.id, element);
                               else rowRefs.current.delete(row.id);
@@ -613,10 +616,16 @@ function benchSource(context: ApiContext) {
     .join(" · ");
 }
 
+/**
+ * With the peek showing, a click selects the row and previews it; a double
+ * click or Enter (a click without a pointer, detail 0) opens it. Without the
+ * peek a click opens. Modified clicks keep the link's new-tab behavior.
+ */
 function BenchRowLink({
   row,
   now,
   selected,
+  previews,
   linkRef,
   onSelect,
   onOpen,
@@ -624,6 +633,7 @@ function BenchRowLink({
   row: BenchRow;
   now: number;
   selected: boolean;
+  previews: boolean;
   linkRef: (element: HTMLAnchorElement | null) => void;
   onSelect: () => void;
   onOpen: () => void;
@@ -641,7 +651,8 @@ function BenchRowLink({
       onFocus={onSelect}
       onClick={(event) => {
         onSelect();
-        streamClick(event, onOpen);
+        const opens = !previews || event.detail === 0 || event.detail >= 2;
+        streamClick(event, opens ? onOpen : () => undefined);
       }}
     >
       <span className="flex justify-center">{unread && <NewMark />}</span>
@@ -895,8 +906,18 @@ function BenchPeek({
 }) {
   const { reviewMarks } = useShellPolicy();
   const peek = usePeekData(row?.context, reviewMarks);
+  const { width, setWidth, reset } = useBenchPeekWidth();
   return (
     <aside className="bench-peek" aria-label="Peek">
+      <PaneResizer
+        label="Resize peek"
+        min={benchPeekWidth.min}
+        max={benchPeekWidth.max}
+        width={width}
+        edge="start"
+        onResize={setWidth}
+        onReset={reset}
+      />
       <PanelHeader
         title="Peek"
         actions={
@@ -985,6 +1006,7 @@ function PeekBody({
       <div className="flex flex-wrap gap-2">
         <Button type="button" onClick={() => onOpen(row.context)}>
           Open review
+          <Kbd>Enter</Kbd>
         </Button>
         <Button
           type="button"

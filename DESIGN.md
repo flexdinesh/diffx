@@ -353,9 +353,12 @@ such detail into a token. New layout spacing must use the scale.
   host), state, file count and age. One row is selected (`aria-current`,
   roving tab stop) and takes focus on load; ↑/↓/Home/End move it, Enter opens
   the review, Space toggles the peek, Esc closes it, Alt+Shift+V/U mark it.
+  While the peek shows, a click selects and previews a row, and a double click
+  or Enter opens it; without the peek (toggled off, or below 1012px) a click
+  opens. Modified clicks keep the link's new-tab behavior.
   The `--bench-peek-width` peek on `--panel` shows the selected review before
   opening it, never marking it: origin, title, status badges, author or
-  source, age; “Open review”, “Mark viewed”/“Mark unread” and “Open on
+  source, age; “Open review” (Enter hint), “Mark viewed”/“Mark unread” and “Open on
   GitHub”; changed files with +/−, commits, worktree and reviewed progress;
   the pull request description bounded and scrolling; agent sessions; and the
   top directories it changes. The view, facets and filter live in the URL
@@ -436,10 +439,13 @@ such detail into a token. New layout spacing must use the scale.
   no hover preview. Add future browser preferences as further sections.
 - The diff display toolbar uses `--panel`, matching the header and status bar.
 - Desktop navigation widths: `--sidebar-width` defaults to 330px.
-  `Navigation.tsx` owns the pane and its resize handle; `use-sidebar.ts` owns
-  the file sidebar width (200–520px), bounded by available viewport space. The
-  bench's facets (`--bench-facets-width`, 240px) and peek
-  (`--bench-peek-width`, 400px) are fixed. The header file-sidebar toggle hides and reopens
+  `Navigation.tsx` owns the pane; `PaneResizer.tsx` owns the shared resize
+  handle; `use-sidebar.ts` owns the file sidebar width (200–520px), bounded by
+  available viewport space. The bench's facets (`--bench-facets-width`, 240px)
+  are fixed. The peek (`--bench-peek-width`, default 400px) resizes from its
+  left edge (320–640px, saved; double-click resets) through
+  `use-bench-peek-width.ts`, and gives way so the review table keeps at least
+  30rem. The header file-sidebar toggle hides and reopens
   the file sidebar.
   Do not add competing CSS defaults or override a saved width at tablet sizes.
 - Sidebar interiors share a 16px inset. Rows run edge to edge so selection and
@@ -570,7 +576,7 @@ with a semantic variant instead of overriding it.
 | Menus, popovers, tooltips              | `ui/dropdown-menu`, `ui/popover`, `ui/tooltip`                                                                                           |
 | Menu with type-to-filter rows          | `ui/combobox` (shares the `ui/dropdown-menu` surface and rows)                                                                           |
 | Group row: toggle plus its own action  | `disclosure-row` (chevron toggles; label acts)                                                                                           |
-| Keyboard hint                          | `shortcut` (formats per platform), `ui/kbd`                                                                                              |
+| Keyboard hint                          | `shortcut` (formats per platform), `ui/kbd` (solid buttons draw it in their foreground)                                                  |
 | Loading placeholder                    | `ui/skeleton` (shapes mirror real geometry)                                                                                              |
 | Divider, drawer backdrop               | `ui/separator` (`chrome` for the header), `scrim`                                                                                        |
 | Review context icon                    | `context-icon`                                                                                                                           |

@@ -118,6 +118,6 @@ export async function openFixtureReview(page: Page) {
     .getByRole("main", { name: "Reviews" })
     .getByRole("link")
     .first()
-    .click();
+    .dblclick();
   await expect(page.locator("#viewer")).toBeVisible();
 }

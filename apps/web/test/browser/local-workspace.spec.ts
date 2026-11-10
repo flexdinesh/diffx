@@ -1431,6 +1431,33 @@ test("the bench lists current changed streams, opens them and takes the reader b
     page.getByRole("list", { name: "Repositories" }).getByRole("link"),
   ).toHaveText([/acme-api/, /web-app/]);
 
+  // A click previews the row in the peek without leaving the bench.
+  const peek = page.getByRole("complementary", { name: "Peek" });
+  await rows.nth(1).click();
+  await expect(rows.nth(1)).toHaveAttribute("aria-current", "true");
+  await expect(
+    peek.getByRole("heading", { name: "main", exact: true }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/\?view=open$/);
+
+  // Dragging the peek's left edge widens it; the width survives a reload.
+  const handle = peek.getByRole("separator", { name: "Resize peek" });
+  const edge = await handle.boundingBox();
+  if (!edge) throw new Error("Missing peek resize handle");
+  await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    edge.x + edge.width / 2 - 100,
+    edge.y + edge.height / 2,
+  );
+  await page.mouse.up();
+  await expect(handle).toHaveAttribute("aria-valuenow", "500");
+  expect((await peek.boundingBox())?.width).toBeCloseTo(500, 0);
+  await page.reload();
+  await expect(handle).toHaveAttribute("aria-valuenow", "500");
+  expect((await peek.boundingBox())?.width).toBeCloseTo(500, 0);
+  await expect(rows.first()).toBeFocused();
+
   // Keyboard review: the selected row opens; focus lands on the branch.
   await page.keyboard.press("ArrowDown");
   await expect(rows.nth(1)).toBeFocused();
@@ -1728,7 +1755,7 @@ for (const mode of ["local", "remote"]) {
     ]);
 
     // Opening a stream clears its mark.
-    await unread.first().click();
+    await unread.first().dblclick();
     await ready(page);
     await expect(page).toHaveURL(/\/streams\/stream-web$/);
     await expect(back).toHaveAccessibleName("Reviews, 1 need attention");
@@ -1837,7 +1864,7 @@ test("local first launch shows the bench collecting, then its checkouts", async 
   await expect(list).not.toHaveAttribute("aria-busy", "true");
   await expect(page).toHaveURL(/\/$/);
   expect(collections).toBe(1);
-  await row.click();
+  await row.dblclick();
   await ready(page);
   await expect(page).toHaveURL(/\/streams\/local-stream$/);
   expect(collections).toBe(1);
@@ -2292,7 +2319,7 @@ test("a single local checkout lands on the bench; its review keeps search, combo
   await page
     .getByRole("main", { name: "Reviews" })
     .getByRole("link", { name: /Local review/ })
-    .click();
+    .dblclick();
   await ready(page);
   await expect(page).toHaveURL(/\/streams\/local-stream$/);
   await expect(banner.getByLabel("Review 1 of 1")).toBeVisible();
@@ -2368,7 +2395,7 @@ test("a remote server lists a single review on the bench", async ({ page }) => {
     .getByRole("main", { name: "Reviews" })
     .getByRole("link", { name: /api/ });
   await expect(row).toHaveAttribute("href", "/streams/stream-api");
-  await row.click();
+  await row.press("Enter");
   await ready(page);
   await expect(page).toHaveURL(/\/streams\/stream-api$/);
 });

@@ -120,7 +120,7 @@ test("a signed-up user syncs a checkout and reviews it on a Postgres server", as
     await page
       .getByRole("list", { name: "New and updated" })
       .getByRole("link")
-      .click();
+      .dblclick();
     const file = page
       .locator("#viewer diffs-container")
       .filter({ hasText: "value.txt" });
@@ -179,7 +179,7 @@ test("a signed-up user syncs a checkout and reviews it on a Postgres server", as
       await fresh
         .getByRole("list", { name: "New and updated" })
         .getByRole("link")
-        .click();
+        .dblclick();
       await expectStoredReview(fresh);
     } finally {
       await context.close();

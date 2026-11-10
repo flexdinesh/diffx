@@ -1,4 +1,5 @@
-import { useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { PaneResizer } from "./PaneResizer.tsx";
 import { FileTreeSkeleton } from "./WorkspaceLoading.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
 
@@ -37,60 +38,5 @@ export function Navigation({
         </div>
       )}
     </div>
-  );
-}
-
-function PaneResizer({
-  label,
-  min,
-  max,
-  width,
-  hidden,
-  onResize,
-}: {
-  label: string;
-  min: number;
-  max: number;
-  width: number;
-  hidden: boolean;
-  onResize: (width: number) => void;
-}) {
-  const drag = useRef({ x: 0, width });
-  return (
-    <hr
-      className="sidebar-resizer"
-      aria-label={label}
-      aria-orientation="vertical"
-      aria-valuemin={min}
-      aria-valuemax={max}
-      aria-valuenow={width}
-      tabIndex={0}
-      hidden={hidden}
-      onPointerDown={(event) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        drag.current = { x: event.clientX, width };
-        event.currentTarget.setPointerCapture(event.pointerId);
-        document.body.classList.add("resizing-sidebar");
-      }}
-      onPointerMove={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-          onResize(drag.current.width + event.clientX - drag.current.x);
-        }
-      }}
-      onPointerUp={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId))
-          event.currentTarget.releasePointerCapture(event.pointerId);
-      }}
-      onLostPointerCapture={() =>
-        document.body.classList.remove("resizing-sidebar")
-      }
-      onKeyDown={(event) => {
-        if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-          event.preventDefault();
-          onResize(width + (event.key === "ArrowRight" ? 20 : -20));
-        }
-      }}
-    />
   );
 }
