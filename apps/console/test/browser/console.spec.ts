@@ -246,7 +246,7 @@ test("admins set public pull request previews", async ({ page }) => {
   const retention = page.getByRole("spinbutton", {
     name: "Public retention (days)",
   });
-  const save = page.getByRole("button", { name: "Save retention" });
+  const save = page.getByRole("button", { name: "Save public retention" });
   async function saved(action: () => Promise<void>) {
     const response = page.waitForResponse(
       (response) =>

@@ -9,7 +9,10 @@ import (
 	"time"
 )
 
-const maxOpenPullRequests = 3000
+const (
+	maxOpenPullRequests   = 3000
+	maxClosedPullRequests = 1000
+)
 
 type Account struct {
 	ID      int64
@@ -39,10 +42,13 @@ type Ref struct {
 }
 
 // PullRequest.Head.Repository is zero when the head fork was deleted.
+// MergedAt and ClosedAt are nil until the pull request merged or closed.
 type PullRequest struct {
 	Number    int
 	State     string
 	Merged    bool
+	MergedAt  *time.Time
+	ClosedAt  *time.Time
 	Draft     bool
 	Title     string
 	Body      string
@@ -119,6 +125,7 @@ type pullRequestJSON struct {
 	Number    int         `json:"number"`
 	State     string      `json:"state"`
 	MergedAt  *time.Time  `json:"merged_at"`
+	ClosedAt  *time.Time  `json:"closed_at"`
 	Draft     bool        `json:"draft"`
 	Title     string      `json:"title"`
 	Body      string      `json:"body"`
@@ -131,7 +138,7 @@ type pullRequestJSON struct {
 }
 
 func (pull pullRequestJSON) pullRequest() PullRequest {
-	return PullRequest{Number: pull.Number, State: pull.State, Merged: pull.MergedAt != nil, Draft: pull.Draft,
+	return PullRequest{Number: pull.Number, State: pull.State, Merged: pull.MergedAt != nil, MergedAt: pull.MergedAt, ClosedAt: pull.ClosedAt, Draft: pull.Draft,
 		Title: pull.Title, Body: pull.Body, HTMLURL: pull.HTMLURL, Author: pull.User.account(),
 		Base: pull.Base.ref(), Head: pull.Head.ref(), CreatedAt: pull.CreatedAt, UpdatedAt: pull.UpdatedAt}
 }
@@ -174,6 +181,41 @@ func (c *Client) OpenPullRequests(ctx context.Context, installationID int64, ful
 	result := make([]PullRequest, len(pulls))
 	for index, pull := range pulls {
 		result[index] = pull.pullRequest()
+	}
+	return result, nil
+}
+
+// ClosedPullRequests returns closed pull requests updated at or after since,
+// most recently updated first, stopping at the first older page item and after
+// at most 1000.
+func (c *Client) ClosedPullRequests(ctx context.Context, installationID int64, fullName string, since time.Time) ([]PullRequest, error) {
+	path, err := repositoryPath(fullName)
+	if err != nil {
+		return nil, err
+	}
+	bearer, err := c.installationBearer(ctx, installationID)
+	if err != nil {
+		return nil, err
+	}
+	result := []PullRequest{}
+	for target := c.apiURL + path + "/pulls?state=closed&sort=updated&direction=desc&per_page=" + pageSize; target != ""; {
+		var page []pullRequestJSON
+		header, err := c.get(ctx, target, bearer, &page)
+		if err != nil {
+			return nil, c.forgetRejected(installationID, err)
+		}
+		for _, pull := range page {
+			if pull.UpdatedAt.Before(since) || len(result) == maxClosedPullRequests {
+				return result, nil
+			}
+			result = append(result, pull.pullRequest())
+		}
+		if len(page) == 0 {
+			break
+		}
+		if target, err = c.nextPage(header); err != nil {
+			return nil, err
+		}
 	}
 	return result, nil
 }

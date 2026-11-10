@@ -708,7 +708,13 @@ components:
       type: object
       additionalProperties: false
       required:
-        [signup, passwordSignup, publicPullRequests, publicRetentionDays]
+        [
+          signup,
+          passwordSignup,
+          publicPullRequests,
+          publicRetentionDays,
+          historyRetentionDays,
+        ]
       properties:
         signup:
           type: boolean
@@ -724,6 +730,11 @@ components:
           minimum: 1
           maximum: 30
           description: Days a public pull request preview is kept after its last fetch. Applies to previews fetched after the change.
+        historyRetentionDays:
+          type: integer
+          minimum: 30
+          maximum: 365
+          description: Days pull request history is kept after a pull request's last event. Readers page back through History as far as it keeps.
     SetupToken:
       type: object
       additionalProperties: false

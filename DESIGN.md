@@ -372,7 +372,32 @@ such detail into a token. New layout spacing must use the scale.
   repositories in Settings.” The status bar keeps shortcuts, the review count,
   server status and Settings. Below 1012px the facets and peek leave; below
   768px a view menu leads the toolbar, column headers hide and rows wrap
-  repository under the title.
+  repository under the title. On GitHub servers the bench header's trailing
+  actions start with a shell `LinkButton` “History” (history icon; icon only
+  below 768px).
+- History (`/history`, GitHub servers only) recaps the pull requests the
+  reader's GitHub account opened and merged, in the bench's panes rather than
+  a dashboard: no metric tiles, counts are facets. The header leads with the
+  brand, a “‹ Reviews” `LinkButton` back to the bench's last URL, a muted “/”
+  and the h1 “History” (history icon). The facet pane lists Range (Today,
+  7 days, 30 days), Activity (Merged, Opened, each with a count; filter on
+  click, clear on a second click) and Repositories with muted mono
+  “merged · opened” counts under a matching legend. The table pane's toolbar
+  holds ghost Earlier/Later icon buttons around the window label (“4 – 10
+  Nov”, “Yesterday”) and “Clear filters”; Earlier disables once the previous
+  window would start before retained history, Later at today. One sentence
+  sums the window (“You merged 9 and opened 12 pull requests across 4
+  repositories in the last 7 days.”), then a muted note when the window starts
+  before retained history. Rows group under bench section headers by the day
+  of their latest in-range event; `ListRow` table rows link to GitHub in a new
+  tab: muted state icon, muted “#N” and title, mono repository, event
+  (“Opened”, “Merged”, “Opened · Merged”) and mono time of day. The status bar
+  states coverage (“Followed repositories · kept N days”) and the count. Not
+  connected, not following, filtered-empty and empty windows explain
+  themselves with Connect GitHub, Follow repositories, Clear filters or Show
+  30 days. Range, end day, activity and repository live in the URL. Below
+  1012px the facets leave for Range and Filter menus; below 768px rows wrap
+  repository and event under the title.
 - Reviews breadcrumb: a review's header leads with a shell `LinkButton` “‹
   Reviews” (chevron only below 768px; an unread dot while anything needs
   attention; Alt+Shift+B) and a muted “/” before the repository and branch

@@ -303,6 +303,75 @@ func (q *Queries) GitHubPullRequestHead(ctx context.Context, arg GitHubPullReque
 	return i, err
 }
 
+const gitHubPullRequestHistory = `-- name: GitHubPullRequestHistory :many
+SELECT h.repository_id, h.number, h.full_name, h.title, h.html_url, h.draft, h.state, h.created_at, h.merged_at, h.closed_at
+FROM github_pull_request_history h
+JOIN github_connections c ON c.owner_id = $1 AND c.user_id = h.author_id
+JOIN github_follows f ON f.owner_id = c.owner_id AND f.repository_id = h.repository_id AND f.status = 'active'
+WHERE (h.created_at >= $2 AND h.created_at < $3) OR (h.merged_at >= $2 AND h.merged_at < $3)
+ORDER BY GREATEST(CASE WHEN h.created_at < $3 THEN h.created_at END, CASE WHEN h.merged_at < $3 THEN h.merged_at END) DESC,
+  h.repository_id, h.number
+LIMIT $4
+`
+
+type GitHubPullRequestHistoryParams struct {
+	OwnerID  string
+	Since    time.Time
+	Until    time.Time
+	RowLimit int32
+}
+
+type GitHubPullRequestHistoryRow struct {
+	RepositoryID int64
+	Number       int32
+	FullName     string
+	Title        string
+	HtmlUrl      string
+	Draft        bool
+	State        string
+	CreatedAt    time.Time
+	MergedAt     *time.Time
+	ClosedAt     *time.Time
+}
+
+// The account's GitHub user's pull requests in its actively followed
+// repositories that opened or merged within [since, until), newest event first.
+func (q *Queries) GitHubPullRequestHistory(ctx context.Context, arg GitHubPullRequestHistoryParams) ([]GitHubPullRequestHistoryRow, error) {
+	rows, err := q.db.Query(ctx, gitHubPullRequestHistory,
+		arg.OwnerID,
+		arg.Since,
+		arg.Until,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GitHubPullRequestHistoryRow
+	for rows.Next() {
+		var i GitHubPullRequestHistoryRow
+		if err := rows.Scan(
+			&i.RepositoryID,
+			&i.Number,
+			&i.FullName,
+			&i.Title,
+			&i.HtmlUrl,
+			&i.Draft,
+			&i.State,
+			&i.CreatedAt,
+			&i.MergedAt,
+			&i.ClosedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const gitHubReconcileUnlock = `-- name: GitHubReconcileUnlock :one
 SELECT pg_advisory_unlock($1::bigint)
 `
@@ -358,6 +427,17 @@ func (q *Queries) GitHubRepositoryFollows(ctx context.Context, repositoryID int6
 		return nil, err
 	}
 	return items, nil
+}
+
+const historyRetentionDays = `-- name: HistoryRetentionDays :one
+SELECT history_retention_days FROM app_settings
+`
+
+func (q *Queries) HistoryRetentionDays(ctx context.Context) (int32, error) {
+	row := q.db.QueryRow(ctx, historyRetentionDays)
+	var history_retention_days int32
+	err := row.Scan(&history_retention_days)
+	return history_retention_days, err
 }
 
 const lockGitHubFollow = `-- name: LockGitHubFollow :one
@@ -649,6 +729,53 @@ type PutGitHubOAuthStateParams struct {
 
 func (q *Queries) PutGitHubOAuthState(ctx context.Context, arg PutGitHubOAuthStateParams) error {
 	_, err := q.db.Exec(ctx, putGitHubOAuthState, arg.StateHash, arg.OwnerID, arg.ExpiresAt)
+	return err
+}
+
+const putGitHubPullRequestHistory = `-- name: PutGitHubPullRequestHistory :exec
+INSERT INTO github_pull_request_history(repository_id, number, full_name, title, html_url, author_id, author_login, draft, state,
+  created_at, merged_at, closed_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+  $10, $11, $12, $13)
+ON CONFLICT (repository_id, number) DO UPDATE SET full_name = excluded.full_name, title = excluded.title, html_url = excluded.html_url,
+  author_id = excluded.author_id, author_login = excluded.author_login, draft = excluded.draft, state = excluded.state,
+  created_at = excluded.created_at, merged_at = excluded.merged_at, closed_at = excluded.closed_at, updated_at = excluded.updated_at
+WHERE github_pull_request_history.updated_at <= excluded.updated_at
+`
+
+type PutGitHubPullRequestHistoryParams struct {
+	RepositoryID int64
+	Number       int32
+	FullName     string
+	Title        string
+	HtmlUrl      string
+	AuthorID     int64
+	AuthorLogin  string
+	Draft        bool
+	State        string
+	CreatedAt    time.Time
+	MergedAt     *time.Time
+	ClosedAt     *time.Time
+	UpdatedAt    time.Time
+}
+
+// GitHub's update time orders reads: an older read never replaces a newer row.
+func (q *Queries) PutGitHubPullRequestHistory(ctx context.Context, arg PutGitHubPullRequestHistoryParams) error {
+	_, err := q.db.Exec(ctx, putGitHubPullRequestHistory,
+		arg.RepositoryID,
+		arg.Number,
+		arg.FullName,
+		arg.Title,
+		arg.HtmlUrl,
+		arg.AuthorID,
+		arg.AuthorLogin,
+		arg.Draft,
+		arg.State,
+		arg.CreatedAt,
+		arg.MergedAt,
+		arg.ClosedAt,
+		arg.UpdatedAt,
+	)
 	return err
 }
 

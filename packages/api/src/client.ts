@@ -31,6 +31,9 @@ export type ApiPublicPullRequestFailure =
   components["schemas"]["PublicPullRequestFailure"];
 export type ApiGitHubConnection = components["schemas"]["GitHubConnection"];
 export type ApiGitHubRepository = components["schemas"]["GitHubRepository"];
+export type ApiGitHubHistory = components["schemas"]["GitHubHistory"];
+export type ApiGitHubHistoryPullRequest =
+  components["schemas"]["GitHubHistoryPullRequest"];
 export type ApiPushSettings = components["schemas"]["PushSettings"];
 export type ApiPushDevice = components["schemas"]["PushDevice"];
 

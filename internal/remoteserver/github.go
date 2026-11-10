@@ -196,6 +196,15 @@ func (remote *transport) githubAccount(w http.ResponseWriter, r *http.Request, p
 		githubResult(w, struct {
 			Repositories []githubsync.Repository `json:"repositories"`
 		}{repositories}, err)
+	case path == "history" && r.Method == http.MethodGet:
+		since, sinceErr := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+		until, untilErr := strconv.ParseInt(r.URL.Query().Get("until"), 10, 64)
+		if sinceErr != nil || untilErr != nil {
+			authhttp.Problem(w, 400, "since and until must be Unix milliseconds")
+			return
+		}
+		history, err := remote.github.History(ctx, owner, since, until)
+		githubResult(w, history, err)
 	case path == "resync" && r.Method == http.MethodPost:
 		githubResult(w, nil, remote.github.Resync(ctx, owner))
 	case strings.HasPrefix(path, "follows/"):
@@ -224,7 +233,7 @@ func (remote *transport) githubAccount(w http.ResponseWriter, r *http.Request, p
 		default:
 			authhttp.Problem(w, 405, "Method not allowed")
 		}
-	case path == "connection" || path == "repositories" || path == "resync":
+	case path == "connection" || path == "repositories" || path == "resync" || path == "history":
 		authhttp.Problem(w, 405, "Method not allowed")
 	default:
 		http.NotFound(w, r)
@@ -238,6 +247,8 @@ func githubResult(w http.ResponseWriter, value any, err error) {
 		w.WriteHeader(http.StatusNoContent)
 	case err == nil:
 		authhttp.WriteJSON(w, 200, value)
+	case errors.Is(err, githubsync.ErrInvalidRange):
+		authhttp.Problem(w, 400, err.Error())
 	case errors.Is(err, githubsync.ErrNotConnected):
 		authhttp.Problem(w, 409, err.Error())
 	case errors.Is(err, githubsync.ErrReconnect):

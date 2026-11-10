@@ -481,6 +481,27 @@ func (e GitHubConnectionState) Valid() bool {
 	}
 }
 
+// Defines values for GitHubHistoryPullRequestState.
+const (
+	GitHubHistoryPullRequestStateClosed GitHubHistoryPullRequestState = "closed"
+	GitHubHistoryPullRequestStateMerged GitHubHistoryPullRequestState = "merged"
+	GitHubHistoryPullRequestStateOpen   GitHubHistoryPullRequestState = "open"
+)
+
+// Valid indicates whether the value is a known member of the GitHubHistoryPullRequestState enum.
+func (e GitHubHistoryPullRequestState) Valid() bool {
+	switch e {
+	case GitHubHistoryPullRequestStateClosed:
+		return true
+	case GitHubHistoryPullRequestStateMerged:
+		return true
+	case GitHubHistoryPullRequestStateOpen:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IngestionJobState.
 const (
 	IngestionJobStateFailed    IngestionJobState = "failed"
@@ -1283,6 +1304,68 @@ type GitHubConnection struct {
 // GitHubConnectionState Revoked or expired connections must connect again; their follows receive nothing meanwhile.
 type GitHubConnectionState string
 
+// GitHubHistory defines model for GitHubHistory.
+type GitHubHistory struct {
+	// Connected False without a GitHub connection; history is then empty.
+	Connected bool `json:"connected"`
+
+	// Following Whether the account actively follows any repository.
+	Following bool `json:"following"`
+
+	// Login The connected GitHub user's login.
+	Login *string `json:"login,omitempty"`
+
+	// Merged Pull requests merged in the range.
+	Merged int `json:"merged"`
+
+	// Opened Pull requests opened in the range.
+	Opened       int                        `json:"opened"`
+	PullRequests []GitHubHistoryPullRequest `json:"pullRequests"`
+
+	// Repositories Counts per repository, most active first.
+	Repositories []GitHubHistoryRepository `json:"repositories"`
+
+	// RetainedSince Oldest instant history is kept for, Unix milliseconds; the admin's history retention before now.
+	RetainedSince int64 `json:"retainedSince"`
+
+	// Since Range start served, Unix milliseconds; never before retainedSince.
+	Since int64 `json:"since"`
+
+	// Truncated More than 1000 pull requests matched; counts cover only those returned.
+	Truncated bool  `json:"truncated"`
+	Until     int64 `json:"until"`
+}
+
+// GitHubHistoryPullRequest defines model for GitHubHistoryPullRequest.
+type GitHubHistoryPullRequest struct {
+	ClosedAt  nullable.Nullable[int64] `json:"closedAt"`
+	CreatedAt int64                    `json:"createdAt"`
+	Draft     bool                     `json:"draft"`
+	FullName  string                   `json:"fullName"`
+
+	// Merged Merged in the range.
+	Merged   bool                     `json:"merged"`
+	MergedAt nullable.Nullable[int64] `json:"mergedAt"`
+	Number   int                      `json:"number"`
+
+	// Opened Opened in the range.
+	Opened       bool                          `json:"opened"`
+	RepositoryId int64                         `json:"repositoryId"`
+	State        GitHubHistoryPullRequestState `json:"state"`
+	Title        string                        `json:"title"`
+	Url          string                        `json:"url"`
+}
+
+// GitHubHistoryPullRequestState defines model for GitHubHistoryPullRequest.State.
+type GitHubHistoryPullRequestState string
+
+// GitHubHistoryRepository defines model for GitHubHistoryRepository.
+type GitHubHistoryRepository struct {
+	FullName string `json:"fullName"`
+	Merged   int    `json:"merged"`
+	Opened   int    `json:"opened"`
+}
+
 // GitHubRepository defines model for GitHubRepository.
 type GitHubRepository struct {
 	Followed bool   `json:"followed"`
@@ -2026,6 +2109,15 @@ type FollowGitHubRepositoryParams struct {
 	XCSRFToken *CsrfToken `json:"X-CSRF-Token,omitempty"`
 }
 
+// GetGitHubHistoryParams defines parameters for GetGitHubHistory.
+type GetGitHubHistoryParams struct {
+	// Since Range start, Unix milliseconds, inclusive.
+	Since int64 `form:"since" json:"since"`
+
+	// Until Range end, Unix milliseconds, exclusive.
+	Until int64 `form:"until" json:"until"`
+}
+
 // ResyncGitHubParams defines parameters for ResyncGitHub.
 type ResyncGitHubParams struct {
 	// XCSRFToken Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials.
@@ -2561,6 +2653,11 @@ type ClientInterface interface {
 	//
 	// Follow a repository's pull requests after verifying access, then request a refresh of its open pull requests. Distributed browser sessions only.
 	FollowGitHubRepository(ctx context.Context, repositoryId int64, params *FollowGitHubRepositoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetGitHubHistory performs a GET /api/v2/github/history (the `GetGitHubHistory` operationId) request.
+	//
+	// The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first. The range may span at most 31 days and starts no earlier than retained history (retainedSince); one ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
+	GetGitHubHistory(ctx context.Context, params *GetGitHubHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListGitHubRepositories performs a GET /api/v2/github/repositories (the `ListGitHubRepositories` operationId) request.
 	//
@@ -3567,6 +3664,21 @@ func (c *Client) UpdateGitHubFollow(ctx context.Context, repositoryId int64, par
 // Follow a repository's pull requests after verifying access, then request a refresh of its open pull requests. Distributed browser sessions only.
 func (c *Client) FollowGitHubRepository(ctx context.Context, repositoryId int64, params *FollowGitHubRepositoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewFollowGitHubRepositoryRequest(c.Server, repositoryId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetGitHubHistory performs a GET /api/v2/github/history (the `GetGitHubHistory` operationId) request.
+//
+// The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first. The range may span at most 31 days and starts no earlier than retained history (retainedSince); one ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
+func (c *Client) GetGitHubHistory(ctx context.Context, params *GetGitHubHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetGitHubHistoryRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -6653,6 +6765,64 @@ func NewFollowGitHubRepositoryRequest(server string, repositoryId int64, params 
 	return req, nil
 }
 
+// NewGetGitHubHistoryRequest constructs an http.Request for the GetGitHubHistory method
+func NewGetGitHubHistoryRequest(server string, params *GetGitHubHistoryParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/github/history")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "since", params.Since, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "until", params.Until, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListGitHubRepositoriesRequest constructs an http.Request for the ListGitHubRepositories method
 func NewListGitHubRepositoriesRequest(server string) (*http.Request, error) {
 	var err error
@@ -8481,6 +8651,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	FollowGitHubRepositoryWithResponse(ctx context.Context, repositoryId int64, params *FollowGitHubRepositoryParams, reqEditors ...RequestEditorFn) (*FollowGitHubRepositoryResponse, error)
+
+	// GetGitHubHistoryWithResponse performs a GET /api/v2/github/history (the `GetGitHubHistory` operationId) request.
+	//
+	// The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first. The range may span at most 31 days and starts no earlier than retained history (retainedSince); one ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetGitHubHistoryWithResponse(ctx context.Context, params *GetGitHubHistoryParams, reqEditors ...RequestEditorFn) (*GetGitHubHistoryResponse, error)
 
 	// ListGitHubRepositoriesWithResponse performs a GET /api/v2/github/repositories (the `ListGitHubRepositories` operationId) request.
 	//
@@ -11267,6 +11444,75 @@ func (r FollowGitHubRepositoryResponse) ContentType() string {
 	return ""
 }
 
+type GetGitHubHistoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *GitHubHistory
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetGitHubHistoryResponse) GetJSON200() *GitHubHistory {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetGitHubHistoryResponse) GetApplicationproblemJSON400() *Problem {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetGitHubHistoryResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetGitHubHistoryResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetGitHubHistoryResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetGitHubHistoryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetGitHubHistoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetGitHubHistoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetGitHubHistoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListGitHubRepositoriesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -13839,6 +14085,19 @@ func (c *ClientWithResponses) FollowGitHubRepositoryWithResponse(ctx context.Con
 	return ParseFollowGitHubRepositoryResponse(rsp)
 }
 
+// GetGitHubHistoryWithResponse performs a GET /api/v2/github/history (the `GetGitHubHistory` operationId) request.
+//
+// The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first. The range may span at most 31 days and starts no earlier than retained history (retainedSince); one ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetGitHubHistoryWithResponse(ctx context.Context, params *GetGitHubHistoryParams, reqEditors ...RequestEditorFn) (*GetGitHubHistoryResponse, error) {
+	rsp, err := c.GetGitHubHistory(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetGitHubHistoryResponse(rsp)
+}
+
 // ListGitHubRepositoriesWithResponse performs a GET /api/v2/github/repositories (the `ListGitHubRepositories` operationId) request.
 //
 // Repositories both the GitHub user and the app can read, plus followed repositories that lost access. Listing rechecks access. Distributed browser sessions only.
@@ -16175,6 +16434,60 @@ func ParseFollowGitHubRepositoryResponse(rsp *http.Response) (*FollowGitHubRepos
 			return nil, err
 		}
 		response.ApplicationproblemJSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetGitHubHistoryResponse parses an HTTP response from a GetGitHubHistoryWithResponse call
+func ParseGetGitHubHistoryResponse(rsp *http.Response) (*GetGitHubHistoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetGitHubHistoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitHubHistory
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem

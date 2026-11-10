@@ -429,6 +429,8 @@ export interface components {
       publicPullRequests: boolean;
       /** @description Days a public pull request preview is kept after its last fetch. Applies to previews fetched after the change. */
       publicRetentionDays: number;
+      /** @description Days pull request history is kept after a pull request's last event. Readers page back through History as far as it keeps. */
+      historyRetentionDays: number;
     };
     SetupToken: {
       /** @description The secret from the setup link's `#t=` fragment. */

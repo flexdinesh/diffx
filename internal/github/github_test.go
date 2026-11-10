@@ -288,7 +288,7 @@ func TestInstallationTokenForgottenAfterUnauthorized(t *testing.T) {
 const forkPullRequest = `{
   "number": 12, "state": "closed", "draft": false, "title": "Fix", "body": null,
   "html_url": "https://github.com/octo/repo/pull/12", "merged_at": "2026-01-02T03:04:05Z",
-  "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-02T03:04:05Z",
+  "closed_at": "2026-01-02T03:04:05Z", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-02T03:04:05Z",
   "user": {"login": "fork-user", "id": 77, "html_url": "https://github.com/fork-user", "type": "User"},
   "head": {"label": "fork-user:fix", "ref": "fix", "sha": "aaaa", "user": {"login": "fork-user", "id": 77}, "repo": null},
   "base": {"label": "octo:main", "ref": "main", "sha": "bbbb",
@@ -308,7 +308,8 @@ func TestPullRequestMapsForkWithDeletedHead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := PullRequest{Number: 12, State: "closed", Merged: true, Title: "Fix", HTMLURL: "https://github.com/octo/repo/pull/12",
+	merged := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	want := PullRequest{Number: 12, State: "closed", Merged: true, MergedAt: &merged, ClosedAt: &merged, Title: "Fix", HTMLURL: "https://github.com/octo/repo/pull/12",
 		Author: Account{ID: 77, Login: "fork-user", HTMLURL: "https://github.com/fork-user"},
 		Base: Ref{Ref: "main", SHA: "bbbb", Repository: Repository{ID: 101, FullName: "octo/repo",
 			CloneURL: "https://github.com/octo/repo.git", Private: true}},
@@ -382,6 +383,43 @@ func TestOpenPullRequestsFollowsLinks(t *testing.T) {
 	}
 	if len(pulls) != 3 || pulls[0].Number != 1 || pulls[2].Number != 3 {
 		t.Fatalf("pulls %+v", pulls)
+	}
+}
+
+func TestClosedPullRequestsStopAtCutoff(t *testing.T) {
+	var mints, pages atomic.Int32
+	var server *httptest.Server
+	mux := http.NewServeMux()
+	mux.Handle("POST /app/installations/9/access_tokens", tokenHandler(t, &mints, time.Hour))
+	mux.HandleFunc("GET /repos/octo/repo/pulls", func(writer http.ResponseWriter, request *http.Request) {
+		query := request.URL.Query()
+		if query.Get("state") != "closed" || query.Get("sort") != "updated" || query.Get("direction") != "desc" {
+			t.Errorf("query %v", query)
+		}
+		if pages.Add(1) == 1 {
+			writer.Header().Set("Link", `<`+server.URL+`/repos/octo/repo/pulls?state=closed&sort=updated&direction=desc&page=2>; rel="next"`)
+			io.WriteString(writer, `[{"number": 1, "updated_at": "2026-11-09T00:00:00Z", "merged_at": "2026-11-08T00:00:00Z", "closed_at": "2026-11-08T00:00:00Z"}]`)
+			return
+		}
+		writer.Header().Set("Link", `<`+server.URL+`/repos/octo/repo/pulls?state=closed&sort=updated&direction=desc&page=3>; rel="next"`)
+		io.WriteString(writer, `[{"number": 2, "updated_at": "2026-11-05T00:00:00Z", "closed_at": "2026-11-05T00:00:00Z"}, {"number": 3, "updated_at": "2026-10-01T00:00:00Z"}]`)
+	})
+	server = httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	client, err := New(App{ID: 42, ClientID: "c", ClientSecret: "s", PrivateKey: testKey, WebhookSecret: []byte("w")},
+		WithAPIURL(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pulls, err := client.ClosedPullRequests(context.Background(), 9, "octo/repo", time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pulls) != 2 || pages.Load() != 2 {
+		t.Fatalf("pulls %+v after %d pages, want two before the cutoff without a third page", pulls, pages.Load())
+	}
+	if !pulls[0].Merged || pulls[0].MergedAt == nil || pulls[0].ClosedAt == nil || pulls[1].Merged || pulls[1].MergedAt != nil || pulls[1].ClosedAt == nil {
+		t.Fatalf("merge and close times %+v", pulls)
 	}
 }
 

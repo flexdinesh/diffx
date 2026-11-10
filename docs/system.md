@@ -267,6 +267,20 @@ reconciliation and webhooks do not. Startup reconciliation holds a Postgres
 session advisory lock, so one replica reconciles at a time and replicas
 starting meanwhile skip theirs. There is no periodic poll.
 
+Pull request history is durable, unlike snapshots. Each read of a followed
+repository's pull request from GitHub records its repository, number, title,
+URL, author, draft flag, state and created, merged, closed and update times in
+`github_pull_request_history`: the refresh lease (webhooks), every open-list
+read during reconciliation, and on follow and Resync a backfill of pull
+requests closed in the last 30 days. Rows are repository facts shared by every
+follower; a read never replaces a row GitHub updated later. `GET
+/api/v2/github/history?since=&until=` (browser session) returns the account's
+GitHub user's pull requests opened or merged in the range within its active
+follows, with totals and per-repository counts, newest event first, capped at 1000. Ranges span at most 31 days and start no earlier than retained history;
+one ending before it is refused. History is pruned hourly once a pull
+request's last event is older than `app_settings.history_retention_days`
+(30–365, default 30), which admins set in the console.
+
 `diffx-fetcher` runs in its own container and turns refresh intent into
 snapshots. It leases one pull request at a time from the server's internal
 listener (`DIFFX_SERVER_INTERNAL_PORT`, default 7979, never published),
@@ -500,7 +514,11 @@ visible above the list and offer Retry. A capture's `/` opens its most
 recently active changed head. The local default MCP context uses the same
 collection default.
 The bench's view (Needs attention, All open, Closed), repository and agent
-facets and filter live in its query string. A review's header leads with a
+facets and filter live in its query string. On GitHub servers its header links
+to History at `/history`, outside the review session: whole local days (Today,
+7 or 30 days, stepping by window back to retained history) of the reader's
+opened and merged pull requests, filtered by activity and repository in its
+query string (`?range=&end=&activity=&repo=`). A review's header leads with a
 “Reviews” breadcrumb back to the bench's last URL in this tab and names the
 open review as repository and branch comboboxes that filter as you type and
 switch streams. Its stepper moves to the previous or next review in the order

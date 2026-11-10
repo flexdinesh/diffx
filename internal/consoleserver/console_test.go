@@ -252,20 +252,25 @@ func TestSettingsAreStoredAndAnnounced(t *testing.T) {
 		t.Fatalf("anonymous settings: %d", w.Code)
 	}
 	root, csrf := login(t, handler, "root")
-	if got := decode[settingsJSON](t, request(handler, "GET", "/api/v1/settings", "", root, "")); got != (settingsJSON{Signup: true, PasswordSignup: true, PublicRetentionDays: 1}) {
+	if got := decode[settingsJSON](t, request(handler, "GET", "/api/v1/settings", "", root, "")); got != (settingsJSON{Signup: true, PasswordSignup: true, PublicRetentionDays: 1, HistoryRetentionDays: 30}) {
 		t.Fatalf("default settings: %+v", got)
 	}
-	if w := request(handler, "PUT", "/api/v1/settings", `{"signup":false,"passwordSignup":false,"publicPullRequests":false,"publicRetentionDays":1}`, root, ""); w.Code != 403 {
+	if w := request(handler, "PUT", "/api/v1/settings", `{"signup":false,"passwordSignup":false,"publicPullRequests":false,"publicRetentionDays":1,"historyRetentionDays":30}`, root, ""); w.Code != 403 {
 		t.Fatalf("without CSRF: %d", w.Code)
 	}
-	for _, partial := range []string{`{"signup":false}`, `{"signup":false,"passwordSignup":true}`, `{"signup":false,"passwordSignup":true,"publicPullRequests":true}`} {
+	for _, partial := range []string{`{"signup":false}`, `{"signup":false,"passwordSignup":true}`, `{"signup":false,"passwordSignup":true,"publicPullRequests":true}`, `{"signup":false,"passwordSignup":true,"publicPullRequests":true,"publicRetentionDays":1}`} {
 		if w := request(handler, "PUT", "/api/v1/settings", partial, root, csrf); w.Code != 400 {
 			t.Fatalf("partial settings %s: %d", partial, w.Code)
 		}
 	}
 	for _, days := range []string{"0", "31", "-1"} {
-		if w := request(handler, "PUT", "/api/v1/settings", `{"signup":false,"passwordSignup":true,"publicPullRequests":true,"publicRetentionDays":`+days+`}`, root, csrf); w.Code != 400 {
+		if w := request(handler, "PUT", "/api/v1/settings", `{"signup":false,"passwordSignup":true,"publicPullRequests":true,"publicRetentionDays":`+days+`,"historyRetentionDays":30}`, root, csrf); w.Code != 400 {
 			t.Fatalf("public retention %s days: %d", days, w.Code)
+		}
+	}
+	for _, days := range []string{"29", "366", "0"} {
+		if w := request(handler, "PUT", "/api/v1/settings", `{"signup":false,"passwordSignup":true,"publicPullRequests":true,"publicRetentionDays":1,"historyRetentionDays":`+days+`}`, root, csrf); w.Code != 400 {
+			t.Fatalf("history retention %s days: %d", days, w.Code)
 		}
 	}
 	listener, err := store.Listen(t.Context())
@@ -284,8 +289,8 @@ func TestSettingsAreStoredAndAnnounced(t *testing.T) {
 		defer close(stopped)
 		_ = listener.Run(listening, func(change pgstore.Notification) { changes <- change })
 	}()
-	changed := settingsJSON{Signup: false, PasswordSignup: true, PublicPullRequests: true, PublicRetentionDays: 7}
-	w := request(handler, "PUT", "/api/v1/settings", `{"signup":false,"passwordSignup":true,"publicPullRequests":true,"publicRetentionDays":7}`, root, csrf)
+	changed := settingsJSON{Signup: false, PasswordSignup: true, PublicPullRequests: true, PublicRetentionDays: 7, HistoryRetentionDays: 365}
+	w := request(handler, "PUT", "/api/v1/settings", `{"signup":false,"passwordSignup":true,"publicPullRequests":true,"publicRetentionDays":7,"historyRetentionDays":365}`, root, csrf)
 	if got := decode[settingsJSON](t, w); w.Code != 200 || got != changed {
 		t.Fatalf("put settings: %d %+v", w.Code, got)
 	}

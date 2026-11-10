@@ -16,3 +16,8 @@ DELETE FROM diffs WHERE expires_at <= $1;
 DELETE FROM reviews WHERE NOT EXISTS (
   SELECT 1 FROM observations o WHERE o.owner_id = reviews.owner_id AND o.stream_key = reviews.stream_key
 );
+
+-- name: PruneGitHubPullRequestHistory :exec
+-- History is kept for the admin's retention after a pull request's last event.
+DELETE FROM github_pull_request_history
+WHERE GREATEST(created_at, merged_at, closed_at) + (SELECT history_retention_days FROM app_settings) * interval '1 day' < @now;

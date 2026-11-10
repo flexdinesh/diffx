@@ -81,6 +81,15 @@ type Store interface {
 	PullRequestHead(ctx context.Context, repositoryID int64, number int) (head string, opened bool, err error)
 	// KnownOpen lists pull request numbers last observed open.
 	KnownOpen(ctx context.Context, repositoryID int64) ([]int, error)
+	// PutPullRequestHistory records a read of a pull request unless history
+	// holds a newer one.
+	PutPullRequestHistory(ctx context.Context, entry HistoryEntry) error
+	// PullRequestHistory lists, newest event first and at most limit, the
+	// pull requests the account's GitHub user authored in its actively
+	// followed repositories that opened or merged in [since, until), Unix ms.
+	PullRequestHistory(ctx context.Context, ownerID string, since, until int64, limit int) ([]HistoryEntry, error)
+	// HistoryRetentionDays is the admin's history retention.
+	HistoryRetentionDays(ctx context.Context) (int, error)
 
 	// ClaimRefresh leases the oldest pending, available pull request until
 	// leaseUntil, fencing earlier leases. ErrNotFound means none is pending.

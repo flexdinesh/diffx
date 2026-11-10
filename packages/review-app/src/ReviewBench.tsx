@@ -10,6 +10,7 @@ import {
   CheckIcon,
   FolderGit2Icon,
   GitPullRequestIcon,
+  HistoryIcon,
   InboxIcon,
   ListFilterIcon,
   MailIcon,
@@ -51,6 +52,7 @@ import { Toggle } from "@diffx/ui/components/ui/toggle";
 import { pluralize } from "@diffx/ui/lib/format";
 import { save, saved } from "@diffx/ui/lib/storage";
 import { saveBenchTrail } from "./bench-trail.ts";
+import { historyRoute } from "./history.ts";
 import { contextActivity } from "./context-activity.ts";
 import { defaultScope } from "./diff-mode.ts";
 import { navigate } from "./identity-context.tsx";
@@ -254,14 +256,17 @@ export function ReviewBench() {
           </h1>
         }
         actions={
-          collect && (
-            <SyncButton
-              busy={collecting}
-              onClick={() => {
-                if (!collecting) void collect();
-              }}
-            />
-          )
+          <>
+            {pullRequests && <HistoryLink />}
+            {collect && (
+              <SyncButton
+                busy={collecting}
+                onClick={() => {
+                  if (!collecting) void collect();
+                }}
+              />
+            )}
+          </>
         }
       />
       <div className="bench" data-peek={showPeek || undefined}>
@@ -538,7 +543,7 @@ function FacetGroup({
   );
 }
 
-function FacetLink({
+export function FacetLink({
   href,
   current,
   Icon,
@@ -687,6 +692,24 @@ function BenchRowLink({
         {relativeAge(contextActivity(context), now)}
       </span>
     </ListRow>
+  );
+}
+
+/** Opens History: the pull requests the reader opened and merged. */
+function HistoryLink() {
+  return (
+    <LinkButton
+      variant="shell"
+      size="sm"
+      touch
+      href={historyRoute}
+      aria-label="History"
+      title="Pull requests you opened and merged"
+      onClick={(event) => streamClick(event, () => navigate(historyRoute))}
+    >
+      <HistoryIcon aria-hidden="true" />
+      <span className="max-md:hidden">History</span>
+    </LinkButton>
   );
 }
 

@@ -30,6 +30,7 @@ type GitHub interface {
 	User(ctx context.Context, accessToken string) (github.Account, error)
 	UserRepositories(ctx context.Context, accessToken string) ([]github.Repository, error)
 	OpenPullRequests(ctx context.Context, installationID int64, fullName string) ([]github.PullRequest, error)
+	ClosedPullRequests(ctx context.Context, installationID int64, fullName string, since time.Time) ([]github.PullRequest, error)
 	PullRequest(ctx context.Context, credential github.Credential, fullName string, number int) (github.PullRequest, error)
 	InstallationToken(ctx context.Context, installationID int64, repositoryIDs []int64, permissions map[string]string) (github.Token, error)
 	Repository(ctx context.Context, credential github.Credential, fullName string) (github.Repository, error)
@@ -378,7 +379,7 @@ func (s *Service) Follow(ctx context.Context, ownerID string, repositoryID int64
 	if err := s.store.PutFollow(ctx, Follow{OwnerID: ownerID, RepositoryID: repository.ID, InstallationID: repository.InstallationID, FullName: repository.FullName, Status: "active", VerifiedAt: now, CreatedAt: now}); err != nil {
 		return err
 	}
-	return s.reconcileRepository(ctx, Follow{RepositoryID: repository.ID, InstallationID: repository.InstallationID, FullName: repository.FullName}, "", repository.PullRequestsDisabled)
+	return s.reconcileRepository(ctx, Follow{RepositoryID: repository.ID, InstallationID: repository.InstallationID, FullName: repository.FullName}, "", repository.PullRequestsDisabled, true)
 }
 
 // pullRequestsDisabled lists accessible repositories that turned pull requests off.
@@ -422,7 +423,7 @@ func (s *Service) Resync(ctx context.Context, ownerID string) error {
 	var failures []error
 	for _, follow := range follows {
 		if follow.Status == "active" {
-			failures = append(failures, s.reconcileRepository(ctx, follow, run, disabled[follow.RepositoryID]))
+			failures = append(failures, s.reconcileRepository(ctx, follow, run, disabled[follow.RepositoryID], true))
 		}
 	}
 	return errors.Join(failures...)
@@ -457,7 +458,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		}
 	}
 	for _, follow := range repositories {
-		failures = append(failures, s.reconcileRepository(ctx, follow, "", disabled[follow.RepositoryID]))
+		failures = append(failures, s.reconcileRepository(ctx, follow, "", disabled[follow.RepositoryID], false))
 	}
 	return errors.Join(failures...)
 }
@@ -465,8 +466,9 @@ func (s *Service) Reconcile(ctx context.Context) error {
 // reconcileRepository requests refreshes for listed open pull requests and for
 // known-open ones missing from the list, which closed without a delivery. A
 // repository with pull requests turned off has none open: GitHub answers 404
-// for its list, and refreshing known-open ones records them closed.
-func (s *Service) reconcileRepository(ctx context.Context, follow Follow, run string, pullRequestsDisabled bool) error {
+// for its list, and refreshing known-open ones records them closed. Listed
+// pull requests enter history; backfill also records recently closed ones.
+func (s *Service) reconcileRepository(ctx context.Context, follow Follow, run string, pullRequestsDisabled, backfill bool) error {
 	var open []github.PullRequest
 	if !pullRequestsDisabled {
 		listed, err := s.github.OpenPullRequests(ctx, follow.InstallationID, follow.FullName)
@@ -474,6 +476,14 @@ func (s *Service) reconcileRepository(ctx context.Context, follow Follow, run st
 			return fmt.Errorf("list open pull requests of %s: %w", follow.FullName, err)
 		}
 		open = listed
+		if err := s.recordHistory(ctx, follow, open); err != nil {
+			return err
+		}
+		if backfill {
+			if err := s.backfillHistory(ctx, follow); err != nil {
+				return err
+			}
+		}
 	}
 	known, err := s.store.KnownOpen(ctx, follow.RepositoryID)
 	if err != nil {

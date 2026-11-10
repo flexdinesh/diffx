@@ -135,6 +135,23 @@ repositories receive nothing until then. **Disconnect**, in the menu beside
 your GitHub login, removes the authorization and every follow; existing reviews
 stay until they expire.
 
+## History
+
+**History**, in the Reviews bench header, recaps the pull requests your
+connected GitHub account opened and merged in the repositories you follow.
+Choose **Today**, **7 days** or **30 days**; ‹ and › page to earlier and later
+windows of whole days. **Merged** and **Opened** count each activity and
+filter the list, and each repository shows its merged · opened counts and
+filters on click. A pull request opened and merged in the same window counts
+once for each. Rows are grouped by day and open the pull request on GitHub.
+
+History records pull requests as diffx reads them: when a webhook refreshes
+one, when you follow a repository, and on **Resync pull requests**, which also
+record pull requests closed in the last 30 days. It covers only repositories
+you follow and leaves when you unfollow. History is kept for 30 days by
+default; admins can keep up to 365 days in the console's **History retention
+(days)** setting, and you can page back as far as it keeps.
+
 ## Push notifications
 
 A diffx server with an HTTPS public URL is an installable app that can notify

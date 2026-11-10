@@ -178,3 +178,29 @@ SELECT pg_try_advisory_lock(@key::bigint);
 
 -- name: GitHubReconcileUnlock :one
 SELECT pg_advisory_unlock(@key::bigint);
+
+-- name: PutGitHubPullRequestHistory :exec
+-- GitHub's update time orders reads: an older read never replaces a newer row.
+INSERT INTO github_pull_request_history(repository_id, number, full_name, title, html_url, author_id, author_login, draft, state,
+  created_at, merged_at, closed_at, updated_at)
+VALUES (@repository_id, @number, @full_name, @title, @html_url, @author_id, @author_login, @draft, @state,
+  @created_at, sqlc.narg('merged_at'), sqlc.narg('closed_at'), @updated_at)
+ON CONFLICT (repository_id, number) DO UPDATE SET full_name = excluded.full_name, title = excluded.title, html_url = excluded.html_url,
+  author_id = excluded.author_id, author_login = excluded.author_login, draft = excluded.draft, state = excluded.state,
+  created_at = excluded.created_at, merged_at = excluded.merged_at, closed_at = excluded.closed_at, updated_at = excluded.updated_at
+WHERE github_pull_request_history.updated_at <= excluded.updated_at;
+
+-- name: GitHubPullRequestHistory :many
+-- The account's GitHub user's pull requests in its actively followed
+-- repositories that opened or merged within [since, until), newest event first.
+SELECT h.repository_id, h.number, h.full_name, h.title, h.html_url, h.draft, h.state, h.created_at, h.merged_at, h.closed_at
+FROM github_pull_request_history h
+JOIN github_connections c ON c.owner_id = @owner_id AND c.user_id = h.author_id
+JOIN github_follows f ON f.owner_id = c.owner_id AND f.repository_id = h.repository_id AND f.status = 'active'
+WHERE (h.created_at >= @since AND h.created_at < @until) OR (h.merged_at >= @since AND h.merged_at < @until)
+ORDER BY GREATEST(CASE WHEN h.created_at < @until THEN h.created_at END, CASE WHEN h.merged_at < @until THEN h.merged_at END) DESC,
+  h.repository_id, h.number
+LIMIT @row_limit;
+
+-- name: HistoryRetentionDays :one
+SELECT history_retention_days FROM app_settings;

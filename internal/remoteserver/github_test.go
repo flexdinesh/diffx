@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/flexdinesh/diffx/internal/fetchprotocol"
 	"github.com/flexdinesh/diffx/internal/identityservice"
@@ -157,6 +159,23 @@ func TestGitHubConnectFollowAndWebhookBoundaries(t *testing.T) {
 	}
 	if w := identityRequest(handler, "POST", "/api/v2/github/resync", "", cookie, csrf, ""); w.Code != 204 {
 		t.Fatalf("resync: %d %s", w.Code, w.Body.String())
+	}
+	now := time.Now().UnixMilli()
+	week := fmt.Sprintf("/api/v2/github/history?since=%d&until=%d", now-7*24*3600*1000, now)
+	if w := identityRequest(handler, "GET", week, "", nil, "", "Bearer "+token); w.Code != 403 {
+		t.Fatalf("API token read history: %d", w.Code)
+	}
+	w = identityRequest(handler, "GET", week, "", cookie, "", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"connected":true,"login":"mona","following":true`) {
+		t.Fatalf("history: %d %s", w.Code, w.Body.String())
+	}
+	for _, query := range []string{"", "?since=1", "?since=a&until=2", fmt.Sprintf("?since=%d&until=%d", now, now-1), fmt.Sprintf("?since=%d&until=%d", now-40*24*3600*1000, now)} {
+		if w := identityRequest(handler, "GET", "/api/v2/github/history"+query, "", cookie, "", ""); w.Code != 400 {
+			t.Fatalf("history %q: %d %s", query, w.Code, w.Body.String())
+		}
+	}
+	if w := identityRequest(handler, "POST", week, "", cookie, csrf, ""); w.Code != 405 {
+		t.Fatalf("history POST: %d", w.Code)
 	}
 	if w := identityRequest(handler, "DELETE", "/api/v2/github/connection", "", cookie, csrf, ""); w.Code != 204 {
 		t.Fatalf("disconnect: %d", w.Code)

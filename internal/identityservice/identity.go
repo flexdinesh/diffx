@@ -72,15 +72,23 @@ type Settings struct {
 	// PublicRetentionDays keeps each public preview after its fetch, from
 	// MinPublicRetentionDays to MaxPublicRetentionDays.
 	PublicRetentionDays int
+	// HistoryRetentionDays keeps pull request history after a pull request's
+	// last event, from MinHistoryRetentionDays to MaxHistoryRetentionDays.
+	HistoryRetentionDays int
 }
 
 const (
-	MinPublicRetentionDays = 1
-	MaxPublicRetentionDays = 30
+	MinPublicRetentionDays  = 1
+	MaxPublicRetentionDays  = 30
+	MinHistoryRetentionDays = 30
+	MaxHistoryRetentionDays = 365
 )
 
 // ErrInvalidSettings refuses a public retention outside its bounds.
 var ErrInvalidSettings = fmt.Errorf("%w: public retention must be %d-%d days", ErrInvalidInput, MinPublicRetentionDays, MaxPublicRetentionDays)
+
+// ErrInvalidHistoryRetention refuses a history retention outside its bounds.
+var ErrInvalidHistoryRetention = fmt.Errorf("%w: history retention must be %d-%d days", ErrInvalidInput, MinHistoryRetentionDays, MaxHistoryRetentionDays)
 
 // allows reports whether every setting required is on.
 func (settings Settings) allows(required Settings) bool {
@@ -218,6 +226,9 @@ func (service *Service) Settings() Settings {
 func (service *Service) PutSettings(ctx context.Context, actorID string, settings Settings) error {
 	if settings.PublicRetentionDays < MinPublicRetentionDays || settings.PublicRetentionDays > MaxPublicRetentionDays {
 		return ErrInvalidSettings
+	}
+	if settings.HistoryRetentionDays < MinHistoryRetentionDays || settings.HistoryRetentionDays > MaxHistoryRetentionDays {
+		return ErrInvalidHistoryRetention
 	}
 	if err := service.store.PutAppSettings(ctx, settings, actorID, service.now()); err != nil {
 		return err

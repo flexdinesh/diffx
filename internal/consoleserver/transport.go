@@ -37,15 +37,17 @@ type adminJSON struct {
 }
 
 type settingsJSON struct {
-	Signup              bool `json:"signup"`
-	PasswordSignup      bool `json:"passwordSignup"`
-	PublicPullRequests  bool `json:"publicPullRequests"`
-	PublicRetentionDays int  `json:"publicRetentionDays"`
+	Signup               bool `json:"signup"`
+	PasswordSignup       bool `json:"passwordSignup"`
+	PublicPullRequests   bool `json:"publicPullRequests"`
+	PublicRetentionDays  int  `json:"publicRetentionDays"`
+	HistoryRetentionDays int  `json:"historyRetentionDays"`
 }
 
 func projectSettings(settings identityservice.Settings) settingsJSON {
 	return settingsJSON{Signup: settings.Signup, PasswordSignup: settings.PasswordSignup,
-		PublicPullRequests: settings.PublicPullRequests, PublicRetentionDays: settings.PublicRetentionDays}
+		PublicPullRequests: settings.PublicPullRequests, PublicRetentionDays: settings.PublicRetentionDays,
+		HistoryRetentionDays: settings.HistoryRetentionDays}
 }
 
 type bootstrapJSON struct {
@@ -484,23 +486,29 @@ func (console *transport) appSettings(w http.ResponseWriter, r *http.Request, ac
 	case http.MethodPut:
 		// A change replaces every setting.
 		var input struct {
-			Signup              *bool `json:"signup"`
-			PasswordSignup      *bool `json:"passwordSignup"`
-			PublicPullRequests  *bool `json:"publicPullRequests"`
-			PublicRetentionDays *int  `json:"publicRetentionDays"`
+			Signup               *bool `json:"signup"`
+			PasswordSignup       *bool `json:"passwordSignup"`
+			PublicPullRequests   *bool `json:"publicPullRequests"`
+			PublicRetentionDays  *int  `json:"publicRetentionDays"`
+			HistoryRetentionDays *int  `json:"historyRetentionDays"`
 		}
 		if !authhttp.DecodeJSON(w, r, &input) {
 			return
 		}
-		if input.Signup == nil || input.PasswordSignup == nil || input.PublicPullRequests == nil || input.PublicRetentionDays == nil {
+		if input.Signup == nil || input.PasswordSignup == nil || input.PublicPullRequests == nil || input.PublicRetentionDays == nil || input.HistoryRetentionDays == nil {
 			authhttp.Problem(w, 400, "Malformed request")
 			return
 		}
 		settings := identityservice.Settings{Signup: *input.Signup, PasswordSignup: *input.PasswordSignup,
-			PublicPullRequests: *input.PublicPullRequests, PublicRetentionDays: *input.PublicRetentionDays}
+			PublicPullRequests: *input.PublicPullRequests, PublicRetentionDays: *input.PublicRetentionDays,
+			HistoryRetentionDays: *input.HistoryRetentionDays}
 		err := console.identity.PutSettings(r.Context(), actor.ID, settings)
 		if errors.Is(err, identityservice.ErrInvalidSettings) {
 			authhttp.Problem(w, 400, "Public retention must be 1–30 days")
+			return
+		}
+		if errors.Is(err, identityservice.ErrInvalidHistoryRetention) {
+			authhttp.Problem(w, 400, "History retention must be 30–365 days")
 			return
 		}
 		if err != nil {

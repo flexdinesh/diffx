@@ -38,6 +38,9 @@ func (stubGitHub) UserRepositories(context.Context, string) ([]gh.Repository, er
 func (s stubGitHub) OpenPullRequests(context.Context, int64, string) ([]gh.PullRequest, error) {
 	return []gh.PullRequest{s.pull}, nil
 }
+func (stubGitHub) ClosedPullRequests(context.Context, int64, string, time.Time) ([]gh.PullRequest, error) {
+	return nil, nil
+}
 func (s stubGitHub) PullRequest(context.Context, gh.Credential, string, int) (gh.PullRequest, error) {
 	return s.pull, nil
 }

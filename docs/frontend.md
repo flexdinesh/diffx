@@ -95,6 +95,11 @@ per-browser opened and viewed heads (`projects-seen[:account]`,
 and `markUnread`; `bench-trail.ts` keeps the bench's last URL and row order
 in `sessionStorage` for the Reviews breadcrumb and review stepper
 (`review-navigation.tsx`); `ReviewCompleteNotice.tsx` offers the next review.
+`/history` (`HistoryPage.tsx`) renders outside `SessionProvider`, like
+`/settings`, only when the remote bootstrap reports `githubEnabled`; other
+servers redirect it to `/`. `history.ts` owns its pure rules (local-day
+windows, stepping, query string, labels, day grouping, filters); the page reads
+`GET /api/v2/github/history` and reuses the bench's panes and facet rows.
 The header repository and branch comboboxes (`ContextIdentity.tsx`) and the
 popup picker (Cmd/Ctrl+K or the header's “Search reviews” magnifier) switch
 reviews too; `project-nav.ts` owns their grouping, ordering, latest-stream and
