@@ -237,6 +237,13 @@ main {
   padding-right: calc(var(--diff-gutter) + var(--diff-viewport-inset, 0px));
   border-bottom: 1px solid var(--border);
 }
+/* Toolbar actions keep one row on narrow screens; the comparison truncates.
+   It claims free space before the toolbar spacer, up to its content width. */
+.comparison-picker {
+  flex: 999 1 0;
+  min-width: 0;
+  max-width: fit-content;
+}
 .visually-hidden {
   position: absolute;
   width: 1px;

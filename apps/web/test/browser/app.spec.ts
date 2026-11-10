@@ -1093,6 +1093,118 @@ test("Alt+M toggles the selected file reviewed and advances on mark", async ({
   await expect(current).toHaveAttribute("data-path", "scripts/release.sh");
 });
 
+// Change blocks per fixture file; every other file has one.
+const fixtureChangeBlocks: Record<string, number> = {
+  "README.md": 2,
+  "src/components/Button.tsx": 2,
+};
+
+/** "Change n of N in path" announcements for files in viewer order. */
+function changeAnnouncements(paths: readonly string[]) {
+  return paths.flatMap((path) => {
+    const count = fixtureChangeBlocks[path] ?? 1;
+    return Array.from(
+      { length: count },
+      (_, index) => `Change ${index + 1} of ${count} in ${path}`,
+    );
+  });
+}
+
+test("Alt+[ and Alt+] step through change blocks across expanded files", async ({
+  page,
+}) => {
+  // Every file fits on screen, so steps pulse their blocks without scrolling.
+  await page.setViewportSize({ width: 1280, height: 4_000 });
+  await page.goto("/");
+  await showDiff(page);
+
+  const paths = await page
+    .locator("#file-tree [data-path]")
+    .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-path")));
+  const order = paths.flatMap((path) => (path ? [path] : []));
+  const expected = changeAnnouncements(order);
+  expect(expected).toHaveLength(14);
+  const announcement = page.locator("#change-announcement");
+  const feedback = page.locator("#comment-feedback");
+  const current = page.locator("#file-tree [aria-current=true]");
+  await expect(page.locator(".footer-shortcuts")).toContainText(
+    "Alt+[ Alt+] changes",
+  );
+  const next = page.getByRole("button", { name: "Next change" });
+  await next.hover();
+  const tooltip = page.locator('[data-slot="tooltip-content"]');
+  await expect(tooltip.getByText("Alt+]", { exact: true })).toBeVisible();
+
+  // One list across files, in tree order, from the keyboard and the toolbar.
+  for (const [index, text] of expected.entries()) {
+    if (index % 2 === 0) await page.keyboard.press("Alt+BracketRight");
+    else await next.click();
+    await expect(announcement).toHaveText(text);
+  }
+  await expect(current).toHaveAttribute("data-path", order.at(-1) ?? "");
+  await expect(
+    page.locator("#viewer [data-line-navigation-target]").first(),
+  ).toBeVisible();
+
+  // The end does not wrap and says so until navigation moves again.
+  await page.keyboard.press("Alt+BracketRight");
+  await expect(feedback).toHaveText("No more changes below.");
+  await expect(announcement).toHaveText(expected.at(-1) ?? "");
+  await page.keyboard.press("Alt+BracketLeft");
+  await expect(announcement).toHaveText(expected.at(-2) ?? "");
+  await expect(feedback).toHaveText("");
+
+  // Text fields keep their own keys.
+  await page.getByRole("searchbox", { name: "Filter files" }).focus();
+  await page.keyboard.press("Alt+BracketLeft");
+  await expect(announcement).toHaveText(expected.at(-2) ?? "");
+  await page.getByRole("searchbox", { name: "Filter files" }).blur();
+
+  // Collapsed files have no stops: stepping back skips them.
+  await page
+    .getByRole("button", { name: "Collapse src/components/Button.tsx" })
+    .click();
+  const back = expected
+    .slice(0, -2)
+    .reverse()
+    .filter((text) => !text.endsWith(" src/components/Button.tsx"));
+  for (const text of back) {
+    await page.keyboard.press("Alt+BracketLeft");
+    await expect(announcement).toHaveText(text);
+  }
+  await page.keyboard.press("Alt+BracketLeft");
+  await expect(feedback).toHaveText("No changes above.");
+
+  // Nothing expanded leaves nothing to step through.
+  await page.getByRole("button", { name: "Collapse all files" }).click();
+  await expect(next).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Previous change" }),
+  ).toBeDisabled();
+});
+
+test("change navigation scrolls hidden blocks into view in both layouts", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 520 });
+  await page.goto("/");
+  await showDiff(page);
+  const announcement = page.locator("#change-announcement");
+  const cue = page.locator("#viewer [data-line-navigation-target]");
+  for (const layout of ["Split", "Unified"]) {
+    await page.getByRole("button", { name: layout, exact: true }).click();
+    for (let step = 0; step < 8; step++) {
+      await page.keyboard.press("Alt+BracketRight");
+      await expect(cue.first()).toBeInViewport();
+    }
+    await expect(announcement).toContainText("Change");
+    for (let step = 0; step < 8; step++) {
+      await page.keyboard.press("Alt+BracketLeft");
+      await expect(cue.first()).toBeInViewport();
+    }
+  }
+});
+
 test("hiding the last unreviewed file shows the all-reviewed state", async ({
   page,
   baseURL,
@@ -1550,7 +1662,7 @@ test("inline comments use a distinct structured surface while sidebar comments r
     .locator("#viewer diffs-container")
     .filter({ hasText: "src/components/Badge.tsx" });
   const navigatedLines = rangeTarget.locator(
-    "[data-additions] [data-line][data-comment-navigation-target]",
+    "[data-additions] [data-line][data-line-navigation-target]",
   );
   await expect(navigatedLines).toHaveCount(3);
   await expect(rangeTarget.locator("[data-diffs-header]")).not.toHaveAttribute(

@@ -1,3 +1,4 @@
+import type { CodeViewItem } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 import type {
   ApiChangedFile as ChangedFile,
@@ -15,6 +16,14 @@ import {
   type SetStateAction,
 } from "react";
 import { ancestorPaths, filesInTreeOrder } from "./file-tree.ts";
+import {
+  changeStops,
+  stepChangeStop,
+  type ChangeStop,
+  type LineSpan,
+  type StopKey,
+  type StopRect,
+} from "./hunk-navigation.ts";
 import {
   saveSessionFlag,
   saveSessionPaths,
@@ -61,6 +70,11 @@ interface NavigationOptions {
   /** Whether reviewed-file marks apply (Alt+M); see `DiffSource.marking`. */
   marking: boolean;
   stepCommit: (delta: -1 | 1) => boolean;
+  /** Loaded previews by path; change navigation reads their hunks. */
+  items: ReadonlyMap<string, CodeViewItem<CommentAnnotation>>;
+  /** Files after the last loaded preview, waiting for Load more. */
+  unloaded: number;
+  collapsed: ReadonlySet<string>;
   setCollapsed: Dispatch<SetStateAction<Set<string>>>;
   isReviewed: (file: ChangedFile) => boolean;
   /** Resolves whether the toggle was applied. */
@@ -84,6 +98,9 @@ export function useFileNavigation({
   viewingCommit,
   marking,
   stepCommit,
+  items,
+  unloaded,
+  collapsed,
   setCollapsed,
   isReviewed,
   toggleReviewed,
@@ -106,6 +123,13 @@ export function useFileNavigation({
     end: number;
     sequence: number;
   } | null>(null);
+  const [changeNavigationTarget, setChangeNavigationTarget] = useState<{
+    path: string;
+    deletions: LineSpan | null;
+    additions: LineSpan | null;
+    sequence: number;
+  } | null>(null);
+  const [changeAnnouncement, setChangeAnnouncement] = useState("");
   const closedKey = `closed-folders:${stream}`;
   const [closed, setClosed] = useState(() => sessionPaths(closedKey));
   useEffect(() => {
@@ -282,6 +306,134 @@ export function useFileNavigation({
     },
     [isReviewed, hideReviewed, toggleReviewed, files, selectFile],
   );
+  // Change blocks of the visible, expanded files, in viewer order.
+  const stops = useMemo(
+    () =>
+      changeStops(
+        files.map((file) => file.path),
+        items,
+        collapsed,
+      ),
+    [files, items, collapsed],
+  );
+  const changeCursor = useRef<StopKey | null>(null);
+  // An end-of-changes notice clears once navigation moves again.
+  const changeNotice = useRef(false);
+  const stepChange = useCallback(
+    (delta: -1 | 1) => {
+      const instance = viewer.current?.getInstance();
+      if (!instance) return;
+      if (stops.length === 0) {
+        changeNotice.current = true;
+        setFeedback("No expanded changes to navigate.");
+        return;
+      }
+      const rendered = instance.getRenderedItems();
+      const header =
+        rendered[0]?.element.shadowRoot
+          ?.querySelector<HTMLElement>("[data-diffs-header]")
+          ?.getBoundingClientRect().height ?? 0;
+      const scrollTop = instance.getScrollTop();
+      const viewport = {
+        top: scrollTop + header,
+        bottom: scrollTop + instance.getHeight(),
+      };
+      // Rendered files measure their rows; others sit at their file's top.
+      const rect = (stop: ChangeStop): StopRect & { measured: boolean } => {
+        const fileTop = instance.getTopForItem(stop.path) ?? 0;
+        const item = rendered.find((entry) => entry.id === stop.path);
+        if (item?.type === "diff") {
+          const rows = [
+            stop.deletions && {
+              first: item.instance.getLinePosition(
+                stop.deletions.start,
+                "deletions",
+              ),
+              last: item.instance.getLinePosition(
+                stop.deletions.end,
+                "deletions",
+              ),
+            },
+            stop.additions && {
+              first: item.instance.getLinePosition(
+                stop.additions.start,
+                "additions",
+              ),
+              last: item.instance.getLinePosition(
+                stop.additions.end,
+                "additions",
+              ),
+            },
+          ].flatMap((side) =>
+            side?.first && side.last
+              ? [{ first: side.first, last: side.last }]
+              : [],
+          );
+          if (rows.length > 0)
+            return {
+              top: fileTop + Math.min(...rows.map((row) => row.first.top)),
+              bottom:
+                fileTop +
+                Math.max(...rows.map((row) => row.last.top + row.last.height)),
+              measured: true,
+            };
+        }
+        return { top: fileTop, bottom: fileTop, measured: false };
+      };
+      const target = stepChangeStop(
+        stops,
+        delta,
+        viewport,
+        rect,
+        changeCursor.current,
+      );
+      if (!target) {
+        changeNotice.current = true;
+        setFeedback(
+          delta === -1
+            ? "No changes above."
+            : unloaded > 0
+              ? "No more loaded changes below. Load more files to continue."
+              : "No more changes below.",
+        );
+        return;
+      }
+      if (changeNotice.current) {
+        changeNotice.current = false;
+        setFeedback("");
+      }
+      changeCursor.current = { path: target.path, index: target.index };
+      pinned.current = { path: target.path, seen: false };
+      selectVisibleFile(target.path);
+      const shown = rect(target);
+      // A block already fully on screen stays put; the cue marks it.
+      if (
+        !shown.measured ||
+        shown.top < viewport.top ||
+        shown.bottom > viewport.bottom
+      )
+        viewer.current?.scrollTo({
+          type: "line",
+          id: target.path,
+          lineNumber: target.anchor.lineNumber,
+          side: target.anchor.side,
+          align: "start",
+          behavior: "instant",
+        });
+      setChangeNavigationTarget((previous) => ({
+        path: target.path,
+        deletions: target.deletions,
+        additions: target.additions,
+        sequence: (previous?.sequence ?? 0) + 1,
+      }));
+      setChangeAnnouncement(
+        `Change ${target.index + 1} of ${target.count} in ${target.path}`,
+      );
+    },
+    [stops, unloaded, setFeedback, selectVisibleFile],
+  );
+  const canStepChanges = stops.length > 0;
+
   const navigateComment = useCallback(
     (comment: ReviewComment) => {
       // Comments open in their scope; a commit view shows none.
@@ -421,11 +573,28 @@ export function useFileNavigation({
           ) ||
         event.metaKey ||
         event.ctrlKey ||
-        // Alt+Shift chords step between reviews (review-navigation.tsx).
-        event.shiftKey ||
         !event.altKey
       )
         return;
+      // Physical bracket keys, so layouts that type other characters work.
+      if (event.code === "BracketLeft" || event.code === "BracketRight") {
+        const delta = event.code === "BracketLeft" ? -1 : 1;
+        if (!event.shiftKey) {
+          event.preventDefault();
+          stepChange(delta);
+        } else if (viewingCommit) {
+          event.preventDefault();
+          if (!stepCommit(delta))
+            setFeedback(
+              delta === -1
+                ? "This is the oldest captured commit."
+                : "This is the newest commit.",
+            );
+        }
+        return;
+      }
+      // Other Alt+Shift chords step between reviews (review-navigation.tsx).
+      if (event.shiftKey) return;
       if (event.code === "Slash") {
         event.preventDefault();
         showSidebar();
@@ -435,19 +604,6 @@ export function useFileNavigation({
       if (event.code === "KeyR") {
         event.preventDefault();
         if (refreshEnabled) refresh();
-      }
-      // Physical bracket keys, so layouts that type other characters work.
-      if (
-        viewingCommit &&
-        (event.code === "BracketLeft" || event.code === "BracketRight")
-      ) {
-        event.preventDefault();
-        if (!stepCommit(event.code === "BracketLeft" ? -1 : 1))
-          setFeedback(
-            event.code === "BracketLeft"
-              ? "This is the oldest captured commit."
-              : "This is the newest commit.",
-          );
       }
       if (event.code === "KeyJ" || event.code === "KeyK") {
         event.preventDefault();
@@ -492,6 +648,7 @@ export function useFileNavigation({
     setFeedback,
     pending,
     toggleFileReviewed,
+    stepChange,
   ]);
 
   return useMemo(
@@ -507,6 +664,10 @@ export function useFileNavigation({
       activePath,
       navigationTarget,
       commentNavigationTarget,
+      changeNavigationTarget,
+      changeAnnouncement,
+      stepChange,
+      canStepChanges,
       closed,
       setClosed,
       filteredClosed,
@@ -529,6 +690,10 @@ export function useFileNavigation({
       activePath,
       navigationTarget,
       commentNavigationTarget,
+      changeNavigationTarget,
+      changeAnnouncement,
+      stepChange,
+      canStepChanges,
       closed,
       filteredClosed,
       selectFile,

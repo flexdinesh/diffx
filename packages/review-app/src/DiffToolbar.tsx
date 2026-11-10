@@ -1,4 +1,6 @@
 import {
+  ArrowDownIcon,
+  ArrowUpIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
   Settings2Icon,
@@ -43,13 +45,33 @@ export function DiffToolbar() {
     setLineDiffType,
   } = useAppearance();
   const { collapsed, setCollapsed } = useDiffCollapse();
-  const { files } = useNavigation();
+  const { files, stepChange, canStepChanges } = useNavigation();
   const allCollapsed =
     files.length > 0 && files.every((file) => collapsed.has(file.path));
   return (
     <div className="toolbar [&_svg]:[stroke-width:var(--icon-stroke-chrome)]">
       <ComparisonPicker />
       <div className="min-w-0 flex-1" />
+      <IconButton
+        label="Previous change"
+        shortcut={{ alt: true, key: "[" }}
+        size="icon-sm"
+        touch
+        disabled={!canStepChanges}
+        onClick={() => stepChange(-1)}
+      >
+        <ArrowUpIcon aria-hidden="true" />
+      </IconButton>
+      <IconButton
+        label="Next change"
+        shortcut={{ alt: true, key: "]" }}
+        size="icon-sm"
+        touch
+        disabled={!canStepChanges}
+        onClick={() => stepChange(1)}
+      >
+        <ArrowDownIcon aria-hidden="true" />
+      </IconButton>
       <SegmentedControl
         label="Diff layout"
         className="max-md:hidden"

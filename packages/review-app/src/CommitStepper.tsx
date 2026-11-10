@@ -39,7 +39,7 @@ export function CommitStepper() {
     <div className="comparison-subcontrol flex min-w-0 items-center gap-1">
       <IconButton
         label="Older commit"
-        shortcut={{ alt: true, key: "[" }}
+        shortcut={{ alt: true, shift: true, key: "[" }}
         variant="outline-muted"
         size="icon-xs"
         touch
@@ -107,7 +107,7 @@ export function CommitStepper() {
       </Combobox>
       <IconButton
         label="Newer commit"
-        shortcut={{ alt: true, key: "]" }}
+        shortcut={{ alt: true, shift: true, key: "]" }}
         variant="outline-muted"
         size="icon-xs"
         touch

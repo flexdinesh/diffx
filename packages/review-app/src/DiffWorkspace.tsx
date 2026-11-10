@@ -15,6 +15,7 @@ import type {
 } from "@pierre/diffs";
 import {
   CodeView,
+  type CodeViewHandle,
   type CodeViewReactOptions,
   useWorkerPool,
 } from "@pierre/diffs/react";
@@ -24,7 +25,14 @@ import {
   errorDetail,
   type ApiRepositoryDiff as RepositoryDiff,
 } from "@diffx/api";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { DisclosureIcon } from "@diffx/ui/components/disclosure";
 import { EmptyState } from "@diffx/ui/components/empty-state";
 import { IconButton } from "@diffx/ui/components/icon-button";
@@ -67,6 +75,46 @@ import { WorkspaceFeedback } from "./WorkspaceFeedback.tsx";
 import { capabilityEnabled, useSession } from "./session-context.tsx";
 
 const NAVIGATION_CUE_MS = 1_000;
+
+/**
+ * Briefly marks a file's rows once Pierre mounts them, for comment and change
+ * navigation. Returns the effect cleanup.
+ */
+function pulseRows(
+  viewer: RefObject<CodeViewHandle<CommentAnnotation, undefined> | null>,
+  path: string,
+  select: (root: ShadowRoot) => HTMLElement[],
+) {
+  let frame = 0;
+  let timeout = 0;
+  let targets: HTMLElement[] = [];
+  const deadline = performance.now() + NAVIGATION_CUE_MS;
+  const highlight = () => {
+    const root = viewer.current
+      ?.getInstance()
+      ?.getRenderedItems()
+      .find((rendered) => rendered.id === path)?.element.shadowRoot;
+    targets = root ? select(root) : [];
+    if (targets.length === 0) {
+      if (performance.now() < deadline)
+        frame = requestAnimationFrame(highlight);
+      return;
+    }
+    for (const target of targets)
+      target.setAttribute("data-line-navigation-target", "");
+    timeout = window.setTimeout(() => {
+      for (const target of targets)
+        target.removeAttribute("data-line-navigation-target");
+    }, NAVIGATION_CUE_MS);
+  };
+  frame = requestAnimationFrame(highlight);
+  return () => {
+    cancelAnimationFrame(frame);
+    clearTimeout(timeout);
+    for (const target of targets)
+      target.removeAttribute("data-line-navigation-target");
+  };
+}
 
 type CommentLineRange = {
   side: "deletions" | "additions";
@@ -218,6 +266,8 @@ export function DiffWorkspace() {
     setHideReviewed,
     navigationTarget,
     commentNavigationTarget,
+    changeNavigationTarget,
+    changeAnnouncement,
     navigateComment,
     toggleFileReviewed,
     viewer,
@@ -446,47 +496,38 @@ export function DiffWorkspace() {
   }, [navigationTarget, viewer]);
   useEffect(() => {
     if (!commentNavigationTarget) return;
-    let frame = 0;
-    let timeout = 0;
-    let targets: HTMLElement[] = [];
-    const deadline = performance.now() + NAVIGATION_CUE_MS;
-    const highlight = () => {
-      const item = viewer.current
-        ?.getInstance()
-        ?.getRenderedItems()
-        .find((rendered) => rendered.id === commentNavigationTarget.path);
-      const column = item?.element.shadowRoot?.querySelector<HTMLElement>(
-        `[data-code][data-${commentNavigationTarget.side}]`,
-      );
-      targets = Array.from(
-        column?.querySelectorAll<HTMLElement>("[data-line]") ?? [],
+    const { path, side, start, end } = commentNavigationTarget;
+    return pulseRows(viewer, path, (root) =>
+      Array.from(
+        root
+          .querySelector(`[data-code][data-${side}]`)
+          ?.querySelectorAll<HTMLElement>("[data-line]") ?? [],
       ).filter((element) => {
         const line = Number(element.getAttribute("data-line"));
-        return (
-          line >= commentNavigationTarget.start &&
-          line <= commentNavigationTarget.end
-        );
-      });
-      if (targets.length === 0) {
-        if (performance.now() < deadline)
-          frame = requestAnimationFrame(highlight);
-        return;
-      }
-      for (const target of targets)
-        target.setAttribute("data-comment-navigation-target", "");
-      timeout = window.setTimeout(() => {
-        for (const target of targets)
-          target.removeAttribute("data-comment-navigation-target");
-      }, NAVIGATION_CUE_MS);
-    };
-    frame = requestAnimationFrame(highlight);
-    return () => {
-      cancelAnimationFrame(frame);
-      clearTimeout(timeout);
-      for (const target of targets)
-        target.removeAttribute("data-comment-navigation-target");
-    };
+        return line >= start && line <= end;
+      }),
+    );
   }, [commentNavigationTarget, viewer]);
+  // Change rows carry their side in data-line-type in both layouts.
+  useEffect(() => {
+    if (!changeNavigationTarget) return;
+    const { path, deletions, additions } = changeNavigationTarget;
+    return pulseRows(viewer, path, (root) =>
+      Array.from(
+        root.querySelectorAll<HTMLElement>("[data-line][data-line-type]"),
+      ).filter((element) => {
+        const type = element.getAttribute("data-line-type");
+        const span =
+          type === "change-deletion"
+            ? deletions
+            : type === "change-addition"
+              ? additions
+              : null;
+        const line = Number(element.getAttribute("data-line"));
+        return span !== null && line >= span.start && line <= span.end;
+      }),
+    );
+  }, [changeNavigationTarget, viewer]);
   const options = useMemo<CodeViewReactOptions<CommentAnnotation, undefined>>(
     () => ({
       theme: codeThemes,
@@ -617,10 +658,10 @@ export function DiffWorkspace() {
             color-mix(in srgb, var(--diffs-deletion-base) 72%, black)
           );
         }
-        [data-comment-navigation-target] {
-          animation: comment-navigation-target ${NAVIGATION_CUE_MS}ms ease-out;
+        [data-line-navigation-target] {
+          animation: line-navigation-target ${NAVIGATION_CUE_MS}ms ease-out;
         }
-        @keyframes comment-navigation-target {
+        @keyframes line-navigation-target {
           0%, 40% {
             box-shadow: inset 3px 0 var(--accent);
             filter: saturate(1.25) brightness(0.92);
@@ -631,7 +672,7 @@ export function DiffWorkspace() {
           }
         }
         @media (prefers-reduced-motion: reduce) {
-          [data-comment-navigation-target] {
+          [data-line-navigation-target] {
             animation: none;
             box-shadow: inset 3px 0 var(--accent);
             filter: saturate(1.25) brightness(0.92);
@@ -814,6 +855,14 @@ export function DiffWorkspace() {
       </Notice>
       <p className="visually-hidden" role="status" aria-live="polite">
         {selectionFeedback}
+      </p>
+      <p
+        id="change-announcement"
+        className="visually-hidden"
+        role="status"
+        aria-live="polite"
+      >
+        {changeAnnouncement}
       </p>
       <div className="review-surface">
         <section
@@ -1053,10 +1102,11 @@ export function DiffWorkspace() {
         )}
         <span className="footer-details">
           <span className="footer-shortcuts">
-            <kbd>Alt+J</kbd> <kbd>Alt+K</kbd> files{" "}
+            <kbd>Alt+J</kbd> <kbd>Alt+K</kbd> files <kbd>Alt+[</kbd>{" "}
+            <kbd>Alt+]</kbd> changes{" "}
             {commit ? (
               <>
-                <kbd>Alt+[</kbd> <kbd>Alt+]</kbd> commits{" "}
+                <kbd>Alt+Shift+[</kbd> <kbd>Alt+Shift+]</kbd> commits{" "}
               </>
             ) : (
               marking && (

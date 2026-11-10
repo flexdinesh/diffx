@@ -462,7 +462,7 @@ unstaged edits do not disappear with an empty Combined diff.
 
 When commits were captured, the selector also offers Commits: a read-only lens
 on the same observation that steps oldest to newest with previous/next, a commit
-list or Alt+[ and Alt+], shows the commit message, and offers “Open in Branch
+list or Alt+Shift+[ and Alt+Shift+], shows the commit message, and offers “Open in Branch
 changes” on file headers. `?commit=<oid>` selects a commit. Review state stays on
 comparison scopes.
 

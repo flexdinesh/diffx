@@ -395,7 +395,7 @@ such detail into a token. New layout spacing must use the scale.
   scope. The comparison menu lists it last, after a separator, with a count
   badge. A toolbar subcontrol (its own row below 768px, like the Uncommitted
   segments) holds outline-muted “Older commit” / “Newer commit” icon buttons
-  (Alt+[ / Alt+], disabled at either end) around an outline-muted `ui/combobox`
+  (Alt+Shift+[ / Alt+Shift+], disabled at either end) around an outline-muted `ui/combobox`
   trigger: muted mono short SHA, subject, muted `n/total`. Rows show the short
   SHA, subject, mono green/red +/− (or “Merge commit”) and age, oldest first;
   the filter matches subject, author and SHA prefix, and a muted footer counts
@@ -671,6 +671,18 @@ at `/design.html` (see `docs/frontend.md`).
 - Navigating from the file list briefly pulses the destination file header with
   the accent for about one second. Reduced-motion mode uses static feedback that
   remains visible long enough to identify the destination without animation.
+- Change navigation (Alt+[ / Alt+] and the toolbar arrows) steps through
+  contiguous blocks of changed lines as one list across the visible, expanded
+  files in tree order, owned by `useFileNavigation` with pure rules in
+  `hunk-navigation.ts`. Collapsed files (including files reviewed and
+  collapsed), placeholders and unloaded previews have no stops; Alt+J/K still
+  reaches them. The last block navigated stays current while on screen;
+  otherwise the viewport's top decides. A block already fully visible does not
+  scroll; others align with up to three context lines below the sticky header.
+  The block's rows pulse like comment navigation, the tree selects its file,
+  and a polite live region announces “Change n of N in path”. The ends do not
+  wrap: “No changes above.” / “No more changes below.” feedback (naming Load
+  more when previews remain), cleared by the next step.
 - Sidebar tabs fuse with their panel: the active tab shares `--panel`, inactive
   tabs recess into `--shell` and draw their own edges. A tab strip's header
   recesses into `--shell` too, with the bottom hairline the active tab covers, so
@@ -1014,7 +1026,10 @@ Do not add motion for decoration. New animation must honor
   staged and unstaged changes that cancel in Uncommitted All.
 - Keep comparison and desktop layout choice visible. View options and collapse/expand
   all are adjacent icon buttons with action titles. Put wrap, inline detail,
-  code theme, and narrow layout choice in View options.
+  code theme, and narrow layout choice in View options. “Previous change” /
+  “Next change” arrow icon buttons (Alt+[ / Alt+]) lead the toolbar's trailing
+  actions in every layout, disabled only when no expanded file has changes.
+  Below 768px the comparison truncates so the toolbar's actions keep one row.
 - Mobile retains the brand mark and divider, and the review identity's
   repository/branch, as the title menu, or Piped/time context; truncate long
   labels and hide its shortcut hint. Hide the secondary heading/path and refresh
