@@ -162,6 +162,7 @@ export function FileNavigation({
                 <ListRow
                   type="button"
                   font="mono"
+                  variant="table"
                   depth={depth}
                   data-tree-path={node.path}
                   tabIndex={-1}
@@ -193,6 +194,7 @@ export function FileNavigation({
               <ListRow
                 type="button"
                 font="mono"
+                variant="table"
                 depth={depth}
                 data-path={file.path}
                 data-tree-path={file.path}
