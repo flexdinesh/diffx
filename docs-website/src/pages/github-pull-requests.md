@@ -169,13 +169,28 @@ On iPhone and iPad, notifications work only in the Home Screen app: in Safari,
 tap **Share**, then **Add to Home Screen**, open diffx from the Home Screen and
 turn notifications on there. Chromium browsers also offer **Install app**.
 
-A notification arrives when a followed repository's pull request opens or gets
-new commits. Following a repository and **Resync pull requests** import
-existing pull requests silently. Title edits and state changes, including
-merges, never notify. Choosing a notification opens its review, or
-focuses a window already showing it.
+**What notifies** chooses, for all your devices, which followed pull request
+events notify you:
 
-The bell beside each followed repository mutes or unmutes its notifications.
+- **Opened** (also reopened or marked ready for review), **New commits**,
+  **Merged** and **Closed without merging**, each separately for pull requests
+  **By me** and **By others**. Pull requests your agents open with your GitHub
+  account count as yours. By default only **Opened** notifies, for both.
+- **Skip drafts until they're ready for review**.
+- **Only from** limits others' pull requests to these GitHub usernames, and
+  **Never from** excludes authors such as `dependabot[bot]`.
+- **Into branches** limits pull requests to these base branches; a trailing
+  `*` matches a prefix, as in `release/*`.
+- **Mute titles containing** skips pull requests whose title contains a term,
+  such as `chore:`.
+
+Lists are comma-separated and ignore case. Changes save as you make them.
+Following a repository and **Resync pull requests** import existing pull
+requests silently, and title edits never notify. Choosing a notification opens
+its review, or focuses a window already showing it.
+
+The bell beside each followed repository mutes or unmutes all its
+notifications, whatever **What notifies** allows.
 **Other devices** lists every device that receives them; remove one you no
 longer use. Signing out stops notifications to that browser, and blocked
 notifications are turned back on in the browser's site settings.

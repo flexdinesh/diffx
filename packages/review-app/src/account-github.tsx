@@ -50,9 +50,14 @@ function takeCallbackMessage() {
 
 /**
  * Whether GitHub can produce pull requests for this account: not set up on
- * the server, no followed repository, or at least one followed.
+ * the server, not connected (or its authorization lapsed), no followed
+ * repository, or at least one followed.
  */
-export type GitHubFollowing = "unavailable" | "none" | "following";
+export type GitHubFollowing =
+  | "unavailable"
+  | "disconnected"
+  | "none"
+  | "following";
 
 type Connection =
   | { status: "loading" }
@@ -185,7 +190,7 @@ export function AccountGitHub({
     );
   useEffect(() => {
     if (unconfigured) onFollowingChange?.("unavailable");
-    else if (inactive) onFollowingChange?.("none");
+    else if (inactive) onFollowingChange?.("disconnected");
   }, [unconfigured, inactive, onFollowingChange]);
   const current = connection.status === "ready" ? connection.connection : null;
   const active = current?.connected === true && current.state === "active";

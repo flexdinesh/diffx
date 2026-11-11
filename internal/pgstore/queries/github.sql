@@ -83,8 +83,13 @@ ON CONFLICT (repository_id, number) DO UPDATE SET installation_id = excluded.ins
 INSERT INTO github_pr_heads(repository_id, number, opened) VALUES ($1, $2, true)
 ON CONFLICT (repository_id, number) DO UPDATE SET opened = true;
 
--- name: GitHubPullRequestHead :one
-SELECT head_sha, opened FROM github_pr_heads WHERE repository_id = $1 AND number = $2;
+-- name: GitHubPullRequestObservation :one
+-- The state the last refresh observed, and the head and draft flag of the
+-- last captured snapshot ('' and false before the first).
+SELECT p.state, COALESCE(h.head_sha, '')::text AS head_sha, COALESCE(h.draft, false)::boolean AS draft,
+  COALESCE(h.opened, false)::boolean AS opened
+FROM github_pull_requests p LEFT JOIN github_pr_heads h ON h.repository_id = p.repository_id AND h.number = p.number
+WHERE p.repository_id = $1 AND p.number = $2;
 
 -- name: GitHubKnownOpen :many
 SELECT number FROM github_pull_requests WHERE repository_id = $1 AND state = 'open' ORDER BY number;
@@ -122,8 +127,8 @@ UPDATE github_pull_requests SET refreshed_generation = GREATEST(refreshed_genera
 WHERE repository_id = @repository_id AND number = @number AND lease_token = @token AND lease_until > @now;
 
 -- name: RecordGitHubPullRequestHead :exec
-INSERT INTO github_pr_heads(repository_id, number, head_sha) VALUES ($1, $2, $3)
-ON CONFLICT (repository_id, number) DO UPDATE SET head_sha = excluded.head_sha;
+INSERT INTO github_pr_heads(repository_id, number, head_sha, draft) VALUES ($1, $2, $3, $4)
+ON CONFLICT (repository_id, number) DO UPDATE SET head_sha = excluded.head_sha, draft = excluded.draft;
 
 -- name: RequestPublicGitHubRefresh :exec
 -- Public demand advances the generation like any refresh but never replaces
@@ -201,6 +206,37 @@ WHERE (h.created_at >= @since AND h.created_at < @until) OR (h.merged_at >= @sin
 ORDER BY GREATEST(CASE WHEN h.created_at < @until THEN h.created_at END, CASE WHEN h.merged_at < @until THEN h.merged_at END) DESC,
   h.repository_id, h.number
 LIMIT @row_limit;
+
+-- name: GitHubNotificationPreferences :one
+SELECT * FROM github_notification_preferences WHERE owner_id = $1;
+
+-- name: PutGitHubNotificationPreferences :exec
+INSERT INTO github_notification_preferences(owner_id, opened_by_me, opened_by_others, new_commits_by_me, new_commits_by_others,
+  merged_by_me, merged_by_others, closed_by_me, closed_by_others, skip_drafts, only_authors, never_authors, base_branches,
+  muted_title_terms, updated_at)
+VALUES (@owner_id, @opened_by_me, @opened_by_others, @new_commits_by_me, @new_commits_by_others,
+  @merged_by_me, @merged_by_others, @closed_by_me, @closed_by_others, @skip_drafts, @only_authors, @never_authors, @base_branches,
+  @muted_title_terms, @updated_at)
+ON CONFLICT (owner_id) DO UPDATE SET opened_by_me = excluded.opened_by_me, opened_by_others = excluded.opened_by_others,
+  new_commits_by_me = excluded.new_commits_by_me, new_commits_by_others = excluded.new_commits_by_others,
+  merged_by_me = excluded.merged_by_me, merged_by_others = excluded.merged_by_others,
+  closed_by_me = excluded.closed_by_me, closed_by_others = excluded.closed_by_others, skip_drafts = excluded.skip_drafts,
+  only_authors = excluded.only_authors, never_authors = excluded.never_authors, base_branches = excluded.base_branches,
+  muted_title_terms = excluded.muted_title_terms, updated_at = excluded.updated_at;
+
+-- name: GitHubNotificationRecipients :many
+-- Each listed connected account's GitHub user and saved preferences. Saved
+-- is false for accounts that never saved any; their other columns are blank.
+SELECT c.owner_id, c.user_id, (p.owner_id IS NOT NULL)::boolean AS saved,
+  COALESCE(p.opened_by_me, false)::boolean AS opened_by_me, COALESCE(p.opened_by_others, false)::boolean AS opened_by_others,
+  COALESCE(p.new_commits_by_me, false)::boolean AS new_commits_by_me, COALESCE(p.new_commits_by_others, false)::boolean AS new_commits_by_others,
+  COALESCE(p.merged_by_me, false)::boolean AS merged_by_me, COALESCE(p.merged_by_others, false)::boolean AS merged_by_others,
+  COALESCE(p.closed_by_me, false)::boolean AS closed_by_me, COALESCE(p.closed_by_others, false)::boolean AS closed_by_others,
+  COALESCE(p.skip_drafts, false)::boolean AS skip_drafts,
+  COALESCE(p.only_authors, '{}')::text[] AS only_authors, COALESCE(p.never_authors, '{}')::text[] AS never_authors,
+  COALESCE(p.base_branches, '{}')::text[] AS base_branches, COALESCE(p.muted_title_terms, '{}')::text[] AS muted_title_terms
+FROM github_connections c LEFT JOIN github_notification_preferences p ON p.owner_id = c.owner_id
+WHERE c.owner_id = ANY(@owner_ids::text[]);
 
 -- name: HistoryRetentionDays :one
 SELECT history_retention_days FROM app_settings;

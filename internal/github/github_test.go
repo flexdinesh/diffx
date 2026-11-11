@@ -289,6 +289,7 @@ const forkPullRequest = `{
   "number": 12, "state": "closed", "draft": false, "title": "Fix", "body": null,
   "html_url": "https://github.com/octo/repo/pull/12", "merged_at": "2026-01-02T03:04:05Z",
   "closed_at": "2026-01-02T03:04:05Z", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-02T03:04:05Z",
+  "merged_by": {"login": "octo-admin", "id": 5, "html_url": "https://github.com/octo-admin"},
   "user": {"login": "fork-user", "id": 77, "html_url": "https://github.com/fork-user", "type": "User"},
   "head": {"label": "fork-user:fix", "ref": "fix", "sha": "aaaa", "user": {"login": "fork-user", "id": 77}, "repo": null},
   "base": {"label": "octo:main", "ref": "main", "sha": "bbbb",
@@ -309,7 +310,8 @@ func TestPullRequestMapsForkWithDeletedHead(t *testing.T) {
 		t.Fatal(err)
 	}
 	merged := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	want := PullRequest{Number: 12, State: "closed", Merged: true, MergedAt: &merged, ClosedAt: &merged, Title: "Fix", HTMLURL: "https://github.com/octo/repo/pull/12",
+	want := PullRequest{Number: 12, State: "closed", Merged: true, MergedAt: &merged, ClosedAt: &merged,
+		MergedBy: &Account{ID: 5, Login: "octo-admin", HTMLURL: "https://github.com/octo-admin"}, Title: "Fix", HTMLURL: "https://github.com/octo/repo/pull/12",
 		Author: Account{ID: 77, Login: "fork-user", HTMLURL: "https://github.com/fork-user"},
 		Base: Ref{Ref: "main", SHA: "bbbb", Repository: Repository{ID: 101, FullName: "octo/repo",
 			CloneURL: "https://github.com/octo/repo.git", Private: true}},

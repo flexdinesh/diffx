@@ -171,12 +171,15 @@ func (s *GitHubStore) RequestRefresh(ctx context.Context, ref githubsync.PullReq
 	})
 }
 
-func (s *GitHubStore) PullRequestHead(ctx context.Context, repositoryID int64, number int) (string, bool, error) {
-	row, err := s.store.queries.GitHubPullRequestHead(ctx, pgdb.GitHubPullRequestHeadParams{RepositoryID: repositoryID, Number: int32(number)})
+func (s *GitHubStore) PullRequestObservation(ctx context.Context, repositoryID int64, number int) (githubsync.Observation, bool, error) {
+	row, err := s.store.queries.GitHubPullRequestObservation(ctx, pgdb.GitHubPullRequestObservationParams{RepositoryID: repositoryID, Number: int32(number)})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, nil
+		return githubsync.Observation{}, false, nil
 	}
-	return row.HeadSha, row.Opened, err
+	if err != nil {
+		return githubsync.Observation{}, false, err
+	}
+	return githubsync.Observation{State: row.State, Head: row.HeadSha, Draft: row.Draft}, row.Opened, nil
 }
 
 func (s *GitHubStore) KnownOpen(ctx context.Context, repositoryID int64) ([]int, error) {
@@ -219,6 +222,58 @@ func (s *GitHubStore) PullRequestHistory(ctx context.Context, ownerID string, si
 func (s *GitHubStore) HistoryRetentionDays(ctx context.Context) (int, error) {
 	days, err := s.store.queries.HistoryRetentionDays(ctx)
 	return int(days), err
+}
+
+func (s *GitHubStore) NotificationPreferences(ctx context.Context, ownerID string) (githubsync.Preferences, error) {
+	row, err := s.store.queries.GitHubNotificationPreferences(ctx, ownerID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return githubsync.DefaultPreferences(), nil
+	}
+	if err != nil {
+		return githubsync.Preferences{}, err
+	}
+	return preferencesFromRow(row), nil
+}
+
+func (s *GitHubStore) PutNotificationPreferences(ctx context.Context, ownerID string, p githubsync.Preferences, now int64) error {
+	return s.store.queries.PutGitHubNotificationPreferences(ctx, pgdb.PutGitHubNotificationPreferencesParams{
+		OwnerID: ownerID, OpenedByMe: p.Opened.ByMe, OpenedByOthers: p.Opened.ByOthers,
+		NewCommitsByMe: p.NewCommits.ByMe, NewCommitsByOthers: p.NewCommits.ByOthers,
+		MergedByMe: p.Merged.ByMe, MergedByOthers: p.Merged.ByOthers, ClosedByMe: p.Closed.ByMe, ClosedByOthers: p.Closed.ByOthers,
+		SkipDrafts: p.SkipDrafts, OnlyAuthors: nonNilStrings(p.OnlyAuthors), NeverAuthors: nonNilStrings(p.NeverAuthors),
+		BaseBranches: nonNilStrings(p.BaseBranches), MutedTitleTerms: nonNilStrings(p.MutedTitleTerms), UpdatedAt: time.UnixMilli(now),
+	})
+}
+
+func (s *GitHubStore) NotificationRecipients(ctx context.Context, ownerIDs []string) (map[string]githubsync.Recipient, error) {
+	rows, err := s.store.queries.GitHubNotificationRecipients(ctx, ownerIDs)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]githubsync.Recipient, len(rows))
+	for _, row := range rows {
+		preferences := githubsync.DefaultPreferences()
+		if row.Saved {
+			preferences = preferencesFromRow(pgdb.GithubNotificationPreference{
+				OpenedByMe: row.OpenedByMe, OpenedByOthers: row.OpenedByOthers, NewCommitsByMe: row.NewCommitsByMe, NewCommitsByOthers: row.NewCommitsByOthers,
+				MergedByMe: row.MergedByMe, MergedByOthers: row.MergedByOthers, ClosedByMe: row.ClosedByMe, ClosedByOthers: row.ClosedByOthers,
+				SkipDrafts: row.SkipDrafts, OnlyAuthors: row.OnlyAuthors, NeverAuthors: row.NeverAuthors, BaseBranches: row.BaseBranches, MutedTitleTerms: row.MutedTitleTerms,
+			})
+		}
+		result[row.OwnerID] = githubsync.Recipient{UserID: row.UserID, Preferences: preferences}
+	}
+	return result, nil
+}
+
+func preferencesFromRow(row pgdb.GithubNotificationPreference) githubsync.Preferences {
+	return githubsync.Preferences{
+		Opened:     githubsync.Audience{ByMe: row.OpenedByMe, ByOthers: row.OpenedByOthers},
+		NewCommits: githubsync.Audience{ByMe: row.NewCommitsByMe, ByOthers: row.NewCommitsByOthers},
+		Merged:     githubsync.Audience{ByMe: row.MergedByMe, ByOthers: row.MergedByOthers},
+		Closed:     githubsync.Audience{ByMe: row.ClosedByMe, ByOthers: row.ClosedByOthers},
+		SkipDrafts: row.SkipDrafts, OnlyAuthors: nonNilStrings(row.OnlyAuthors), NeverAuthors: nonNilStrings(row.NeverAuthors),
+		BaseBranches: nonNilStrings(row.BaseBranches), MutedTitleTerms: nonNilStrings(row.MutedTitleTerms),
+	}
 }
 
 func (s *GitHubStore) ClaimRefresh(ctx context.Context, token string, now, leaseUntil int64) (githubsync.Lease, error) {
@@ -265,17 +320,17 @@ func (s *GitHubStore) ReleaseRefresh(ctx context.Context, lease githubsync.Lease
 	}))
 }
 
-func (s *GitHubStore) CompleteRefresh(ctx context.Context, lease githubsync.Lease, state, head string, admissions []githubsync.Admission, now int64) error {
-	at := time.UnixMilli(now)
+func (s *GitHubStore) CompleteRefresh(ctx context.Context, lease githubsync.Lease, observed githubsync.Observation, admissions []githubsync.Admission, now int64) error {
+	at, head := time.UnixMilli(now), observed.Head
 	return s.store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
 		// Fence first, so a lost lease admits nothing.
 		if err := fenced(queries.CompleteGitHubRefresh(ctx, pgdb.CompleteGitHubRefreshParams{
-			State: state, RepositoryID: lease.Ref.RepositoryID, Number: int32(lease.Ref.Number), Token: lease.Token, Now: at,
+			State: observed.State, RepositoryID: lease.Ref.RepositoryID, Number: int32(lease.Ref.Number), Token: lease.Token, Now: at,
 		})); err != nil {
 			return err
 		}
 		if head != "" {
-			if err := queries.RecordGitHubPullRequestHead(ctx, pgdb.RecordGitHubPullRequestHeadParams{RepositoryID: lease.Ref.RepositoryID, Number: int32(lease.Ref.Number), HeadSha: head}); err != nil {
+			if err := queries.RecordGitHubPullRequestHead(ctx, pgdb.RecordGitHubPullRequestHeadParams{RepositoryID: lease.Ref.RepositoryID, Number: int32(lease.Ref.Number), HeadSha: head, Draft: observed.Draft}); err != nil {
 				return err
 			}
 		}
@@ -365,6 +420,15 @@ func (s *GitHubStore) RetryPublicRefresh(ctx context.Context, repositoryID int64
 func nonNil(value []byte) []byte {
 	if value == nil {
 		return []byte{}
+	}
+	return value
+}
+
+// nonNilStrings stores and reads no entries as an empty list; pgx sends and
+// reads an empty array as nil.
+func nonNilStrings(value []string) []string {
+	if value == nil {
+		return []string{}
 	}
 	return value
 }

@@ -76,9 +76,10 @@ type Store interface {
 	// Opened records, in the same transaction, that a webhook announced the
 	// pull request, so its first snapshot notifies followers.
 	RequestRefresh(ctx context.Context, ref PullRequestRef, retentionRun string, opened bool, now int64) error
-	// PullRequestHead returns the last captured head SHA ("" before the first
-	// snapshot) and whether a webhook announced the pull request.
-	PullRequestHead(ctx context.Context, repositoryID int64, number int) (head string, opened bool, err error)
+	// PullRequestObservation returns what refreshes last recorded of a pull
+	// request (the zero Observation before any) and whether a webhook
+	// announced it.
+	PullRequestObservation(ctx context.Context, repositoryID int64, number int) (observed Observation, opened bool, err error)
 	// KnownOpen lists pull request numbers last observed open.
 	KnownOpen(ctx context.Context, repositoryID int64) ([]int, error)
 	// PutPullRequestHistory records a read of a pull request unless history
@@ -90,6 +91,14 @@ type Store interface {
 	PullRequestHistory(ctx context.Context, ownerID string, since, until int64, limit int) ([]HistoryEntry, error)
 	// HistoryRetentionDays is the admin's history retention.
 	HistoryRetentionDays(ctx context.Context) (int, error)
+	// NotificationPreferences returns the account's saved preferences, or
+	// DefaultPreferences when it never saved any.
+	NotificationPreferences(ctx context.Context, ownerID string) (Preferences, error)
+	PutNotificationPreferences(ctx context.Context, ownerID string, preferences Preferences, now int64) error
+	// NotificationRecipients returns, by account, the GitHub user and
+	// preferences (DefaultPreferences when unsaved) of each listed account
+	// with a GitHub connection, in one read.
+	NotificationRecipients(ctx context.Context, ownerIDs []string) (map[string]Recipient, error)
 
 	// ClaimRefresh leases the oldest pending, available pull request until
 	// leaseUntil, fencing earlier leases. ErrNotFound means none is pending.
@@ -102,10 +111,11 @@ type Store interface {
 	ReleaseRefresh(ctx context.Context, lease Lease, retryAt int64, detail string) error
 	// CompleteRefresh atomically admits every submission with its notification
 	// intent, marks the leased generation refreshed and records the observed
-	// state and, when nonempty, the captured head. A generation requested
-	// during the lease stays pending. An admission for PublicOwnerID records
-	// its job, the fetch time and head as the public snapshot.
-	CompleteRefresh(ctx context.Context, lease Lease, state, head string, admissions []Admission, now int64) error
+	// state and, when the head is nonempty, the captured head and draft flag.
+	// A generation requested during the lease stays pending. An admission for
+	// PublicOwnerID records its job, the fetch time and head as the public
+	// snapshot.
+	CompleteRefresh(ctx context.Context, lease Lease, observed Observation, admissions []Admission, now int64) error
 
 	// PublicPullRequest returns the public preview state by repository ID, and
 	// PublicPullRequestNamed by case-insensitive full name. ErrNotFound when
@@ -122,6 +132,15 @@ type Store interface {
 	// RetryPublicRefresh makes a pending, unleased refresh available now and
 	// clears its failure detail.
 	RetryPublicRefresh(ctx context.Context, repositoryID int64, number int, now int64) error
+}
+
+// Observation is what a refresh recorded of a pull request: the state it
+// observed and, when a snapshot was captured, its head and draft flag. An
+// empty Head records no snapshot and keeps the last captured head and draft.
+type Observation struct {
+	State string // open, closed or merged
+	Head  string
+	Draft bool
 }
 
 // PublicState is a pull request's public preview: its demand, pending

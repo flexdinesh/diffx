@@ -188,7 +188,10 @@ The PWA is remote only: `main.tsx` starts `pwa.ts` (manifest and Apple tags,
 `/sw.js` registration, install prompt) and the boot-time push subscription
 refresh only when the bootstrap mode is remote. `push.ts` owns browser support,
 subscribe/unsubscribe and the device's server registration, including removal
-before sign-out; `account-notifications.tsx` renders Settings › Notifications.
+before sign-out; `account-notifications.tsx` renders Settings › Notifications
+and `account-notification-preferences.tsx` its account-wide What notifies
+(`/api/v2/github/notifications`), which owns the serialized autosave queue and
+list normalization mirroring the server's.
 `sw.ts` is a separate WebWorker program (`tsconfig.sw.json`) built as the
 import-free, fixed-name `dist/sw.js`; `push-notification.ts` holds its payload
 guard and click rule. It has no fetch handler or cache.

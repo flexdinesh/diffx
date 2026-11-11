@@ -726,6 +726,53 @@ paths:
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v2/github/notifications:
+    get:
+      security:
+        - browserSession: []
+      operationId: getNotificationPreferences
+      description: Which followed pull request events send push notifications to this account, on every device. Defaults until saved. 404 when the integration is not configured. Distributed browser sessions only.
+      responses:
+        "200":
+          description: Notification preferences.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPreferences"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    put:
+      security:
+        - browserSession: []
+      operationId: putNotificationPreferences
+      description: Replace this account's notification preferences. Lists are trimmed and deduplicated case-insensitively; the response is the stored result. Distributed browser sessions only.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationPreferences"
+      responses:
+        "200":
+          description: Stored preferences.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPreferences"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v2/push:
     get:
       security:
@@ -2397,6 +2444,74 @@ components:
         pullRequests:
           type: boolean
           description: False when the repository turned pull requests off on GitHub. It can still be followed; its pull requests appear once they are turned on. True for lost follows.
+    NotificationAudience:
+      type: object
+      additionalProperties: false
+      required: [byMe, byOthers]
+      properties:
+        byMe:
+          type: boolean
+          description: Pull requests authored by this account's connected GitHub user, including those its agents open.
+        byOthers:
+          type: boolean
+          description: Pull requests authored by anyone else.
+    NotificationFilterList:
+      type: array
+      maxItems: 20
+      description: Case-insensitive terms; blank and duplicate entries are dropped.
+      items:
+        type: string
+        maxLength: 100
+    NotificationPreferences:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          opened,
+          newCommits,
+          merged,
+          closed,
+          skipDrafts,
+          onlyAuthors,
+          neverAuthors,
+          baseBranches,
+          mutedTitleTerms,
+        ]
+      description: Every condition must hold for a followed, unmuted repository's pull request event to notify.
+      properties:
+        opened:
+          description: Opened, reopened or marked ready for review.
+          allOf:
+            - $ref: "#/components/schemas/NotificationAudience"
+        newCommits:
+          description: The head changed while open.
+          allOf:
+            - $ref: "#/components/schemas/NotificationAudience"
+        merged:
+          $ref: "#/components/schemas/NotificationAudience"
+        closed:
+          description: Closed without merging.
+          allOf:
+            - $ref: "#/components/schemas/NotificationAudience"
+        skipDrafts:
+          type: boolean
+          description: Draft pull requests notify nothing; becoming ready for review counts as opened.
+        onlyAuthors:
+          description: GitHub logins; when nonempty, others' pull requests notify only from these authors.
+          allOf:
+            - $ref: "#/components/schemas/NotificationFilterList"
+        neverAuthors:
+          description: GitHub logins whose pull requests never notify.
+          allOf:
+            - $ref: "#/components/schemas/NotificationFilterList"
+        baseBranches:
+          description: When nonempty, only pull requests into these base branches notify. A trailing * matches a prefix.
+          allOf:
+            - $ref: "#/components/schemas/NotificationFilterList"
+        mutedTitleTerms:
+          description: Pull requests whose title contains any of these substrings never notify.
+          allOf:
+            - $ref: "#/components/schemas/NotificationFilterList"
     PushSettings:
       type: object
       additionalProperties: false

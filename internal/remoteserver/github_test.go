@@ -94,6 +94,66 @@ func TestGitHubRoutesAbsentWithoutConfiguration(t *testing.T) {
 	if code := webhook(handler, "d", signed("{}"), "{}"); code != 404 {
 		t.Fatalf("unconfigured webhook: %d", code)
 	}
+	if w := identityRequest(handler, "GET", "/api/v2/github/notifications", "", cookie, "", ""); w.Code != 404 {
+		t.Fatalf("unconfigured notification preferences: %d", w.Code)
+	}
+}
+
+func TestGitHubNotificationPreferences(t *testing.T) {
+	api := fakeGitHubAPI(t)
+	store, handler := identityHandler(t, Settings{GitHub: githubSettings(t, api.URL)})
+	token := provisionToken(t, store, "automation", identityservice.PurposeAPI)
+	cookie, csrf := memberSession(t, store, "user")
+	const path = "/api/v2/github/notifications"
+	defaults := `{"opened":{"byMe":true,"byOthers":true},"newCommits":{"byMe":false,"byOthers":false},"merged":{"byMe":false,"byOthers":false},` +
+		`"closed":{"byMe":false,"byOthers":false},"skipDrafts":false,"onlyAuthors":[],"neverAuthors":[],"baseBranches":[],"mutedTitleTerms":[]}`
+	w := identityRequest(handler, "GET", path, "", cookie, "", "")
+	if w.Code != 200 || strings.TrimSpace(w.Body.String()) != defaults {
+		t.Fatalf("defaults: %d %s", w.Code, w.Body.String())
+	}
+	if w := identityRequest(handler, "GET", path, "", nil, "", "Bearer "+token); w.Code != 403 {
+		t.Fatalf("API token read preferences: %d", w.Code)
+	}
+	put := `{"opened":{"byMe":false,"byOthers":true},"newCommits":{"byMe":true,"byOthers":false},"merged":{"byMe":true,"byOthers":true},` +
+		`"closed":{"byMe":false,"byOthers":false},"skipDrafts":true,"onlyAuthors":[" Mona ","mona","","hubot"],"neverAuthors":["dependabot[bot]"],` +
+		`"baseBranches":["main","release/*"],"mutedTitleTerms":["WIP","wip "]}`
+	if w := identityRequest(handler, "PUT", path, put, cookie, "", ""); w.Code != 403 {
+		t.Fatalf("put without CSRF: %d", w.Code)
+	}
+	if w := identityRequest(handler, "PUT", path, put, nil, "", "Bearer "+token); w.Code != 403 {
+		t.Fatalf("API token wrote preferences: %d", w.Code)
+	}
+	stored := `{"opened":{"byMe":false,"byOthers":true},"newCommits":{"byMe":true,"byOthers":false},"merged":{"byMe":true,"byOthers":true},` +
+		`"closed":{"byMe":false,"byOthers":false},"skipDrafts":true,"onlyAuthors":["Mona","hubot"],"neverAuthors":["dependabot[bot]"],` +
+		`"baseBranches":["main","release/*"],"mutedTitleTerms":["WIP"]}`
+	w = identityRequest(handler, "PUT", path, put, cookie, csrf, "")
+	if w.Code != 200 || strings.TrimSpace(w.Body.String()) != stored {
+		t.Fatalf("put: %d %s", w.Code, w.Body.String())
+	}
+	w = identityRequest(handler, "GET", path, "", cookie, "", "")
+	if w.Code != 200 || strings.TrimSpace(w.Body.String()) != stored {
+		t.Fatalf("stored: %d %s", w.Code, w.Body.String())
+	}
+	many := make([]string, 21)
+	for index := range many {
+		many[index] = fmt.Sprintf("%q", fmt.Sprintf("author-%d", index))
+	}
+	for name, body := range map[string]string{
+		"too many entries": `{"onlyAuthors":[` + strings.Join(many, ",") + `]}`,
+		"entry too long":   `{"baseBranches":["` + strings.Repeat("b", 101) + `"]}`,
+		"unknown field":    `{"everything":true}`,
+	} {
+		if w := identityRequest(handler, "PUT", path, body, cookie, csrf, ""); w.Code != 400 {
+			t.Fatalf("%s: %d %s", name, w.Code, w.Body.String())
+		}
+	}
+	if w := identityRequest(handler, "POST", path, put, cookie, csrf, ""); w.Code != 405 {
+		t.Fatalf("POST: %d", w.Code)
+	}
+	w = identityRequest(handler, "GET", path, "", cookie, "", "")
+	if w.Code != 200 || strings.TrimSpace(w.Body.String()) != stored {
+		t.Fatalf("refused puts changed preferences: %d %s", w.Code, w.Body.String())
+	}
 }
 
 func TestGitHubConnectFollowAndWebhookBoundaries(t *testing.T) {

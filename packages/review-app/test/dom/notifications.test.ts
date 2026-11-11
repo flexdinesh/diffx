@@ -11,7 +11,7 @@ import {
 } from "@testing-library/react";
 import { IdentityProvider, useIdentity } from "../../src/identity-context.tsx";
 import { AccountSettings } from "../../src/account.tsx";
-import { json, requests } from "./setup.ts";
+import { deferred, json, requests } from "./setup.ts";
 
 const keyBytes = new Uint8Array(65).fill(4);
 const publicKey = Buffer.from(keyBytes).toString("base64url");
@@ -107,13 +107,32 @@ const devices = [
   },
 ];
 
+const preferences = {
+  opened: { byMe: false, byOthers: true },
+  newCommits: { byMe: false, byOthers: true },
+  merged: { byMe: true, byOthers: false },
+  closed: { byMe: false, byOthers: false },
+  skipDrafts: true,
+  onlyAuthors: [],
+  neverAuthors: ["dependabot[bot]"],
+  baseBranches: ["main", "release/*"],
+  mutedTitleTerms: [],
+};
+
 interface Server {
   enabled?: boolean;
-  github?: "absent" | "disconnected";
+  github?: "absent" | "disconnected" | "connected";
+  /** Whether `GET /api/v2/github/notifications` answers 404. */
+  preferencesAbsent?: boolean;
   handle?: (request: Request) => Response | Promise<Response> | undefined;
 }
 
-function server({ enabled = true, github = "absent", handle }: Server = {}) {
+function server({
+  enabled = true,
+  github = "absent",
+  preferencesAbsent = github === "absent",
+  handle,
+}: Server = {}) {
   const calls: string[] = [];
   const bodies: unknown[] = [];
   requests(async (request) => {
@@ -138,10 +157,18 @@ function server({ enabled = true, github = "absent", handle }: Server = {}) {
       return github === "absent"
         ? json({}, 404)
         : json({
-            connected: false,
+            connected: github === "connected",
+            ...(github === "connected" && {
+              login: "alice-gh",
+              state: "active",
+            }),
             installUrl:
               "https://github.com/apps/diffx/installations/select_target",
           });
+    if (path === "/api/v2/github/repositories")
+      return json({ repositories: [] });
+    if (path === "/api/v2/github/notifications" && request.method === "GET")
+      return preferencesAbsent ? json({}, 404) : json(preferences);
     if (path === "/api/v2/push" && request.method === "GET")
       return json(
         enabled
@@ -155,6 +182,8 @@ function server({ enabled = true, github = "absent", handle }: Server = {}) {
     const custom = await handle?.(request);
     if (custom) return custom;
     if (path === "/api/v2/push/subscriptions") return json(devices[1]);
+    // Stores what it receives, as the server does once normalized.
+    if (path === "/api/v2/github/notifications") return json(bodies.at(-1));
     return new Response(null, { status: 204 });
   });
   return { calls, bodies };
@@ -377,7 +406,7 @@ test("other devices are removed after confirmation", async () => {
 
 test("without followed repositories the section points to GitHub", async () => {
   pushBrowser();
-  server({ github: "disconnected" });
+  server({ github: "connected" });
   mount();
   const notifications = await screen.findByRole("region", {
     name: "Notifications",
@@ -405,4 +434,261 @@ test("an installed app shows its status quietly", async () => {
   mount();
   await screen.findByText("Installed as an app.");
   assert.equal(screen.queryByRole("button", { name: "Install app" }), null);
+});
+
+/** The What notifies subsection once its controls render. */
+async function whatNotifies() {
+  const region = await screen.findByRole("region", { name: "What notifies" });
+  await within(region).findByRole("table", {
+    name: "Pull request events that notify",
+  });
+  return region;
+}
+
+function checked(region: HTMLElement, name: string) {
+  return (
+    within(region)
+      .getByRole("checkbox", { name })
+      .getAttribute("aria-checked") === "true"
+  );
+}
+
+test("what notifies shows the account's saved preferences", async () => {
+  const { calls } = server({ github: "connected" });
+  mount();
+  const region = await whatNotifies();
+  assert.ok(within(region).getByText(/Applies to all your devices/));
+  const table = within(region).getByRole("table");
+  assert.deepEqual(
+    within(table)
+      .getAllByRole("columnheader")
+      .map((header) => header.textContent),
+    ["Event", "By me", "By others"],
+  );
+  assert.deepEqual(
+    within(table)
+      .getAllByRole("rowheader")
+      .map((header) => header.textContent),
+    [
+      "OpenedNew, reopened or ready for review",
+      "New commits",
+      "Merged",
+      "Closed without merging",
+    ],
+  );
+  assert.equal(checked(region, "Opened, by me"), false);
+  assert.equal(checked(region, "Opened, by others"), true);
+  assert.equal(checked(region, "New commits, by others"), true);
+  assert.equal(checked(region, "Merged, by me"), true);
+  assert.equal(checked(region, "Closed without merging, by others"), false);
+  assert.equal(
+    checked(region, "Skip drafts until they're ready for review"),
+    true,
+  );
+  const never = within(region).getByRole("textbox", { name: "Never from" });
+  assert.equal(never.getAttribute("value"), "dependabot[bot]");
+  assert.equal(
+    within(region)
+      .getByRole("textbox", { name: "Into branches" })
+      .getAttribute("value"),
+    "main, release/*",
+  );
+  const only = within(region).getByRole("textbox", { name: "Only from" });
+  assert.equal(only.getAttribute("value"), "");
+  assert.equal(only.getAttribute("placeholder"), "Anyone");
+  assert.match(
+    document.getElementById(only.getAttribute("aria-describedby") ?? "")
+      ?.textContent ?? "",
+    /Applies to others' pull requests/,
+  );
+  const link = within(region).getByRole("link", { name: "Settings › GitHub" });
+  assert.equal(link.getAttribute("href"), "/settings/github");
+  // Preferences autosave: no primary button competes with Turn on notifications.
+  assert.equal(within(region).queryAllByRole("button").length, 0);
+  assert.deepEqual(calls, []);
+});
+
+test("toggling an event saves the whole document and announces it", async () => {
+  const { calls, bodies } = server({ github: "connected" });
+  mount();
+  const region = await whatNotifies();
+  fireEvent.click(
+    within(region).getByRole("checkbox", { name: "Opened, by me" }),
+  );
+  assert.equal(checked(region, "Opened, by me"), true);
+  const saved = await within(region).findByText("Saved");
+  assert.equal(saved.getAttribute("role"), "status");
+  assert.deepEqual(calls, ["PUT /api/v2/github/notifications"]);
+  assert.deepEqual(bodies, [
+    { ...preferences, opened: { byMe: true, byOthers: true } },
+  ]);
+
+  fireEvent.click(
+    within(region).getByRole("checkbox", {
+      name: "Skip drafts until they're ready for review",
+    }),
+  );
+  await waitFor(() => assert.equal(bodies.length, 2));
+  assert.deepEqual(bodies[1], {
+    ...preferences,
+    opened: { byMe: true, byOthers: true },
+    skipDrafts: false,
+  });
+});
+
+test("a refused save restores the saved preferences and explains why", async () => {
+  const { calls } = server({
+    github: "connected",
+    handle: (request) =>
+      request.url.endsWith("/github/notifications")
+        ? json({ detail: "Notification preferences are unavailable." }, 503)
+        : undefined,
+  });
+  mount();
+  const region = await whatNotifies();
+  fireEvent.click(
+    within(region).getByRole("checkbox", { name: "Merged, by me" }),
+  );
+  assert.equal(checked(region, "Merged, by me"), false);
+  assert.equal(
+    (await within(region).findByRole("alert")).textContent,
+    "Notification preferences are unavailable.",
+  );
+  assert.equal(checked(region, "Merged, by me"), true);
+  assert.equal(within(region).queryByText("Saved"), null);
+  assert.deepEqual(calls, ["PUT /api/v2/github/notifications"]);
+});
+
+test("a list field saves on Enter and shows the server's normalized value", async () => {
+  const { calls, bodies } = server({
+    github: "connected",
+    handle: (request) =>
+      request.url.endsWith("/github/notifications")
+        ? json({
+            ...preferences,
+            neverAuthors: ["dependabot[bot]", "renovate[bot]"],
+          })
+        : undefined,
+  });
+  mount();
+  const region = await whatNotifies();
+  const never = within(region).getByRole("textbox", { name: "Never from" });
+  // Unchanged text saves nothing.
+  fireEvent.blur(never);
+  fireEvent.change(never, { target: { value: "dependabot[bot] " } });
+  fireEvent.keyDown(never, { key: "Enter" });
+  assert.deepEqual(calls, []);
+
+  fireEvent.change(never, {
+    target: { value: " Dependabot[bot] ,, Renovate[bot], dependabot[bot]," },
+  });
+  fireEvent.keyDown(never, { key: "Enter" });
+  await within(region).findByText("Saved");
+  assert.deepEqual(calls, ["PUT /api/v2/github/notifications"]);
+  assert.deepEqual(bodies, [
+    { ...preferences, neverAuthors: ["Dependabot[bot]", "Renovate[bot]"] },
+  ]);
+  assert.equal(never.getAttribute("value"), "dependabot[bot], renovate[bot]");
+});
+
+test("a list over the server's limits shows a field error and saves nothing", async () => {
+  const { calls } = server({ github: "connected" });
+  mount();
+  const region = await whatNotifies();
+  const terms = within(region).getByRole("textbox", {
+    name: "Mute titles containing",
+  });
+  const tooMany = Array.from({ length: 21 }, (_, index) => `term${index}`);
+  fireEvent.change(terms, { target: { value: tooMany.join(", ") } });
+  fireEvent.blur(terms);
+  const error = await within(region).findByRole("alert");
+  assert.equal(error.textContent, "Enter at most 20, separated by commas.");
+  assert.equal(terms.getAttribute("aria-invalid"), "true");
+  assert.ok(
+    (terms.getAttribute("aria-describedby") ?? "")
+      .split(" ")
+      .includes(error.id),
+  );
+  // The text stays for correction.
+  assert.equal(terms.getAttribute("value"), tooMany.join(", "));
+
+  fireEvent.change(terms, { target: { value: `chore:, ${"x".repeat(101)}` } });
+  assert.equal(terms.getAttribute("aria-invalid"), null);
+  fireEvent.keyDown(terms, { key: "Enter" });
+  assert.match(
+    (await within(region).findByRole("alert")).textContent ?? "",
+    /100 characters or fewer/,
+  );
+  assert.deepEqual(calls, []);
+});
+
+test("saves run one at a time and the latest edit wins", async () => {
+  const first = deferred<Response>();
+  let puts = 0;
+  const { bodies } = server({
+    github: "connected",
+    handle: (request) => {
+      if (!request.url.endsWith("/github/notifications")) return undefined;
+      puts++;
+      return puts === 1 ? first.promise : undefined;
+    },
+  });
+  mount();
+  const region = await whatNotifies();
+  fireEvent.click(
+    within(region).getByRole("checkbox", { name: "Opened, by me" }),
+  );
+  await waitFor(() => assert.equal(bodies.length, 1));
+  fireEvent.click(
+    within(region).getByRole("checkbox", { name: "Merged, by others" }),
+  );
+  fireEvent.click(
+    within(region).getByRole("checkbox", {
+      name: "Closed without merging, by me",
+    }),
+  );
+  // Nothing else is sent while the first save is in flight.
+  assert.equal(bodies.length, 1);
+  // The first save answers with only its own edit; newer edits stay.
+  first.resolve(json(bodies[0]));
+  await waitFor(() => assert.equal(bodies.length, 2));
+  assert.equal(checked(region, "Merged, by others"), true);
+  assert.equal(checked(region, "Closed without merging, by me"), true);
+  await within(region).findByText("Saved");
+  assert.deepEqual(bodies[1], {
+    ...preferences,
+    opened: { byMe: true, byOthers: true },
+    merged: { byMe: true, byOthers: true },
+    closed: { byMe: true, byOthers: false },
+  });
+  assert.equal(bodies.length, 2);
+  assert.equal(checked(region, "Opened, by me"), true);
+  assert.equal(checked(region, "Merged, by others"), true);
+  assert.equal(checked(region, "Closed without merging, by me"), true);
+});
+
+test("without a GitHub connection what notifies points to connecting", async () => {
+  server({ github: "disconnected" });
+  mount();
+  const region = await screen.findByRole("region", { name: "What notifies" });
+  const link = await within(region).findByRole("link", {
+    name: "Connect GitHub",
+  });
+  assert.equal(link.getAttribute("href"), "/settings/github");
+  assert.ok(within(region).getByText(/to choose which pull requests notify/));
+  assert.equal(within(region).queryByRole("table"), null);
+  assert.equal(within(region).queryByRole("checkbox"), null);
+  // One pointer to GitHub: connecting comes before following.
+  assert.equal(screen.queryByText(/Choose repositories to follow/), null);
+});
+
+test("what notifies is absent when the server has no preferences", async () => {
+  server({ github: "connected", preferencesAbsent: true });
+  mount();
+  await screen.findByRole("heading", { name: "This device" });
+  // It shows loading until the server answers 404, then leaves.
+  await waitFor(() =>
+    assert.ok(!screen.queryByRole("heading", { name: "What notifies" })),
+  );
+  assert.ok(!screen.queryByRole("table"));
 });

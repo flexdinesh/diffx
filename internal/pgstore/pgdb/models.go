@@ -147,6 +147,24 @@ type GithubFollowMute struct {
 	RepositoryID int64
 }
 
+type GithubNotificationPreference struct {
+	OwnerID            string
+	OpenedByMe         bool
+	OpenedByOthers     bool
+	NewCommitsByMe     bool
+	NewCommitsByOthers bool
+	MergedByMe         bool
+	MergedByOthers     bool
+	ClosedByMe         bool
+	ClosedByOthers     bool
+	SkipDrafts         bool
+	OnlyAuthors        []string
+	NeverAuthors       []string
+	BaseBranches       []string
+	MutedTitleTerms    []string
+	UpdatedAt          time.Time
+}
+
 type GithubOauthState struct {
 	StateHash string
 	OwnerID   string
@@ -158,6 +176,7 @@ type GithubPrHead struct {
 	Number       int32
 	HeadSha      string
 	Opened       bool
+	Draft        bool
 }
 
 type GithubPullRequest struct {
