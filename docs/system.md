@@ -425,19 +425,39 @@ profile receives one account's notifications. A test notification is sent
 synchronously; a push service reporting the device gone (404/410) removes it.
 
 `githubsync` owns the trigger rule. Each completed refresh records the pull
-request's captured head SHA. A snapshot whose head differs from the recorded
-one notifies, whatever the pull request's author, including the account's own
-pull requests. A first snapshot (no recorded head) notifies only when a
-`pull_request` webhook with action `opened`, `reopened` or `ready_for_review`
-requested the refresh, so first follows, startup reconciliation and Resync
-import existing pull requests silently, while reconciliation after downtime
-still notifies changed heads. Metadata edits, closing and merging keep the head
-and never notify. Only admitted followers are notified, so lost follows get
-nothing; a follower may mute a repository (`PATCH
-/api/v2/github/follows/{id}` with `notify: false`), which keeps its snapshots
-and stops its notifications. A mute ends with its follow. The title is
-`owner/repo #N`; the body is the pull request title (at most 120 characters),
-then `New PR by @author` or `Updated by @author`.
+request's state (`github_pull_requests.state`) and, with a captured snapshot,
+its head SHA and draft flag (`github_pr_heads`). A snapshot announces at most
+one event. A first snapshot (no recorded head) announces Opened only when open
+and a `pull_request` webhook with action `opened`, `reopened` or
+`ready_for_review` requested a refresh, so first follows, startup
+reconciliation and Resync import existing pull requests silently. Later
+snapshots announce, in priority order: Merged or Closed (without merging) when
+the recorded state was open; Opened when a closed pull request reopens or an
+open draft becomes ready for review; New commits when the head changed while
+open. Reconciliation after downtime announces the same transitions. Metadata
+edits announce nothing.
+
+Each admitted, unmuted follower then applies its account's preferences
+(`github_notification_preferences`; an absent row means the defaults), read
+with its connected GitHub user ID in one query. Every condition must hold:
+the event's audience allows the author (By me when the author's GitHub user ID
+is the connection's, otherwise By others); Skip drafts excludes drafts; a
+nonempty Only from list limits others' pull requests to its logins; Never from
+excludes logins; a nonempty Into branches list limits base branches (exact, or
+prefix for a trailing `*`); Mute titles excludes titles containing a term. All
+matching ignores case. Defaults notify Opened for both audiences and nothing
+else. `GET`/`PUT /api/v2/github/notifications` read and replace them (browser
+session; PUT with CSRF): lists are trimmed, blanks dropped and duplicates
+removed ignoring case; a list over 20 entries or an entry over 100 characters
+answers 400. Preferences belong to the account and survive disconnecting
+GitHub. Only admitted followers are notified, so lost follows get nothing; a
+follower may mute a repository (`PATCH /api/v2/github/follows/{id}` with
+`notify: false`), which keeps its snapshots and stops all its notifications. A
+mute ends with its follow. The title is `owner/repo #N`; the body is the pull
+request title (at most 120 characters), then `New PR by @author`,
+`Reopened: PR by @author`, `Ready for review: PR by @author`,
+`Updated by @author`, `Merged by @merger` (or `Merged: PR by @author`) or
+`Closed without merging: PR by @author`.
 
 Notification intent is an outbox: one row per notified follower, written in the
 same transaction as that follower's ingestion admission and linked to its job,

@@ -835,10 +835,23 @@ at `/design.html` (see `docs/frontend.md`).
 - A repository row shows warning “Access lost” for a lost follow, or muted
   “Pull requests off” (screen readers also hear that they appear once turned
   on) when GitHub has pull requests turned off; it stays followable.
-- Notifications is scoped to this device first, then other devices, with at
-  most one primary action. Prose names what notifies (a followed pull request
-  opening or getting new commits) and points to GitHub when nothing is
-  followed. This device shows one state: server push off, browser without push, iPhone or iPad Safari (Home
+- Notifications is scoped to this device first, then What notifies, then
+  other devices, with at most one primary action. Its description points to
+  What notifies, and GitHub when nothing is followed.
+- What notifies (account-wide, all devices) opens with one line saying so and
+  that pull requests agents open with the reader's GitHub account count as
+  theirs. A `<table>` with a hidden caption crosses Opened (hint “New, reopened
+  or ready for review”), New commits, Merged and Closed without merging with
+  “By me” and “By others” `ui/checkbox` cells named “Opened, by me”; each whole
+  cell is the label, 44px high on touch, and the table fits 320px. Then “Skip
+  drafts until they're ready for review” and labelled `ui/input` lists with
+  help text: Only from, Never from, Into branches, Mute titles containing.
+  Everything autosaves: checkboxes optimistically, lists on Enter or blur after
+  normalizing; saves are serialized, a failure rolls back with `ErrorState`
+  and success announces “Saved” in the always-mounted status. Over-limit lists
+  show an inline field error and do not save. It closes with a link to the
+  bells in Settings › GitHub. Without a GitHub connection it shows only
+  “Connect GitHub to choose…”; no buttons. This device shows one state: server push off, browser without push, iPhone or iPad Safari (Home
   Screen steps), blocked (site settings, no button), “Turn on notifications”
   (the only place the browser permission prompt is requested), or on: the
   “Send notifications to this device” checkbox and an outline “Send test

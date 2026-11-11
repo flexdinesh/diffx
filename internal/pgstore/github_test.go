@@ -318,22 +318,22 @@ func TestGitHubRequestRefreshCoalescesAndRecordsOpened(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	h := newGitHubHarness(t)
-	if head, opened, err := h.github.PullRequestHead(ctx, 10, 1); err != nil || head != "" || opened {
-		t.Fatalf("unknown head = %q, %v, %v", head, opened, err)
+	if observed, opened, err := h.github.PullRequestObservation(ctx, 10, 1); err != nil || observed != (githubsync.Observation{}) || opened {
+		t.Fatalf("unknown observation = %+v, %v, %v", observed, opened, err)
 	}
 	if err := h.github.RequestRefresh(ctx, pull(10, 1), "run-1", false, epoch); err != nil {
 		t.Fatal(err)
 	}
-	if head, opened, err := h.github.PullRequestHead(ctx, 10, 1); err != nil || head != "" || opened {
-		t.Fatalf("unannounced head = %q, %v, %v", head, opened, err)
+	if observed, opened, err := h.github.PullRequestObservation(ctx, 10, 1); err != nil || observed != (githubsync.Observation{State: "open"}) || opened {
+		t.Fatalf("unannounced observation = %+v, %v, %v", observed, opened, err)
 	}
 	renamed := pull(10, 1)
 	renamed.InstallationID, renamed.FullName = 6, "octo/renamed"
 	if err := h.github.RequestRefresh(ctx, renamed, "", true, epoch+1); err != nil {
 		t.Fatal(err)
 	}
-	if head, opened, err := h.github.PullRequestHead(ctx, 10, 1); err != nil || head != "" || !opened {
-		t.Fatalf("announced head = %q, %v, %v", head, opened, err)
+	if observed, opened, err := h.github.PullRequestObservation(ctx, 10, 1); err != nil || observed.Head != "" || !opened {
+		t.Fatalf("announced observation = %+v, %v, %v", observed, opened, err)
 	}
 	if err := h.github.RequestRefresh(ctx, pull(10, 2), "", false, epoch+2); err != nil {
 		t.Fatal(err)
@@ -393,11 +393,11 @@ func TestGitHubClaimRefreshOldestFirstAndFencesEarlierLeases(t *testing.T) {
 	if err := h.github.ReleaseRefresh(ctx, stale, epoch+101, "late"); !errors.Is(err, githubsync.ErrLeaseLost) {
 		t.Fatalf("release fenced = %v", err)
 	}
-	if err := h.github.CompleteRefresh(ctx, stale, "closed", "stale", []githubsync.Admission{{OwnerID: "nobody", Request: submission("stale")}}, epoch+101); !errors.Is(err, githubsync.ErrLeaseLost) {
+	if err := h.github.CompleteRefresh(ctx, stale, githubsync.Observation{State: "closed", Head: "stale"}, []githubsync.Admission{{OwnerID: "nobody", Request: submission("stale")}}, epoch+101); !errors.Is(err, githubsync.ErrLeaseLost) {
 		t.Fatalf("complete fenced = %v", err)
 	}
-	if head, _, err := h.github.PullRequestHead(ctx, 10, 1); err != nil || head != "" {
-		t.Fatalf("fenced head = %q, %v", head, err)
+	if observed, _, err := h.github.PullRequestObservation(ctx, 10, 1); err != nil || observed.Head != "" {
+		t.Fatalf("fenced observation = %+v, %v", observed, err)
 	}
 	if err := h.github.RecordLease(ctx, fresh, []byte("fresh"), epoch+101); err != nil {
 		t.Fatalf("record current = %v", err)
@@ -481,11 +481,11 @@ func TestGitHubCompleteRefreshAdmitsWithNotificationsAtomically(t *testing.T) {
 	invalid := submission("bad")
 	invalid.SubmissionID = " "
 	failing := []githubsync.Admission{{OwnerID: "alice", Request: submission("a1"), Notification: notification}, {OwnerID: "bob", Request: invalid}}
-	if err := h.github.CompleteRefresh(ctx, lease, "closed", "head-1", failing, epoch+1); err == nil {
+	if err := h.github.CompleteRefresh(ctx, lease, githubsync.Observation{State: "closed", Head: "head-1", Draft: true}, failing, epoch+1); err == nil {
 		t.Fatal("complete with invalid admission succeeded")
 	}
-	if head, _, err := h.github.PullRequestHead(ctx, 10, 1); err != nil || head != "" {
-		t.Fatalf("head after failed complete = %q, %v", head, err)
+	if observed, _, err := h.github.PullRequestObservation(ctx, 10, 1); err != nil || observed != (githubsync.Observation{State: "open"}) {
+		t.Fatalf("observation after failed complete = %+v, %v", observed, err)
 	}
 	if jobs := h.count(t, `SELECT count(*) FROM diffx.ingestion_jobs`); jobs != 0 {
 		t.Fatalf("jobs after failed complete = %d", jobs)
@@ -499,11 +499,11 @@ func TestGitHubCompleteRefreshAdmitsWithNotificationsAtomically(t *testing.T) {
 		t.Fatal(err)
 	}
 	admissions := []githubsync.Admission{{OwnerID: "alice", Request: submission("a1"), Notification: notification}, {OwnerID: "bob", Request: submission("b1")}}
-	if err := h.github.CompleteRefresh(ctx, lease, "closed", "head-1", admissions, epoch+3); err != nil {
+	if err := h.github.CompleteRefresh(ctx, lease, githubsync.Observation{State: "closed", Head: "head-1", Draft: true}, admissions, epoch+3); err != nil {
 		t.Fatal(err)
 	}
-	if head, opened, err := h.github.PullRequestHead(ctx, 10, 1); err != nil || head != "head-1" || !opened {
-		t.Fatalf("head = %q, %v, %v", head, opened, err)
+	if observed, opened, err := h.github.PullRequestObservation(ctx, 10, 1); err != nil || observed != (githubsync.Observation{State: "closed", Head: "head-1", Draft: true}) || !opened {
+		t.Fatalf("observation = %+v, %v, %v", observed, opened, err)
 	}
 	if open, err := h.github.KnownOpen(ctx, 10); err != nil || len(open) != 0 {
 		t.Fatalf("known open after close = %v, %v", open, err)
@@ -522,7 +522,7 @@ func TestGitHubCompleteRefreshAdmitsWithNotificationsAtomically(t *testing.T) {
 	if notifications := h.count(t, `SELECT count(*) FROM diffx.push_notifications`); notifications != 1 {
 		t.Fatalf("notifications = %d", notifications)
 	}
-	if err := h.github.CompleteRefresh(ctx, lease, "closed", "head-1", admissions, epoch+4); !errors.Is(err, githubsync.ErrLeaseLost) {
+	if err := h.github.CompleteRefresh(ctx, lease, githubsync.Observation{State: "closed", Head: "head-1"}, admissions, epoch+4); !errors.Is(err, githubsync.ErrLeaseLost) {
 		t.Fatalf("complete twice = %v", err)
 	}
 
@@ -533,12 +533,13 @@ func TestGitHubCompleteRefreshAdmitsWithNotificationsAtomically(t *testing.T) {
 	if next.Generation != 2 || next.RetentionRun != "run-2" || next.Attempt != 0 {
 		t.Fatalf("next lease = %+v", next)
 	}
-	// An empty head keeps the captured one; the consumed run clears.
-	if err := h.github.CompleteRefresh(ctx, next, "open", "", nil, epoch+6); err != nil {
+	// An empty head keeps the captured head and draft flag but records the
+	// observed state; the consumed run clears.
+	if err := h.github.CompleteRefresh(ctx, next, githubsync.Observation{State: "open"}, nil, epoch+6); err != nil {
 		t.Fatal(err)
 	}
-	if head, _, err := h.github.PullRequestHead(ctx, 10, 1); err != nil || head != "head-1" {
-		t.Fatalf("head after empty = %q, %v", head, err)
+	if observed, _, err := h.github.PullRequestObservation(ctx, 10, 1); err != nil || observed != (githubsync.Observation{State: "open", Head: "head-1", Draft: true}) {
+		t.Fatalf("observation after empty head = %+v, %v", observed, err)
 	}
 	if _, err := h.github.ClaimRefresh(ctx, "idle", epoch+7, epoch+100); !errors.Is(err, githubsync.ErrNotFound) {
 		t.Fatalf("claim when refreshed = %v", err)
@@ -646,5 +647,63 @@ func TestGitHubReconcileRunsOnOneReplicaAtATime(t *testing.T) {
 	// A failed reconcile still releases the lock.
 	if ran, err := second.ReconcileAlone(ctx, count); err != nil || !ran || calls != 1 {
 		t.Fatalf("after release: %v %v %d", ran, err, calls)
+	}
+}
+
+func TestGitHubNotificationPreferencesBelongToTheAccount(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := newGitHubHarness(t, "alice", "bob", "carol")
+	if got, err := h.github.NotificationPreferences(ctx, "alice"); err != nil || !reflect.DeepEqual(got, githubsync.DefaultPreferences()) {
+		t.Fatalf("absent preferences = %+v, %v", got, err)
+	}
+	saved := githubsync.Preferences{
+		Opened: githubsync.Audience{ByOthers: true}, NewCommits: githubsync.Audience{ByMe: true}, Merged: githubsync.Audience{ByMe: true, ByOthers: true},
+		Closed: githubsync.Audience{ByOthers: true}, SkipDrafts: true, OnlyAuthors: []string{"Mona", "hubot"}, NeverAuthors: []string{"dependabot[bot]"},
+		BaseBranches: []string{"main", "release/*"}, MutedTitleTerms: []string{},
+	}
+	if err := h.github.PutNotificationPreferences(ctx, "alice", saved, epoch); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := h.github.NotificationPreferences(ctx, "alice"); err != nil || !reflect.DeepEqual(got, saved) {
+		t.Fatalf("saved preferences = %+v, %v", got, err)
+	}
+	replaced := githubsync.DefaultPreferences()
+	replaced.Closed.ByMe = true
+	if err := h.github.PutNotificationPreferences(ctx, "alice", replaced, epoch+1); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := h.github.NotificationPreferences(ctx, "alice"); err != nil || !reflect.DeepEqual(got, replaced) {
+		t.Fatalf("replaced preferences = %+v, %v", got, err)
+	}
+
+	// One read returns every listed connected account: saved or default
+	// preferences with its GitHub user. Accounts without a connection are absent.
+	if err := h.github.PutNotificationPreferences(ctx, "carol", saved, epoch); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []githubsync.Connection{connection("alice", 7), connection("bob", 8)} {
+		if err := h.github.PutConnection(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	recipients, err := h.github.NotificationRecipients(ctx, []string{"alice", "bob", "carol", "nobody"})
+	want := map[string]githubsync.Recipient{"alice": {UserID: 7, Preferences: replaced}, "bob": {UserID: 8, Preferences: githubsync.DefaultPreferences()}}
+	if err != nil || !reflect.DeepEqual(recipients, want) {
+		t.Fatalf("recipients = %+v, %v", recipients, err)
+	}
+
+	// Disconnecting GitHub keeps them; deleting the account removes them.
+	if err := h.github.DeleteConnection(ctx, "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := h.github.NotificationPreferences(ctx, "alice"); err != nil || !reflect.DeepEqual(got, replaced) {
+		t.Fatalf("preferences after disconnect = %+v, %v", got, err)
+	}
+	if _, err := h.conn.Exec(ctx, `DELETE FROM diffx.users WHERE id = 'alice'`); err != nil {
+		t.Fatal(err)
+	}
+	if rows := h.count(t, `SELECT count(*) FROM diffx.github_notification_preferences WHERE owner_id = 'alice'`); rows != 0 {
+		t.Fatalf("preferences after account deletion = %d", rows)
 	}
 }

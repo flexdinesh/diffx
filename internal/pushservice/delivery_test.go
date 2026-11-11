@@ -133,7 +133,7 @@ func (h *harness) notify(t *testing.T) {
 		t.Fatal(err)
 	}
 	admission := githubsync.Admission{OwnerID: h.owner.ID, Request: request(strconv.Itoa(h.pulls)), Notification: &githubsync.Notification{Title: "octo/app #1", Body: "Add search\nNew PR by @mona"}}
-	if err := github.CompleteRefresh(t.Context(), lease, "open", "head", []githubsync.Admission{admission}, now); err != nil {
+	if err := github.CompleteRefresh(t.Context(), lease, githubsync.Observation{State: "open", Head: "head"}, []githubsync.Admission{admission}, now); err != nil {
 		t.Fatal(err)
 	}
 }

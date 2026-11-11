@@ -282,25 +282,102 @@ func (q *Queries) GitHubLeased(ctx context.Context, arg GitHubLeasedParams) (Git
 	return i, err
 }
 
-const gitHubPullRequestHead = `-- name: GitHubPullRequestHead :one
-SELECT head_sha, opened FROM github_pr_heads WHERE repository_id = $1 AND number = $2
+const gitHubNotificationPreferences = `-- name: GitHubNotificationPreferences :one
+SELECT owner_id, opened_by_me, opened_by_others, new_commits_by_me, new_commits_by_others, merged_by_me, merged_by_others, closed_by_me, closed_by_others, skip_drafts, only_authors, never_authors, base_branches, muted_title_terms, updated_at FROM github_notification_preferences WHERE owner_id = $1
 `
 
-type GitHubPullRequestHeadParams struct {
-	RepositoryID int64
-	Number       int32
-}
-
-type GitHubPullRequestHeadRow struct {
-	HeadSha string
-	Opened  bool
-}
-
-func (q *Queries) GitHubPullRequestHead(ctx context.Context, arg GitHubPullRequestHeadParams) (GitHubPullRequestHeadRow, error) {
-	row := q.db.QueryRow(ctx, gitHubPullRequestHead, arg.RepositoryID, arg.Number)
-	var i GitHubPullRequestHeadRow
-	err := row.Scan(&i.HeadSha, &i.Opened)
+func (q *Queries) GitHubNotificationPreferences(ctx context.Context, ownerID string) (GithubNotificationPreference, error) {
+	row := q.db.QueryRow(ctx, gitHubNotificationPreferences, ownerID)
+	var i GithubNotificationPreference
+	err := row.Scan(
+		&i.OwnerID,
+		&i.OpenedByMe,
+		&i.OpenedByOthers,
+		&i.NewCommitsByMe,
+		&i.NewCommitsByOthers,
+		&i.MergedByMe,
+		&i.MergedByOthers,
+		&i.ClosedByMe,
+		&i.ClosedByOthers,
+		&i.SkipDrafts,
+		&i.OnlyAuthors,
+		&i.NeverAuthors,
+		&i.BaseBranches,
+		&i.MutedTitleTerms,
+		&i.UpdatedAt,
+	)
 	return i, err
+}
+
+const gitHubNotificationRecipients = `-- name: GitHubNotificationRecipients :many
+SELECT c.owner_id, c.user_id, (p.owner_id IS NOT NULL)::boolean AS saved,
+  COALESCE(p.opened_by_me, false)::boolean AS opened_by_me, COALESCE(p.opened_by_others, false)::boolean AS opened_by_others,
+  COALESCE(p.new_commits_by_me, false)::boolean AS new_commits_by_me, COALESCE(p.new_commits_by_others, false)::boolean AS new_commits_by_others,
+  COALESCE(p.merged_by_me, false)::boolean AS merged_by_me, COALESCE(p.merged_by_others, false)::boolean AS merged_by_others,
+  COALESCE(p.closed_by_me, false)::boolean AS closed_by_me, COALESCE(p.closed_by_others, false)::boolean AS closed_by_others,
+  COALESCE(p.skip_drafts, false)::boolean AS skip_drafts,
+  COALESCE(p.only_authors, '{}')::text[] AS only_authors, COALESCE(p.never_authors, '{}')::text[] AS never_authors,
+  COALESCE(p.base_branches, '{}')::text[] AS base_branches, COALESCE(p.muted_title_terms, '{}')::text[] AS muted_title_terms
+FROM github_connections c LEFT JOIN github_notification_preferences p ON p.owner_id = c.owner_id
+WHERE c.owner_id = ANY($1::text[])
+`
+
+type GitHubNotificationRecipientsRow struct {
+	OwnerID            string
+	UserID             int64
+	Saved              bool
+	OpenedByMe         bool
+	OpenedByOthers     bool
+	NewCommitsByMe     bool
+	NewCommitsByOthers bool
+	MergedByMe         bool
+	MergedByOthers     bool
+	ClosedByMe         bool
+	ClosedByOthers     bool
+	SkipDrafts         bool
+	OnlyAuthors        []string
+	NeverAuthors       []string
+	BaseBranches       []string
+	MutedTitleTerms    []string
+}
+
+// Each listed connected account's GitHub user and saved preferences. Saved
+// is false for accounts that never saved any; their other columns are blank.
+func (q *Queries) GitHubNotificationRecipients(ctx context.Context, ownerIds []string) ([]GitHubNotificationRecipientsRow, error) {
+	rows, err := q.db.Query(ctx, gitHubNotificationRecipients, ownerIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GitHubNotificationRecipientsRow
+	for rows.Next() {
+		var i GitHubNotificationRecipientsRow
+		if err := rows.Scan(
+			&i.OwnerID,
+			&i.UserID,
+			&i.Saved,
+			&i.OpenedByMe,
+			&i.OpenedByOthers,
+			&i.NewCommitsByMe,
+			&i.NewCommitsByOthers,
+			&i.MergedByMe,
+			&i.MergedByOthers,
+			&i.ClosedByMe,
+			&i.ClosedByOthers,
+			&i.SkipDrafts,
+			&i.OnlyAuthors,
+			&i.NeverAuthors,
+			&i.BaseBranches,
+			&i.MutedTitleTerms,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const gitHubPullRequestHistory = `-- name: GitHubPullRequestHistory :many
@@ -370,6 +447,39 @@ func (q *Queries) GitHubPullRequestHistory(ctx context.Context, arg GitHubPullRe
 		return nil, err
 	}
 	return items, nil
+}
+
+const gitHubPullRequestObservation = `-- name: GitHubPullRequestObservation :one
+SELECT p.state, COALESCE(h.head_sha, '')::text AS head_sha, COALESCE(h.draft, false)::boolean AS draft,
+  COALESCE(h.opened, false)::boolean AS opened
+FROM github_pull_requests p LEFT JOIN github_pr_heads h ON h.repository_id = p.repository_id AND h.number = p.number
+WHERE p.repository_id = $1 AND p.number = $2
+`
+
+type GitHubPullRequestObservationParams struct {
+	RepositoryID int64
+	Number       int32
+}
+
+type GitHubPullRequestObservationRow struct {
+	State   string
+	HeadSha string
+	Draft   bool
+	Opened  bool
+}
+
+// The state the last refresh observed, and the head and draft flag of the
+// last captured snapshot (” and false before the first).
+func (q *Queries) GitHubPullRequestObservation(ctx context.Context, arg GitHubPullRequestObservationParams) (GitHubPullRequestObservationRow, error) {
+	row := q.db.QueryRow(ctx, gitHubPullRequestObservation, arg.RepositoryID, arg.Number)
+	var i GitHubPullRequestObservationRow
+	err := row.Scan(
+		&i.State,
+		&i.HeadSha,
+		&i.Draft,
+		&i.Opened,
+	)
+	return i, err
 }
 
 const gitHubReconcileUnlock = `-- name: GitHubReconcileUnlock :one
@@ -717,6 +827,60 @@ func (q *Queries) PutGitHubFollow(ctx context.Context, arg PutGitHubFollowParams
 	return err
 }
 
+const putGitHubNotificationPreferences = `-- name: PutGitHubNotificationPreferences :exec
+INSERT INTO github_notification_preferences(owner_id, opened_by_me, opened_by_others, new_commits_by_me, new_commits_by_others,
+  merged_by_me, merged_by_others, closed_by_me, closed_by_others, skip_drafts, only_authors, never_authors, base_branches,
+  muted_title_terms, updated_at)
+VALUES ($1, $2, $3, $4, $5,
+  $6, $7, $8, $9, $10, $11, $12, $13,
+  $14, $15)
+ON CONFLICT (owner_id) DO UPDATE SET opened_by_me = excluded.opened_by_me, opened_by_others = excluded.opened_by_others,
+  new_commits_by_me = excluded.new_commits_by_me, new_commits_by_others = excluded.new_commits_by_others,
+  merged_by_me = excluded.merged_by_me, merged_by_others = excluded.merged_by_others,
+  closed_by_me = excluded.closed_by_me, closed_by_others = excluded.closed_by_others, skip_drafts = excluded.skip_drafts,
+  only_authors = excluded.only_authors, never_authors = excluded.never_authors, base_branches = excluded.base_branches,
+  muted_title_terms = excluded.muted_title_terms, updated_at = excluded.updated_at
+`
+
+type PutGitHubNotificationPreferencesParams struct {
+	OwnerID            string
+	OpenedByMe         bool
+	OpenedByOthers     bool
+	NewCommitsByMe     bool
+	NewCommitsByOthers bool
+	MergedByMe         bool
+	MergedByOthers     bool
+	ClosedByMe         bool
+	ClosedByOthers     bool
+	SkipDrafts         bool
+	OnlyAuthors        []string
+	NeverAuthors       []string
+	BaseBranches       []string
+	MutedTitleTerms    []string
+	UpdatedAt          time.Time
+}
+
+func (q *Queries) PutGitHubNotificationPreferences(ctx context.Context, arg PutGitHubNotificationPreferencesParams) error {
+	_, err := q.db.Exec(ctx, putGitHubNotificationPreferences,
+		arg.OwnerID,
+		arg.OpenedByMe,
+		arg.OpenedByOthers,
+		arg.NewCommitsByMe,
+		arg.NewCommitsByOthers,
+		arg.MergedByMe,
+		arg.MergedByOthers,
+		arg.ClosedByMe,
+		arg.ClosedByOthers,
+		arg.SkipDrafts,
+		arg.OnlyAuthors,
+		arg.NeverAuthors,
+		arg.BaseBranches,
+		arg.MutedTitleTerms,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const putGitHubOAuthState = `-- name: PutGitHubOAuthState :exec
 INSERT INTO github_oauth_states(state_hash, owner_id, expires_at) VALUES ($1, $2, $3)
 `
@@ -822,18 +986,24 @@ func (q *Queries) RecordGitHubLease(ctx context.Context, arg RecordGitHubLeasePa
 }
 
 const recordGitHubPullRequestHead = `-- name: RecordGitHubPullRequestHead :exec
-INSERT INTO github_pr_heads(repository_id, number, head_sha) VALUES ($1, $2, $3)
-ON CONFLICT (repository_id, number) DO UPDATE SET head_sha = excluded.head_sha
+INSERT INTO github_pr_heads(repository_id, number, head_sha, draft) VALUES ($1, $2, $3, $4)
+ON CONFLICT (repository_id, number) DO UPDATE SET head_sha = excluded.head_sha, draft = excluded.draft
 `
 
 type RecordGitHubPullRequestHeadParams struct {
 	RepositoryID int64
 	Number       int32
 	HeadSha      string
+	Draft        bool
 }
 
 func (q *Queries) RecordGitHubPullRequestHead(ctx context.Context, arg RecordGitHubPullRequestHeadParams) error {
-	_, err := q.db.Exec(ctx, recordGitHubPullRequestHead, arg.RepositoryID, arg.Number, arg.HeadSha)
+	_, err := q.db.Exec(ctx, recordGitHubPullRequestHead,
+		arg.RepositoryID,
+		arg.Number,
+		arg.HeadSha,
+		arg.Draft,
+	)
 	return err
 }
 

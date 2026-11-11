@@ -42,13 +42,15 @@ type Ref struct {
 }
 
 // PullRequest.Head.Repository is zero when the head fork was deleted.
-// MergedAt and ClosedAt are nil until the pull request merged or closed.
+// MergedAt and ClosedAt are nil until the pull request merged or closed;
+// MergedBy is nil until it merged, and when GitHub omits the merger.
 type PullRequest struct {
 	Number    int
 	State     string
 	Merged    bool
 	MergedAt  *time.Time
 	ClosedAt  *time.Time
+	MergedBy  *Account
 	Draft     bool
 	Title     string
 	Body      string
@@ -122,23 +124,29 @@ func (ref refJSON) ref() Ref {
 }
 
 type pullRequestJSON struct {
-	Number    int         `json:"number"`
-	State     string      `json:"state"`
-	MergedAt  *time.Time  `json:"merged_at"`
-	ClosedAt  *time.Time  `json:"closed_at"`
-	Draft     bool        `json:"draft"`
-	Title     string      `json:"title"`
-	Body      string      `json:"body"`
-	HTMLURL   string      `json:"html_url"`
-	User      accountJSON `json:"user"`
-	Base      refJSON     `json:"base"`
-	Head      refJSON     `json:"head"`
-	CreatedAt time.Time   `json:"created_at"`
-	UpdatedAt time.Time   `json:"updated_at"`
+	Number    int          `json:"number"`
+	State     string       `json:"state"`
+	MergedAt  *time.Time   `json:"merged_at"`
+	ClosedAt  *time.Time   `json:"closed_at"`
+	MergedBy  *accountJSON `json:"merged_by"`
+	Draft     bool         `json:"draft"`
+	Title     string       `json:"title"`
+	Body      string       `json:"body"`
+	HTMLURL   string       `json:"html_url"`
+	User      accountJSON  `json:"user"`
+	Base      refJSON      `json:"base"`
+	Head      refJSON      `json:"head"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
 }
 
 func (pull pullRequestJSON) pullRequest() PullRequest {
-	return PullRequest{Number: pull.Number, State: pull.State, Merged: pull.MergedAt != nil, MergedAt: pull.MergedAt, ClosedAt: pull.ClosedAt, Draft: pull.Draft,
+	var mergedBy *Account
+	if pull.MergedBy != nil {
+		merger := pull.MergedBy.account()
+		mergedBy = &merger
+	}
+	return PullRequest{Number: pull.Number, State: pull.State, Merged: pull.MergedAt != nil, MergedAt: pull.MergedAt, ClosedAt: pull.ClosedAt, MergedBy: mergedBy, Draft: pull.Draft,
 		Title: pull.Title, Body: pull.Body, HTMLURL: pull.HTMLURL, Author: pull.User.account(),
 		Base: pull.Base.ref(), Head: pull.Head.ref(), CreatedAt: pull.CreatedAt, UpdatedAt: pull.UpdatedAt}
 }

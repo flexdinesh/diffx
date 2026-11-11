@@ -190,7 +190,9 @@ test("turning on notifications asks permission on click and registers the device
     return route.fulfill({ status: 204 });
   });
   await page.goto("/settings/notifications");
-  await expect(page.getByText("Get a notification when")).toBeVisible();
+  await expect(
+    page.getByText("Get notified about pull requests in repositories"),
+  ).toBeVisible();
   expect(registered).toEqual([]);
   await page.getByRole("button", { name: "Turn on notifications" }).click();
   await expect(

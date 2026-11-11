@@ -368,6 +368,24 @@ export interface paths {
     patch: operations["updateGitHubFollow"];
     trace?: never;
   };
+  "/api/v2/github/notifications": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Which followed pull request events send push notifications to this account, on every device. Defaults until saved. 404 when the integration is not configured. Distributed browser sessions only. */
+    get: operations["getNotificationPreferences"];
+    /** @description Replace this account's notification preferences. Lists are trimmed and deduplicated case-insensitively; the response is the stored result. Distributed browser sessions only. */
+    put: operations["putNotificationPreferences"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v2/push": {
     parameters: {
       query?: never;
@@ -1445,6 +1463,34 @@ export interface components {
       notify: boolean;
       /** @description False when the repository turned pull requests off on GitHub. It can still be followed; its pull requests appear once they are turned on. True for lost follows. */
       pullRequests: boolean;
+    };
+    NotificationAudience: {
+      /** @description Pull requests authored by this account's connected GitHub user, including those its agents open. */
+      byMe: boolean;
+      /** @description Pull requests authored by anyone else. */
+      byOthers: boolean;
+    };
+    /** @description Case-insensitive terms; blank and duplicate entries are dropped. */
+    NotificationFilterList: string[];
+    /** @description Every condition must hold for a followed, unmuted repository's pull request event to notify. */
+    NotificationPreferences: {
+      /** @description Opened, reopened or marked ready for review. */
+      opened: components["schemas"]["NotificationAudience"];
+      /** @description The head changed while open. */
+      newCommits: components["schemas"]["NotificationAudience"];
+      merged: components["schemas"]["NotificationAudience"];
+      /** @description Closed without merging. */
+      closed: components["schemas"]["NotificationAudience"];
+      /** @description Draft pull requests notify nothing; becoming ready for review counts as opened. */
+      skipDrafts: boolean;
+      /** @description GitHub logins; when nonempty, others' pull requests notify only from these authors. */
+      onlyAuthors: components["schemas"]["NotificationFilterList"];
+      /** @description GitHub logins whose pull requests never notify. */
+      neverAuthors: components["schemas"]["NotificationFilterList"];
+      /** @description When nonempty, only pull requests into these base branches notify. A trailing * matches a prefix. */
+      baseBranches: components["schemas"]["NotificationFilterList"];
+      /** @description Pull requests whose title contains any of these substrings never notify. */
+      mutedTitleTerms: components["schemas"]["NotificationFilterList"];
     };
     PushSettings: {
       /** @description False when the server has no HTTPS public URL (or loopback HTTP for development). */
@@ -2714,6 +2760,60 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      400: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  getNotificationPreferences: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Notification preferences. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["NotificationPreferences"];
+        };
+      };
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  putNotificationPreferences: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["NotificationPreferences"];
+      };
+    };
+    responses: {
+      /** @description Stored preferences. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["NotificationPreferences"];
+        };
       };
       400: components["responses"]["Problem"];
       403: components["responses"]["Problem"];

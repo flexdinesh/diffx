@@ -1458,6 +1458,46 @@ type InviteToken struct {
 	Token string `json:"token"`
 }
 
+// NotificationAudience defines model for NotificationAudience.
+type NotificationAudience struct {
+	// ByMe Pull requests authored by this account's connected GitHub user, including those its agents open.
+	ByMe bool `json:"byMe"`
+
+	// ByOthers Pull requests authored by anyone else.
+	ByOthers bool `json:"byOthers"`
+}
+
+// NotificationFilterList Case-insensitive terms; blank and duplicate entries are dropped.
+type NotificationFilterList = []string
+
+// NotificationPreferences Every condition must hold for a followed, unmuted repository's pull request event to notify.
+type NotificationPreferences struct {
+	// BaseBranches When nonempty, only pull requests into these base branches notify. A trailing * matches a prefix.
+	BaseBranches NotificationFilterList `json:"baseBranches"`
+
+	// Closed Closed without merging.
+	Closed NotificationAudience `json:"closed"`
+	Merged NotificationAudience `json:"merged"`
+
+	// MutedTitleTerms Pull requests whose title contains any of these substrings never notify.
+	MutedTitleTerms NotificationFilterList `json:"mutedTitleTerms"`
+
+	// NeverAuthors GitHub logins whose pull requests never notify.
+	NeverAuthors NotificationFilterList `json:"neverAuthors"`
+
+	// NewCommits The head changed while open.
+	NewCommits NotificationAudience `json:"newCommits"`
+
+	// OnlyAuthors GitHub logins; when nonempty, others' pull requests notify only from these authors.
+	OnlyAuthors NotificationFilterList `json:"onlyAuthors"`
+
+	// Opened Opened, reopened or marked ready for review.
+	Opened NotificationAudience `json:"opened"`
+
+	// SkipDrafts Draft pull requests notify nothing; becoming ready for review counts as opened.
+	SkipDrafts bool `json:"skipDrafts"`
+}
+
 // ObservationMetadata defines model for ObservationMetadata.
 type ObservationMetadata struct {
 	// ActivityAt Approximate code activity time in Unix milliseconds; omitted when unavailable. Advisory and independent of snapshot freshness.
@@ -2118,6 +2158,12 @@ type GetGitHubHistoryParams struct {
 	Until int64 `form:"until" json:"until"`
 }
 
+// PutNotificationPreferencesParams defines parameters for PutNotificationPreferences.
+type PutNotificationPreferencesParams struct {
+	// XCSRFToken Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials.
+	XCSRFToken *CsrfToken `json:"X-CSRF-Token,omitempty"`
+}
+
 // ResyncGitHubParams defines parameters for ResyncGitHub.
 type ResyncGitHubParams struct {
 	// XCSRFToken Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials.
@@ -2240,6 +2286,9 @@ type PutReviewMarkV2JSONRequestBody PutReviewMarkV2JSONBody
 
 // UpdateGitHubFollowJSONRequestBody defines body for UpdateGitHubFollow for application/json ContentType.
 type UpdateGitHubFollowJSONRequestBody UpdateGitHubFollowJSONBody
+
+// PutNotificationPreferencesJSONRequestBody defines body for PutNotificationPreferences for application/json ContentType.
+type PutNotificationPreferencesJSONRequestBody = NotificationPreferences
 
 // ReceiveGitHubWebhookJSONRequestBody defines body for ReceiveGitHubWebhook for application/json ContentType.
 type ReceiveGitHubWebhookJSONRequestBody = ReceiveGitHubWebhookJSONBody
@@ -2658,6 +2707,23 @@ type ClientInterface interface {
 	//
 	// The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first. The range may span at most 31 days and starts no earlier than retained history (retainedSince); one ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
 	GetGitHubHistory(ctx context.Context, params *GetGitHubHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetNotificationPreferences performs a GET /api/v2/github/notifications (the `GetNotificationPreferences` operationId) request.
+	//
+	// Which followed pull request events send push notifications to this account, on every device. Defaults until saved. 404 when the integration is not configured. Distributed browser sessions only.
+	GetNotificationPreferences(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutNotificationPreferencesWithBody performs a PUT /api/v2/github/notifications (the `PutNotificationPreferences` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Replace this account's notification preferences. Lists are trimmed and deduplicated case-insensitively; the response is the stored result. Distributed browser sessions only.
+	PutNotificationPreferencesWithBody(ctx context.Context, params *PutNotificationPreferencesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutNotificationPreferences performs a PUT /api/v2/github/notifications (the `PutNotificationPreferences` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Replace this account's notification preferences. Lists are trimmed and deduplicated case-insensitively; the response is the stored result. Distributed browser sessions only.
+	PutNotificationPreferences(ctx context.Context, params *PutNotificationPreferencesParams, body PutNotificationPreferencesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListGitHubRepositories performs a GET /api/v2/github/repositories (the `ListGitHubRepositories` operationId) request.
 	//
@@ -3679,6 +3745,53 @@ func (c *Client) FollowGitHubRepository(ctx context.Context, repositoryId int64,
 // The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first. The range may span at most 31 days and starts no earlier than retained history (retainedSince); one ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
 func (c *Client) GetGitHubHistory(ctx context.Context, params *GetGitHubHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetGitHubHistoryRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetNotificationPreferences performs a GET /api/v2/github/notifications (the `GetNotificationPreferences` operationId) request.
+//
+// Which followed pull request events send push notifications to this account, on every device. Defaults until saved. 404 when the integration is not configured. Distributed browser sessions only.
+func (c *Client) GetNotificationPreferences(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetNotificationPreferencesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutNotificationPreferencesWithBody performs a PUT /api/v2/github/notifications (the `PutNotificationPreferences` operationId) request,
+// with any type of body and a specified content type.
+//
+// Replace this account's notification preferences. Lists are trimmed and deduplicated case-insensitively; the response is the stored result. Distributed browser sessions only.
+func (c *Client) PutNotificationPreferencesWithBody(ctx context.Context, params *PutNotificationPreferencesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutNotificationPreferencesRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutNotificationPreferences performs a PUT /api/v2/github/notifications (the `PutNotificationPreferences` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Replace this account's notification preferences. Lists are trimmed and deduplicated case-insensitively; the response is the stored result. Distributed browser sessions only.
+func (c *Client) PutNotificationPreferences(ctx context.Context, params *PutNotificationPreferencesParams, body PutNotificationPreferencesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutNotificationPreferencesRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6823,6 +6936,88 @@ func NewGetGitHubHistoryRequest(server string, params *GetGitHubHistoryParams) (
 	return req, nil
 }
 
+// NewGetNotificationPreferencesRequest constructs an http.Request for the GetNotificationPreferences method
+func NewGetNotificationPreferencesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/github/notifications")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutNotificationPreferencesRequest calls the generic PutNotificationPreferences builder with application/json body
+func NewPutNotificationPreferencesRequest(server string, params *PutNotificationPreferencesParams, body PutNotificationPreferencesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutNotificationPreferencesRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewPutNotificationPreferencesRequestWithBody constructs an http.Request for the PutNotificationPreferences method, with any body, and a specified content type
+func NewPutNotificationPreferencesRequestWithBody(server string, params *PutNotificationPreferencesParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/github/notifications")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.XCSRFToken != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-CSRF-Token", *params.XCSRFToken, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-CSRF-Token", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewListGitHubRepositoriesRequest constructs an http.Request for the ListGitHubRepositories method
 func NewListGitHubRepositoriesRequest(server string) (*http.Request, error) {
 	var err error
@@ -8658,6 +8853,27 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	GetGitHubHistoryWithResponse(ctx context.Context, params *GetGitHubHistoryParams, reqEditors ...RequestEditorFn) (*GetGitHubHistoryResponse, error)
+
+	// GetNotificationPreferencesWithResponse performs a GET /api/v2/github/notifications (the `GetNotificationPreferences` operationId) request.
+	//
+	// Which followed pull request events send push notifications to this account, on every device. Defaults until saved. 404 when the integration is not configured. Distributed browser sessions only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetNotificationPreferencesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetNotificationPreferencesResponse, error)
+
+	// PutNotificationPreferencesWithBodyWithResponse performs a PUT /api/v2/github/notifications (the `PutNotificationPreferences` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Replace this account's notification preferences. Lists are trimmed and deduplicated case-insensitively; the response is the stored result. Distributed browser sessions only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	PutNotificationPreferencesWithBodyWithResponse(ctx context.Context, params *PutNotificationPreferencesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutNotificationPreferencesResponse, error)
+
+	// PutNotificationPreferencesWithResponse performs a PUT /api/v2/github/notifications (the `PutNotificationPreferences` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Replace this account's notification preferences. Lists are trimmed and deduplicated case-insensitively; the response is the stored result. Distributed browser sessions only.
+	PutNotificationPreferencesWithResponse(ctx context.Context, params *PutNotificationPreferencesParams, body PutNotificationPreferencesJSONRequestBody, reqEditors ...RequestEditorFn) (*PutNotificationPreferencesResponse, error)
 
 	// ListGitHubRepositoriesWithResponse performs a GET /api/v2/github/repositories (the `ListGitHubRepositories` operationId) request.
 	//
@@ -11513,6 +11729,137 @@ func (r GetGitHubHistoryResponse) ContentType() string {
 	return ""
 }
 
+type GetNotificationPreferencesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NotificationPreferences
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetNotificationPreferencesResponse) GetJSON200() *NotificationPreferences {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetNotificationPreferencesResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetNotificationPreferencesResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetNotificationPreferencesResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetNotificationPreferencesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetNotificationPreferencesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetNotificationPreferencesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetNotificationPreferencesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PutNotificationPreferencesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NotificationPreferences
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PutNotificationPreferencesResponse) GetJSON200() *NotificationPreferences {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r PutNotificationPreferencesResponse) GetApplicationproblemJSON400() *Problem {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r PutNotificationPreferencesResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r PutNotificationPreferencesResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r PutNotificationPreferencesResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r PutNotificationPreferencesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PutNotificationPreferencesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutNotificationPreferencesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PutNotificationPreferencesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListGitHubRepositoriesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -14098,6 +14445,45 @@ func (c *ClientWithResponses) GetGitHubHistoryWithResponse(ctx context.Context, 
 	return ParseGetGitHubHistoryResponse(rsp)
 }
 
+// GetNotificationPreferencesWithResponse performs a GET /api/v2/github/notifications (the `GetNotificationPreferences` operationId) request.
+//
+// Which followed pull request events send push notifications to this account, on every device. Defaults until saved. 404 when the integration is not configured. Distributed browser sessions only.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetNotificationPreferencesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetNotificationPreferencesResponse, error) {
+	rsp, err := c.GetNotificationPreferences(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetNotificationPreferencesResponse(rsp)
+}
+
+// PutNotificationPreferencesWithBodyWithResponse performs a PUT /api/v2/github/notifications (the `PutNotificationPreferences` operationId) request,
+// with any type of body and a specified content type.
+//
+// Replace this account's notification preferences. Lists are trimmed and deduplicated case-insensitively; the response is the stored result. Distributed browser sessions only.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) PutNotificationPreferencesWithBodyWithResponse(ctx context.Context, params *PutNotificationPreferencesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutNotificationPreferencesResponse, error) {
+	rsp, err := c.PutNotificationPreferencesWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutNotificationPreferencesResponse(rsp)
+}
+
+// PutNotificationPreferencesWithResponse performs a PUT /api/v2/github/notifications (the `PutNotificationPreferences` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Replace this account's notification preferences. Lists are trimmed and deduplicated case-insensitively; the response is the stored result. Distributed browser sessions only.
+func (c *ClientWithResponses) PutNotificationPreferencesWithResponse(ctx context.Context, params *PutNotificationPreferencesParams, body PutNotificationPreferencesJSONRequestBody, reqEditors ...RequestEditorFn) (*PutNotificationPreferencesResponse, error) {
+	rsp, err := c.PutNotificationPreferences(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutNotificationPreferencesResponse(rsp)
+}
+
 // ListGitHubRepositoriesWithResponse performs a GET /api/v2/github/repositories (the `ListGitHubRepositories` operationId) request.
 //
 // Repositories both the GitHub user and the app can read, plus followed repositories that lost access. Listing rechecks access. Distributed browser sessions only.
@@ -16463,6 +16849,107 @@ func ParseGetGitHubHistoryResponse(rsp *http.Response) (*GetGitHubHistoryRespons
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest GitHubHistory
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetNotificationPreferencesResponse parses an HTTP response from a GetNotificationPreferencesWithResponse call
+func ParseGetNotificationPreferencesResponse(rsp *http.Response) (*GetNotificationPreferencesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetNotificationPreferencesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NotificationPreferences
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutNotificationPreferencesResponse parses an HTTP response from a PutNotificationPreferencesWithResponse call
+func ParsePutNotificationPreferencesResponse(rsp *http.Response) (*PutNotificationPreferencesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutNotificationPreferencesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NotificationPreferences
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

@@ -207,6 +207,16 @@ func (remote *transport) githubAccount(w http.ResponseWriter, r *http.Request, p
 		githubResult(w, history, err)
 	case path == "resync" && r.Method == http.MethodPost:
 		githubResult(w, nil, remote.github.Resync(ctx, owner))
+	case path == "notifications" && r.Method == http.MethodGet:
+		preferences, err := remote.github.NotificationPreferences(ctx, owner)
+		githubResult(w, preferences, err)
+	case path == "notifications" && r.Method == http.MethodPut:
+		var input githubsync.Preferences
+		if !authhttp.DecodeJSON(w, r, &input) {
+			return
+		}
+		preferences, err := remote.github.SetNotificationPreferences(ctx, owner, input)
+		githubResult(w, preferences, err)
 	case strings.HasPrefix(path, "follows/"):
 		id, err := strconv.ParseInt(strings.TrimPrefix(path, "follows/"), 10, 64)
 		if err != nil || id <= 0 {
@@ -233,7 +243,7 @@ func (remote *transport) githubAccount(w http.ResponseWriter, r *http.Request, p
 		default:
 			authhttp.Problem(w, 405, "Method not allowed")
 		}
-	case path == "connection" || path == "repositories" || path == "resync" || path == "history":
+	case path == "connection" || path == "repositories" || path == "resync" || path == "history" || path == "notifications":
 		authhttp.Problem(w, 405, "Method not allowed")
 	default:
 		http.NotFound(w, r)
@@ -247,7 +257,7 @@ func githubResult(w http.ResponseWriter, value any, err error) {
 		w.WriteHeader(http.StatusNoContent)
 	case err == nil:
 		authhttp.WriteJSON(w, 200, value)
-	case errors.Is(err, githubsync.ErrInvalidRange):
+	case errors.Is(err, githubsync.ErrInvalidRange), errors.Is(err, githubsync.ErrInvalidPreferences):
 		authhttp.Problem(w, 400, err.Error())
 	case errors.Is(err, githubsync.ErrNotConnected):
 		authhttp.Problem(w, 409, err.Error())

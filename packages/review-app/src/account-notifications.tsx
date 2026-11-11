@@ -4,12 +4,16 @@ import {
   type ApiPushDevice,
   type ApiPushSettings,
 } from "@diffx/api";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ConfirmDialog } from "@diffx/ui/components/confirm-dialog";
 import { ErrorState } from "@diffx/ui/components/error-state";
 import { Button } from "@diffx/ui/components/ui/button";
 import { Checkbox } from "@diffx/ui/components/ui/checkbox";
 import type { GitHubFollowing } from "./account-github.tsx";
+import {
+  GitHubSettingsLink,
+  NotificationPreferences,
+} from "./account-notification-preferences.tsx";
 import { useInstallPrompt } from "./pwa.ts";
 import {
   disablePush,
@@ -24,9 +28,7 @@ import {
   RowActions,
   SettingsSection,
   SettingsSectionAbsent,
-  settingsPath,
 } from "./settings-layout.tsx";
-import { navigate } from "./identity-context.tsx";
 
 const prose = "mb-4 leading-copy text-secondary";
 
@@ -94,7 +96,7 @@ export function AccountNotifications({
   return (
     <SettingsSection
       id="notifications"
-      description="Get a notification when a pull request opens or gets new commits in a repository you follow."
+      description="Get notified about pull requests in repositories you follow, for the events you choose under What notifies."
     >
       {settings.status === "error" && (
         <ErrorState
@@ -109,31 +111,21 @@ export function AccountNotifications({
           Push notifications are off on this server. Ask us to turn them on.
         </p>
       )}
-      {ready?.enabled && github !== null && (
+      {ready?.enabled && github === "none" && (
         <p className={prose}>
-          {github === "none" && (
-            <>
-              Choose repositories to follow under{" "}
-              <a
-                href={settingsPath("github")}
-                onClick={(event) => {
-                  event.preventDefault();
-                  navigate(settingsPath("github"));
-                }}
-                className="text-accent underline underline-offset-(--space-1)"
-              >
-                GitHub
-              </a>
-              .
-            </>
-          )}
-          {github === "following" &&
-            "Turn off the bell beside a repository under GitHub to mute it."}
-          {github === "unavailable" && "GitHub is not set up on this server."}
+          Choose repositories to follow under{" "}
+          <GitHubSettingsLink>GitHub</GitHubSettingsLink>.
         </p>
       )}
+      {ready?.enabled && github === "unavailable" && (
+        <p className={prose}>GitHub is not set up on this server.</p>
+      )}
       {ready?.enabled && ready.publicKey && (
-        <Devices publicKey={ready.publicKey} devices={ready.devices} />
+        <Devices
+          publicKey={ready.publicKey}
+          devices={ready.devices}
+          preferences={<NotificationPreferences github={github} />}
+        />
       )}
     </SettingsSection>
   );
@@ -141,13 +133,18 @@ export function AccountNotifications({
 
 type Busy = "enable" | "disable" | "test" | null;
 
-/** This device's state and actions, then the account's other devices. */
+/**
+ * This device's state and actions, then the account-wide preferences, then
+ * the account's other devices.
+ */
 function Devices({
   publicKey,
   devices: initialDevices,
+  preferences,
 }: {
   publicKey: string;
   devices: ApiPushDevice[];
+  preferences: ReactNode;
 }) {
   const [environment] = useState(pushEnvironment);
   const support = pushSupport(environment);
@@ -380,6 +377,7 @@ function Devices({
             )
           ))}
       </section>
+      {preferences}
       {others.length > 0 && (
         <section aria-labelledby="other-devices-title">
           <h3

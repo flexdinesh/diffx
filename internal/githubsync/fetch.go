@@ -79,7 +79,7 @@ func (s *Service) prepare(ctx context.Context, lease Lease, now time.Time) (*fet
 	}
 	var status *github.Error
 	if errors.As(err, &status) && status.Status == http.StatusNotFound {
-		return nil, s.store.CompleteRefresh(ctx, lease, "closed", "", nil, now.UnixMilli())
+		return nil, s.store.CompleteRefresh(ctx, lease, Observation{State: "closed"}, nil, now.UnixMilli())
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read pull request %s#%d: %w", ref.FullName, ref.Number, err)
@@ -90,7 +90,7 @@ func (s *Service) prepare(ctx context.Context, lease Lease, now time.Time) (*fet
 		}
 	}
 	if !followed && !lease.Public {
-		return nil, s.store.CompleteRefresh(ctx, lease, pullState(pull), "", nil, now.UnixMilli())
+		return nil, s.store.CompleteRefresh(ctx, lease, Observation{State: pullState(pull)}, nil, now.UnixMilli())
 	}
 	// Followed repositories fetch with a token narrowed to them; see
 	// publicCredential for a pull request only the public demands. An empty
@@ -132,9 +132,10 @@ func (s *Service) prepare(ctx context.Context, lease Lease, now time.Time) (*fet
 // with verified access, and to PublicOwnerID when the lease covers public
 // demand, in one transaction with the refresh; a failure retries with
 // backoff. ErrLeaseLost means another lease superseded this one. When the
-// snapshot announces new work (see announcement), the same transaction records
+// snapshot announces an event (see announcement), the same transaction records
 // a push notification for every admitted follower that has not muted the
-// repository; the public owner is never notified.
+// repository and whose preferences accept it; the public owner is never
+// notified.
 func (s *Service) Finish(ctx context.Context, result fetchprotocol.Result) error {
 	repositoryID, number, ok := parseJobID(result.ID)
 	if !ok {
@@ -164,16 +165,30 @@ func (s *Service) Finish(ctx context.Context, result fetchprotocol.Result) error
 		return err
 	}
 	// The lease fences other refreshes of this pull request, so the recorded
-	// head cannot change before CompleteRefresh commits.
-	previous, opened, err := s.store.PullRequestHead(ctx, repositoryID, number)
+	// observation cannot change before CompleteRefresh commits.
+	previous, opened, err := s.store.PullRequestObservation(ctx, repositoryID, number)
 	if err != nil {
 		return err
 	}
-	notification := announcement(lease.Ref, pull, previous, opened)
+	event, notification := announcement(lease.Ref, previous, opened, pull)
+	var recipients map[string]Recipient
+	if notification != nil {
+		unmuted := make([]string, 0, len(follows))
+		for _, follow := range follows {
+			if !follow.Muted {
+				unmuted = append(unmuted, follow.OwnerID)
+			}
+		}
+		if len(unmuted) > 0 {
+			if recipients, err = s.store.NotificationRecipients(ctx, unmuted); err != nil {
+				return err
+			}
+		}
+	}
 	admissions := make([]Admission, 0, len(follows)+1)
 	for _, follow := range follows {
 		admission := Admission{OwnerID: follow.OwnerID, Request: request}
-		if notification != nil && !follow.Muted {
+		if recipient, ok := recipients[follow.OwnerID]; ok && !follow.Muted && recipient.Preferences.Notifies(event, pull, recipient.UserID) {
 			admission.Notification = notification
 		}
 		admissions = append(admissions, admission)
@@ -181,33 +196,8 @@ func (s *Service) Finish(ctx context.Context, result fetchprotocol.Result) error
 	if lease.Public {
 		admissions = append(admissions, Admission{OwnerID: PublicOwnerID, Request: request})
 	}
-	return s.store.CompleteRefresh(ctx, lease, pullState(pull), pull.Head.SHA, admissions, s.millis())
-}
-
-// maxNotificationTitle bounds the pull request title shown in a notification.
-const maxNotificationTitle = 120
-
-// announcement decides whether a snapshot notifies followers. A captured head
-// that differs from the last recorded one is new work, whatever the pull
-// request's author. A first snapshot notifies only when a webhook announced
-// the pull request, so first follows, startup reconciliation and Resync import
-// existing pull requests silently. Metadata edits, closing and merging keep
-// the head and never notify.
-func announcement(ref PullRequestRef, pull github.PullRequest, previous string, opened bool) *Notification {
-	var action string
-	switch {
-	case previous == "" && opened:
-		action = "New PR by @"
-	case previous != "" && previous != pull.Head.SHA:
-		action = "Updated by @"
-	default:
-		return nil
-	}
-	title := strings.TrimSpace(pull.Title)
-	if runes := []rune(title); len(runes) > maxNotificationTitle {
-		title = strings.TrimSpace(string(runes[:maxNotificationTitle-1])) + "…"
-	}
-	return &Notification{Title: ref.FullName + " #" + strconv.Itoa(ref.Number), Body: title + "\n" + action + pull.Author.Login}
+	observed := Observation{State: pullState(pull), Head: pull.Head.SHA, Draft: pull.Draft}
+	return s.store.CompleteRefresh(ctx, lease, observed, admissions, s.millis())
 }
 
 // release ends a lease with exponential backoff capped at an hour.
