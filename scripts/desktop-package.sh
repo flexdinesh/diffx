@@ -6,7 +6,7 @@ fail() { printf 'desktop package: %s\n' "$*" >&2; exit 1; }
 version=${DIFFX_RELEASE_VERSION:-0.0.0-dev}
 source_sha=${DIFFX_SOURCE_SHA:-$(git rev-parse HEAD)}
 printf '%s\n' "$version" | awk '
-  NR == 1 && /^(0\.0\.0-dev|edge|[0-9]+\.[0-9]+\.[0-9]+)$/ { valid = 1 }
+  NR == 1 && /^(0\.0\.0-dev|[0-9]+\.[0-9]+\.[0-9]+)$/ { valid = 1 }
   END { exit !(valid && NR == 1) }
 ' || fail 'invalid version'
 [ "$(git rev-parse HEAD)" = "$source_sha" ] || fail 'checkout does not match source'
@@ -24,9 +24,9 @@ if [ "$GOOS" = darwin ]; then
   app_dir=$payload/Contents/MacOS
   resources=$payload/Contents/Resources
   mkdir -p "$app_dir" "$resources"
-  # Bundle versions must be numeric even for a rolling edge build.
+  # Bundle versions must be numeric even for a development build.
   bundle_version=$version
-  case "$version" in 0.0.0-dev|edge) bundle_version=0.0.0 ;; esac
+  [ "$version" != 0.0.0-dev ] || bundle_version=0.0.0
   sed "s/@VERSION@/$bundle_version/g" apps/desktop/resources/Info.plist > "$payload/Contents/Info.plist"
   cp apps/desktop/resources/launch "$app_dir/launch"
   chmod 755 "$app_dir/launch"

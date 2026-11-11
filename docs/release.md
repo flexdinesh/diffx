@@ -13,9 +13,9 @@ GitHub Actions does not validate PRs.
 Workflows set `HUSKY=0`. Publishing stages embedded web assets in the workflow
 workspace, compiles release binaries with GoReleaser, and generates checksums.
 It does not repeat lint, type checks, generated-file verification or test suites.
-Release steps run through `release:*` mise tasks. Stable and edge publishing share
-`mise run release:package`, which installs GoReleaser and builds archives without
-publishing. The channel tasks upload those archives to GitHub.
+Release steps run through `release:*` mise tasks. `mise run release:package`
+installs GoReleaser and builds archives without publishing; `release:publish`
+uploads those archives to GitHub. There is no prebuilt prerelease channel.
 
 Install the latest stable release or a specific version:
 
@@ -24,8 +24,8 @@ curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install.sh | 
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install.sh | sh -s -- --version v0.2.0
 ```
 
-Both stable and edge installers support `--bin-dir DIR`, defaulting to
-`~/.local/bin`. They install only `diffx`, verify SHA-256 using `checksums.txt`,
+The stable installer supports `--bin-dir DIR`, defaulting to
+`~/.local/bin`. It installs only `diffx`, verifies SHA-256 using `checksums.txt`,
 and replace the binary atomically after verification. A failed download or
 checksum preserves an existing binary. No Go or Node.js is required, no sudo is
 used, and shell profiles are unchanged. Ensure the destination is on `PATH`.
@@ -65,26 +65,40 @@ left untouched; shell installation is the supported distribution path.
 
 ## Development installs
 
-Install the latest `main` commit published to edge, including unreleased changes:
+Contributors build unreleased changes locally; CI publishes no prebuilt
+development binaries. Install the latest `main`, another branch, or a commit:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-edge.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-dev.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-dev.sh | sh -s -- --ref my-branch
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-dev.sh | sh -s -- --ref <sha>
 ```
 
-On a push to `main`, the **Edge** workflow stages web assets locally and
-publishes a rolling GitHub prerelease with tag `edge` pointing to that `main`
-commit. It embeds the main SHA in the binary. Assets use fixed names
-`diffx_edge_<os>_<arch>.tar.gz` plus `checksums.txt`. Edge omits macOS Intel
-(`darwin_amd64`) for both CLI and desktop archives; its installers refuse that
-platform before downloading. Stable releases keep it. Edge is excluded from
-GitHub's latest stable release and from `install.sh`'s default selection.
-The legacy `edge` branch is no longer updated.
+`install-dev.sh` requires Git and mise and accepts `--ref BRANCH|SHA` (default
+`main`), `--bin-dir DIR` (default `~/.local/bin`) and `--clean`. It builds only
+branches and fetched commits of `https://github.com/flexdinesh/diffx.git`; fork
+URLs are unsupported. It keeps a blobless clone in
+`${XDG_CACHE_HOME:-~/.cache}/diffx/src`, fetches, detaches at the resolved
+commit, resets and removes untracked files. Ignored dependencies and build
+outputs persist, so rebuilds are incremental; mise content hashes decide what
+rebuilds. `--clean` recreates the checkout. A cache with another origin is
+refused until `--clean`. A lock in the cache directory serializes installs.
 
-Downloads can fail or encounter a checksum mismatch while rolling assets are
-being replaced. Retry after publication finishes; the installer preserves any
-existing binary on failure. Use `--bin-dir DIR` to override `~/.local/bin`.
+The checkout owns its build recipe. The installer trusts only that checkout's
+mise config for the run (`MISE_TRUSTED_CONFIG_PATHS`), runs `mise install
+--locked`, then `mise run install:source -- OUTPUT`. That task installs
+dependencies, stages web assets and builds `./cmd/diffx` with `Version=dev`, the
+commit SHA and commit date, so `diffx --version` reports
+`diffx dev <sha> <date>`. Refs that predate the task are refused. The binary
+stages in the destination and replaces `diffx` atomically; any failure preserves
+an existing binary. A cold build downloads toolchains and about 1.2 GB of
+dependencies.
 
-Go source installs (`@latest`, `@edge`, `@<sha>` and branch refs) are unsupported
+Source builds have no published checksums. Trust rests on Git over HTTPS to the
+canonical repository, and building a ref runs that ref's dependency lifecycle
+and build scripts. Install only refs you trust.
+
+Go source installs (`@latest`, `@<sha>` and branch refs) are unsupported
 because source refs lack embedded assets. Historical binary releases remain
 installable separately with `install.sh --version vX.Y.Z`. For development from
 a configured checkout, use `mise run install`.
@@ -98,18 +112,21 @@ Host-compatible binaries also execute their informational version commands.
 
 `diffx-desktop` is a separate macOS/Linux MyGo v0.7.4 webview host. It
 embeds the shared React review app and uses a private matching CLI as its local server.
-Normal `install.sh`, `install-edge.sh`, CLI assets and their `checksums.txt`
-retain their existing behavior. Desktop assets use separate names and
-`desktop-checksums.txt` on the same source release. Edge remains experimental;
-desktop stable-version archives are also explicitly experimental.
+Normal `install.sh`, CLI assets and their `checksums.txt` retain their existing
+behavior. Desktop assets use separate names and `desktop-checksums.txt` on the
+same stable release. Desktop has no development channel; stable-version
+archives are explicitly experimental.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-desktop.sh | sh
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-desktop.sh | sh -s -- --version v0.2.0
 ```
 
-The desktop installer defaults to edge and supports `--version edge|vX.Y.Z`
-and `--bin-dir DIR` (default `~/.local/bin`). It verifies one exact SHA-256
+The desktop installer defaults to the latest stable release and supports
+`--version vX.Y.Z` and `--bin-dir DIR` (default `~/.local/bin`). Desktop
+packaging publishes independently of the CLI release, so if the latest stable
+lacks desktop assets the installer says so; retry or pin `--version`. It
+verifies one exact SHA-256
 entry before extraction, stages the app/server pair on the destination
 filesystem, and exposes both `diffx` and `diffx-desktop`. Existing command
 launchers, including a standalone CLI, are replaced with symlinks to
@@ -176,14 +193,12 @@ into app and server, and emits an archive plus `.sha256` sidecar. Local release
 tests run through `mise run check:release`; the raw JS tooling command is
 `pnpm test:release`.
 
-Stable and edge workflows call **Desktop artifacts** after the CLI release
+The stable workflow calls **Desktop artifacts** after the CLI release
 publishes, passing its exact source SHA and tag. That workflow only stages,
 cross-compiles and uploads; it runs no test suite and never creates a release
 or changes latest/prerelease status. CLI publication can succeed independently
-of experimental desktop packaging. Desktop checksums upload last. Edge checks
-that both current main and edge tag still match before uploading; rolling
-asset replacement can temporarily fail checksum verification, so retry after
-publication completes. Stable desktop uploads never clobber existing assets;
+of experimental desktop packaging. Desktop checksums upload last. Desktop
+uploads never clobber existing assets;
 a complete rerun preserves them, while a partial upload requires maintainer
 inspection before retrying. No release artifact is committed.
 
@@ -215,7 +230,7 @@ series' patch number.
 Application binaries and web build outputs are never committed. Publishing
 builds and stages `internal/webui/dist` only in its workspace before compiling
 archives from the tagged main commit. It creates no asset commits. The CI
-identity must be allowed to push version tags and update the rolling `edge` tag.
+identity must be allowed to push version tags.
 
 `mise run check:artifacts`, included in host static validation, rejects tracked
 application binaries and web build outputs. Built plugin distributions and

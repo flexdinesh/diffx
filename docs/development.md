@@ -3,17 +3,20 @@
 Requires [mise](https://mise.jdx.dev) 2026.8.6 or later, Git, Bash, a C
 compiler, and Docker (Linux x64) for isolated checks.
 
-## Install from main
+## Install from a branch
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-edge.sh | sh
-diffx --version  # confirm installed build
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-dev.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-dev.sh | sh -s -- --ref my-branch
+diffx --version  # dev <commit> <commit date>
 ```
 
-Installs the rolling edge CLI into `~/.local/bin`; ensure it is on `PATH`.
-Use `install.sh` for stable releases; see [release.md](release.md) for options.
-Go source installs (`@latest`, `@edge`, `@<sha>` and branch refs) are unsupported
-because source refs lack embedded web assets.
+Builds `diffx` on your machine from a `flexdinesh/diffx` branch or commit
+(default `main`) and installs it into `~/.local/bin`; ensure it is on `PATH`.
+Requires Git and mise; mise installs the pinned Go, Node.js and pnpm. See
+[release.md](release.md#development-installs) for caching and options. Use
+`install.sh` for stable releases. Go source installs (`@latest`, `@<sha>` and
+branch refs) are unsupported because source refs lack embedded web assets.
 
 After checkout setup, install your current changes:
 

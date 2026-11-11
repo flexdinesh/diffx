@@ -48,10 +48,7 @@ jobs:
           DIFFX_SOURCE_SHA: ${{ inputs.source }}
         run: |
           export DIFFX_RELEASE_VERSION="${RELEASE_TAG#v}"
-          targets="darwin/amd64 darwin/arm64 linux/amd64 linux/arm64"
-          # Edge omits macOS Intel; stable keeps it.
-          [ "$RELEASE_TAG" != edge ] || targets="darwin/arm64 linux/amd64 linux/arm64"
-          for target in $targets; do
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
             DIFFX_DESKTOP_TARGET="$target" mise run release:desktop-package
           done
       - name: Upload desktop artifacts

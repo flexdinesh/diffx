@@ -19,32 +19,22 @@ Or install a specific stable version:
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install.sh | sh -s -- --version v0.2.0
 ```
 
-Or install the latest `main` changes published to edge:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-edge.sh | sh
-```
-
-Supports macOS and Linux on amd64 and arm64; edge omits macOS Intel, so use the
-stable installer there. No Go or Node.js required.
+Supports macOS and Linux on amd64 and arm64. No Go or Node.js required.
 Requires `curl`, `tar`, and either `sha256sum` or `shasum`.
-Both installers default to `~/.local/bin`, verify SHA-256 before replacing the
-binary, and preserve an existing binary on failure. They use no sudo and leave
+The installer defaults to `~/.local/bin`, verifies SHA-256 before replacing the
+binary, and preserves an existing binary on failure. It uses no sudo and leaves
 shell profiles unchanged. Ensure the install directory is on your `PATH`.
 
-Choose a writable binary directory with either installer:
+Choose a writable binary directory:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install.sh | sh -s -- --bin-dir "$HOME/bin"
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-edge.sh | sh -s -- --bin-dir "$HOME/bin"
 ```
 
-Edge is a rolling prerelease. If a download or checksum fails during
-publication, retry after publishing finishes. Latest stable excludes edge.
-The installers install only `diffx`, not the remote server or agent plugins.
-Go source installs (`@latest`, `@edge` or a commit SHA) are unsupported because
-source refs lack embedded web assets. Developers can use `mise run install`
-from a configured checkout.
+The installer installs only `diffx`, not the remote server or agent plugins.
+Go source installs (`@latest` or a commit SHA) are unsupported because source
+refs lack embedded web assets. Developers can use `mise run install` from a
+configured checkout.
 
 ## Open a review
 

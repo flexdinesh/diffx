@@ -1,5 +1,5 @@
 #!/bin/sh
-# Shared implementation for the GitHub raw stable and edge entrypoints.
+# Implementation for the GitHub raw stable entrypoint, install.sh.
 set -eu
 
 fail() {
@@ -7,21 +7,15 @@ fail() {
   exit 1
 }
 
-channel=${1:-}
-case "$channel" in
-  stable|edge) shift ;;
-  *) fail 'expected stable or edge channel' ;;
-esac
+# install.sh passes the stable channel; keep accepting it so cached entrypoints
+# and this helper stay compatible.
+[ "${1:-}" = stable ] || fail 'expected stable channel'
+shift
 
 usage() {
-  if [ "$channel" = stable ]; then
-    printf '%s\n' 'Usage: install.sh [--version vX.Y.Z|X.Y.Z] [--bin-dir DIR]' \
-      'Installs the latest stable diffx by default.'
-  else
-    printf '%s\n' 'Usage: install-edge.sh [--bin-dir DIR]' \
-      'Installs the rolling edge diffx prerelease.'
-  fi
-  printf '%s\n' 'Default destination: ~/.local/bin. Installs only diffx.' \
+  printf '%s\n' 'Usage: install.sh [--version vX.Y.Z|X.Y.Z] [--bin-dir DIR]' \
+    'Installs the latest stable diffx by default.' \
+    'Default destination: ~/.local/bin. Installs only diffx.' \
     'Requires curl, tar, POSIX tools, and sha256sum or shasum.'
 }
 
@@ -31,7 +25,6 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --help|-h) usage; exit 0 ;;
     --version)
-      [ "$channel" = stable ] || fail '--version is supported only by install.sh'
       [ "$#" -ge 2 ] || fail '--version requires vX.Y.Z or X.Y.Z'
       version=${2#v}
       [ -n "$version" ] || fail '--version requires vX.Y.Z or X.Y.Z'
@@ -81,15 +74,9 @@ case "$(uname -m)" in
   arm64|aarch64) arch=arm64 ;;
   *) fail 'unsupported architecture: only amd64 and arm64 are supported' ;;
 esac
-if [ "$channel" = edge ] && [ "$os" = darwin ] && [ "$arch" = amd64 ]; then
-  fail 'edge does not support macOS Intel; use install.sh for stable'
-fi
 
 releases=https://github.com/flexdinesh/diffx/releases
-if [ "$channel" = edge ]; then
-  tag=edge
-  version=edge
-elif [ -n "$version" ]; then
+if [ -n "$version" ]; then
   tag=v$version
 else
   # Read only the first redirect: following asset redirects loses the release tag

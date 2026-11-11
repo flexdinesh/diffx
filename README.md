@@ -18,12 +18,6 @@ Installs the latest stable CLI into `~/.local/bin` on macOS/Linux amd64/arm64.
 No Go or Node.js required. Verifies SHA-256 before replacing an existing binary;
 uses no sudo and leaves shell profiles unchanged. Ensure `~/.local/bin` is on `PATH`.
 
-For the latest `main` build:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-edge.sh | sh
-```
-
 For the experimental desktop and matching CLI pair:
 
 ```sh
