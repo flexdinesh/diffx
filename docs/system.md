@@ -551,10 +551,11 @@ one fixed diff, so the shell shows no bench, breadcrumb, stepper, comboboxes,
 search or picker; only checkout and remote processes navigate between
 reviews. An
 explicit local sync, like an arrival,
-raises the notice instead of replacing the open review. Scrolling the diff
-selects its top file in the tree; a file chosen from the tree, the keyboard or a
-comment stays selected until it leaves view. Trailing space lets the last file
-scroll to the top.
+raises the notice instead of replacing the open review. A file chosen from the
+tree, the keyboard, the toolbar or a comment stays selected; scrolling the diff
+never changes the selection. File and change steps start from the selection
+while it is on screen, otherwise from the viewport's top. Trailing space lets
+the last file scroll to the top.
 
 Activity is a producer estimate, separate from collection freshness and unread
 state. Checkout collection takes the maximum of HEAD's committer time, changed

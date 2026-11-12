@@ -680,6 +680,8 @@ at `/design.html` (see `docs/frontend.md`).
   each tint with Pierre's existing background instead of replacing it.
 - Navigation uses a quiet background, aligned text/icons, and a clear current
   item. Reviewed files retain readable text and a check; do not fade the entire row.
+  The current item is the last file navigated to; scrolling the diff never
+  changes it.
 - “Hide reviewed files” is an icon toggle beside the file filter, matching the
   field's height and `--border-muted` boundary; pressed uses the accent toggle
   state. `useFileNavigation` owns one visible file set for the tree, diff list
@@ -702,7 +704,10 @@ at `/design.html` (see `docs/frontend.md`).
   `hunk-navigation.ts`. Collapsed files (including files reviewed and
   collapsed), placeholders and unloaded previews have no stops; Alt+J/K still
   reaches them. The last block navigated stays current while on screen;
-  otherwise the viewport's top decides. A block already fully visible does not
+  otherwise the viewport's top decides. File steps (Alt+J / Alt+K and the
+  toolbar chevrons) share this rule with the selected file, scroll the file's
+  header to the top, announce “File n of N: path” and do not wrap: “No previous
+  file.” / “No more files below.” (naming Load more when previews remain). A block already fully visible does not
   scroll; others align with up to three context lines below the sticky header.
   The block's rows pulse like comment navigation, the tree selects its file,
   and a polite live region announces “Change n of N in path”. The ends do not
@@ -1064,9 +1069,13 @@ Do not add motion for decoration. New animation must honor
   staged and unstaged changes that cancel in Uncommitted All.
 - Keep comparison and desktop layout choice visible. View options and collapse/expand
   all are adjacent icon buttons with action titles. Put wrap, inline detail,
-  code theme, and narrow layout choice in View options. “Previous change” /
-  “Next change” arrow icon buttons (Alt+[ / Alt+]) lead the toolbar's trailing
-  actions in every layout, disabled only when no expanded file has changes.
+  code theme, and narrow layout choice in View options. “Previous file” /
+  “Next file” chevron icon buttons (Alt+K / Alt+J), a short chrome separator,
+  then “Previous change” / “Next change” arrow icon buttons (Alt+[ / Alt+])
+  lead the toolbar's trailing actions. Change arrows show in every layout,
+  disabled only when no expanded file has changes; file chevrons hide below
+  768px, where the drawer and keyboard step files, and disable only without
+  visible files.
   Below 768px the comparison truncates so the toolbar's actions keep one row.
 - Mobile retains the brand mark and divider, and the review identity's
   repository/branch, as the title menu, or Piped/time context; truncate long
