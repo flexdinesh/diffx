@@ -27,8 +27,8 @@ review data and public local-session ownership rules remain unchanged.
 validation records, reporting and Docker Compose orchestration. Mise owns the underlying
 commands. Tests and stateful checks run in private Linux x64 containers. Static
 checks run on the host against a private temporary source/dependency snapshot,
-without requiring Docker. Hosted workflows publish releases and edge builds;
-they do not run PR validation.
+without requiring Docker. Hosted workflows publish stable releases; they do not
+run PR validation or publish development builds.
 A PR gate validates clean committed HEAD,
 whereas interactive checks snapshot working files without certifying HEAD.
 
@@ -50,11 +50,12 @@ Application binaries and web build outputs are never committed. The host static
 group includes `mise run check:artifacts` to reject tracked build outputs.
 Built plugin distributions and generated API/SQL source remain committed.
 Stable publishing tags `main` directly and stages embedded web assets only in
-the workflow workspace. Main pushes publish a rolling `edge` prerelease/tag;
-the legacy edge branch is no longer updated. Neither channel creates asset
-commits. CLI-only shell installers distribute `diffx`; the separate desktop
-installer exposes a matching `diffx` and `diffx-desktop` pair. Go source installs
-are unsupported because source refs lack embedded assets. See [release.md](release.md).
+the workflow workspace and creates no asset commits. The stable CLI shell
+installer distributes `diffx`; the separate desktop installer exposes a matching
+`diffx` and `diffx-desktop` pair. `install-dev.sh` builds unreleased branches or
+commits locally through each checkout's `install:source` mise task. Go source
+installs are unsupported because source refs lack embedded assets. See
+[release.md](release.md).
 
 One multi-stage check image serves every worktree through the Docker build
 cache; identical toolchain, dependency and source inputs reuse the same layers.

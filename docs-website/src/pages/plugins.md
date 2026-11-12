@@ -16,11 +16,10 @@ work. The web UI's existing latest/stale filters cover all submitted worktrees.
 
 ## Install and remove
 
-Install the diffx executable separately. For the current plugin contract,
-use the latest development version:
+Install the diffx executable separately:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install-edge.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install.sh | sh
 ```
 
 The CLI installs into `~/.local/bin`; no Go or Node.js required. See

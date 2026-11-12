@@ -262,43 +262,16 @@ test("desktop publisher refuses corrupted archives before any upload", async (t)
   assert.equal(await readFile(fixture.calls, "utf8"), "");
 });
 
-for (const variable of [
-  "STUB_HEAD",
-  "STUB_TAG",
-  "STUB_MAIN",
-  "STUB_REMOTE_TAG",
-]) {
-  test(`desktop edge publisher refuses stale ${variable}`, async (t) => {
-    const fixture = await publishFixture(t, "edge");
+for (const variable of ["STUB_HEAD", "STUB_TAG"]) {
+  test(`desktop publisher refuses stale ${variable}`, async (t) => {
+    const fixture = await publishFixture(t);
     await assert.rejects(
-      publish(fixture, { RELEASE_TAG: "edge", [variable]: "b".repeat(40) }),
+      publish(fixture, { [variable]: "b".repeat(40) }),
+      /does not match source/,
     );
-    assert.doesNotMatch(await readFile(fixture.calls, "utf8"), /upload/);
+    assert.equal(await readFile(fixture.calls, "utf8"), "");
   });
 }
-
-test("desktop edge publisher clobbers only desktop assets and publishes manifest last", async (t) => {
-  const fixture = await publishFixture(t, "edge");
-  await publish(fixture, { RELEASE_TAG: "edge" });
-  const calls = (await readFile(fixture.calls, "utf8"))
-    .trim()
-    .split("\n")
-    .map((line): unknown => JSON.parse(line));
-  assert.deepEqual(calls.at(-1), [
-    "release",
-    "upload",
-    "edge",
-    "apps/desktop/build/release/desktop-checksums.txt",
-    "--clobber",
-  ]);
-  assert.equal(calls.length, 3);
-  const manifest = await readFile(
-    join(fixture.out, "desktop-checksums.txt"),
-    "utf8",
-  );
-  assert.equal(manifest.trim().split("\n").length, 3);
-  assert.doesNotMatch(manifest, /darwin_amd64/);
-});
 
 test("desktop stable publisher requires the macOS Intel archive", async (t) => {
   const fixture = await publishFixture(t);
@@ -307,15 +280,11 @@ test("desktop stable publisher requires the macOS Intel archive", async (t) => {
   assert.equal(await readFile(fixture.calls, "utf8"), "");
 });
 
-async function publishFixture(
-  t: TestContext,
-  version = "1.2.3",
-): Promise<Fixture> {
+async function publishFixture(t: TestContext): Promise<Fixture> {
   const fixture = await createFixture(t);
   await mkdir(fixture.out, { recursive: true });
   for (const target of targets) {
-    if (version === "edge" && target === "darwin/amd64") continue;
-    const name = `diffx-desktop_${version}_${target.replace("/", "_")}.tar.gz`;
+    const name = `diffx-desktop_1.2.3_${target.replace("/", "_")}.tar.gz`;
     await writeFile(join(fixture.out, name), "archive payload");
     const digest = createHash("sha256").update("archive payload").digest("hex");
     await writeFile(
@@ -440,9 +409,7 @@ const gitStub = `
 const args = process.argv.slice(2);
 const env = process.env;
 if (args[0] === "status") console.log(env.STUB_DIRTY ? " M changed" : "");
-else if (args[0] === "fetch") process.exit(0);
-else if (args[0] === "ls-remote") console.log((env.STUB_REMOTE_TAG || env.STUB_SOURCE) + "\\trefs/tags/edge");
-else if (args[0] === "rev-parse") console.log(args[1] === "HEAD" ? env.STUB_HEAD || env.STUB_SOURCE : args[1].includes("origin/main") ? env.STUB_MAIN || env.STUB_SOURCE : env.STUB_TAG || env.STUB_SOURCE);
+else if (args[0] === "rev-parse") console.log(args[1] === "HEAD" ? env.STUB_HEAD || env.STUB_SOURCE : env.STUB_TAG || env.STUB_SOURCE);
 else process.exit(2);
 `;
 

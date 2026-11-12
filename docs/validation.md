@@ -202,11 +202,11 @@ before creating or updating a PR, including after rebasing onto changed upstream
 content. `main` requires no hosted validation status. This workflow relies on developer and
 agent compliance; GitHub does not enforce local validation.
 
-Hosted workflows publish edge builds on pushes to `main` and stable releases on
-manual dispatch. They stage embedded assets and retain release compilation
-and checksums without repeating the general check suite. Stable tags point directly
-to `main`; main pushes update a rolling `edge` prerelease/tag, excluded from
-latest stable. Neither workflow commits build outputs. Deployment workflows
+Hosted workflows publish stable releases on manual dispatch only; pushes to
+`main` build nothing. They stage embedded assets and retain release compilation
+and checksums without repeating the general check suite. Stable tags point
+directly to `main`. Contributors build unreleased refs locally with
+`install-dev.sh`. No workflow commits build outputs. Deployment workflows
 remain separate.
 
 ## Embedded assets

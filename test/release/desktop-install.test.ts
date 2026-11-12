@@ -21,8 +21,11 @@ import { promisify } from "node:util";
 const execute = promisify(execFile);
 const installer = join(process.cwd(), "install-desktop.sh");
 const releases = "https://github.com/flexdinesh/diffx/releases/download";
+const latest =
+  "https://github.com/flexdinesh/diffx/releases/latest/download/desktop-checksums.txt";
 
 interface Options {
+  latestURL?: string;
   os?: string;
   machine?: string;
   missingSidecar?: boolean;
@@ -84,8 +87,9 @@ for (const { os, machine, target } of platforms) {
     assert.deepEqual(
       (await readFile(fixture.requests, "utf8")).trim().split("\n"),
       [
-        `${releases}/edge/desktop-checksums.txt`,
-        `${releases}/edge/diffx-desktop_edge_${target}.tar.gz`,
+        latest,
+        `${releases}/v1.2.3/desktop-checksums.txt`,
+        `${releases}/v1.2.3/diffx-desktop_1.2.3_${target}.tar.gz`,
       ],
     );
     assert.equal(
@@ -108,14 +112,47 @@ for (const { os, machine, target } of platforms) {
   });
 }
 
-test("desktop edge refuses macOS Intel before downloads", async (t) => {
+test("desktop latest stable installs on macOS Intel", async (t) => {
   const fixture = await createFixture(t, { os: "Darwin", machine: "x86_64" });
+  await install(fixture);
+  assert.deepEqual(
+    (await readFile(fixture.requests, "utf8")).trim().split("\n"),
+    [
+      latest,
+      `${releases}/v1.2.3/desktop-checksums.txt`,
+      `${releases}/v1.2.3/diffx-desktop_1.2.3_darwin_amd64.tar.gz`,
+    ],
+  );
+  await assertAliases(fixture);
+  await assertClean(fixture, 1);
+});
+
+for (const latestURL of [
+  "",
+  `${releases}/edge/desktop-checksums.txt`,
+  `${releases}/v1.2.3-rc.1/desktop-checksums.txt`,
+  "https://untrusted.example/v1.2.3/desktop-checksums.txt",
+]) {
+  test(`desktop rejects invalid latest redirect ${JSON.stringify(latestURL)}`, async (t) => {
+    const fixture = await createFixture(t, { latestURL });
+    await assert.rejects(install(fixture), /latest stable release/);
+    assert.equal(await readFile(fixture.requests, "utf8"), `${latest}\n`);
+    assert.equal(
+      await readFile(join(fixture.bin, "diffx"), "utf8"),
+      "user CLI",
+    );
+  });
+}
+
+test("desktop explains latest stable without desktop assets", async (t) => {
+  const fixture = await createFixture(t, {
+    downloadFailure: "/v1.2.3/desktop-checksums.txt",
+  });
   await assert.rejects(
     install(fixture),
-    /edge does not support macOS Intel; use --version vX.Y.Z/,
+    /could not download desktop-checksums.txt; latest stable may lack desktop assets/,
   );
-  assert.equal(await readFile(fixture.requests, "utf8"), "");
-  assert.ok(!(await readdir(fixture.bin)).includes("diffx-desktop"));
+  await assertClean(fixture, 0);
 });
 
 test("desktop stable version installs on macOS Intel", async (t) => {
@@ -146,10 +183,7 @@ for (const { os, machine, target } of [
 ]) {
   test(`desktop ${target}: upgrade switches whole pair and retains old executable/server paths`, async (t) => {
     const fixture = await createFixture(t, { os, machine });
-    await install(
-      fixture,
-      target === "darwin_amd64" ? ["--version", "v1.2.3"] : [],
-    );
+    await install(fixture);
     const oldExecutable = await realpath(join(fixture.bin, "diffx-desktop"));
     const oldPair = dirnamePair(oldExecutable, fixture);
     const aliases = await Promise.all(
@@ -248,7 +282,7 @@ for (const failure of [
     if (failure === "cli-alias") options.aliasFailure = "diffx";
     if (failure === "desktop-alias") options.aliasFailure = "diffx-desktop";
     if (failure === "manifest-download")
-      options.downloadFailure = "desktop-checksums.txt";
+      options.downloadFailure = "/v1.2.3/desktop-checksums.txt";
     if (failure === "archive-download") options.downloadFailure = ".tar.gz";
     const fixture = await createFixture(t, options);
     const previous = join(fixture.root, "previous pair");
@@ -386,19 +420,24 @@ test("desktop refuses concurrent installation without removing its lock", async 
   await mkdir(lock, { recursive: true });
   await assert.rejects(install(fixture), /another desktop install/);
   assert.deepEqual(await readdir(lock), []);
-  assert.equal(await readFile(fixture.requests, "utf8"), "");
+  // Only the read-only latest release resolution precedes the lock.
+  assert.equal(await readFile(fixture.requests, "utf8"), `${latest}\n`);
 });
 
 test("desktop help needs no downloads", async (t) => {
   const fixture = await createFixture(t);
   const { stdout } = await install(fixture, ["--help"]);
   assert.match(stdout, /experimental diffx-desktop/);
+  assert.match(stdout, /latest stable/);
   assert.equal(await readFile(fixture.requests, "utf8"), "");
 });
 
 for (const args of [
   ["--unknown"],
   ["--version"],
+  ["--version", ""],
+  ["--version", "v"],
+  ["--version", "edge"],
   ["--version", "1.2.3/../bad"],
   ["--version", "1.2.3\nother"],
   ["--version", "v1.2.3-rc.1"],
@@ -550,6 +589,11 @@ const url = args.at(-1);
 const output = args[args.indexOf("--output") + 1];
 appendFileSync(${JSON.stringify(requests)}, url + "\\n");
 if (${JSON.stringify(options.downloadFailure ?? "")} && url.includes(${JSON.stringify(options.downloadFailure ?? "")})) { writeFileSync(output, "partial"); process.exit(22); }
+if (url === ${JSON.stringify(latest)}) {
+  if (!args.includes("--write-out") || args.includes("--location")) process.exit(2);
+  process.stdout.write(${JSON.stringify(options.latestURL ?? `${releases}/v1.2.3/desktop-checksums.txt`)});
+  process.exit(0);
+}
 copyFileSync(url.endsWith("desktop-checksums.txt") ? ${JSON.stringify(fixture.manifest)} : ${JSON.stringify(fixture.archive)}, output);`,
   );
   return fixture;
@@ -572,12 +616,7 @@ async function manifest(fixture: Fixture): Promise<void> {
     .digest("hex");
   await writeFile(
     fixture.manifest,
-    ["edge", "1.2.3"]
-      .map(
-        (version) =>
-          `${hash}  diffx-desktop_${version}_${fixture.target}.tar.gz\n`,
-      )
-      .join(""),
+    `${hash}  diffx-desktop_1.2.3_${fixture.target}.tar.gz\n`,
   );
 }
 

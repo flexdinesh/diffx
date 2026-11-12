@@ -42,104 +42,6 @@ interface Workspace {
   env: NodeJS.ProcessEnv;
 }
 
-test("edge replaces one rolling prerelease and keeps stable latest", async (t) => {
-  const workspace = await createWorkspace(t);
-  await runTask(workspace, "edge");
-  const next = await advanceMain(workspace);
-  await runTask(workspace, "edge", { GITHUB_SHA: next });
-
-  const state = await readState(workspace);
-  assert.equal(state.releases.length, 2);
-  const edge = state.releases.find((release) => release.tag === "edge");
-  assert.ok(edge);
-  assert.equal(edge.prerelease, true);
-  assert.equal(edge.latest, false);
-  assert.equal(edge.draft, false);
-  assert.match(edge.notes, new RegExp(next));
-  assert.deepEqual(edge.assets.sort(), expectedAssets("edge").sort());
-  assert.equal(state.releases.find((release) => release.latest)?.tag, "v0.1.0");
-  assert.deepEqual(state.builds, [
-    { version: "edge", source: workspace.head },
-    { version: "edge", source: next },
-  ]);
-  assert.equal(await remoteRef(workspace, "refs/tags/edge"), next);
-  assert.equal(await remoteRef(workspace, "refs/heads/edge"), "");
-});
-
-test("edge skips a stale checkout before building", async (t) => {
-  const workspace = await createWorkspace(t);
-  const next = await childCommit(workspace);
-  await git(workspace, [
-    "push",
-    "--quiet",
-    "origin",
-    `${next}:refs/heads/main`,
-  ]);
-  const { stdout } = await runTask(workspace, "edge");
-  assert.match(stdout, /skip stale edge build/);
-  assert.deepEqual((await readState(workspace)).builds, []);
-  assert.equal(await remoteRef(workspace, "refs/tags/edge"), "");
-});
-
-test("edge rejects main advancing during compilation", async (t) => {
-  const workspace = await createWorkspace(t);
-  const next = await childCommit(workspace);
-  const { stdout } = await runTask(workspace, "edge", {
-    STUB_ADVANCE_MAIN: next,
-  });
-  assert.match(stdout, /skip stale edge publication/);
-  assert.equal((await readState(workspace)).builds.length, 1);
-  assert.equal((await readState(workspace)).releases.length, 1);
-  assert.equal(await remoteRef(workspace, "refs/tags/edge"), "");
-});
-
-test("failed edge build preserves the published edge tag and release", async (t) => {
-  const workspace = await createWorkspace(t);
-  await runTask(workspace, "edge");
-  const before = await readState(workspace);
-  const next = await advanceMain(workspace);
-  await assert.rejects(
-    runTask(workspace, "edge", { GITHUB_SHA: next, STUB_BUILD_FAIL: "1" }),
-    /compilation failed/,
-  );
-  assert.equal(await remoteRef(workspace, "refs/tags/edge"), workspace.head);
-  assert.deepEqual((await readState(workspace)).releases, before.releases);
-});
-
-test("failed main fetch fails edge without publishing", async (t) => {
-  const workspace = await createWorkspace(t);
-  await git(workspace, [
-    "remote",
-    "set-url",
-    "origin",
-    join(workspace.root, "missing.git"),
-  ]);
-  await assert.rejects(runTask(workspace, "edge"));
-  assert.deepEqual((await readState(workspace)).builds, []);
-});
-
-test("release API failure leaves the existing edge tag intact", async (t) => {
-  const workspace = await createWorkspace(t);
-  await runTask(workspace, "edge");
-  const before = await readState(workspace);
-  const next = await advanceMain(workspace);
-  await assert.rejects(
-    runTask(workspace, "edge", { GITHUB_SHA: next, STUB_API_FAIL: "1" }),
-    /API unavailable/,
-  );
-  assert.equal(await remoteRef(workspace, "refs/tags/edge"), workspace.head);
-  assert.deepEqual((await readState(workspace)).releases, before.releases);
-});
-
-test("edge refuses a checkout that differs from the event source", async (t) => {
-  const workspace = await createWorkspace(t);
-  await assert.rejects(
-    runTask(workspace, "edge", { GITHUB_SHA: await childCommit(workspace) }),
-    /checkout does not match/,
-  );
-  assert.deepEqual((await readState(workspace)).builds, []);
-});
-
 for (const legacy of [false, true]) {
   test(`stable rerun recognizes ${legacy ? "historical asset" : "direct annotated"} tags`, async (t) => {
     const workspace = await createWorkspace(t);
@@ -245,9 +147,7 @@ test("packaging refuses changed source and mismatched provenance", async (t) => 
 
 function expectedAssets(version: string): string[] {
   return [
-    ...targets
-      .filter((target) => version !== "edge" || target !== "darwin_amd64")
-      .map((target) => `diffx_${version}_${target}.tar.gz`),
+    ...targets.map((target) => `diffx_${version}_${target}.tar.gz`),
     "checksums.txt",
   ];
 }
@@ -406,7 +306,7 @@ async function runTask(
       GITHUB_SHA: workspace.head,
       RELEASE_TAG: "v0.1.0",
       DIFFX_SOURCE_SHA: workspace.head,
-      DIFFX_RELEASE_VERSION: "edge",
+      DIFFX_RELEASE_VERSION: "0.1.0",
       ...env,
     },
   });
@@ -498,11 +398,10 @@ if (tool === "mise") {
   const source = process.env.DIFFX_SOURCE_SHA;
   state.builds.push({ version, source });
   mkdirSync("dist", { recursive: true });
-  const targets = ["darwin_amd64", "darwin_arm64", "linux_amd64", "linux_arm64"].filter((target) => version !== "edge" || target !== "darwin_amd64");
+  const targets = ["darwin_amd64", "darwin_arm64", "linux_amd64", "linux_arm64"];
   for (const target of targets) writeFileSync("dist/diffx_" + version + "_" + target + ".tar.gz", source);
   writeFileSync("dist/checksums.txt", "checksums for " + source);
   save();
-  if (process.env.STUB_ADVANCE_MAIN) execFileSync("git", ["push", "--quiet", "origin", process.env.STUB_ADVANCE_MAIN + ":refs/heads/main"]);
 } else if (tool === "gh" && args[0] === "api") {
   if (process.env.STUB_API_FAIL) fail("API unavailable");
   const publishedOnly = flag("--jq").includes(".draft == false");

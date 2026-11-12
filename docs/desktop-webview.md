@@ -15,8 +15,8 @@ git diff | diffx
 diffx connect ssh://devbox
 ```
 
-The installer defaults to experimental edge. Edge omits macOS Intel; use
-`--version vX.Y.Z` there. It verifies checksums and atomically
+The installer defaults to the latest stable release; pin one with
+`--version vX.Y.Z`. It verifies checksums and atomically
 selects the app plus matching CLI through one active pointer, exposing both
 `diffx` and `diffx-desktop` and replacing existing command launchers. See
 [release.md](release.md) for version selection, upgrades, licensing and removal.

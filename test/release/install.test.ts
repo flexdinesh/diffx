@@ -51,71 +51,70 @@ interface Workspace {
   env: NodeJS.ProcessEnv;
 }
 
-for (const channel of ["stable", "edge"]) {
-  test(`${channel}: help describes channel without release downloads`, async (t) => {
-    const workspace = await createWorkspace(t);
-    const { stdout } = await runInstaller(workspace, channel, ["--help"]);
-    assert.match(stdout, /Usage: install/);
-    assert.match(stdout, /--bin-dir DIR/);
-    assert.match(stdout, /Installs only diffx/);
-    assert.match(
-      stdout,
-      channel === "stable" ? /latest stable/ : /rolling edge/,
-    );
+test("help describes stable install without release downloads", async (t) => {
+  const workspace = await createWorkspace(t);
+  const { stdout } = await runInstaller(workspace, ["--help"]);
+  assert.match(stdout, /Usage: install/);
+  assert.match(stdout, /--bin-dir DIR/);
+  assert.match(stdout, /Installs only diffx/);
+  assert.match(stdout, /latest stable/);
+  assert.deepEqual(await requests(workspace), [helperURL]);
+  await assertClean(workspace);
+});
+
+test("installs only diffx and replaces atomically", async (t) => {
+  const workspace = await createWorkspace(t);
+  await mkdir(workspace.binDir, { recursive: true });
+  const installed = join(workspace.binDir, "diffx");
+  const oldReader = join(workspace.root, "old-reader");
+  await writeFile(installed, "previous binary");
+  await link(installed, oldReader);
+  const { stdout } = await runInstaller(workspace);
+  assert.equal(await readFile(installed, "utf8"), binary);
+  // A process holding the previous inode must keep seeing the old contents.
+  assert.equal(await readFile(oldReader, "utf8"), "previous binary");
+  assert.equal((await stat(installed)).mode & 0o777, 0o755);
+  assert.match(stdout, /Add .* to your PATH/);
+  assert.deepEqual(await readdir(workspace.binDir), ["diffx"]);
+  const urls = await requests(workspace);
+  assert.ok(urls.includes(`${releases}/download/v1.2.3/checksums.txt`));
+  assert.ok(
+    urls.includes(`${releases}/download/v1.2.3/diffx_1.2.3_linux_amd64.tar.gz`),
+  );
+  assert.equal(urls.filter((url) => url.includes("/latest/")).length, 1);
+  await assertClean(workspace);
+});
+
+for (const failure of ["partial", "empty"]) {
+  test(`refuses ${failure} helper downloads`, async (t) => {
+    assert.ok(failure === "partial" || failure === "empty");
+    const workspace = await createWorkspace(t, { helperFailure: failure });
+    await assert.rejects(runInstaller(workspace), /installer helper/);
+    assert.ok(!(await readdir(workspace.home)).includes("helper-ran"));
     assert.deepEqual(await requests(workspace), [helperURL]);
     await assertClean(workspace);
   });
-
-  test(`${channel}: installs only diffx and replaces atomically`, async (t) => {
-    const workspace = await createWorkspace(t);
-    await mkdir(workspace.binDir, { recursive: true });
-    const installed = join(workspace.binDir, "diffx");
-    const oldReader = join(workspace.root, "old-reader");
-    await writeFile(installed, "previous binary");
-    await link(installed, oldReader);
-    const { stdout } = await runInstaller(workspace, channel);
-    assert.equal(await readFile(installed, "utf8"), binary);
-    // A process holding the previous inode must keep seeing the old contents.
-    assert.equal(await readFile(oldReader, "utf8"), "previous binary");
-    assert.equal((await stat(installed)).mode & 0o777, 0o755);
-    assert.match(stdout, /Add .* to your PATH/);
-    assert.deepEqual(await readdir(workspace.binDir), ["diffx"]);
-    const urls = await requests(workspace);
-    const tag = channel === "stable" ? "v1.2.3" : "edge";
-    const version = channel === "stable" ? "1.2.3" : "edge";
-    assert.ok(urls.includes(`${releases}/download/${tag}/checksums.txt`));
-    assert.ok(
-      urls.includes(
-        `${releases}/download/${tag}/diffx_${version}_linux_amd64.tar.gz`,
-      ),
-    );
-    if (channel === "edge") {
-      assert.ok(urls.every((url) => !url.includes("/latest/")));
-    } else {
-      assert.equal(urls.filter((url) => url.includes("/latest/")).length, 1);
-    }
-    await assertClean(workspace);
-  });
-
-  for (const failure of ["partial", "empty"]) {
-    test(`${channel}: refuses ${failure} helper downloads`, async (t) => {
-      assert.ok(failure === "partial" || failure === "empty");
-      const workspace = await createWorkspace(t, { helperFailure: failure });
-      await assert.rejects(
-        runInstaller(workspace, channel),
-        /installer helper/,
-      );
-      assert.ok(!(await readdir(workspace.home)).includes("helper-ran"));
-      assert.deepEqual(await requests(workspace), [helperURL]);
-      await assertClean(workspace);
-    });
-  }
 }
+
+test("helper rejects a missing or unknown channel", async (t) => {
+  const workspace = await createWorkspace(t);
+  const helper = join(repository, "scripts/install-common.sh");
+  for (const args of [[], ["edge"]]) {
+    await assert.rejects(
+      execFileAsync("/bin/sh", [helper, ...args], {
+        cwd: workspace.root,
+        env: workspace.env,
+      }),
+      /expected stable channel/,
+    );
+  }
+  assert.deepEqual(await requests(workspace), []);
+});
 
 for (const version of ["v1.2.3", "1.2.3"]) {
   test(`stable: pins explicit version ${version}`, async (t) => {
     const workspace = await createWorkspace(t);
-    await runInstaller(workspace, "stable", ["--version", version]);
+    await runInstaller(workspace, ["--version", version]);
     assert.deepEqual(await requests(workspace), [
       helperURL,
       `${releases}/download/v1.2.3/checksums.txt`,
@@ -133,7 +132,7 @@ for (const { os, machine, target } of [
 ]) {
   test(`selects archive for ${os} ${machine}`, async (t) => {
     const workspace = await createWorkspace(t, { os, machine });
-    await runInstaller(workspace, "stable");
+    await runInstaller(workspace);
     assert.ok(
       (await requests(workspace)).includes(
         `${releases}/download/v1.2.3/diffx_1.2.3_${target}.tar.gz`,
@@ -152,10 +151,7 @@ test("supports relative --bin-dir with spaces and shasum fallback", async (t) =>
   const customDirectory = join(workspace.root, "custom bin");
   workspace.binDir = customDirectory;
   workspace.env.PATH = `${workspace.tools}:${customDirectory}`;
-  const { stdout } = await runInstaller(workspace, "stable", [
-    "--bin-dir",
-    "custom bin",
-  ]);
+  const { stdout } = await runInstaller(workspace, ["--bin-dir", "custom bin"]);
   assert.equal(await readFile(join(customDirectory, "diffx"), "utf8"), binary);
   assert.doesNotMatch(stdout, /Add .* to your PATH/);
   await assertClean(workspace);
@@ -164,7 +160,7 @@ test("supports relative --bin-dir with spaces and shasum fallback", async (t) =>
 test("supports explicit destination without HOME", async (t) => {
   const workspace = await createWorkspace(t);
   delete workspace.env.HOME;
-  await runInstaller(workspace, "stable", ["--bin-dir", workspace.binDir]);
+  await runInstaller(workspace, ["--bin-dir", workspace.binDir]);
   assert.equal(await readFile(join(workspace.binDir, "diffx"), "utf8"), binary);
   await assertClean(workspace);
 });
@@ -182,53 +178,17 @@ for (const args of [
 ]) {
   test(`rejects invalid arguments ${JSON.stringify(args)}`, async (t) => {
     const workspace = await createWorkspace(t);
-    await assert.rejects(runInstaller(workspace, "stable", args), /diffx:/);
+    await assert.rejects(runInstaller(workspace, args), /diffx:/);
     assert.deepEqual(await requests(workspace), [helperURL]);
     await assertClean(workspace);
   });
 }
 
-test("edge rejects --version", async (t) => {
-  const workspace = await createWorkspace(t);
-  await assert.rejects(
-    runInstaller(workspace, "edge", ["--version", "1.2.3"]),
-    /--version is supported only by install.sh/,
-  );
-  assert.deepEqual(await requests(workspace), [helperURL]);
-});
-
-test("edge refuses macOS Intel before release downloads", async (t) => {
-  const workspace = await createWorkspace(t, {
-    os: "Darwin",
-    machine: "x86_64",
-  });
-  await assert.rejects(
-    runInstaller(workspace, "edge"),
-    /edge does not support macOS Intel; use install.sh for stable/,
-  );
-  assert.deepEqual(await requests(workspace), [helperURL]);
-  await assertClean(workspace);
-});
-
-test("edge installs on macOS Apple Silicon", async (t) => {
-  const workspace = await createWorkspace(t, {
-    os: "Darwin",
-    machine: "arm64",
-  });
-  await runInstaller(workspace, "edge");
-  assert.ok(
-    (await requests(workspace)).includes(
-      `${releases}/download/edge/diffx_edge_darwin_arm64.tar.gz`,
-    ),
-  );
-  await assertClean(workspace);
-});
-
 for (const missingTool of ["curl", "tar", "mktemp", "awk", "mv"]) {
   test(`reports missing ${missingTool}`, async (t) => {
     const workspace = await createWorkspace(t, { missingTool });
     await assert.rejects(
-      runInstaller(workspace, "stable"),
+      runInstaller(workspace),
       new RegExp(`required tool not found: ${missingTool}`),
     );
     await assertClean(workspace);
@@ -237,10 +197,7 @@ for (const missingTool of ["curl", "tar", "mktemp", "awk", "mv"]) {
 
 test("requires a SHA-256 utility", async (t) => {
   const workspace = await createWorkspace(t, { hashTool: "none" });
-  await assert.rejects(
-    runInstaller(workspace, "stable"),
-    /sha256sum or shasum/,
-  );
+  await assert.rejects(runInstaller(workspace), /sha256sum or shasum/);
   assert.deepEqual(await requests(workspace), [helperURL]);
   await assertClean(workspace);
 });
@@ -248,7 +205,7 @@ test("requires a SHA-256 utility", async (t) => {
 for (const options of [{ os: "FreeBSD" }, { machine: "riscv64" }]) {
   test(`rejects unsupported platform ${JSON.stringify(options)}`, async (t) => {
     const workspace = await createWorkspace(t, options);
-    await assert.rejects(runInstaller(workspace, "stable"), /unsupported/);
+    await assert.rejects(runInstaller(workspace), /unsupported/);
     assert.deepEqual(await requests(workspace), [helperURL]);
     await assertClean(workspace);
   });
@@ -262,82 +219,77 @@ for (const latestURL of [
 ]) {
   test(`rejects invalid latest redirect ${JSON.stringify(latestURL)}`, async (t) => {
     const workspace = await createWorkspace(t, { latestURL });
-    await assert.rejects(
-      runInstaller(workspace, "stable"),
-      /latest stable release/,
-    );
+    await assert.rejects(runInstaller(workspace), /latest stable release/);
     assert.equal((await requests(workspace)).length, 2);
     await assertClean(workspace);
   });
 }
 
-for (const channel of ["stable", "edge"]) {
-  for (const failure of [
-    "download-manifest",
-    "download-archive",
-    "checksum",
-    "missing-manifest-entry",
-    "duplicate-manifest-entry",
-    "malformed-manifest-entry",
-    "missing-binary",
-    "symlink-binary",
-    "rename",
-  ]) {
-    test(`${channel}: ${failure} preserves existing install and cleans up`, async (t) => {
-      const options: Options = {
-        missingBinary: failure === "missing-binary",
-        symlinkBinary: failure === "symlink-binary",
-        renameFailure: failure === "rename",
-      };
-      if (failure === "download-manifest")
-        options.downloadFailure = "checksums.txt";
-      if (failure === "download-archive") options.downloadFailure = ".tar.gz";
-      const workspace = await createWorkspace(t, options);
-      const manifest = await readFile(workspace.manifest, "utf8");
-      if (failure === "checksum") {
-        await writeFile(workspace.archive, "corrupted archive");
-      } else if (failure === "missing-manifest-entry") {
-        await writeFile(
-          workspace.manifest,
-          `${"a".repeat(64)}  unrelated.tar.gz\n`,
-        );
-      } else if (failure === "duplicate-manifest-entry") {
-        await writeFile(workspace.manifest, manifest + manifest);
-      } else if (failure === "malformed-manifest-entry") {
-        await writeFile(
-          workspace.manifest,
-          manifest.replace(/[a-f0-9]{64}/g, "bad"),
-        );
-      }
-      await mkdir(workspace.binDir, { recursive: true });
-      const installed = join(workspace.binDir, "diffx");
-      await writeFile(installed, "previous binary");
-      const expected =
-        failure === "checksum"
-          ? /SHA-256 mismatch/
-          : failure.includes("manifest-entry")
-            ? /missing, duplicate or invalid checksum/
-            : /diffx:/;
-      await assert.rejects(runInstaller(workspace, channel), expected);
-      if (
-        failure === "checksum" ||
-        failure.startsWith("download-") ||
-        failure.includes("manifest-entry")
-      ) {
-        assert.equal(await readFile(workspace.extractions, "utf8"), "");
-      }
-      assert.equal(await readFile(installed, "utf8"), "previous binary");
-      assert.deepEqual(await readdir(workspace.binDir), ["diffx"]);
-      await assertClean(workspace);
-    });
-  }
+for (const failure of [
+  "download-manifest",
+  "download-archive",
+  "checksum",
+  "missing-manifest-entry",
+  "duplicate-manifest-entry",
+  "malformed-manifest-entry",
+  "missing-binary",
+  "symlink-binary",
+  "rename",
+]) {
+  test(`${failure} preserves existing install and cleans up`, async (t) => {
+    const options: Options = {
+      missingBinary: failure === "missing-binary",
+      symlinkBinary: failure === "symlink-binary",
+      renameFailure: failure === "rename",
+    };
+    if (failure === "download-manifest")
+      options.downloadFailure = "/v1.2.3/checksums.txt";
+    if (failure === "download-archive") options.downloadFailure = ".tar.gz";
+    const workspace = await createWorkspace(t, options);
+    const manifest = await readFile(workspace.manifest, "utf8");
+    if (failure === "checksum") {
+      await writeFile(workspace.archive, "corrupted archive");
+    } else if (failure === "missing-manifest-entry") {
+      await writeFile(
+        workspace.manifest,
+        `${"a".repeat(64)}  unrelated.tar.gz\n`,
+      );
+    } else if (failure === "duplicate-manifest-entry") {
+      await writeFile(workspace.manifest, manifest + manifest);
+    } else if (failure === "malformed-manifest-entry") {
+      await writeFile(
+        workspace.manifest,
+        manifest.replace(/[a-f0-9]{64}/g, "bad"),
+      );
+    }
+    await mkdir(workspace.binDir, { recursive: true });
+    const installed = join(workspace.binDir, "diffx");
+    await writeFile(installed, "previous binary");
+    const expected =
+      failure === "checksum"
+        ? /SHA-256 mismatch/
+        : failure.includes("manifest-entry")
+          ? /missing, duplicate or invalid checksum/
+          : /diffx:/;
+    await assert.rejects(runInstaller(workspace), expected);
+    if (
+      failure === "checksum" ||
+      failure.startsWith("download-") ||
+      failure.includes("manifest-entry")
+    ) {
+      assert.equal(await readFile(workspace.extractions, "utf8"), "");
+    }
+    assert.equal(await readFile(installed, "utf8"), "previous binary");
+    assert.deepEqual(await readdir(workspace.binDir), ["diffx"]);
+    await assertClean(workspace);
+  });
 }
 
 test("stable resolution failure preserves install", async (t) => {
   const workspace = await createWorkspace(t, { downloadFailure: "/latest/" });
   await mkdir(workspace.binDir, { recursive: true });
   await writeFile(join(workspace.binDir, "diffx"), "previous binary");
-  await assert.rejects(runInstaller(workspace, "stable"), /could not resolve/);
+  await assert.rejects(runInstaller(workspace), /could not resolve/);
   assert.equal(
     await readFile(join(workspace.binDir, "diffx"), "utf8"),
     "previous binary",
@@ -348,10 +300,7 @@ test("stable resolution failure preserves install", async (t) => {
 test("refuses a directory at the binary destination", async (t) => {
   const workspace = await createWorkspace(t);
   await mkdir(join(workspace.binDir, "diffx"), { recursive: true });
-  await assert.rejects(
-    runInstaller(workspace, "stable"),
-    /destination is a directory/,
-  );
+  await assert.rejects(runInstaller(workspace), /destination is a directory/);
   assert.deepEqual(await readdir(join(workspace.binDir, "diffx")), []);
   await assertClean(workspace);
 });
@@ -398,12 +347,7 @@ async function createWorkspace(
     options.machine === "arm64" || options.machine === "aarch64"
       ? "arm64"
       : "amd64";
-  await writeFile(
-    manifest,
-    ["1.2.3", "edge"]
-      .map((version) => `${hash}  diffx_${version}_${os}_${arch}.tar.gz\n`)
-      .join(""),
-  );
+  await writeFile(manifest, `${hash}  diffx_1.2.3_${os}_${arch}.tar.gz\n`);
   const toolNames = [
     "sh",
     "tar",
@@ -499,19 +443,11 @@ process.stdout.write((option === "-s" ? ${JSON.stringify(options.os ?? "Linux")}
   };
 }
 
-function runInstaller(
-  workspace: Workspace,
-  channel: string,
-  args: string[] = [],
-) {
-  return execFileAsync(
-    "/bin/sh",
-    [
-      join(repository, channel === "edge" ? "install-edge.sh" : "install.sh"),
-      ...args,
-    ],
-    { cwd: workspace.root, env: workspace.env },
-  );
+function runInstaller(workspace: Workspace, args: string[] = []) {
+  return execFileAsync("/bin/sh", [join(repository, "install.sh"), ...args], {
+    cwd: workspace.root,
+    env: workspace.env,
+  });
 }
 
 async function executable(path: string, script: string): Promise<void> {

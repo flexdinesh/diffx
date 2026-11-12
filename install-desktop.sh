@@ -4,18 +4,24 @@ set -eu
 
 fail() { printf 'diffx-desktop: %s\n' "$*" >&2; exit 1; }
 usage() {
-  printf '%s\n' 'Usage: install-desktop.sh [--version edge|vX.Y.Z|X.Y.Z] [--bin-dir DIR]' \
+  printf '%s\n' 'Usage: install-desktop.sh [--version vX.Y.Z|X.Y.Z] [--bin-dir DIR]' \
     'Installs experimental diffx-desktop and matching diffx commands.' \
-    'Default: rolling edge, ~/.local/bin. Replaces existing command aliases.' \
+    'Default: latest stable, ~/.local/bin. Replaces existing command aliases.' \
     'Requires curl, tar, POSIX tools, and sha256sum or shasum.'
 }
-version=edge
+valid_version() {
+  printf '%s\n' "$1" | awk '
+    NR == 1 && /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/ { valid = 1 }
+    END { exit !(valid && NR == 1) }
+  '
+}
+version=
 bin_dir=
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --help|-h) usage; exit 0 ;;
     --version)
-      [ "$#" -ge 2 ] && [ -n "$2" ] || fail '--version requires edge or vX.Y.Z'
+      [ "$#" -ge 2 ] && [ -n "$2" ] && [ -n "${2#v}" ] || fail '--version requires vX.Y.Z'
       version=${2#v}; shift 2 ;;
     --bin-dir)
       [ "$#" -ge 2 ] && [ -n "$2" ] || fail '--bin-dir requires a directory'
@@ -23,11 +29,8 @@ while [ "$#" -gt 0 ]; do
     *) fail "unknown argument: $1 (use --help)" ;;
   esac
 done
-if [ "$version" != edge ]; then
-  printf '%s\n' "$version" | awk '
-    NR == 1 && /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/ { valid = 1 }
-    END { exit !(valid && NR == 1) }
-  ' || fail 'invalid version: expected edge or vX.Y.Z'
+if [ -n "$version" ]; then
+  valid_version "$version" || fail 'invalid version: expected vX.Y.Z'
 fi
 if [ -z "$bin_dir" ]; then
   [ -n "${HOME:-}" ] || fail 'HOME is unset; provide --bin-dir'
@@ -49,13 +52,28 @@ case "$(uname -m)" in
   arm64|aarch64) arch=arm64 ;;
   *) fail 'unsupported architecture: only amd64 and arm64 are supported' ;;
 esac
-if [ "$version" = edge ] && [ "$os" = darwin ] && [ "$arch" = amd64 ]; then
-  fail 'edge does not support macOS Intel; use --version vX.Y.Z'
+releases=https://github.com/flexdinesh/diffx/releases
+missing_hint=retry
+if [ -z "$version" ]; then
+  # Read only the first redirect: following asset redirects loses the release tag
+  # at GitHub's storage CDN. Both downloads below then use this immutable tag.
+  resolved=$(curl --fail --silent --show-error --output /dev/null \
+    --write-out '%{redirect_url}' "$releases/latest/download/desktop-checksums.txt") ||
+    fail 'could not resolve latest stable release; retry or use --version'
+  case "$resolved" in
+    "$releases/download/v"*/desktop-checksums.txt)
+      version=${resolved#"$releases/download/v"}
+      version=${version%/desktop-checksums.txt}
+      valid_version "$version" || fail 'latest stable release has an invalid version'
+      ;;
+    *) fail 'could not resolve latest stable release tag; retry or use --version' ;;
+  esac
+  # Desktop packaging publishes independently of the CLI release.
+  missing_hint='latest stable may lack desktop assets; retry or use --version'
 fi
 tag=v$version
-[ "$version" != edge ] || tag=edge
 archive=diffx-desktop_${version}_${os}_${arch}.tar.gz
-releases=https://github.com/flexdinesh/diffx/releases/download/$tag
+releases=$releases/download/$tag
 case "$bin_dir" in /*) ;; *) bin_dir=$PWD/$bin_dir ;; esac
 mkdir -p "$bin_dir" || fail "could not create destination: $bin_dir"
 for command in diffx diffx-desktop; do
@@ -110,7 +128,7 @@ work_dir=$(mktemp -d "$versions/install.XXXXXXXXXX") || fail 'could not stage in
 app=$work_dir/payload/$executable
 download() {
   curl --fail --silent --show-error --location --output "$work_dir/$1" \
-    "$releases/$1" || fail "could not download $1; retry"
+    "$releases/$1" || fail "could not download $1; $missing_hint"
 }
 download desktop-checksums.txt
 download "$archive"
