@@ -212,9 +212,9 @@ versions, worker options, and measured geometry. `use-review.ts` and
 across writes or owner disposal. `review-comments.ts` owns comment validation and
 agent-facing formatting; `test/contracts/comments.json` holds examples checked
 by both it and Go. Keep section-only state within its component.
-Scrolling the diff selects the top visible file in navigation; selection advances
-only after that file’s entire diff leaves the viewport. Scroll-driven selection
-reveals its tree row without expanding the diff or navigating again.
+Selection changes only through explicit navigation; scrolling the diff never
+selects a file. File and change steps share `stepInViewport` in
+`hunk-navigation.ts`, resolved per step from Pierre's measured offsets.
 
 See [architecture.md](architecture.md) for repository boundaries and dependency
 rules.

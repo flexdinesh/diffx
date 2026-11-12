@@ -45,6 +45,16 @@ async function showDiff(page: Page) {
   await expect(sidebar).toBeVisible();
 }
 
+// Distance from a file header to the viewer's top edge.
+async function headerOffset(page: Page, header: Locator) {
+  const [viewerBox, headerBox] = await Promise.all([
+    page.locator("#viewer").boundingBox(),
+    header.boundingBox(),
+  ]);
+  if (!viewerBox || !headerBox) return Number.POSITIVE_INFINITY;
+  return Math.abs(headerBox.y - viewerBox.y);
+}
+
 test.beforeEach(async ({ request }) => resetFixtureState(request));
 
 test("file summary counts change types across filtering and mobile", async ({
@@ -362,164 +372,157 @@ test("file navigation scrolls to and retriggers a destination cue", async ({
   await expect(cue).toHaveCount(0);
 });
 
-test("scrolling selects the top file only when the previous diff leaves", async ({
+test("tree selection scrolls even the last file to the top", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 420 });
   await page.goto("/");
   await showDiff(page);
-  const first = page.locator('#file-tree [data-path="config/diffx.json"]');
-  const second = page.locator('#file-tree [data-path="docs/legacy.md"]');
-  const firstDiff = page
-    .locator("#viewer diffs-container")
-    .filter({ hasText: "config/diffx.json" });
-  await expect(firstDiff.locator("[data-diffs-header]")).toBeVisible();
-  await first.click();
-  const boundary = await firstDiff.evaluate((element) => {
-    const scroller = document.querySelector<HTMLElement>(".diff-code-view");
-    if (!scroller) throw new Error("Missing diff scroller");
-    return (
-      element.getBoundingClientRect().bottom -
-      scroller.getBoundingClientRect().top +
-      scroller.scrollTop
-    );
-  });
-  const scroller = page.locator(".diff-code-view");
-  await scroller.evaluate((element, top) => {
-    element.scrollTop = top;
-  }, boundary - 1);
-  await expect(first).toHaveAttribute("aria-current", "true");
-  await expect(second).toHaveAttribute("aria-current", "false");
-  // The next header is already visible, but the final pixel still belongs to the first file.
-  await expect(
-    page
-      .locator("#viewer diffs-container")
-      .filter({ hasText: "docs/legacy.md" })
-      .locator("[data-diffs-header]"),
-  ).toBeVisible();
-  await scroller.evaluate((element, top) => {
-    element.scrollTop = top;
-  }, boundary + 1);
-  await expect(second).toHaveAttribute("aria-current", "true");
-  expect(await scroller.evaluate((element) => element.scrollTop)).toBeCloseTo(
-    boundary + 1,
-    0,
-  );
-  await scroller.evaluate((element, top) => {
-    element.scrollTop = top;
-  }, boundary - 1);
-  await expect(first).toHaveAttribute("aria-current", "true");
-  await scroller.evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-  });
-  await expect(first).toHaveAttribute("aria-current", "false");
-  await scroller.evaluate((element) => {
-    element.scrollTop = 0;
-  });
-  await expect(first).toHaveAttribute("aria-current", "true");
-});
-
-test("tree selection of the last file holds until that file leaves view", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1280, height: 420 });
-  await page.goto("/");
-  await showDiff(page);
-  const rows = page.locator("#file-tree [data-path]");
-  const first = rows.first();
-  const last = rows.last();
+  const last = page.locator("#file-tree [data-path]").last();
   const lastPath = await last.getAttribute("data-path");
   if (!lastPath) throw new Error("Missing last file path");
   const header = page
     .locator("#viewer diffs-container")
     .filter({ hasText: lastPath })
     .locator("[data-diffs-header]");
-  const scroller = page.locator(".diff-code-view");
-  await expect(first).toHaveAttribute("aria-current", "true");
 
   await last.click();
   await expect(last).toHaveAttribute("aria-current", "true");
   // Trailing space lets even the last file align to the top.
-  await expect
-    .poll(async () => {
-      const [viewerBox, headerBox] = await Promise.all([
-        page.locator("#viewer").boundingBox(),
-        header.boundingBox(),
-      ]);
-      if (!viewerBox || !headerBox) return Number.POSITIVE_INFINITY;
-      return Math.abs(headerBox.y - viewerBox.y);
-    })
-    .toBeLessThanOrEqual(1);
-  const lastTop = await scroller.evaluate((element) => element.scrollTop);
-
-  // The previous file's body now tops the viewport, but the selection holds.
-  await scroller.evaluate((element, top) => {
-    element.scrollTop = top;
-  }, lastTop - 40);
-  await page.evaluate(
-    () =>
-      new Promise((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(resolve)),
-      ),
-  );
-  await expect(last).toHaveAttribute("aria-current", "true");
-
-  // Once the selected file leaves view, the top file is selected again.
-  await scroller.evaluate((element) => {
-    element.scrollTop = 0;
-  });
-  await expect(first).toHaveAttribute("aria-current", "true");
-  await scroller.evaluate((element, top) => {
-    element.scrollTop = top;
-  }, lastTop - 40);
-  await expect(rows.nth((await rows.count()) - 2)).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
+  await expect.poll(() => headerOffset(page, header)).toBeLessThanOrEqual(1);
 });
 
-test("scroll selection preserves collapsed diffs and works with filtered files", async ({
+test("file steps move through files from the toolbar and keyboard", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 420 });
   await page.goto("/");
   await showDiff(page);
-  await page.getByRole("searchbox", { name: "Filter files" }).fill("src/");
-  const badge = page.locator(
-    '#file-tree [data-path="src/components/Badge.tsx"]',
+  const rows = page.locator("#file-tree [data-path]");
+  const order = (
+    await rows.evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute("data-path")),
+    )
+  ).flatMap((path) => (path ? [path] : []));
+  expect(order).toHaveLength(12);
+  const current = page.locator("#file-tree [aria-current=true]");
+  const announcement = page.locator("#change-announcement");
+  const feedback = page.locator("#comment-feedback");
+  const header = (path: string) =>
+    page
+      .locator("#viewer diffs-container")
+      .filter({ hasText: path })
+      .locator("[data-diffs-header]");
+  // Steps start from the viewport, so each waits for the last to land.
+  const landed = async (path: string) => {
+    await expect(current).toHaveAttribute("data-path", path);
+    await expect
+      .poll(() => headerOffset(page, header(path)))
+      .toBeLessThanOrEqual(1);
+  };
+  const next = page.getByRole("button", { name: "Next file" });
+  const previous = page.getByRole("button", { name: "Previous file" });
+  await expect(page.locator(".footer-shortcuts")).toContainText(
+    "Alt+J Alt+K files",
   );
-  const button = page.locator(
-    '#file-tree [data-path="src/components/Button.tsx"]',
-  );
-  await badge.click();
-  await page
-    .getByRole("button", {
-      name: "Collapse src/components/Badge.tsx",
-      exact: true,
-    })
-    .click();
-  await button.click();
-  await expect(button).toHaveAttribute("aria-current", "true");
+  await next.hover();
+  const tooltip = page.locator('[data-slot="tooltip-content"]');
+  await expect(tooltip.getByText("Alt+J", { exact: true })).toBeVisible();
+
+  // Each step selects the file and scrolls its header to the top.
+  for (const index of [1, 2]) {
+    if (index === 1) await page.keyboard.press("Alt+J");
+    else await next.click();
+    const path = order[index] ?? "";
+    await landed(path);
+    await expect(announcement).toHaveText(`File ${index + 1} of 12: ${path}`);
+  }
+  await page.keyboard.press("Alt+K");
+  await landed(order[1] ?? "");
+  await previous.click();
+  await landed(order[0] ?? "");
+
+  // The ends do not wrap and say so until navigation moves again.
+  await previous.click();
+  await expect(feedback).toHaveText("No previous file.");
+  await expect(current).toHaveAttribute("data-path", order[0] ?? "");
+  await page.keyboard.press("Alt+J");
+  await expect(feedback).toHaveText("");
+  await rows.last().click();
+  await landed(order.at(-1) ?? "");
+  await page.keyboard.press("Alt+J");
+  await expect(feedback).toHaveText("No more files below.");
+  await expect(current).toHaveAttribute("data-path", order.at(-1) ?? "");
+});
+
+test("scrolling keeps the selection and file steps restart from the viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await page.goto("/");
+  await showDiff(page);
+  const rows = page.locator("#file-tree [data-path]");
+  const current = page.locator("#file-tree [aria-current=true]");
   const scroller = page.locator(".diff-code-view");
-  await scroller.evaluate((element) => {
-    element.scrollTop = 0;
-  });
-  // The chosen file stays selected while it remains in view.
-  await expect(button).toHaveAttribute("aria-current", "true");
+  const scrollTop = () => scroller.evaluate((element) => element.scrollTop);
+  const settle = () =>
+    page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        ),
+    );
+  const pathAt = async (index: number) =>
+    (await rows.nth(index).getAttribute("data-path")) ?? "";
+
+  // Tree navigation records where file 5 starts.
+  await rows.nth(5).click();
+  await expect(current).toHaveAttribute("data-path", await pathAt(5));
+  await expect.poll(scrollTop).toBeGreaterThan(0);
+  await settle();
+  const fifth = await scrollTop();
+  await rows.first().click();
+  await expect.poll(scrollTop).toBeLessThan(fifth);
+
+  // Scrolling into file 5 leaves the first file selected.
+  await scroller.evaluate((element, top) => {
+    element.scrollTop = top;
+  }, fifth + 1);
+  await settle();
+  await expect(current).toHaveAttribute("data-path", await pathAt(0));
   await scroller.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
   });
-  await expect(button).toHaveAttribute("aria-current", "false");
-  await scroller.evaluate((element) => {
-    element.scrollTop = 0;
-  });
-  await expect(badge).toHaveAttribute("aria-current", "true");
+  await settle();
+  await expect(current).toHaveAttribute("data-path", await pathAt(0));
+
+  // Off screen, the selection yields to the viewport's top.
+  await scroller.evaluate((element, top) => {
+    element.scrollTop = top;
+  }, fifth + 1);
+  await settle();
+  await page.keyboard.press("Alt+J");
+  await expect(current).toHaveAttribute("data-path", await pathAt(6));
+  await rows.first().click();
+  await expect.poll(scrollTop).toBeLessThan(fifth);
+  await scroller.evaluate((element, top) => {
+    element.scrollTop = top;
+  }, fifth + 1);
+  await settle();
+  await page.getByRole("button", { name: "Previous file" }).click();
+  await expect(current).toHaveAttribute("data-path", await pathAt(5));
+});
+
+test("narrow toolbars keep change steps and leave file steps to the drawer", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Next change" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next file" })).toBeHidden();
   await expect(
-    page.getByRole("button", {
-      name: "Expand src/components/Badge.tsx",
-      exact: true,
-    }),
-  ).toBeVisible();
+    page.getByRole("button", { name: "Previous file" }),
+  ).toBeHidden();
 });
 
 test("file frames preserve measured gutters, gaps, and virtual geometry", async ({

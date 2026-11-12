@@ -19,6 +19,7 @@ import { ancestorPaths, filesInTreeOrder } from "./file-tree.ts";
 import {
   changeStops,
   stepChangeStop,
+  stepInViewport,
   type ChangeStop,
   type LineSpan,
   type StopKey,
@@ -200,11 +201,8 @@ export function useFileNavigation({
         ?.scrollIntoView({ block: "nearest" });
     });
   }, []);
-  // Explicit navigation keeps its file selected until that file leaves view,
-  // even when another file is above it in the viewport.
-  const pinned = useRef<{ path: string; seen: boolean } | null>(null);
-  // Hiding the file in view continues the review at its neighbor. Pin it so
-  // scrolls before the shortened list lands cannot select another file.
+  // Scrolling never changes selection; only explicit navigation does.
+  // Hiding the selected file continues the review at its neighbor.
   useEffect(() => {
     if (
       !hideReviewed ||
@@ -213,7 +211,6 @@ export function useFileNavigation({
       !matchingFiles.some((file) => file.path === selected)
     )
       return;
-    pinned.current = { path: activePath, seen: false };
     selectVisibleFile(activePath);
     requestAnimationFrame(() => {
       viewer.current?.scrollTo({
@@ -224,26 +221,8 @@ export function useFileNavigation({
       });
     });
   }, [hideReviewed, activePath, selected, matchingFiles, selectVisibleFile]);
-  const followScroll = useCallback(
-    (visible: readonly string[]) => {
-      const pin = pinned.current;
-      if (pin && files.some((file) => file.path === pin.path)) {
-        if (visible.includes(pin.path)) {
-          pinned.current = { path: pin.path, seen: true };
-          return;
-        }
-        // Scrolls before the navigation lands keep the pin.
-        if (!pin.seen) return;
-      }
-      pinned.current = null;
-      const [top] = visible;
-      if (top && top !== activePath) selectVisibleFile(top);
-    },
-    [files, activePath, selectVisibleFile],
-  );
   const revealFile = useCallback(
     (path: string) => {
-      pinned.current = { path, seen: false };
       selectVisibleFile(path);
       setCollapsed((previous) => {
         if (!previous.has(path)) return previous;
@@ -403,7 +382,6 @@ export function useFileNavigation({
         setFeedback("");
       }
       changeCursor.current = { path: target.path, index: target.index };
-      pinned.current = { path: target.path, seen: false };
       selectVisibleFile(target.path);
       const shown = rect(target);
       // A block already fully on screen stays put; the cue marks it.
@@ -433,6 +411,55 @@ export function useFileNavigation({
     [stops, unloaded, setFeedback, selectVisibleFile],
   );
   const canStepChanges = stops.length > 0;
+
+  // File stepping shares change navigation's origin rule: the selected file
+  // while any of it is on screen, otherwise the viewport's top.
+  const fileNotice = useRef(false);
+  const stepFile = useCallback(
+    (delta: -1 | 1) => {
+      const instance = viewer.current?.getInstance();
+      if (!instance) return;
+      // Pierre measures loaded previews; files after them wait for Load more.
+      const tops = files.flatMap((file) => {
+        const top = instance.getTopForItem(file.path);
+        return top === undefined ? [] : [{ path: file.path, top }];
+      });
+      // A file spans from its top to the next file's top.
+      const placed = tops.map((file, index) => ({
+        ...file,
+        bottom: tops[index + 1]?.top ?? Number.POSITIVE_INFINITY,
+      }));
+      const scrollTop = instance.getScrollTop();
+      const target = stepInViewport(
+        placed,
+        delta,
+        { top: scrollTop, bottom: scrollTop + instance.getHeight() },
+        (file) => file,
+        placed.findIndex((file) => file.path === activePath),
+      );
+      if (!target) {
+        fileNotice.current = true;
+        setFeedback(
+          delta === -1
+            ? "No previous file."
+            : unloaded > 0
+              ? "No more loaded files below. Load more files to continue."
+              : "No more files below.",
+        );
+        return;
+      }
+      if (fileNotice.current) {
+        fileNotice.current = false;
+        setFeedback("");
+      }
+      selectFile(target.path);
+      setChangeAnnouncement(
+        `File ${files.findIndex((file) => file.path === target.path) + 1} of ${files.length}: ${target.path}`,
+      );
+    },
+    [files, activePath, unloaded, setFeedback, selectFile],
+  );
+  const canStepFiles = files.length > 0;
 
   const navigateComment = useCallback(
     (comment: ReviewComment) => {
@@ -607,21 +634,7 @@ export function useFileNavigation({
       }
       if (event.code === "KeyJ" || event.code === "KeyK") {
         event.preventDefault();
-        const index = Math.max(
-          0,
-          files.findIndex((file) => file.path === activePath),
-        );
-        const file =
-          files[
-            Math.max(
-              0,
-              Math.min(
-                files.length - 1,
-                index + (event.code === "KeyJ" ? 1 : -1),
-              ),
-            )
-          ];
-        if (file) selectFile(file.path);
+        stepFile(event.code === "KeyJ" ? 1 : -1);
       }
       // Commit views and public previews are read-only.
       if (marking && event.code === "KeyM") {
@@ -641,7 +654,7 @@ export function useFileNavigation({
     showSidebar,
     refresh,
     refreshEnabled,
-    selectFile,
+    stepFile,
     viewingCommit,
     marking,
     stepCommit,
@@ -668,13 +681,14 @@ export function useFileNavigation({
       changeAnnouncement,
       stepChange,
       canStepChanges,
+      stepFile,
+      canStepFiles,
       closed,
       setClosed,
       filteredClosed,
       setFilteredClosed,
       selectFile,
       toggleFileReviewed,
-      followScroll,
       showOutdatedComments,
       search,
       viewer,
@@ -694,11 +708,12 @@ export function useFileNavigation({
       changeAnnouncement,
       stepChange,
       canStepChanges,
+      stepFile,
+      canStepFiles,
       closed,
       filteredClosed,
       selectFile,
       toggleFileReviewed,
-      followScroll,
       showOutdatedComments,
       navigateComment,
       openInScope,

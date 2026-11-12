@@ -1,12 +1,15 @@
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
   Settings2Icon,
 } from "lucide-react";
 import { IconButton } from "@diffx/ui/components/icon-button";
 import { SegmentedControl } from "@diffx/ui/components/segmented-control";
+import { Separator } from "@diffx/ui/components/ui/separator";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -45,13 +48,42 @@ export function DiffToolbar() {
     setLineDiffType,
   } = useAppearance();
   const { collapsed, setCollapsed } = useDiffCollapse();
-  const { files, stepChange, canStepChanges } = useNavigation();
+  const { files, stepChange, canStepChanges, stepFile, canStepFiles } =
+    useNavigation();
   const allCollapsed =
     files.length > 0 && files.every((file) => collapsed.has(file.path));
   return (
     <div className="toolbar [&_svg]:[stroke-width:var(--icon-stroke-chrome)]">
       <ComparisonPicker />
       <div className="min-w-0 flex-1" />
+      {/* Narrow layouts step files from the drawer or keyboard. */}
+      <IconButton
+        label="Previous file"
+        shortcut={{ alt: true, key: "K" }}
+        size="icon-sm"
+        touch
+        className="max-md:hidden"
+        disabled={!canStepFiles}
+        onClick={() => stepFile(-1)}
+      >
+        <ChevronUpIcon aria-hidden="true" />
+      </IconButton>
+      <IconButton
+        label="Next file"
+        shortcut={{ alt: true, key: "J" }}
+        size="icon-sm"
+        touch
+        className="max-md:hidden"
+        disabled={!canStepFiles}
+        onClick={() => stepFile(1)}
+      >
+        <ChevronDownIcon aria-hidden="true" />
+      </IconButton>
+      <Separator
+        orientation="vertical"
+        variant="chrome"
+        className="max-md:hidden"
+      />
       <IconButton
         label="Previous change"
         shortcut={{ alt: true, key: "[" }}

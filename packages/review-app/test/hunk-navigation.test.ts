@@ -4,6 +4,7 @@ import { parsePatchFiles, type CodeViewItem } from "@pierre/diffs";
 import {
   changeStops,
   stepChangeStop,
+  stepInViewport,
   type ChangeStop,
   type StopRect,
 } from "../src/hunk-navigation.ts";
@@ -205,4 +206,40 @@ test("stepping stops at either end without wrapping", () => {
     null,
   );
   assert.equal(stepChangeStop([], 1, viewport, rect, null), null);
+});
+
+// Files touch: each spans from its top to the next file's top.
+const files = ["a.ts", "b.ts", "c.ts", "d.ts"];
+const fileRect = (path: string) => {
+  const index = files.indexOf(path);
+  return { top: index * 300, bottom: (index + 1) * 300 };
+};
+
+test("file stepping keeps a visible current file as its origin", () => {
+  // The current file still shows its last rows above b.ts.
+  const viewport = { top: 290, bottom: 590 };
+  assert.equal(stepInViewport(files, 1, viewport, fileRect, 0), "b.ts");
+  assert.equal(stepInViewport(files, -1, viewport, fileRect, 1), "a.ts");
+});
+
+test("file stepping restarts from the viewport once the current file leaves", () => {
+  // Scrolled into c.ts while a.ts stays current.
+  const viewport = { top: 700, bottom: 1000 };
+  assert.equal(stepInViewport(files, 1, viewport, fileRect, 0), "d.ts");
+  assert.equal(stepInViewport(files, -1, viewport, fileRect, 0), "c.ts");
+  // A file whose bottom meets the viewport top is out of view.
+  assert.equal(
+    stepInViewport(files, 1, { top: 300, bottom: 600 }, fileRect, 0),
+    "b.ts",
+  );
+});
+
+test("file stepping stops at either end without wrapping", () => {
+  const viewport = { top: 0, bottom: 300 };
+  assert.equal(stepInViewport(files, -1, viewport, fileRect, 0), null);
+  assert.equal(
+    stepInViewport(files, 1, { top: 900, bottom: 1200 }, fileRect, 3),
+    null,
+  );
+  assert.equal(stepInViewport([], 1, viewport, fileRect, -1), null);
 });

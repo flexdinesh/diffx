@@ -106,10 +106,30 @@ export interface ChangeViewport {
 }
 
 /**
- * The stop one step from the current one. The last stop navigated to stays
- * current while any of it is on screen; otherwise the viewport's top decides,
- * so manual scrolling restarts from what is visible. Null at either end.
+ * The item one step from the current one, by index. The last item navigated
+ * to stays current while any of it is on screen; otherwise the viewport's top
+ * decides, so manual scrolling restarts from what is visible. Null at either
+ * end. Change and file navigation share this rule.
  */
+export function stepInViewport<T>(
+  items: readonly T[],
+  delta: -1 | 1,
+  viewport: ChangeViewport,
+  rect: (item: T) => StopRect,
+  current: number,
+): T | null {
+  const shown = current >= 0 ? items[current] : undefined;
+  if (shown) {
+    const { top, bottom } = rect(shown);
+    if (bottom > viewport.top && top < viewport.bottom)
+      return items[current + delta] ?? null;
+  }
+  if (delta === 1)
+    return items.find((item) => rect(item).top >= viewport.top) ?? null;
+  return items.findLast((item) => rect(item).top < viewport.top) ?? null;
+}
+
+/** The change stop one step from the cursor; see `stepInViewport`. */
 export function stepChangeStop(
   stops: readonly ChangeStop[],
   delta: -1 | 1,
@@ -122,13 +142,5 @@ export function stepChangeStop(
         (stop) => stop.path === cursor.path && stop.index === cursor.index,
       )
     : -1;
-  const shown = current >= 0 ? stops[current] : undefined;
-  if (shown) {
-    const { top, bottom } = rect(shown);
-    if (bottom > viewport.top && top < viewport.bottom)
-      return stops[current + delta] ?? null;
-  }
-  if (delta === 1)
-    return stops.find((stop) => rect(stop).top >= viewport.top) ?? null;
-  return stops.findLast((stop) => rect(stop).top < viewport.top) ?? null;
+  return stepInViewport(stops, delta, viewport, rect, current);
 }
