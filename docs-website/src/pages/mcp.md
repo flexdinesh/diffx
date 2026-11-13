@@ -26,8 +26,7 @@ Start `diffx` and point the agent at the printed address's `/mcp`:
 http://127.0.0.1:7981/mcp
 ```
 
-A remote `diffx-server` serves the same `/mcp`; configure an API token as
-`Authorization: Bearer TOKEN` in the MCP client. For example, OpenCode in
+Local `diffx` needs no credentials. For example, OpenCode in
 `opencode.jsonc`:
 
 ```jsonc
@@ -50,6 +49,38 @@ harness. Supplying the diffx web-page URL alone is not enough; a coding harness
 connects to the MCP endpoint as an MCP client. In local mode MCP stops when the
 foreground command exits. Context IDs remain stable across persistent-service
 restarts.
+
+### diffx-server
+
+A remote `diffx-server` serves the same `/mcp`. With a public URL, MCP clients
+connect by URL alone through OAuth. The client discovers the server's OAuth
+metadata, opens your browser, and you approve it while signed in to diffx. In
+Claude Code:
+
+```sh
+claude mcp add --transport http diffx https://HOST/mcp
+```
+
+Then run `/mcp` in Claude Code and choose diffx to sign in. Cursor and other
+clients that register themselves dynamically connect the same way: add
+`https://HOST/mcp` as a remote server and follow the browser prompt.
+
+The approval page names the app. Apps identified by a metadata document their
+own domain serves show Verified and that domain; apps that registered
+themselves show Unverified, because their name is only their own claim. Check
+that the page says where it will redirect before you allow it. Reading
+reviews, diffs and comments is always granted; “Add comments, reply and
+resolve” is granted only when the app asks for it, and you can untick it;
+without it the app sees only the read tools.
+
+Access tokens last an hour and the client refreshes them; after 30 days
+without a refresh it must connect again. Settings › Connected
+agents lists each connected app with its access and last use; Disconnect ends
+its access at once. OAuth tokens work only for MCP, never the REST API.
+
+API tokens still work: configure `Authorization: Bearer TOKEN` with an `api`
+token from Settings instead, for clients without OAuth or for automation. A
+server without a public URL accepts only API tokens.
 
 ### Stdio
 
@@ -329,14 +360,17 @@ a command.
 Agent comments, replies and resolutions record an agent author, shown in the
 review with the agent's name:
 
+- With OAuth, the name is the connected app's name, recorded when you approved
+  it, with its client ID. Apps identified by a metadata document their domain
+  serves are marked verified; dynamically registered apps are not.
 - With an API token, the name is the MCP client's name followed by the token's
   name, such as `Claude Code (laptop)`, or the token's name alone when the
   client sends no name.
 - Locally or with a browser session, the name is the MCP client's name.
 - Without either, the name is `Agent`.
 
-The client name is the `title` or `name` the client reports about itself. It is
-self-reported and not verified. Under protocol `2026-07-28` every request
+Otherwise the client name is the `title` or `name` the client reports about
+itself. It is self-reported and not verified. Under protocol `2026-07-28` every request
 carries it. Older protocols send it only in `initialize`, which a stateless
 server does not keep, so their writes read as `Agent` or the token's name.
 
@@ -346,9 +380,10 @@ The local endpoint is unauthenticated. Anyone who can reach the local server can
 read, comment on and resolve its reviews. The viewer binds loopback only; reach
 another machine's diffx through an SSH forward. Browser origin checks do not
 authenticate MCP clients. The remote `diffx-server` requires
-`Authorization: Bearer TOKEN` for MCP. Credentials select an individual user;
-catalog results, references, diffs, comments and writes are scoped to that
-user.
+`Authorization: Bearer TOKEN` for MCP: an OAuth access token from connecting
+as above, or an `api` token configured as that header in the MCP client.
+Credentials select an individual user; catalog results, references, diffs,
+comments and writes are scoped to that user.
 
 Context-scoped tools use one context, regardless of browser selection or
 subsequent CLI submissions. Stream links and comment IDs follow a stream to its

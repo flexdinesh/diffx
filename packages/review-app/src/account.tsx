@@ -10,6 +10,7 @@ import { Separator } from "@diffx/ui/components/ui/separator";
 import { navigate, useIdentity } from "./identity-context.tsx";
 import { AccountGitHub, type GitHubFollowing } from "./account-github.tsx";
 import { AccountNotifications } from "./account-notifications.tsx";
+import { AccountAgents } from "./account-agents.tsx";
 import { AccountTokens } from "./account-tokens.tsx";
 import { forgetPushDevice } from "./push.ts";
 import {
@@ -738,6 +739,7 @@ export function AccountSettings({
         }
       >
         <AccountTokens />
+        <AccountAgents />
         <AccountGitHub notify={pushEnabled} onFollowingChange={setGitHub} />
         <AccountNotifications
           github={github}

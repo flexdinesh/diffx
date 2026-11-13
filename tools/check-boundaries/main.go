@@ -32,6 +32,9 @@ var allowed = map[string][]string{
 	// The authenticated caller of a request: a dependency-free leaf that
 	// compositions set and transports read to attribute writes.
 	"internal/caller": {},
+	// OAuth client metadata document wire adapter with its request forgery
+	// guards; which documents identify a client is oauthservice policy.
+	"internal/clientmetadata": {},
 	// Native launch and browser connection adapters own no application behavior.
 	"internal/desktoplaunch": {"internal/version", "packages/localprotocol"},
 	"internal/clientgateway": {"packages/api", "packages/connection"},
@@ -60,7 +63,10 @@ var allowed = map[string][]string{
 	},
 	"internal/ingestion":       {"internal/review"},
 	"internal/identityservice": {"internal/google"},
-	"internal/ingestionqueue":  {"internal/review", "internal/ingestion"},
+	// OAuth authorization rules for MCP clients; storage is behind its Store
+	// contract and composition is remote only.
+	"internal/oauthservice":   {"internal/caller"},
+	"internal/ingestionqueue": {"internal/review", "internal/ingestion"},
 	"internal/localserver": {
 		"internal/config", "internal/contextservice", "internal/controlapi", "internal/ingestion", "internal/processlock",
 		"internal/reviewstore", "internal/serverapp", "internal/unixsocket", "internal/version", "internal/webui",
@@ -70,7 +76,7 @@ var allowed = map[string][]string{
 	// Server Postgres persistence; pgdb holds its generated queries.
 	"internal/pgstore": {
 		"internal/contextservice", "internal/githubsync", "internal/google", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue",
-		"internal/pgstore/pgdb", "internal/pushservice", "internal/review", "internal/reviewdata", "internal/reviewservice", "internal/webpush",
+		"internal/oauthservice", "internal/pgstore/pgdb", "internal/pushservice", "internal/review", "internal/reviewdata", "internal/reviewservice", "internal/webpush",
 	},
 	"internal/pgstore/pgdb":   {},
 	"internal/processlock":    {},
@@ -81,7 +87,7 @@ var allowed = map[string][]string{
 	// its Store contract and composition is remote only.
 	"internal/pushservice": {"internal/webpush"},
 	"internal/remoteserver": {
-		"internal/authhttp", "internal/caller", "internal/contextservice", "internal/fetchprotocol", "internal/github", "internal/githubsync", "internal/google", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/pgstore", "internal/pushservice", "internal/review",
+		"internal/authhttp", "internal/caller", "internal/clientmetadata", "internal/contextservice", "internal/fetchprotocol", "internal/github", "internal/githubsync", "internal/google", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/oauthservice", "internal/pgstore", "internal/pushservice", "internal/review",
 		"internal/reviewdata", "internal/serverapp", "internal/webui", "packages/api",
 	},
 	"internal/review":        {},

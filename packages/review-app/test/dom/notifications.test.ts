@@ -153,6 +153,7 @@ function server({
         csrfToken: "session-csrf",
       });
     if (path === "/api/v2/account/tokens") return json({ tokens: [] });
+    if (path === "/api/v2/account/agents") return json({ agents: [] });
     if (path === "/api/v2/github/connection")
       return github === "absent"
         ? json({}, 404)

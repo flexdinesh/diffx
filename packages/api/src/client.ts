@@ -167,3 +167,91 @@ export function readCreatedToken(value: unknown): {
     throw new Error("Invalid token response");
   return { token: readAccountToken(value.token), secret: value.secret };
 }
+
+export type ApiConnectedAgent = components["schemas"]["ConnectedAgent"];
+export type ApiOAuthRequest = components["schemas"]["OAuthRequest"];
+export type ApiOAuthScope = components["schemas"]["OAuthScope"];
+
+function oauthScopes(value: unknown): ApiOAuthScope[] | null {
+  if (!Array.isArray(value)) return null;
+  const scopes: ApiOAuthScope[] = [];
+  for (const scope of value) {
+    if (scope !== "reviews:read" && scope !== "comments:write") return null;
+    scopes.push(scope);
+  }
+  return scopes;
+}
+
+function oauthHost(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+export function readConnectedAgents(value: unknown): ApiConnectedAgent[] {
+  if (!object(value) || !Array.isArray(value.agents))
+    throw new Error("Invalid connected agents response");
+  return value.agents.map((agent: unknown) => {
+    if (!object(agent)) throw new Error("Invalid connected agents response");
+    const scopes = oauthScopes(agent.scopes);
+    const host = oauthHost(agent.host);
+    if (
+      typeof agent.id !== "string" ||
+      typeof agent.name !== "string" ||
+      typeof agent.verified !== "boolean" ||
+      host === undefined ||
+      scopes === null ||
+      typeof agent.createdAt !== "number" ||
+      !Number.isSafeInteger(agent.createdAt) ||
+      (agent.lastUsedAt !== null &&
+        (typeof agent.lastUsedAt !== "number" ||
+          !Number.isSafeInteger(agent.lastUsedAt)))
+    )
+      throw new Error("Invalid connected agents response");
+    return {
+      id: agent.id,
+      name: agent.name,
+      verified: agent.verified,
+      host,
+      scopes,
+      createdAt: agent.createdAt,
+      lastUsedAt: agent.lastUsedAt,
+    };
+  });
+}
+
+export function readOAuthRequest(value: unknown): ApiOAuthRequest {
+  if (!object(value) || !object(value.client))
+    throw new Error("Invalid authorization request");
+  const scopes = oauthScopes(value.scopes);
+  const host = oauthHost(value.client.host);
+  if (
+    typeof value.client.name !== "string" ||
+    typeof value.client.verified !== "boolean" ||
+    host === undefined ||
+    typeof value.redirectHost !== "string" ||
+    scopes === null
+  )
+    throw new Error("Invalid authorization request");
+  return {
+    client: {
+      name: value.client.name,
+      verified: value.client.verified,
+      host,
+    },
+    redirectHost: value.redirectHost,
+    scopes,
+  };
+}
+
+/**
+ * The address consent sends the browser to. Only http(s) URLs are followed,
+ * so a response can never run script on this origin.
+ */
+export function readOAuthRedirect(value: unknown): string {
+  if (!object(value) || typeof value.redirectTo !== "string")
+    throw new Error("Invalid consent response");
+  const target = new URL(value.redirectTo);
+  if (target.protocol !== "https:" && target.protocol !== "http:")
+    throw new Error("Invalid consent response");
+  return target.href;
+}

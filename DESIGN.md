@@ -820,8 +820,8 @@ at `/design.html` (see `docs/frontend.md`).
 ### Account settings
 
 - Settings (remote server only) is one page per section:
-  `/settings/tokens`, `/settings/github`, `/settings/notifications` and
-  `/settings/password`. `/settings`, unknown pages and sections this server or
+  `/settings/tokens`, `/settings/agents`, `/settings/github`,
+  `/settings/notifications` and `/settings/password`. `/settings`, unknown pages and sections this server or
   account lacks open API tokens. Below the account header, the full-width pane
   scrolls so its scrollbar meets the window edge; the header's email keeps the
   diff gutter and truncates. Content is bounded at 64rem: a sticky 10rem
@@ -835,8 +835,8 @@ at `/design.html` (see `docs/frontend.md`).
 - Every page opens with the account summary: the `h1`, “Signed in as” the
   account email (“with Google” for Google accounts), and an outline “Sign out”
   at the trailing edge.
-- Sections follow in a fixed order: API tokens, GitHub, Notifications,
-  Password (password accounts). Each sits above a separator in two columns,
+- Sections follow in a fixed order: API tokens, Connected agents, GitHub,
+  Notifications, Password (password accounts). Each sits above a separator in two columns,
   its `h2` and one short `--text-secondary` description in a 14rem column
   beside its state and controls; below 1012px they stack. Subsections use
   `h3`. Async feedback uses an always-mounted `role="status"` paragraph;
@@ -844,7 +844,8 @@ at `/design.html` (see `docs/frontend.md`).
 - At most one filled primary action per page: the open token form's “Create
   token”, “Connect GitHub”, or “Turn on notifications”. Other actions are
   outline or ghost.
-- Rows that can be removed (tokens, other devices) and the GitHub connection
+- Rows that can be removed (tokens, connected agents, other devices) and the
+  GitHub connection
   keep their action in one ghost `…` menu (“Actions for {name}”), as in the
   console; Revoke…, Remove… and Disconnect… confirm with `ConfirmDialog`, the
   only place they turn red.
@@ -854,6 +855,13 @@ at `/design.html` (see `docs/frontend.md`).
   after share a row where they fit; Cancel closes it and returns focus. A
   created secret shows once in a `--panel` status panel above the action, with
   focus on its Copy button.
+- Connected agents lists MCP clients connected with OAuth: the medium-weight name
+  with a status `Badge` (Verified in `success`, Unverified in `warning`), then
+  muted lines for the verifying host and access in words (“Reads reviews” or
+  “Reads reviews and adds comments”), and connected and last-used dates. Its
+  `…` menu holds Disconnect…, confirmed by `ConfirmDialog`; success announces
+  “Disconnected {name}.” in the always-mounted status. Empty, it is one line,
+  “No connected agents.”, with an accent link to the MCP docs; no buttons.
 - GitHub setup is a numbered list of two steps, each an `h3` with one line of
   prose: “Connect your GitHub account” (the connection row and `…` menu, or the
   filled “Connect GitHub” / “Connect GitHub again”) and “Choose repositories
@@ -913,7 +921,24 @@ at `/design.html` (see `docs/frontend.md`).
 - On a remote server, signed-out `/` is always the
   [Signed-out landing page](#signed-out-landing-page); sign-in lives at
   `/signin`, and `/?signin=` still reports Google sign-in outcomes. Sign-in
-  accepts `?next=` only for `/settings/github`.
+  accepts `?next=` only for `/settings/github` and a pending OAuth consent
+  page (`/oauth/consent?request=` and its 43-character ID).
+- OAuth consent (`/oauth/consent`) uses the same `auth-page` column for a
+  signed-in account; signed out, it opens sign-in and returns. The `h1` is
+  “Connect {client} to diffx”. Identity comes first: a verified client shows a
+  success Verified `Badge` beside its host; an unverified one a warning
+  “Unverified app” `Badge` and “Name provided by the app”. Then “Will redirect
+  to {host}”, then an `h2` “It will be able to” over a list: “Read your
+  reviews, diffs and comments” with a check icon (always granted), and, only
+  when requested, a ticked `ui/checkbox` “Add comments, reply and resolve”.
+  Rows are control height, touch height on touch. Filled “Allow” is the one
+  primary action beside outline “Cancel”; a muted closing line names the
+  signed-in email with an inline “Sign out” link button that returns to
+  sign-in for the same request. Loading is a `role="status"` line; load
+  failures use `ErrorState` with Retry. An invalid, expired or answered
+  request, or one refused before consent (unknown client or redirect), shows
+  only “Can't connect this app” and one line telling the user to start again
+  from their app; it never redirects.
 
 ### Signed-out landing page
 

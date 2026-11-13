@@ -799,6 +799,11 @@ browser requests require a session CSRF token, including account management.
 Server and console reject cross-origin and cross-site requests, except OAuth
 callbacks and safe top-level document navigations to page routes, so links
 opened from email or other sites load; APIs, MCP and control stay same-origin.
+With a public URL, the server's OAuth protocol routes (metadata, token,
+revocation and registration) also accept cross-origin requests with CORS,
+because MCP clients call them from anywhere; they never read cookies.
+`/oauth/authorize` is a page navigation, and consent stays a same-origin,
+session and CSRF API.
 Password changes revoke existing sessions. Each process admits at most four
 concurrent sign-in, signup, invite and reset attempts, and login failures do not
 disclose whether an email has an account. Per-client limiting is off by default
@@ -819,6 +824,43 @@ ingestion. Neither preset permits account, password or token management. Those
 operations require a browser session. A token's name labels agent comments,
 replies and resolutions written with it through MCP. Revocation and expiry take effect at
 authentication; rotating credentials does not change account or replay identity.
+
+With a public URL, `diffx-server` is also an OAuth 2.1 authorization server
+for its own MCP endpoint, so MCP clients connect through the browser instead
+of a pasted token. Without one, OAuth routes are absent and MCP accepts only
+API tokens. The issuer is the public URL; the protected resource is
+`{public URL}/mcp`, published as RFC 9728 metadata, and tokens for it are
+accepted on `/mcp` and `/mcp/contexts/{id}` only, never on REST. Unauthenticated
+MCP requests answer 401 with a `WWW-Authenticate` challenge naming that
+metadata; a token lacking `reviews:read` answers 403 `insufficient_scope`.
+Clients are public: PKCE S256 is required and no client secret exists. A client
+is identified either by an https client ID metadata document URL, fetched
+with request forgery guards (public addresses only after resolution, no
+redirects, 5 KiB, five seconds, cached five minutes per replica), whose
+`client_id` must equal its URL; such clients are verified and shown with their
+host. Or it registers dynamically (RFC 7591), unauthenticated and bounded like
+sign-in; its name is its own claim and it is shown unverified. Redirect URIs
+must be https or loopback http; a loopback redirect matches any port. An
+invalid client or redirect URI is shown as an error page and never redirected
+to. Authorization requires the RFC 8707 `resource`, waits up to ten minutes
+for consent from the signed-in account (signing in first returns there), and
+grants `reviews:read` always and `comments:write` only when requested and left
+ticked. Codes are hashed, single use and expire after 60 seconds, bound to
+client, redirect URI, PKCE challenge, scopes, resource and account; a replayed
+code revokes the tokens it issued. Access tokens are opaque and last one hour;
+refresh tokens rotate on use and last 30 days from their latest use;
+presenting a rotated refresh token revokes its whole family. Each account has
+at most one grant per client, recording its name, verification, scopes and
+first and latest use; Settings › Connected agents lists grants and
+disconnecting revokes every token issued under one. Disabling an account
+revokes its grants and codes in the same transaction; deleting removes them.
+Only hashes of codes and tokens are stored.
+
+Every authenticated request reaches the application with its caller
+(`internal/caller`): a browser session, an API token with its name, or an
+OAuth client with its name, verification, client ID and granted scopes.
+Scopes limit only OAuth callers; sessions and API tokens keep their existing
+permissions. Local composition has no OAuth.
 
 Each authenticated user can receive observations
 from many containers, including identical branch and path names. Source, session
@@ -935,7 +977,9 @@ gateway filters public review routes, while a raw socket forward carries private
 controls too. Collection requests use shared services; Git stays on the server.
 
 Distributed credentials establish owner identity before review REST, MCP, ingestion
-jobs, job status or events can access data. Browser assets and mode/login bootstrap
+jobs, job status or events can access data. OAuth access tokens reach only MCP;
+OAuth metadata, token, revocation and registration routes are unauthenticated
+protocol endpoints that hold no review data. Browser assets and mode/login bootstrap
 remain accessible so unauthenticated users can sign in. Deployment probes are
 also unauthenticated and uncached: `/healthz` reports a serving process without
 the database, and `/readyz` answers 503 while the database refuses queries.

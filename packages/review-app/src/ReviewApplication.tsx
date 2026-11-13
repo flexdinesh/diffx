@@ -19,6 +19,7 @@ import "./landing.css";
 import {
   IdentityProvider,
   IdentityStatus,
+  navigate,
   useIdentity,
 } from "./identity-context.tsx";
 import {
@@ -42,6 +43,14 @@ import {
   type ApplicationPlatform,
 } from "./use-browser-activation.ts";
 import { isSettingsPath, settingsSection } from "./settings-layout.tsx";
+import {
+  consentPath,
+  consentReturn,
+  isOAuthPath,
+  OAuthConsent,
+  OAuthRequestInvalid,
+} from "./oauth-consent.tsx";
+import { returnQuery } from "./public-pull-request.ts";
 import { HistoryPage } from "./HistoryPage.tsx";
 import { historyRoute } from "./history.ts";
 import { TooltipProvider } from "@diffx/ui/components/ui/tooltip";
@@ -91,7 +100,7 @@ function ApplicationRoutes({ platform }: ReviewApplicationProps) {
   // Local mode has no account pages; signed-in users have no sign-in pages.
   const misplaced =
     ready &&
-    ((!remote && isSettingsPath(path)) ||
+    ((!remote && (isSettingsPath(path) || isOAuthPath(path))) ||
       (!history && path === historyRoute) ||
       (signedIn &&
         (path === "/signin" ||
@@ -103,6 +112,15 @@ function ApplicationRoutes({ platform }: ReviewApplicationProps) {
     window.history.replaceState(null, "", "/");
     setPath("/");
   }, [misplaced]);
+  // Signed-out consent signs in first, then returns to the request.
+  const consentSignIn =
+    remote && !signedIn && path === consentPath
+      ? consentReturn(window.location)
+      : null;
+  useEffect(() => {
+    if (consentSignIn)
+      navigate(`/signin${returnQuery(consentSignIn)}`, { replace: true });
+  }, [consentSignIn]);
   if (state.status !== "ready") return <IdentityStatus />;
   if (preview)
     return (
@@ -113,6 +131,11 @@ function ApplicationRoutes({ platform }: ReviewApplicationProps) {
         <PublicReview />
       </PublicPullRequest>
     );
+  if (state.bootstrap.mode === "remote" && isOAuthPath(path)) {
+    if (consentSignIn) return null;
+    if (state.bootstrap.user && path === consentPath) return <OAuthConsent />;
+    return <OAuthRequestInvalid />;
+  }
   if (state.bootstrap.mode === "remote" && !state.bootstrap.user) {
     // Pages for a method the server turned off render sign-in.
     if (path === "/signup" && signupOpen(state.bootstrap)) return <SignUp />;

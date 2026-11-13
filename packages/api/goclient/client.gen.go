@@ -562,6 +562,24 @@ func (e IngestionRequestProtocolVersion) Valid() bool {
 	}
 }
 
+// Defines values for OAuthScope.
+const (
+	CommentsWrite OAuthScope = "comments:write"
+	ReviewsRead   OAuthScope = "reviews:read"
+)
+
+// Valid indicates whether the value is a known member of the OAuthScope enum.
+func (e OAuthScope) Valid() bool {
+	switch e {
+	case CommentsWrite:
+		return true
+	case ReviewsRead:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PersonalPairRequestVersion.
 const (
 	PersonalPairRequestVersionN1 PersonalPairRequestVersion = 1
@@ -865,21 +883,6 @@ func (e CreateAccountTokenJSONBodyPurpose) Valid() bool {
 	case CreateAccountTokenJSONBodyPurposeApi:
 		return true
 	case CreateAccountTokenJSONBodyPurposeCollector:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for StartGoogleSignInJSONBodyNext.
-const (
-	Settingsgithub StartGoogleSignInJSONBodyNext = "/settings/github"
-)
-
-// Valid indicates whether the value is a known member of the StartGoogleSignInJSONBodyNext enum.
-func (e StartGoogleSignInJSONBodyNext) Valid() bool {
-	switch e {
-	case Settingsgithub:
 		return true
 	default:
 		return false
@@ -1241,6 +1244,20 @@ type ComparisonPolicyKind string
 // ComparisonKind defines model for ComparisonKind.
 type ComparisonKind string
 
+// ConnectedAgent defines model for ConnectedAgent.
+type ConnectedAgent struct {
+	// CreatedAt Unix milliseconds of the first consent.
+	CreatedAt int                       `json:"createdAt"`
+	Host      nullable.Nullable[string] `json:"host"`
+	Id        string                    `json:"id"`
+
+	// LastUsedAt Unix milliseconds of the latest token use or refresh.
+	LastUsedAt nullable.Nullable[int] `json:"lastUsedAt"`
+	Name       string                 `json:"name"`
+	Scopes     []OAuthScope           `json:"scopes"`
+	Verified   bool                   `json:"verified"`
+}
+
 // Context defines model for Context.
 type Context struct {
 	Availability ContextAvailability `json:"availability"`
@@ -1553,6 +1570,32 @@ type NotificationPreferences struct {
 	// SkipDrafts Draft pull requests notify nothing; becoming ready for review counts as opened.
 	SkipDrafts bool `json:"skipDrafts"`
 }
+
+// OAuthClient defines model for OAuthClient.
+type OAuthClient struct {
+	// Host The verifying host, null for unverified clients.
+	Host nullable.Nullable[string] `json:"host"`
+
+	// Name The client's own name. For an unverified client it is only the client's claim.
+	Name string `json:"name"`
+
+	// Verified True when the client is identified by a metadata document its host serves.
+	Verified bool `json:"verified"`
+}
+
+// OAuthRequest defines model for OAuthRequest.
+type OAuthRequest struct {
+	Client OAuthClient `json:"client"`
+
+	// RedirectHost Host (and port) the browser returns to after consent.
+	RedirectHost string `json:"redirectHost"`
+
+	// Scopes Requested scopes; reviews:read is always first.
+	Scopes []OAuthScope `json:"scopes"`
+}
+
+// OAuthScope reviews:read reads reviews, diffs and comments; comments:write adds comments, replies and resolves them.
+type OAuthScope string
 
 // ObservationMetadata defines model for ObservationMetadata.
 type ObservationMetadata struct {
@@ -1986,6 +2029,9 @@ type FileId = string
 // FileVersion defines model for FileVersion.
 type FileVersion = string
 
+// OAuthRequestId defines model for OAuthRequestId.
+type OAuthRequestId = string
+
 // PublicNumber defines model for PublicNumber.
 type PublicNumber = int
 
@@ -2017,6 +2063,12 @@ type ProbeOk = Probe
 
 // RateLimited defines model for RateLimited.
 type RateLimited = Problem
+
+// DisconnectAgentParams defines parameters for DisconnectAgent.
+type DisconnectAgentParams struct {
+	// XCSRFToken Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials.
+	XCSRFToken *CsrfToken `json:"X-CSRF-Token,omitempty"`
+}
 
 // ChangePasswordJSONBody defines parameters for ChangePassword.
 type ChangePasswordJSONBody struct {
@@ -2056,12 +2108,9 @@ type RevokeAccountTokenParams struct {
 
 // StartGoogleSignInJSONBody defines parameters for StartGoogleSignIn.
 type StartGoogleSignInJSONBody struct {
-	// Next App page the successful callback redirects to instead of `/`. Only listed pages are accepted.
-	Next *StartGoogleSignInJSONBodyNext `json:"next,omitempty"`
+	// Next App page the successful callback redirects to instead of `/`. Only `/settings/github` and a pending OAuth consent page (`/oauth/consent?request=` and a 43-character request ID) are accepted.
+	Next *string `json:"next,omitempty"`
 }
-
-// StartGoogleSignInJSONBodyNext defines parameters for StartGoogleSignIn.
-type StartGoogleSignInJSONBodyNext string
 
 // CompleteGoogleSignInParams defines parameters for CompleteGoogleSignIn.
 type CompleteGoogleSignInParams struct {
@@ -2288,6 +2337,20 @@ type AcceptInviteWithPasswordJSONBody struct {
 	Token string `json:"token"`
 }
 
+// AnswerOAuthRequestJSONBody defines parameters for AnswerOAuthRequest.
+type AnswerOAuthRequestJSONBody struct {
+	Allow bool `json:"allow"`
+
+	// Scopes Scopes to grant; reviews:read is always granted and scopes the request did not ask for are ignored.
+	Scopes []OAuthScope `json:"scopes"`
+}
+
+// AnswerOAuthRequestParams defines parameters for AnswerOAuthRequest.
+type AnswerOAuthRequestParams struct {
+	// XCSRFToken Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials.
+	XCSRFToken *CsrfToken `json:"X-CSRF-Token,omitempty"`
+}
+
 // CompletePasswordResetJSONBody defines parameters for CompletePasswordReset.
 type CompletePasswordResetJSONBody struct {
 	Password string `json:"password"`
@@ -2402,6 +2465,9 @@ type LookupInviteJSONRequestBody = InviteToken
 
 // AcceptInviteWithPasswordJSONRequestBody defines body for AcceptInviteWithPassword for application/json ContentType.
 type AcceptInviteWithPasswordJSONRequestBody AcceptInviteWithPasswordJSONBody
+
+// AnswerOAuthRequestJSONRequestBody defines body for AnswerOAuthRequest for application/json ContentType.
+type AnswerOAuthRequestJSONRequestBody AnswerOAuthRequestJSONBody
 
 // CompletePasswordResetJSONRequestBody defines body for CompletePasswordReset for application/json ContentType.
 type CompletePasswordResetJSONRequestBody CompletePasswordResetJSONBody
@@ -2547,6 +2613,16 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+
+	// ListConnectedAgents performs a GET /api/v2/account/agents (the `ListConnectedAgents` operationId) request.
+	//
+	// List the MCP clients the account authorized with OAuth; never returns tokens. Distributed browser sessions only.
+	ListConnectedAgents(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DisconnectAgent performs a DELETE /api/v2/account/agents/{agentId} (the `DisconnectAgent` operationId) request.
+	//
+	// Revoke an OAuth grant and every token issued under it immediately. Distributed browser sessions only.
+	DisconnectAgent(ctx context.Context, agentId string, params *DisconnectAgentParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ChangePasswordWithBody performs a PUT /api/v2/account/password (the `ChangePassword` operationId) request,
 	// with any type of body and a specified content type.
@@ -2944,6 +3020,23 @@ type ClientInterface interface {
 	// GetServerMetricsV2 performs a GET /api/v2/metrics (the `GetServerMetricsV2` operationId) request.
 	GetServerMetricsV2(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetOAuthRequest performs a GET /api/v2/oauth/requests/{requestId} (the `GetOAuthRequest` operationId) request.
+	//
+	// Distributed only, when a public URL enables OAuth. A validated authorization request awaiting the signed-in user's consent; the consent page renders it. Requests expire after ten minutes or once answered.
+	GetOAuthRequest(ctx context.Context, requestId OAuthRequestId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AnswerOAuthRequestWithBody performs a POST /api/v2/oauth/requests/{requestId} (the `AnswerOAuthRequest` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Allow or deny a pending authorization request as the signed-in account. Allowing grants reading and the chosen scopes the request asked for; the browser then follows redirectTo, which carries the code (or access_denied), state and iss to the client.
+	AnswerOAuthRequestWithBody(ctx context.Context, requestId OAuthRequestId, params *AnswerOAuthRequestParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AnswerOAuthRequest performs a POST /api/v2/oauth/requests/{requestId} (the `AnswerOAuthRequest` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Allow or deny a pending authorization request as the signed-in account. Allowing grants reading and the chosen scopes the request asked for; the browser then follows redirectTo, which carries the code (or access_denied), state and iss to the client.
+	AnswerOAuthRequest(ctx context.Context, requestId OAuthRequestId, params *AnswerOAuthRequestParams, body AnswerOAuthRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// CompletePasswordResetWithBody performs a POST /api/v2/password-reset (the `CompletePasswordReset` operationId) request,
 	// with any type of body and a specified content type.
 	//
@@ -3051,6 +3144,36 @@ type ClientInterface interface {
 	//
 	// Distributed only. Unauthenticated readiness probe; ready while the database accepts queries. A failure never explains its cause.
 	GetReadiness(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+// ListConnectedAgents performs a GET /api/v2/account/agents (the `ListConnectedAgents` operationId) request.
+//
+// List the MCP clients the account authorized with OAuth; never returns tokens. Distributed browser sessions only.
+func (c *Client) ListConnectedAgents(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListConnectedAgentsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DisconnectAgent performs a DELETE /api/v2/account/agents/{agentId} (the `DisconnectAgent` operationId) request.
+//
+// Revoke an OAuth grant and every token issued under it immediately. Distributed browser sessions only.
+func (c *Client) DisconnectAgent(ctx context.Context, agentId string, params *DisconnectAgentParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDisconnectAgentRequest(c.Server, agentId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 // ChangePasswordWithBody performs a PUT /api/v2/account/password (the `ChangePassword` operationId) request,
@@ -4269,6 +4392,53 @@ func (c *Client) GetServerMetricsV2(ctx context.Context, reqEditors ...RequestEd
 	return c.Client.Do(req)
 }
 
+// GetOAuthRequest performs a GET /api/v2/oauth/requests/{requestId} (the `GetOAuthRequest` operationId) request.
+//
+// Distributed only, when a public URL enables OAuth. A validated authorization request awaiting the signed-in user's consent; the consent page renders it. Requests expire after ten minutes or once answered.
+func (c *Client) GetOAuthRequest(ctx context.Context, requestId OAuthRequestId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetOAuthRequestRequest(c.Server, requestId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AnswerOAuthRequestWithBody performs a POST /api/v2/oauth/requests/{requestId} (the `AnswerOAuthRequest` operationId) request,
+// with any type of body and a specified content type.
+//
+// Allow or deny a pending authorization request as the signed-in account. Allowing grants reading and the chosen scopes the request asked for; the browser then follows redirectTo, which carries the code (or access_denied), state and iss to the client.
+func (c *Client) AnswerOAuthRequestWithBody(ctx context.Context, requestId OAuthRequestId, params *AnswerOAuthRequestParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAnswerOAuthRequestRequestWithBody(c.Server, requestId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AnswerOAuthRequest performs a POST /api/v2/oauth/requests/{requestId} (the `AnswerOAuthRequest` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Allow or deny a pending authorization request as the signed-in account. Allowing grants reading and the chosen scopes the request asked for; the browser then follows redirectTo, which carries the code (or access_denied), state and iss to the client.
+func (c *Client) AnswerOAuthRequest(ctx context.Context, requestId OAuthRequestId, params *AnswerOAuthRequestParams, body AnswerOAuthRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAnswerOAuthRequestRequest(c.Server, requestId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // CompletePasswordResetWithBody performs a POST /api/v2/password-reset (the `CompletePasswordReset` operationId) request,
 // with any type of body and a specified content type.
 //
@@ -4615,6 +4785,82 @@ func (c *Client) GetReadiness(ctx context.Context, reqEditors ...RequestEditorFn
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewListConnectedAgentsRequest constructs an http.Request for the ListConnectedAgents method
+func NewListConnectedAgentsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/account/agents")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDisconnectAgentRequest constructs an http.Request for the DisconnectAgent method
+func NewDisconnectAgentRequest(server string, agentId string, params *DisconnectAgentParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "agentId", agentId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/account/agents/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XCSRFToken != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-CSRF-Token", *params.XCSRFToken, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-CSRF-Token", headerParam0)
+		}
+
+	}
+
+	return req, nil
 }
 
 // NewChangePasswordRequest calls the generic ChangePassword builder with application/json body
@@ -7885,6 +8131,102 @@ func NewGetServerMetricsV2Request(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetOAuthRequestRequest constructs an http.Request for the GetOAuthRequest method
+func NewGetOAuthRequestRequest(server string, requestId OAuthRequestId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "requestId", requestId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/oauth/requests/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAnswerOAuthRequestRequest calls the generic AnswerOAuthRequest builder with application/json body
+func NewAnswerOAuthRequestRequest(server string, requestId OAuthRequestId, params *AnswerOAuthRequestParams, body AnswerOAuthRequestJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAnswerOAuthRequestRequestWithBody(server, requestId, params, "application/json", bodyReader)
+}
+
+// NewAnswerOAuthRequestRequestWithBody constructs an http.Request for the AnswerOAuthRequest method, with any body, and a specified content type
+func NewAnswerOAuthRequestRequestWithBody(server string, requestId OAuthRequestId, params *AnswerOAuthRequestParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "requestId", requestId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/oauth/requests/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.XCSRFToken != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-CSRF-Token", *params.XCSRFToken, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-CSRF-Token", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewCompletePasswordResetRequest calls the generic CompletePasswordReset builder with application/json body
 func NewCompletePasswordResetRequest(server string, body CompletePasswordResetJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -8951,6 +9293,20 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
+	// ListConnectedAgentsWithResponse performs a GET /api/v2/account/agents (the `ListConnectedAgents` operationId) request.
+	//
+	// List the MCP clients the account authorized with OAuth; never returns tokens. Distributed browser sessions only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ListConnectedAgentsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListConnectedAgentsResponse, error)
+
+	// DisconnectAgentWithResponse performs a DELETE /api/v2/account/agents/{agentId} (the `DisconnectAgent` operationId) request.
+	//
+	// Revoke an OAuth grant and every token issued under it immediately. Distributed browser sessions only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	DisconnectAgentWithResponse(ctx context.Context, agentId string, params *DisconnectAgentParams, reqEditors ...RequestEditorFn) (*DisconnectAgentResponse, error)
+
 	// ChangePasswordWithBodyWithResponse performs a PUT /api/v2/account/password (the `ChangePassword` operationId) request,
 	// with any type of body and a specified content type.
 	//
@@ -9471,6 +9827,27 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	GetServerMetricsV2WithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetServerMetricsV2Response, error)
 
+	// GetOAuthRequestWithResponse performs a GET /api/v2/oauth/requests/{requestId} (the `GetOAuthRequest` operationId) request.
+	//
+	// Distributed only, when a public URL enables OAuth. A validated authorization request awaiting the signed-in user's consent; the consent page renders it. Requests expire after ten minutes or once answered.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetOAuthRequestWithResponse(ctx context.Context, requestId OAuthRequestId, reqEditors ...RequestEditorFn) (*GetOAuthRequestResponse, error)
+
+	// AnswerOAuthRequestWithBodyWithResponse performs a POST /api/v2/oauth/requests/{requestId} (the `AnswerOAuthRequest` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Allow or deny a pending authorization request as the signed-in account. Allowing grants reading and the chosen scopes the request asked for; the browser then follows redirectTo, which carries the code (or access_denied), state and iss to the client.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	AnswerOAuthRequestWithBodyWithResponse(ctx context.Context, requestId OAuthRequestId, params *AnswerOAuthRequestParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AnswerOAuthRequestResponse, error)
+
+	// AnswerOAuthRequestWithResponse performs a POST /api/v2/oauth/requests/{requestId} (the `AnswerOAuthRequest` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Allow or deny a pending authorization request as the signed-in account. Allowing grants reading and the chosen scopes the request asked for; the browser then follows redirectTo, which carries the code (or access_denied), state and iss to the client.
+	AnswerOAuthRequestWithResponse(ctx context.Context, requestId OAuthRequestId, params *AnswerOAuthRequestParams, body AnswerOAuthRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*AnswerOAuthRequestResponse, error)
+
 	// CompletePasswordResetWithBodyWithResponse performs a POST /api/v2/password-reset (the `CompletePasswordReset` operationId) request,
 	// with any type of body and a specified content type.
 	//
@@ -9620,6 +9997,155 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	GetReadinessWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetReadinessResponse, error)
+}
+
+type ListConnectedAgentsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Agents []ConnectedAgent `json:"agents"`
+	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Problem
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListConnectedAgentsResponse) GetJSON200() *struct {
+	Agents []ConnectedAgent `json:"agents"`
+} {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListConnectedAgentsResponse) GetApplicationproblemJSON400() *Problem {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListConnectedAgentsResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListConnectedAgentsResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ListConnectedAgentsResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListConnectedAgentsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListConnectedAgentsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListConnectedAgentsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListConnectedAgentsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListConnectedAgentsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DisconnectAgentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Problem
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r DisconnectAgentResponse) GetApplicationproblemJSON400() *Problem {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DisconnectAgentResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DisconnectAgentResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DisconnectAgentResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DisconnectAgentResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DisconnectAgentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DisconnectAgentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DisconnectAgentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DisconnectAgentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
 }
 
 type ChangePasswordResponse struct {
@@ -13167,6 +13693,162 @@ func (r GetServerMetricsV2Response) ContentType() string {
 	return ""
 }
 
+type GetOAuthRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OAuthRequest
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Problem
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetOAuthRequestResponse) GetJSON200() *OAuthRequest {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetOAuthRequestResponse) GetApplicationproblemJSON400() *Problem {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetOAuthRequestResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetOAuthRequestResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetOAuthRequestResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetOAuthRequestResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetOAuthRequestResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetOAuthRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetOAuthRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetOAuthRequestResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type AnswerOAuthRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		RedirectTo string `json:"redirectTo"`
+	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Problem
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AnswerOAuthRequestResponse) GetJSON200() *struct {
+	RedirectTo string `json:"redirectTo"`
+} {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r AnswerOAuthRequestResponse) GetApplicationproblemJSON400() *Problem {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r AnswerOAuthRequestResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r AnswerOAuthRequestResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r AnswerOAuthRequestResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r AnswerOAuthRequestResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r AnswerOAuthRequestResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AnswerOAuthRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AnswerOAuthRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AnswerOAuthRequestResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type CompletePasswordResetResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -14375,6 +15057,32 @@ func (r GetReadinessResponse) ContentType() string {
 	return ""
 }
 
+// ListConnectedAgentsWithResponse performs a GET /api/v2/account/agents (the `ListConnectedAgents` operationId) request.
+//
+// List the MCP clients the account authorized with OAuth; never returns tokens. Distributed browser sessions only.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ListConnectedAgentsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListConnectedAgentsResponse, error) {
+	rsp, err := c.ListConnectedAgents(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListConnectedAgentsResponse(rsp)
+}
+
+// DisconnectAgentWithResponse performs a DELETE /api/v2/account/agents/{agentId} (the `DisconnectAgent` operationId) request.
+//
+// Revoke an OAuth grant and every token issued under it immediately. Distributed browser sessions only.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) DisconnectAgentWithResponse(ctx context.Context, agentId string, params *DisconnectAgentParams, reqEditors ...RequestEditorFn) (*DisconnectAgentResponse, error) {
+	rsp, err := c.DisconnectAgent(ctx, agentId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDisconnectAgentResponse(rsp)
+}
+
 // ChangePasswordWithBodyWithResponse performs a PUT /api/v2/account/password (the `ChangePassword` operationId) request,
 // with any type of body and a specified content type.
 //
@@ -15387,6 +16095,45 @@ func (c *ClientWithResponses) GetServerMetricsV2WithResponse(ctx context.Context
 	return ParseGetServerMetricsV2Response(rsp)
 }
 
+// GetOAuthRequestWithResponse performs a GET /api/v2/oauth/requests/{requestId} (the `GetOAuthRequest` operationId) request.
+//
+// Distributed only, when a public URL enables OAuth. A validated authorization request awaiting the signed-in user's consent; the consent page renders it. Requests expire after ten minutes or once answered.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetOAuthRequestWithResponse(ctx context.Context, requestId OAuthRequestId, reqEditors ...RequestEditorFn) (*GetOAuthRequestResponse, error) {
+	rsp, err := c.GetOAuthRequest(ctx, requestId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetOAuthRequestResponse(rsp)
+}
+
+// AnswerOAuthRequestWithBodyWithResponse performs a POST /api/v2/oauth/requests/{requestId} (the `AnswerOAuthRequest` operationId) request,
+// with any type of body and a specified content type.
+//
+// Allow or deny a pending authorization request as the signed-in account. Allowing grants reading and the chosen scopes the request asked for; the browser then follows redirectTo, which carries the code (or access_denied), state and iss to the client.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) AnswerOAuthRequestWithBodyWithResponse(ctx context.Context, requestId OAuthRequestId, params *AnswerOAuthRequestParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AnswerOAuthRequestResponse, error) {
+	rsp, err := c.AnswerOAuthRequestWithBody(ctx, requestId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAnswerOAuthRequestResponse(rsp)
+}
+
+// AnswerOAuthRequestWithResponse performs a POST /api/v2/oauth/requests/{requestId} (the `AnswerOAuthRequest` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Allow or deny a pending authorization request as the signed-in account. Allowing grants reading and the chosen scopes the request asked for; the browser then follows redirectTo, which carries the code (or access_denied), state and iss to the client.
+func (c *ClientWithResponses) AnswerOAuthRequestWithResponse(ctx context.Context, requestId OAuthRequestId, params *AnswerOAuthRequestParams, body AnswerOAuthRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*AnswerOAuthRequestResponse, error) {
+	rsp, err := c.AnswerOAuthRequest(ctx, requestId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAnswerOAuthRequestResponse(rsp)
+}
+
 // CompletePasswordResetWithBodyWithResponse performs a POST /api/v2/password-reset (the `CompletePasswordReset` operationId) request,
 // with any type of body and a specified content type.
 //
@@ -15679,6 +16426,126 @@ func (c *ClientWithResponses) GetReadinessWithResponse(ctx context.Context, reqE
 		return nil, err
 	}
 	return ParseGetReadinessResponse(rsp)
+}
+
+// ParseListConnectedAgentsResponse parses an HTTP response from a ListConnectedAgentsWithResponse call
+func ParseListConnectedAgentsResponse(rsp *http.Response) (*ListConnectedAgentsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListConnectedAgentsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Agents []ConnectedAgent `json:"agents"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDisconnectAgentResponse parses an HTTP response from a DisconnectAgentWithResponse call
+func ParseDisconnectAgentResponse(rsp *http.Response) (*DisconnectAgentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DisconnectAgentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseChangePasswordResponse parses an HTTP response from a ChangePasswordWithResponse call
@@ -18308,6 +19175,130 @@ func ParseGetServerMetricsV2Response(rsp *http.Response) (*GetServerMetricsV2Res
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetOAuthRequestResponse parses an HTTP response from a GetOAuthRequestWithResponse call
+func ParseGetOAuthRequestResponse(rsp *http.Response) (*GetOAuthRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetOAuthRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OAuthRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAnswerOAuthRequestResponse parses an HTTP response from a AnswerOAuthRequestWithResponse call
+func ParseAnswerOAuthRequestResponse(rsp *http.Response) (*AnswerOAuthRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AnswerOAuthRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			RedirectTo string `json:"redirectTo"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
