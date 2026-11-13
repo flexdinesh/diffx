@@ -2937,7 +2937,7 @@ test("saving a draft from another comparison uses its original scope and diff id
   await page.getByRole("tab", { name: /Review/ }).click();
   await page
     .locator("#comments-panel")
-    .getByRole("button", { name: "Save comment" })
+    .getByRole("button", { name: "Comment", exact: true })
     .click();
   await expect
     .poll(() => submitted)

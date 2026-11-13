@@ -246,7 +246,7 @@ component internals; layout remains aligned to the 4px rhythm.
 | Icon / label, tightly related metadata | 4 or 8                                    |
 | Related actions                        | 8; wrap whole actions when space runs out |
 | Label to input; heading to prose       | 8                                         |
-| Comment card/editor padding            | 12 in both sidebar and inline locations   |
+| Comment card/editor padding            | 8 block, 12 inline; sidebar and inline    |
 | Sidebar section inset                  | 16                                        |
 | Diff canvas gutters / file gaps        | 12; measured from `--space-3`             |
 | Form groups / distinct sections        | 16 or 24                                  |
@@ -639,24 +639,29 @@ at `/design.html` (see `docs/frontend.md`).
   `--bg` or `--panel` and `--border-control`. Textareas share the
   review body style and 8px/12px padding.
 - Label every control. Placeholders are hints, not labels. Keep label-to-control
-  spacing at 8px, including the heading above a comment editor.
+  spacing at 8px; the compact comment frame keeps 6px under its 24px header row.
 - Every search or filter input is the shared `SearchField`: 32px
   (`--control-height`), leading search icon, optional shortcut hint and trailing
   actions. It shows its focus ring around the entire grouped field. Selects and
-  textareas retain the shared visible focus ring.
+  textareas retain the shared visible focus ring, except the comment editor field,
+  whose focus is a single accent border inside its frame.
 - Keep Base UI values validated at application boundaries. New validation must
   pair `--error` with explanatory text and `aria-invalid` / `aria-describedby`.
 
 ### Cards, navigation, and status
 
-- Review comments and editors use the shared shadcn `Card` composition, as dense
-  as the rest of the shell: a complete subtle border, no shadow, 8px block margins,
-  a 28px header, an 8px body and a 28px action row. Separate card regions with a
-  raised body surface, neutral header, and neutral action row; reserve accent tint
-  for active editors and selections. Titles state the target ("File", "Line 2–4")
-  without repeating "Review comment"; the editor's label is screen-reader only.
-  Keep status at the header's trailing edge and use compact labeled icons for state
-  and actions.
+- Review comments and editors use the shared shadcn `Card` composition: one flat
+  `--panel` frame with a complete subtle border, no shadow, 8px block margins and
+  8px/12px padding. A 24px header row, the body and the action row are separated by
+  6px and 8px gaps, not bars or separators, so the frame takes little height from
+  the code. Actions sit 4px apart so a saved comment's four actions fit one row
+  in the default 330px sidebar. Saved titles state the target ("File", "Line 2–4") without repeating
+  "Review comment". Editors title themselves "New comment" or "Edit comment"
+  beside the muted mono location, with copy at the header's trailing edge; the
+  editor's label is screen-reader only. The focused editor field is the only
+  accent: a single accent border, no offset ring. Keep status at the header's
+  trailing edge and use compact labeled icons for saved comments' state and
+  actions; editor actions are text-only.
 - Comment actions use `xs` buttons with touch sizing on coarse pointers; each
   file's viewed control uses standard button sizing.
 - Resolved comments collapse to their header by default. A labeled chevron
@@ -671,8 +676,10 @@ at `/design.html` (see `docs/frontend.md`).
   moves an outdated comment to its file on the latest snapshot, still labeled
   outdated.
   Export uses one primary `Copy review` action plus a menu for broader scopes.
-- Keep `Save comment` enabled when idle; empty submission focuses the labeled
-  editor and shows an inline error. Disable it while saving. Deleting a saved
+- The editor's primary action is `Comment` for a new comment and `Save` when
+  editing, with a muted "⌘Enter to comment"/"to save" hint (platform format) on
+  wide inline editors. Keep it enabled when idle; empty submission focuses the
+  labeled editor and shows an inline error. Disable it while saving. Deleting a saved
   comment requires explicit confirmation.
 - Tint every old/new diff row covered by a visible comment, including its
   gutter and multi-line range. Use a stronger green/red tint for addition and

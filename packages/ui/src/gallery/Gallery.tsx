@@ -90,6 +90,7 @@ import { Shortcut } from "@diffx/ui/components/shortcut";
 import { SplitButton } from "@diffx/ui/components/split-button";
 import { StatusDot } from "@diffx/ui/components/status-dot";
 import { ThemeSwatch } from "@diffx/ui/components/theme-swatch";
+import { formatShortcut } from "@diffx/ui/lib/format";
 
 const colors = [
   ["bg", "bg-bg"],
@@ -459,13 +460,31 @@ function Components() {
               </CardFooter>
             </Card>
           ))}
-          <Card active>
+          <Card>
             <CardHeader>
-              <CardTitle>Active editor</CardTitle>
+              <CardTitle className="gap-2">
+                <span className="shrink-0">New comment</span>
+                <span className="min-w-0 truncate font-mono text-xs">
+                  src/value.ts:3
+                </span>
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <Textarea aria-label="Draft" />
+              <Textarea
+                aria-label="Draft"
+                placeholder="Leave a review comment…"
+                variant="comment"
+              />
             </CardContent>
+            <CardFooter>
+              <span className="mr-auto text-xs text-muted">
+                {formatShortcut({ mod: true, key: "Enter" })} to comment
+              </span>
+              <Button variant="ghost" size="xs">
+                Cancel
+              </Button>
+              <Button size="xs">Comment</Button>
+            </CardFooter>
           </Card>
         </div>
       </Section>

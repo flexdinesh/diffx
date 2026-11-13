@@ -425,8 +425,9 @@ test("review actions use progressive disclosure, status filters, and confirmed d
   const openCard = panel.locator('[data-comment-id="open-review-comment"]');
   await openCard.getByRole("button", { name: "Edit", exact: true }).click();
   const editor = page.getByRole("textbox", { name: "Review comment" });
+  await expect(page.getByText("Edit comment", { exact: true })).toBeVisible();
   await editor.fill("");
-  const save = page.getByRole("button", { name: "Save comment" });
+  const save = page.getByRole("button", { name: "Save", exact: true });
   await expect(save).toBeEnabled();
   await save.click();
   await expect(editor).toBeFocused();
