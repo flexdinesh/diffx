@@ -168,7 +168,7 @@ type Store interface {
 	// PutAppSettings replaces the settings and notifies every replica at commit.
 	PutAppSettings(ctx context.Context, settings Settings, actorID string, at time.Time) error
 	AccountSummaries(context.Context) ([]AccountSummary, error)
-	// SetAccountDisabled revokes sessions and tokens when disabling. It,
+	// SetAccountDisabled revokes sessions, tokens and OAuth grants when disabling. It,
 	// DeleteAccount and SetAdmin refuse with ErrLastAdmin when the change would
 	// leave no enabled admin, deciding atomically with concurrent changes.
 	SetAccountDisabled(ctx context.Context, accountID string, disabled bool, at time.Time) error

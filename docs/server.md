@@ -46,6 +46,23 @@ public URL, or loopback http for development, also enables Web Push
 notifications; the server generates its VAPID keys once and keeps them in the
 database.
 
+A public URL also makes the server an OAuth 2.1 authorization server for its
+MCP endpoint, so MCP clients connect by URL alone (`claude mcp add --transport
+http diffx https://HOST/mcp`) and the user approves them in the browser. The
+public URL is the issuer; `/.well-known/oauth-protected-resource/mcp` and
+`/.well-known/oauth-authorization-server` describe it, and `/oauth/authorize`,
+`/oauth/token`, `/oauth/revoke` and `/oauth/register` implement it. Clients are
+public (PKCE S256, no secrets), identified by an https client metadata document
+URL the server fetches, or by unauthenticated dynamic registration, bounded
+like sign-in. Metadata, token, revocation and registration accept
+cross-origin requests and never read cookies; consent needs a browser session
+and CSRF token. Document fetches reach only public addresses, follow no
+redirects and stop at 5 KiB or five seconds, so the server needs outbound
+HTTPS to connect such clients. OAuth tokens work only on `/mcp` and
+`/mcp/contexts/{id}`; API tokens keep working everywhere they did. Users see
+and disconnect clients in Settings › Connected agents. Without a public URL
+none of this exists and MCP takes API tokens only.
+
 Who may join is set in the console's Settings page, not server configuration:
 Signup lets anyone create an account from the app without an invite; Password
 signup requires an email and password for new accounts. Both default on for

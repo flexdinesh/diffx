@@ -260,6 +260,58 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v2/account/agents": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List the MCP clients the account authorized with OAuth; never returns tokens. Distributed browser sessions only. */
+    get: operations["listConnectedAgents"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/account/agents/{agentId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** @description Revoke an OAuth grant and every token issued under it immediately. Distributed browser sessions only. */
+    delete: operations["disconnectAgent"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/oauth/requests/{requestId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Distributed only, when a public URL enables OAuth. A validated authorization request awaiting the signed-in user's consent; the consent page renders it. Requests expire after ten minutes or once answered. */
+    get: operations["getOAuthRequest"];
+    put?: never;
+    /** @description Allow or deny a pending authorization request as the signed-in account. Allowing grants reading and the chosen scopes the request asked for; the browser then follows redirectTo, which carries the code (or access_denied), state and iss to the client. */
+    post: operations["answerOAuthRequest"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v2/github/webhooks": {
     parameters: {
       query?: never;
@@ -1326,6 +1378,37 @@ export interface components {
       email: string;
       password: string;
     };
+    /**
+     * @description reviews:read reads reviews, diffs and comments; comments:write adds comments, replies and resolves them.
+     * @enum {string}
+     */
+    OAuthScope: "reviews:read" | "comments:write";
+    OAuthClient: {
+      /** @description The client's own name. For an unverified client it is only the client's claim. */
+      name: string;
+      /** @description True when the client is identified by a metadata document its host serves. */
+      verified: boolean;
+      /** @description The verifying host, null for unverified clients. */
+      host: string | null;
+    };
+    OAuthRequest: {
+      client: components["schemas"]["OAuthClient"];
+      /** @description Host (and port) the browser returns to after consent. */
+      redirectHost: string;
+      /** @description Requested scopes; reviews:read is always first. */
+      scopes: components["schemas"]["OAuthScope"][];
+    };
+    ConnectedAgent: {
+      id: string;
+      name: string;
+      verified: boolean;
+      host: string | null;
+      scopes: components["schemas"]["OAuthScope"][];
+      /** @description Unix milliseconds of the first consent. */
+      createdAt: number;
+      /** @description Unix milliseconds of the latest token use or refresh. */
+      lastUsedAt: number | null;
+    };
     AccountToken: {
       id: string;
       name: string;
@@ -2083,6 +2166,7 @@ export interface components {
     };
   };
   parameters: {
+    OAuthRequestId: string;
     /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
     CsrfToken: string;
     UserId: string;
@@ -2228,11 +2312,8 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": {
-          /**
-           * @description App page the successful callback redirects to instead of `/`. Only listed pages are accepted.
-           * @enum {string}
-           */
-          next?: "/settings/github";
+          /** @description App page the successful callback redirects to instead of `/`. Only `/settings/github` and a pending OAuth consent page (`/oauth/consent?request=` and a 43-character request ID) are accepted. */
+          next?: string;
         };
       };
     };
@@ -2569,6 +2650,129 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  listConnectedAgents: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Connected agents, most recently connected first. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            agents: components["schemas"]["ConnectedAgent"][];
+          };
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  disconnectAgent: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path: {
+        agentId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent disconnected. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  getOAuthRequest: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        requestId: components["parameters"]["OAuthRequestId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The pending request. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OAuthRequest"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  answerOAuthRequest: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required for unsafe requests authenticated through a distributed browser session; attached by browser identity transport. Not applicable to local or bearer credentials. */
+        "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+      };
+      path: {
+        requestId: components["parameters"]["OAuthRequestId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          allow: boolean;
+          /** @description Scopes to grant; reviews:read is always granted and scopes the request did not ask for are ignored. */
+          scopes: components["schemas"]["OAuthScope"][];
+        };
+      };
+    };
+    responses: {
+      /** @description Where to send the browser. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** Format: uri */
+            redirectTo: string;
+          };
+        };
       };
       400: components["responses"]["Problem"];
       401: components["responses"]["Problem"];

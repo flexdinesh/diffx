@@ -46,6 +46,9 @@ async function remote(
   await page.route("**/api/v2/account/tokens", (route) =>
     route.fulfill({ json: { tokens: [] } }),
   );
+  await page.route("**/api/v2/account/agents", (route) =>
+    route.fulfill({ json: { agents: [] } }),
+  );
 }
 
 test("local mode has no account UI and settings resolves to reviews", async ({
@@ -719,6 +722,7 @@ test("settings scroll at the window edge with a nav that marks the current page"
   const current = nav.locator('[aria-current="page"]');
   await expect(nav.getByRole("link")).toHaveText([
     "API tokens",
+    "Connected agents",
     "GitHub",
     "Password",
   ]);
@@ -864,4 +868,127 @@ test("another invite link opened in the same tab loads that invite", async ({
   });
   await expect(page.getByText("carol@example.com")).toBeVisible();
   expect(new URL(page.url()).hash).toBe("");
+});
+
+const consentRequest = "q".repeat(43);
+const consentPage = `/oauth/consent?request=${consentRequest}`;
+
+async function pendingConsent(page: Page) {
+  await page.route(`**/api/v2/oauth/requests/${consentRequest}`, (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({
+        json: {
+          client: { name: "Claude", verified: true, host: "claude.ai" },
+          redirectHost: "127.0.0.1:53682",
+          scopes: ["reviews:read", "comments:write"],
+        },
+      });
+    expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
+    expect(route.request().postDataJSON()).toEqual({
+      allow: true,
+      scopes: ["reviews:read"],
+    });
+    return route.fulfill({
+      json: { redirectTo: `${new URL(page.url()).origin}/returned?code=c` },
+    });
+  });
+  await page.route("**/returned?code=c", (route) =>
+    route.fulfill({ contentType: "text/html", body: "<h1>Client</h1>" }),
+  );
+}
+
+test("consent works by keyboard and fits 320px", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await remote(page);
+  await pendingConsent(page);
+  await page.goto(consentPage);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Connect Claude to diffx" }),
+  ).toBeVisible();
+  await expect(page.getByText("claude.ai", { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  const comments = page.getByRole("checkbox", {
+    name: "Add comments, reply and resolve",
+  });
+  await expect(comments).toBeChecked();
+  await comments.focus();
+  await page.keyboard.press("Space");
+  await expect(comments).not.toBeChecked();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Allow" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Client" })).toBeVisible();
+});
+
+test("signed-out consent signs in first and returns to the request", async ({
+  page,
+}) => {
+  await remote(page, false, { passwordSignupEnabled: true });
+  await pendingConsent(page);
+  await page.route("**/api/v2/auth/login", (route) =>
+    route.fulfill({ json: bootstrap(true, { method: "password" }) }),
+  );
+  await page.goto(consentPage);
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  expect(new URL(page.url()).searchParams.get("next")).toBe(consentPage);
+  await page.getByLabel("Email", { exact: true }).fill("alice@example.com");
+  await page.getByLabel("Password", { exact: true }).fill("a-password-123");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Connect Claude to diffx" }),
+  ).toBeVisible();
+  expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe(
+    consentPage,
+  );
+});
+
+test("connected agents disconnect after confirmation", async ({ page }) => {
+  await remote(page);
+  let connected = true;
+  await page.route("**/api/v2/account/agents", (route) =>
+    route.fulfill({
+      json: {
+        agents: connected
+          ? [
+              {
+                id: "grant-a",
+                name: "Claude",
+                verified: true,
+                host: "claude.ai",
+                scopes: ["reviews:read", "comments:write"],
+                createdAt: Date.now(),
+                lastUsedAt: Date.now(),
+              },
+            ]
+          : [],
+      },
+    }),
+  );
+  await page.route("**/api/v2/account/agents/grant-a", (route) => {
+    expect(route.request().method()).toBe("DELETE");
+    expect(route.request().headers()["x-csrf-token"]).toBe("session-csrf");
+    connected = false;
+    return route.fulfill({ status: 204 });
+  });
+  await page.goto("/settings/agents");
+  await expect(
+    page.getByRole("heading", { name: "Connected agents" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("claude.ai · Reads reviews and adds comments"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Actions for Claude" }).click();
+  await page.getByRole("menuitem", { name: "Disconnect…" }).click();
+  const confirm = page.getByRole("dialog", { name: "Disconnect Claude?" });
+  await expect(confirm.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await confirm.getByRole("button", { name: "Disconnect" }).click();
+  await expect(confirm).toBeHidden();
+  await expect(page.getByText("Disconnected Claude.")).toBeVisible();
+  await expect(
+    page.getByRole("list", { name: "Connected agents" }),
+  ).toHaveCount(0);
 });

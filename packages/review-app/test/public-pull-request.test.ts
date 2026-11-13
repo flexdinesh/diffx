@@ -10,6 +10,7 @@ import {
   retryAfterSeconds,
   retryLabel,
   retryMinutes,
+  consentPage,
   returnQuery,
   signInReturn,
 } from "../src/public-pull-request.ts";
@@ -147,6 +148,26 @@ test("sign-in returns only to allowed pages", () => {
     signInReturn(returnQuery("/settings/github")),
     "/settings/github",
   );
+});
+
+test("sign-in returns to a pending OAuth consent page only", () => {
+  const id = "A".repeat(43);
+  const page = consentPage(id);
+  assert.equal(page, `/oauth/consent?request=${id}`);
+  assert.equal(page && signInReturn(returnQuery(page)), page);
+  for (const request of ["short", `${id}&x=1`, `${id}/`, "#".repeat(43)])
+    assert.equal(consentPage(request), null, request);
+  for (const next of [
+    `/oauth/consent?request=${id}&x=1`,
+    `https://evil.example/oauth/consent?request=${id}`,
+    `//evil.example/oauth/consent?request=${id}`,
+    `/oauth/authorize?request=${id}`,
+  ])
+    assert.equal(
+      signInReturn(`?${new URLSearchParams({ next }).toString()}`),
+      null,
+      next,
+    );
 });
 
 test("rate limits read as whole minutes, rounding up", () => {

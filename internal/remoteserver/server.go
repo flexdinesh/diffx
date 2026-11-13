@@ -12,12 +12,14 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/authhttp"
+	"github.com/flexdinesh/diffx/internal/clientmetadata"
 	"github.com/flexdinesh/diffx/internal/contextservice"
 	"github.com/flexdinesh/diffx/internal/githubsync"
 	"github.com/flexdinesh/diffx/internal/google"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/ingestionqueue"
+	"github.com/flexdinesh/diffx/internal/oauthservice"
 	"github.com/flexdinesh/diffx/internal/pgstore"
 	"github.com/flexdinesh/diffx/internal/pushservice"
 	"github.com/flexdinesh/diffx/internal/review"
@@ -31,7 +33,8 @@ type Settings struct {
 	// DatabaseURL selects the shared Postgres database; it holds credentials and is never logged.
 	DatabaseURL string
 	// PublicURL is the browser-facing origin. An https origin, or loopback http
-	// for development, enables Web Push.
+	// for development, enables Web Push. Any public URL enables OAuth
+	// authorization for MCP clients, whose issuer it is.
 	PublicURL       string
 	InsecureCookies bool
 	RetentionDays   int
@@ -44,6 +47,9 @@ type Settings struct {
 	// PublicClientIPHeader names the same header for public pull request
 	// fetch limits, which are per client with it and server-wide without.
 	PublicClientIPHeader string
+	// clientMetadata replaces the public-address-only client metadata
+	// fetcher in tests.
+	clientMetadata oauthservice.MetadataFetcher
 }
 
 type GoogleSettings struct {
@@ -183,9 +189,14 @@ func compose(ctx context.Context, store *pgstore.Store, assets fs.FS, settings S
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
+	var metadata oauthservice.MetadataFetcher = clientmetadata.New()
+	if settings.clientMetadata != nil {
+		metadata = settings.clientMetadata
+	}
 	applications := &registry{ctx: ctx, store: store, assets: assets, applications: make(map[string]application)}
 	remote := &transport{identity: identity, applications: applications, settings: settings, assets: assets, admission: authhttp.NewAdmission(store, settings.ClientIPHeader),
-		fetches: authhttp.NewFetchLimiter(store, settings.PublicClientIPHeader), github: github, push: push}
+		fetches: authhttp.NewFetchLimiter(store, settings.PublicClientIPHeader), github: github, push: push,
+		oauth: oauthservice.New(store, metadata, settings.PublicURL)}
 	// Listening starts before serving, so no commit after compose is missed.
 	feed, err := store.Listen(ctx)
 	if err != nil {

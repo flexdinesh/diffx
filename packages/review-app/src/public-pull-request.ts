@@ -108,13 +108,31 @@ export function publicPullRequestLocation(location: {
   return { pull, href: `${pullRequestPath(pull)}${query ? `?${query}` : ""}` };
 }
 
-/** The only app pages sign-in may return to; anything else is ignored. */
+/**
+ * The only app pages sign-in may return to: GitHub settings and a pending
+ * OAuth consent page. Anything else is ignored.
+ */
 const returnPages = ["/settings/github"] as const;
-export type ReturnPage = (typeof returnPages)[number];
+type ConsentPage = `/oauth/consent?request=${string}`;
+export type ReturnPage = (typeof returnPages)[number] | ConsentPage;
+
+const consentPattern = /^\/oauth\/consent\?request=[A-Za-z0-9_-]{43}$/;
+function isConsentPage(next: string): next is ConsentPage {
+  return consentPattern.test(next);
+}
+
+/** The consent page for a pending request ID, or null for a malformed one. */
+export function consentPage(request: string): ReturnPage | null {
+  const page = `/oauth/consent?request=${request}`;
+  return isConsentPage(page) ? page : null;
+}
 
 export function signInReturn(search: string): ReturnPage | null {
   const next = new URLSearchParams(search).get("next");
-  return returnPages.find((page) => page === next) ?? null;
+  if (next === null) return null;
+  const page = returnPages.find((value) => value === next);
+  if (page) return page;
+  return isConsentPage(next) ? next : null;
 }
 
 /** `?next=` for links between sign-in pages that keep the return page. */

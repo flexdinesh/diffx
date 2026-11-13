@@ -22,6 +22,7 @@ import { navigate } from "./identity-context.tsx";
 /** Account settings sections in nav order; each is its own page. */
 const sections = [
   { id: "tokens", title: "API tokens" },
+  { id: "agents", title: "Connected agents" },
   { id: "github", title: "GitHub" },
   { id: "notifications", title: "Notifications" },
   { id: "password", title: "Password" },

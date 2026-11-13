@@ -74,7 +74,7 @@ across concurrent runs. Broad pruning is forbidden.
 | Storage    | One owner of persistent SQLite                                             | Shared Postgres; stateless processes     |
 | Queries    | Selected checkout(s) or capture via REST/MCP                               | Same application services via REST/MCP   |
 | Access     | Owner-only socket; optional loopback viewer; explicit pinned TLS policy    | Account credentials wrap the application |
-| Identity   | Automatic stable local owner; no account UI                                | Account sessions and scoped API tokens   |
+| Identity   | Automatic stable local owner; no account UI                                | Account sessions, API tokens, MCP OAuth  |
 
 `diffx remote [PATH]` selects the personal SQLite composition with explicit
 network access; `diffx-server` remains the distributed Postgres composition.
@@ -206,6 +206,15 @@ owner. See [development.md](development.md) for isolated checkout commands.
 - `identityservice`: account, sign-in method and audience (app members or
   console admins), password, reset link, session, API-token, admin role,
   account administration, invite, app admission and Google sign-in policies.
+- `oauthservice`: OAuth 2.1 authorization for MCP clients, with diffx-server
+  as both authorization server and protected resource: client identification
+  (metadata documents and dynamic registration), redirect, PKCE, resource and
+  scope rules, consent, codes, grants, token rotation and family revocation.
+  Storage is behind its `Store`; transports own the wire. Remote only, and
+  only with a public URL.
+- `clientmetadata`: OAuth client ID metadata document wire adapter: an https
+  fetch refusing non-public addresses after resolution, redirects, proxies and
+  oversized or slow documents. No storage or diffx policy.
 - `google`: Google OpenID Connect wire adapter: authorization URL with PKCE and
   nonce, code exchange and ID token claim checks. No storage or diffx policy.
 - `github`: GitHub wire adapter: app JWT, installation tokens, OAuth web flow,
@@ -229,8 +238,8 @@ owner. See [development.md](development.md) for isolated checkout commands.
   leased pull request heads. It holds no account, GitHub App key or store.
 - `reviewstore`: local SQLite transactions, stored reads and retention.
 - `pgstore`: the server's Postgres persistence: goose migrations, sqlc queries,
-  every remote storage contract (content, reviews, identity, GitHub, push,
-  queue), the locks that keep replicas correct, including the advisory
+  every remote storage contract (content, reviews, identity, OAuth, GitHub,
+  push, queue), the locks that keep replicas correct, including the advisory
   try-locks that run retention pruning and GitHub startup reconciliation on
   one replica at a time, and the `LISTEN/NOTIFY` channels that keep replicas
   informed. Remote composition only.
@@ -253,7 +262,8 @@ owner. See [development.md](development.md) for isolated checkout commands.
   socket.
 - `caller`: the authenticated caller of a request (local, session, API token
   or OAuth client, with name, verification and scopes), a dependency-free leaf
-  that compositions set and transports read to attribute writes.
+  that compositions set and transports read to attribute writes or check
+  scopes.
 - `serverapp`: transport/task composition; `localserver`: local lifecycle;
   `controlapi`: its private control API, credential-free because composition
   mounts it only on the owner's socket; `unixsocket`: socket bind, dial and
@@ -269,7 +279,7 @@ owner. See [development.md](development.md) for isolated checkout commands.
   stop the remote instance; this is accepted alongside the existing read
   exposure of loopback ports, and browsers stay refused. Desktop and browser
   gateways expose only public review routes; `remoteserver`: distributed
-  member authentication and worker composition; `authhttp`: browser
+  member authentication, OAuth protocol routes and worker composition; `authhttp`: browser
   authentication HTTP shared by remote transports (session cookie, CSRF,
   problem and identity error mapping, sign-in admission and rate limiting,
   deployment probes); `consoleserver`: the admin console transport and
@@ -288,10 +298,11 @@ interface assertions must not change application behavior. Storage contracts
 describe atomic application operations, not independently committed CRUD steps.
 
 Local composition resolves its stable owner automatically and exposes no account
-management routes. Remote composition resolves sessions or API tokens to opaque
-account IDs before application access, and records the request's `caller` (a
-session, or an API token with its name); local composition records none, which
-transports treat as the local owner with full access. Review operations receive an owner without
+management routes. Remote composition resolves sessions, API tokens or MCP OAuth
+access tokens to opaque account IDs before application access, and records the
+request's `caller` (a session, an API token with its name, or an OAuth client
+with its name, verification, client ID and scopes); local composition records
+none, which transports treat as the local owner with full access. Review operations receive an owner without
 mode branches. `remoteserver` activates owner-scoped services on demand, including
 for accounts created after startup; requests, events and workers share that owner
 registry and its shutdown lifetime; disabling or deleting an account stops its
@@ -466,7 +477,8 @@ working raises `schema_compatibility.floor` to its own version, so older
 binaries refuse the database instead of corrupting it; migration 10 raises it
 to 10 because it drops `account_invites.admin`, which the previous release
 reads, so that upgrade is not rolling; migration 12 raises it to 12 because it
-drops `remote_accounts.username`. The server requires
+drops `remote_accounts.username`. Migration 17 only adds OAuth tables, so
+its upgrade stays rolling. The server requires
 PostgreSQL 18, never resets its database, and keeps its tables in the `diffx`
 schema. Server state from earlier SQLite volumes is not imported; an upgraded
 server starts with an empty database.

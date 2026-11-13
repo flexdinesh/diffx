@@ -287,6 +287,62 @@ type Mark struct {
 	Data        []byte
 }
 
+type OauthClient struct {
+	ClientID     string
+	ClientName   string
+	RedirectUris []string
+	CreatedAt    time.Time
+}
+
+type OauthCode struct {
+	CodeHash      string
+	UserID        string
+	ClientID      string
+	ClientName    string
+	Verified      bool
+	RedirectUri   string
+	CodeChallenge string
+	Scopes        []string
+	Resource      string
+	ExpiresAt     time.Time
+	FamilyID      *string
+}
+
+type OauthGrant struct {
+	ID         string
+	UserID     string
+	ClientID   string
+	ClientName string
+	Verified   bool
+	Scopes     []string
+	CreatedAt  time.Time
+	LastUsedAt *time.Time
+}
+
+type OauthRequest struct {
+	ID            string
+	ClientID      string
+	ClientName    string
+	Verified      bool
+	RedirectUri   string
+	State         string
+	CodeChallenge string
+	Scopes        []string
+	Resource      string
+	ExpiresAt     time.Time
+}
+
+type OauthToken struct {
+	SecretHash string
+	GrantID    string
+	FamilyID   string
+	Kind       string
+	Scopes     []string
+	Resource   string
+	ExpiresAt  time.Time
+	RotatedAt  *time.Time
+}
+
 type Observation struct {
 	ContextID        string
 	OwnerID          string

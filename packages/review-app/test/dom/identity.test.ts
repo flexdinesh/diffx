@@ -338,7 +338,7 @@ test("Google accounts have no password page", async () => {
       within(nav)
         .getAllByRole("link")
         .map((link) => link.textContent),
-      ["API tokens"],
+      ["API tokens", "Connected agents"],
     ),
   );
 });
@@ -400,6 +400,7 @@ test("the nav lists only sections the server offers and shows one page", async (
         .map((link) => [link.textContent, link.getAttribute("href")]),
       [
         ["API tokens", "/settings/tokens"],
+        ["Connected agents", "/settings/agents"],
         ["Password", "/settings/password"],
       ],
     ),

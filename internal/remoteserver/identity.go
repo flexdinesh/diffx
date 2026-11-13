@@ -14,6 +14,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/caller"
 	"github.com/flexdinesh/diffx/internal/githubsync"
 	"github.com/flexdinesh/diffx/internal/identityservice"
+	"github.com/flexdinesh/diffx/internal/oauthservice"
 	"github.com/flexdinesh/diffx/internal/pushservice"
 	"github.com/flexdinesh/diffx/internal/serverapp"
 	"github.com/flexdinesh/diffx/packages/api"
@@ -28,6 +29,7 @@ type transport struct {
 	fetches      *authhttp.FetchLimiter
 	github       *githubsync.Service
 	push         *pushservice.Service
+	oauth        *oauthservice.Service
 }
 type principal struct {
 	account   identityservice.Account
@@ -35,15 +37,20 @@ type principal struct {
 	secret    string
 	purpose   identityservice.Purpose
 	tokenName string
+	oauth     *oauthservice.Access
 }
 
 // caller is how the principal authenticated, for transports that attribute
 // writes.
 func (p principal) caller() caller.Caller {
-	if p.session != nil {
+	switch {
+	case p.oauth != nil:
+		return p.oauth.Caller()
+	case p.session != nil:
 		return caller.Caller{Kind: caller.KindSession}
+	default:
+		return caller.Caller{Kind: caller.KindAPIToken, Name: p.tokenName}
 	}
-	return caller.Caller{Kind: caller.KindAPIToken, Name: p.tokenName}
 }
 
 type accountJSON struct {
@@ -78,6 +85,17 @@ func (remote *transport) authenticate(r *http.Request) (principal, error) {
 			return principal{}, identityservice.ErrAuthentication
 		}
 		secret := strings.TrimPrefix(value, "Bearer ")
+		if oauthservice.IsAccessToken(secret) {
+			// OAuth tokens are bound to the MCP resource; REST refuses them.
+			if !mcpRoute(r) {
+				return principal{}, identityservice.ErrAuthentication
+			}
+			access, err := remote.oauth.Authenticate(r.Context(), secret)
+			if errors.Is(err, oauthservice.ErrInvalidToken) {
+				return principal{}, identityservice.ErrAuthentication
+			}
+			return principal{account: identityservice.Account{ID: access.AccountID, Email: access.AccountEmail}, secret: secret, oauth: &access}, err
+		}
 		token, err := remote.identity.AuthenticateToken(r.Context(), secret)
 		return principal{account: token.Account, secret: secret, purpose: token.Purpose, tokenName: token.Name}, err
 	}
@@ -102,6 +120,14 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		remote.googleCallbackRoute(w, r)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, "/oauth/") {
+		// The consent page must not be framed by another site.
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+	}
+	if remote.oauthRoute(w, r) {
+		return
+	}
 	// Owners such as mcp-tools name pull request pages, so only /mcp itself is MCP.
 	page := !strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/mcp" && !strings.HasPrefix(r.URL.Path, "/mcp/") && !strings.HasPrefix(r.URL.Path, "/control/")
 	if !serverapp.SameOrigin(r) && !(page && serverapp.PageNavigation(r)) {
@@ -120,6 +146,10 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		err = nil
 	}
 	if err != nil {
+		if mcpRoute(r) && errors.Is(err, identityservice.ErrAuthentication) {
+			remote.mcpChallenge(w, http.StatusUnauthorized, "invalid_token")
+			return
+		}
 		authhttp.IdentityError(w, err)
 		return
 	}
@@ -146,6 +176,10 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if p.account.ID == "" {
+		if mcpRoute(r) {
+			remote.mcpChallenge(w, http.StatusUnauthorized, "")
+			return
+		}
 		authhttp.Unauthorized(w)
 		return
 	}
@@ -169,6 +203,14 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		remote.pushRoutes(w, r, p)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, consentAPI) {
+		if p.session == nil {
+			authhttp.Problem(w, 403, "Browser session required")
+			return
+		}
+		remote.consent(w, r, p)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/api/v2/account/") || r.URL.Path == "/api/v2/auth/logout" {
 		if p.session == nil {
 			authhttp.Problem(w, 403, "Browser session required")
@@ -183,6 +225,11 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if p.session == nil && p.purpose == identityservice.PurposeCollector && !collectorRoute(r) {
 		authhttp.Problem(w, 403, "Collector token cannot access this resource")
+		return
+	}
+	// Every MCP tool reads reviews.
+	if p.oauth != nil && !p.oauth.Caller().Allows(caller.ScopeReviewsRead) {
+		remote.mcpChallenge(w, http.StatusForbidden, "insufficient_scope")
 		return
 	}
 	app, err := remote.applications.get(p.account)
@@ -240,9 +287,12 @@ func (remote *transport) watch(ctx context.Context, cancel context.CancelFunc, p
 			return
 		case <-ticker.C:
 			var err error
-			if p.session != nil {
+			switch {
+			case p.session != nil:
 				_, err = remote.identity.AuthenticateSession(ctx, identityservice.AudienceMembers, p.secret)
-			} else {
+			case p.oauth != nil:
+				_, err = remote.oauth.Authenticate(ctx, p.secret)
+			default:
 				_, err = remote.identity.AuthenticateToken(ctx, p.secret)
 			}
 			if err != nil {
@@ -490,6 +540,8 @@ func (remote *transport) account(w http.ResponseWriter, r *http.Request, p princ
 			Token  tokenJSON `json:"token"`
 			Secret string    `json:"secret"`
 		}{projectToken(token.Token), token.Secret})
+	case r.URL.Path == "/api/v2/account/agents" || strings.HasPrefix(r.URL.Path, "/api/v2/account/agents/"):
+		remote.agents(w, r, p)
 	case strings.HasPrefix(r.URL.Path, "/api/v2/account/tokens/"):
 		if r.Method != http.MethodDelete {
 			authhttp.Problem(w, 405, "Method not allowed")

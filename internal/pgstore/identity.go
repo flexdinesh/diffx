@@ -177,8 +177,8 @@ func targetAccount(ctx context.Context, queries *pgdb.Queries, accountID string,
 	return nil
 }
 
-// SetAccountDisabled revokes every browser session and API token at the commit
-// that disables the account; enabling restores sign-in, not those credentials.
+// SetAccountDisabled revokes every browser session, API token and OAuth grant
+// at the commit that disables the account; enabling restores sign-in, not those credentials.
 func (store *Store) SetAccountDisabled(ctx context.Context, accountID string, disabled bool, at time.Time) error {
 	return store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
 		if err := targetAccount(ctx, queries, accountID, disabled); err != nil {
@@ -194,6 +194,12 @@ func (store *Store) SetAccountDisabled(ctx context.Context, accountID string, di
 			return err
 		}
 		if err := queries.DeleteAccountTokens(ctx, accountID); err != nil {
+			return err
+		}
+		if err := queries.DeleteAccountOAuthGrants(ctx, accountID); err != nil {
+			return err
+		}
+		if err := queries.DeleteAccountOAuthCodes(ctx, accountID); err != nil {
 			return err
 		}
 		return notifyAccount(ctx, queries, accountID)

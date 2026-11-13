@@ -114,8 +114,7 @@ paths:
               properties:
                 next:
                   type: string
-                  enum: [/settings/github]
-                  description: App page the successful callback redirects to instead of `/`. Only listed pages are accepted.
+                  description: App page the successful callback redirects to instead of `/`. Only `/settings/github` and a pending OAuth consent page (`/oauth/consent?request=` and a 43-character request ID) are accepted.
       responses:
         "200":
           $ref: "#/components/responses/GoogleAuthorization"
@@ -462,6 +461,134 @@ paths:
       responses:
         "204":
           description: Credential revoked.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/account/agents:
+    get:
+      security:
+        - browserSession: []
+      operationId: listConnectedAgents
+      description: List the MCP clients the account authorized with OAuth; never returns tokens. Distributed browser sessions only.
+      responses:
+        "200":
+          description: Connected agents, most recently connected first.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [agents]
+                properties:
+                  agents:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ConnectedAgent"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/account/agents/{agentId}:
+    delete:
+      security:
+        - browserSession: []
+      operationId: disconnectAgent
+      description: Revoke an OAuth grant and every token issued under it immediately. Distributed browser sessions only.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - in: path
+          name: agentId
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Agent disconnected.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/oauth/requests/{requestId}:
+    get:
+      security:
+        - browserSession: []
+      operationId: getOAuthRequest
+      description: Distributed only, when a public URL enables OAuth. A validated authorization request awaiting the signed-in user's consent; the consent page renders it. Requests expire after ten minutes or once answered.
+      parameters:
+        - $ref: "#/components/parameters/OAuthRequestId"
+      responses:
+        "200":
+          description: The pending request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthRequest"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      security:
+        - browserSession: []
+      operationId: answerOAuthRequest
+      description: Allow or deny a pending authorization request as the signed-in account. Allowing grants reading and the chosen scopes the request asked for; the browser then follows redirectTo, which carries the code (or access_denied), state and iss to the client.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/OAuthRequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [allow, scopes]
+              properties:
+                allow:
+                  type: boolean
+                scopes:
+                  type: array
+                  description: Scopes to grant; reviews:read is always granted and scopes the request did not ask for are ignored.
+                  items:
+                    $ref: "#/components/schemas/OAuthScope"
+      responses:
+        "200":
+          description: Where to send the browser.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [redirectTo]
+                properties:
+                  redirectTo:
+                    type: string
+                    format: uri
         "400":
           $ref: "#/components/responses/Problem"
         "401":
@@ -1907,6 +2034,12 @@ components:
       in: cookie
       name: diffx_session
   parameters:
+    OAuthRequestId:
+      in: path
+      name: requestId
+      required: true
+      schema:
+        type: string
     CsrfToken:
       in: header
       name: X-CSRF-Token
@@ -2197,6 +2330,62 @@ components:
           description: Account email, compared case-insensitively.
         password:
           type: string
+    OAuthScope:
+      type: string
+      enum: [reviews:read, comments:write]
+      description: reviews:read reads reviews, diffs and comments; comments:write adds comments, replies and resolves them.
+    OAuthClient:
+      type: object
+      additionalProperties: false
+      required: [name, verified, host]
+      properties:
+        name:
+          type: string
+          description: The client's own name. For an unverified client it is only the client's claim.
+        verified:
+          type: boolean
+          description: True when the client is identified by a metadata document its host serves.
+        host:
+          type: [string, "null"]
+          description: The verifying host, null for unverified clients.
+    OAuthRequest:
+      type: object
+      additionalProperties: false
+      required: [client, redirectHost, scopes]
+      properties:
+        client:
+          $ref: "#/components/schemas/OAuthClient"
+        redirectHost:
+          type: string
+          description: Host (and port) the browser returns to after consent.
+        scopes:
+          type: array
+          description: Requested scopes; reviews:read is always first.
+          items:
+            $ref: "#/components/schemas/OAuthScope"
+    ConnectedAgent:
+      type: object
+      additionalProperties: false
+      required: [id, name, verified, host, scopes, createdAt, lastUsedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        verified:
+          type: boolean
+        host:
+          type: [string, "null"]
+        scopes:
+          type: array
+          items:
+            $ref: "#/components/schemas/OAuthScope"
+        createdAt:
+          type: integer
+          description: Unix milliseconds of the first consent.
+        lastUsedAt:
+          type: [integer, "null"]
+          description: Unix milliseconds of the latest token use or refresh.
     AccountToken:
       type: object
       additionalProperties: false

@@ -24,6 +24,9 @@ const (
 // refused, so the callback never redirects off the app.
 var googleNext = map[string]bool{"/settings/github": true}
 
+// returnAllowed admits the listed pages and a pending OAuth consent page.
+func returnAllowed(next string) bool { return googleNext[next] || consentReturn(next) }
+
 // googleStart begins Google sign-in, optionally from an invite link. It is an
 // authentication form: the caller already bounded admission.
 func (remote *transport) googleStart(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +46,7 @@ func (remote *transport) googleStart(w http.ResponseWriter, r *http.Request) {
 		if !authhttp.DecodeJSON(w, r, &input) {
 			return
 		}
-		if input.Next != "" && !googleNext[input.Next] {
+		if input.Next != "" && !returnAllowed(input.Next) {
 			authhttp.Problem(w, 400, "Unsupported return page")
 			return
 		}
@@ -115,7 +118,7 @@ func (remote *transport) googleCallbackRoute(w http.ResponseWriter, r *http.Requ
 	http.SetCookie(w, &http.Cookie{Name: flowCookie, Path: googleCallback, MaxAge: -1, HttpOnly: true, Secure: !remote.settings.InsecureCookies, SameSite: http.SameSiteLaxMode})
 	http.SetCookie(w, &http.Cookie{Name: nextCookie, Path: googleCallback, MaxAge: -1, HttpOnly: true, Secure: !remote.settings.InsecureCookies, SameSite: http.SameSiteLaxMode})
 	target := "/"
-	if cookie, err := r.Cookie(nextCookie); err == nil && googleNext[cookie.Value] {
+	if cookie, err := r.Cookie(nextCookie); err == nil && returnAllowed(cookie.Value) {
 		target = cookie.Value
 	}
 	query := r.URL.Query()
