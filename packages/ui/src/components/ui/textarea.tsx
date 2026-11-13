@@ -8,6 +8,10 @@ const textareaVariants = cva("block resize-y", {
     variant: {
       // Review prose: comments and explanations.
       default: "min-h-24 px-3 py-2 text-md leading-copy",
+      // The comment editor's field inside its frame: a single accent border
+      // marks focus instead of the offset ring.
+      comment:
+        "min-h-24 px-3 py-2 text-md leading-copy focus-visible:border-accent focus-visible:outline-none aria-invalid:focus-visible:border-error",
       // Generated, selectable output such as exported review XML.
       code: "bg-panel p-3 font-mono text-sm leading-copy",
     },

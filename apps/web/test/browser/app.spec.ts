@@ -806,7 +806,7 @@ for (const [start, end] of [
       .locator("#viewer diffs-container")
       .filter({ hasText: "src/components/Badge.tsx" });
     const add = file.locator("[data-utility-button]");
-    const editor = page.locator('#viewer [data-slot="card"][data-active]');
+    const editor = page.locator('#viewer form [data-slot="card"]');
     // Worker rendering can replace the hover utility before the drag starts.
     await expect(async () => {
       if (await editor.isVisible()) return;
@@ -845,7 +845,7 @@ for (const [start, end] of [
     await expect(
       header.getByText(displayLocation, { exact: true }),
     ).toBeVisible();
-    await expect(header).not.toContainText("New comment");
+    await expect(header).toContainText("New comment");
     await expect(header).not.toContainText("·");
     const copyLocation = editor.getByRole("button", {
       name: `Copy path and lines: ${copiedLocation}`,
@@ -1482,17 +1482,17 @@ test("inline comments use a distinct structured surface while sidebar comments r
         (headerBox.top + headerBox.height / 2),
     };
   });
-  expect(headerAlignment.rightInset).toBeGreaterThanOrEqual(7);
-  expect(headerAlignment.rightInset).toBeLessThanOrEqual(9);
+  expect(headerAlignment.rightInset).toBeGreaterThanOrEqual(11);
+  expect(headerAlignment.rightInset).toBeLessThanOrEqual(13);
   expect(headerAlignment.actionMarginLeft).not.toBe("0px");
   expect(Math.abs(headerAlignment.centerOffset)).toBeLessThanOrEqual(0.5);
   await expect(inline.locator('[data-slot="card-header"]')).toHaveCSS(
     "height",
-    "28px",
+    "24px",
   );
   await expect(inline.locator('[data-slot="card-footer"]')).toHaveCSS(
     "height",
-    "28px",
+    "24px",
   );
   // Status uses the shared Badge status variant: compact height, square corners.
   const inlineState = inline.getByTitle(/^Lifecycle:/);
@@ -1512,8 +1512,9 @@ test("inline comments use a distinct structured surface while sidebar comments r
       actions: getComputedStyle(actions).backgroundColor,
     };
   });
-  expect(surfaces.header).not.toBe(surfaces.body);
-  expect(surfaces.actions).not.toBe(surfaces.body);
+  // One flat frame: spacing, not bar fills, separates the regions.
+  expect(surfaces.header).toBe("rgba(0, 0, 0, 0)");
+  expect(surfaces.actions).toBe("rgba(0, 0, 0, 0)");
   await expect(inline.locator('[data-slot="card-header"] svg')).toHaveCount(2);
   await expect(inline.locator('[data-slot="card-title"] span')).toHaveText(
     "Line 2–4",
@@ -1607,7 +1608,7 @@ test("inline comments use a distinct structured surface while sidebar comments r
   await expect(pairedInline).toHaveAttribute("data-diff-layout", "split");
 
   await inline.getByRole("button", { name: "Edit", exact: true }).click();
-  const editor = page.locator('#viewer [data-slot="card"][data-active]');
+  const editor = page.locator('#viewer form [data-slot="card"]');
   await expect(editor).toBeVisible();
   const editorHeaderOffset = await editor.evaluate((element) => {
     const header = element.querySelector<HTMLElement>(
@@ -1650,11 +1651,11 @@ test("inline comments use a distinct structured surface while sidebar comments r
   ).toBeVisible();
   await expect(sidebar.locator('[data-slot="card-header"]')).toHaveCSS(
     "height",
-    "28px",
+    "24px",
   );
   await expect(sidebar.locator('[data-slot="card-footer"]')).toHaveCSS(
     "height",
-    "28px",
+    "24px",
   );
   await expect(sidebar.getByTitle(/^Lifecycle:/)).toHaveCSS("height", "24px");
   await page
@@ -2626,7 +2627,7 @@ test("file review comments save and reopen without selecting lines", async ({
         exact: true,
       })
       .click();
-    const editor = file.locator('[data-slot="card"][data-active]');
+    const editor = file.locator('form [data-slot="card"]');
     await expect(editor).toBeVisible();
     const editorTitle = editor.locator('[data-slot="card-title"]');
     await expect(editorTitle).toContainText(path);
@@ -2640,7 +2641,7 @@ test("file review comments save and reopen without selecting lines", async ({
         response.request().method() === "POST" &&
         /\/comments$/.test(new URL(response.url()).pathname),
     );
-    await editor.getByRole("button", { name: "Save comment" }).click();
+    await editor.getByRole("button", { name: "Comment", exact: true }).click();
     const response = await saved;
     expect(response.ok()).toBe(true);
     expect(response.request().postDataJSON()).toMatchObject({
@@ -2662,8 +2663,14 @@ test("file review comments save and reopen without selecting lines", async ({
     .filter({ hasText: "Review entire config/diffx.json" });
   await expect(card).toBeVisible();
   await card.getByRole("button", { name: "Edit", exact: true }).click();
-  const editor = page.locator('#viewer [data-slot="card"][data-active]');
+  const editor = page.locator('#viewer form [data-slot="card"]');
   await expect(editor).toBeVisible();
+  await expect(editor.locator('[data-slot="card-title"]')).toContainText(
+    "Edit comment",
+  );
+  await expect(
+    editor.getByRole("button", { name: "Save", exact: true }),
+  ).toBeVisible();
   await editor.getByRole("button", { name: "Cancel", exact: true }).click();
   await card.getByRole("button", { name: "Resolve", exact: true }).click();
   await expect(card).toContainText("Resolved");
@@ -2690,12 +2697,12 @@ test("file comments remain available without a text diff", async ({ page }) => {
       exact: true,
     })
     .click();
-  const editor = file.locator('[data-slot="card"][data-active]');
+  const editor = file.locator('form [data-slot="card"]');
   await expect(editor).toBeVisible();
   await editor
     .getByRole("textbox", { name: "Review comment" })
     .fill("Review this binary asset");
-  await editor.getByRole("button", { name: "Save comment" }).click();
+  await editor.getByRole("button", { name: "Comment", exact: true }).click();
   await expect(
     file.locator('[data-comment-id] [data-slot="card"]'),
   ).toContainText("Review this binary asset");

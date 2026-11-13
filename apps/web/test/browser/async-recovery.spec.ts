@@ -125,7 +125,7 @@ test("comment submission guards keyboard and button duplicates", async ({
   await input.press("Control+Enter");
   await expect.poll(() => requests.length).toBe(1);
   await input.press("Control+Enter");
-  const save = page.getByRole("button", { name: "Save comment" });
+  const save = page.getByRole("button", { name: "Comment", exact: true });
   await expect(save).toBeDisabled();
   expect(requests).toHaveLength(1);
   comments = [commentFor(repository, "Submitted snapshot")];

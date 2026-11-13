@@ -6,16 +6,13 @@ import {
   PencilIcon,
   PinIcon,
   RotateCcwIcon,
-  SendIcon,
   Trash2Icon,
   TriangleAlertIcon,
-  XIcon,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { ConfirmDialog } from "@diffx/ui/components/confirm-dialog";
 import { DisclosureIcon } from "@diffx/ui/components/disclosure";
 import { IconButton } from "@diffx/ui/components/icon-button";
-import { Shortcut } from "@diffx/ui/components/shortcut";
 import { Badge } from "@diffx/ui/components/ui/badge";
 import { Button } from "@diffx/ui/components/ui/button";
 import {
@@ -100,6 +97,7 @@ export function DraftComment({ sidebar = false }: { sidebar?: boolean }) {
   return draft ? (
     <CommentEditor
       draft={draft}
+      editing={review.comments.some((comment) => comment.id === draft.id)}
       sidebar={sidebar}
       onChange={(body) =>
         setDraft((previous) => (previous ? { ...previous, body } : null))
@@ -149,6 +147,7 @@ export function ReviewCommentCard({
 
 export function CommentEditor({
   draft,
+  editing = false,
   sidebar = false,
   onChange,
   onSave,
@@ -157,6 +156,8 @@ export function CommentEditor({
   saveError,
 }: {
   draft: ReviewComment;
+  /** The draft edits a saved comment rather than starting a new one. */
+  editing?: boolean;
   sidebar?: boolean;
   onChange: (body: string) => void;
   onSave: () => void;
@@ -193,13 +194,19 @@ export function CommentEditor({
       }}
     >
       <Card
-        active
         density={sidebar ? "panel" : "inline"}
         className={cardSpacing(sidebar)}
       >
         <CardHeader>
-          <CardTitle className="gap-2 [overflow-wrap:anywhere]">
-            <span>{draftLocation(draft)}</span>
+          <CardTitle className="gap-2">
+            <span className="shrink-0">
+              {editing ? "Edit comment" : "New comment"}
+            </span>
+            <span className="min-w-0 truncate font-mono text-xs">
+              {draftLocation(draft)}
+            </span>
+          </CardTitle>
+          <CardAction>
             <CopyPathButton
               value={
                 draft.target === "file"
@@ -210,7 +217,7 @@ export function CommentEditor({
                 draft.target === "file" ? "Copy path" : "Copy path and lines"
               }
             />
-          </CardTitle>
+          </CardAction>
         </CardHeader>
         <CardContent>
           <label className="sr-only" htmlFor={inputId}>
@@ -223,6 +230,7 @@ export function CommentEditor({
             aria-invalid={!!error}
             aria-describedby={error ? errorId : undefined}
             rows={2}
+            variant="comment"
             value={draft.body}
             onChange={(event) => {
               if (event.target.value.trim()) setError("");
@@ -249,7 +257,8 @@ export function CommentEditor({
         <CardFooter>
           {!sidebar && (
             <span className="mr-auto text-xs text-muted max-md:hidden">
-              <Shortcut keys={{ mod: true, key: "Enter" }} /> to save
+              {formatShortcut({ mod: true, key: "Enter" })} to{" "}
+              {editing ? "save" : "comment"}
             </span>
           )}
           <Button
@@ -259,7 +268,6 @@ export function CommentEditor({
             touch
             onClick={onCancel}
           >
-            <XIcon aria-hidden="true" />
             Cancel
           </Button>
           <Button
@@ -269,8 +277,7 @@ export function CommentEditor({
             disabled={isSaving}
             aria-busy={isSaving}
           >
-            <SendIcon aria-hidden="true" />
-            Save comment
+            {editing ? "Save" : "Comment"}
           </Button>
         </CardFooter>
       </Card>

@@ -1,26 +1,22 @@
 import type { ComponentProps } from "react";
 import { cn } from "@diffx/ui/lib/utils";
 
-// Review objects: a 28px neutral header, an 8px body and a 28px neutral action
-// row. `inline` sits in Pierre annotations; `panel` is the sidebar card.
+// Review objects: one flat framed surface with 8/12 padding, a 24px header row
+// and an action row, separated by spacing rather than bars. `inline` sits in
+// Pierre annotations; `panel` is the sidebar card.
 function Card({
   className,
   density = "inline",
-  active = false,
   ...props
 }: ComponentProps<"div"> & {
   density?: "inline" | "panel";
-  /** Accent-tinted header for an editor in progress. */
-  active?: boolean;
 }) {
   return (
     <div
       data-slot="card"
       data-density={density}
-      data-active={active || undefined}
       className={cn(
-        "group/card flex min-w-0 flex-col overflow-hidden border border-border font-sans text-base leading-copy text-fg",
-        density === "inline" ? "bg-raised" : "bg-bg",
+        "group/card flex min-w-0 flex-col overflow-hidden border border-border bg-panel px-3 py-2 font-sans text-base leading-copy text-fg",
         className,
       )}
       {...props}
@@ -33,8 +29,8 @@ function CardHeader({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="card-header"
       className={cn(
-        "flex min-h-control-small items-center gap-1.5 border-b border-border bg-panel px-2 text-sm text-muted",
-        "group-data-active/card:bg-selected group-data-[expanded=false]/card:border-b-0",
+        "mb-1.5 flex min-h-control-compact items-center gap-2 text-sm text-muted",
+        "group-data-[expanded=false]/card:mb-0",
         className,
       )}
       {...props}
@@ -63,9 +59,7 @@ function CardAction({ className, ...props }: ComponentProps<"div">) {
 }
 
 function CardContent({ className, ...props }: ComponentProps<"div">) {
-  return (
-    <div data-slot="card-content" className={cn("p-2", className)} {...props} />
-  );
+  return <div data-slot="card-content" className={className} {...props} />;
 }
 
 function CardFooter({ className, ...props }: ComponentProps<"div">) {
@@ -73,7 +67,7 @@ function CardFooter({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="card-footer"
       className={cn(
-        "flex min-h-control-small items-center justify-end gap-1.5 border-t border-border bg-panel px-2 max-md:flex-wrap group-data-[density=panel]/card:flex-wrap",
+        "mt-2 flex items-center justify-end gap-1 max-md:flex-wrap group-data-[density=panel]/card:flex-wrap",
         className,
       )}
       {...props}

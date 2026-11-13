@@ -161,7 +161,7 @@ test("a signed-up user syncs a checkout and reviews it on a Postgres server", as
         exact: true,
       })
       .click();
-    const editor = file.locator('[data-slot="card"][data-active]');
+    const editor = file.locator('form [data-slot="card"]');
     await editor
       .getByRole("textbox", { name: "Review comment" })
       .fill("Check the new value.");
@@ -170,7 +170,7 @@ test("a signed-up user syncs a checkout and reviews it on a Postgres server", as
         response.request().method() === "POST" &&
         /\/comments$/.test(new URL(response.url()).pathname),
     );
-    await editor.getByRole("button", { name: "Save comment" }).click();
+    await editor.getByRole("button", { name: "Comment", exact: true }).click();
     expect((await saved).ok()).toBe(true);
     await expect(
       file
