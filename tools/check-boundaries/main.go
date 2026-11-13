@@ -29,6 +29,9 @@ var allowed = map[string][]string{
 	// HTTP rules shared by the remote server and the console transports.
 	"internal/authhttp": {"internal/identityservice"},
 	"internal/browser":  {},
+	// The authenticated caller of a request: a dependency-free leaf that
+	// compositions set and transports read to attribute writes.
+	"internal/caller": {},
 	// Native launch and browser connection adapters own no application behavior.
 	"internal/desktoplaunch": {"internal/version", "packages/localprotocol"},
 	"internal/clientgateway": {"packages/api", "packages/connection"},
@@ -63,7 +66,7 @@ var allowed = map[string][]string{
 		"internal/reviewstore", "internal/serverapp", "internal/unixsocket", "internal/version", "internal/webui",
 		"packages/localprotocol", "packages/connection", "internal/pairing",
 	},
-	"internal/mcpapi": {"internal/review", "internal/contextservice", "internal/reviewservice", "internal/ingestion"},
+	"internal/mcpapi": {"internal/caller", "internal/review", "internal/contextservice", "internal/reviewservice", "internal/ingestion"},
 	// Server Postgres persistence; pgdb holds its generated queries.
 	"internal/pgstore": {
 		"internal/contextservice", "internal/githubsync", "internal/google", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue",
@@ -78,7 +81,7 @@ var allowed = map[string][]string{
 	// its Store contract and composition is remote only.
 	"internal/pushservice": {"internal/webpush"},
 	"internal/remoteserver": {
-		"internal/authhttp", "internal/contextservice", "internal/fetchprotocol", "internal/github", "internal/githubsync", "internal/google", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/pgstore", "internal/pushservice", "internal/review",
+		"internal/authhttp", "internal/caller", "internal/contextservice", "internal/fetchprotocol", "internal/github", "internal/githubsync", "internal/google", "internal/identityservice", "internal/ingestion", "internal/ingestionqueue", "internal/pgstore", "internal/pushservice", "internal/review",
 		"internal/reviewdata", "internal/serverapp", "internal/webui", "packages/api",
 	},
 	"internal/review":        {},

@@ -83,10 +83,26 @@ func writtenBy(comment review.ReviewComment, author string) bool {
 // only those written by one author kind. Only open comments that render on
 // current lines are actionable.
 func (service *Service) ListComments(ctx context.Context, includeResolved bool, author string) ([]Comment, error) {
+	return service.FilterComments(ctx, CommentFilter{IncludeResolved: includeResolved, Author: author})
+}
+
+// CommentFilter selects stream comments. Every set field must match.
+type CommentFilter struct {
+	IncludeResolved bool
+	// Author is empty or a comment author kind; replies do not affect it.
+	Author string
+	Path   string
+	// CommentID selects one comment, whatever its status.
+	CommentID string
+}
+
+// FilterComments returns the stream's comments matching filter, placed in this
+// context.
+func (service *Service) FilterComments(ctx context.Context, filter CommentFilter) ([]Comment, error) {
 	if err := service.requireComments(); err != nil {
 		return nil, err
 	}
-	author, err := ParseAuthorFilter(author)
+	author, err := ParseAuthorFilter(filter.Author)
 	if err != nil {
 		return nil, err
 	}
@@ -96,10 +112,16 @@ func (service *Service) ListComments(ctx context.Context, includeResolved bool, 
 	}
 	selected := make([]review.ReviewComment, 0, len(storedComments))
 	for _, comment := range storedComments {
-		if (includeResolved || comment.Status == "open") && writtenBy(comment, author) {
+		status := filter.IncludeResolved || filter.CommentID != "" || comment.Status == "open"
+		if status && writtenBy(comment, author) && (filter.Path == "" || comment.Path == filter.Path) && (filter.CommentID == "" || comment.ID == filter.CommentID) {
 			selected = append(selected, comment)
 		}
 	}
+	return service.project(ctx, selected)
+}
+
+// project places stored comments in this context and marks the actionable ones.
+func (service *Service) project(ctx context.Context, selected []review.ReviewComment) ([]Comment, error) {
 	if err := service.place(ctx, selected); err != nil {
 		return nil, err
 	}

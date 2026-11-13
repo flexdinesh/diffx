@@ -27,6 +27,44 @@ func (q *Queries) CommentStream(ctx context.Context, contextID string) (CommentS
 	return i, err
 }
 
+const commentStreams = `-- name: CommentStreams :many
+SELECT c.id AS comment_id, r.stream_key FROM comments c JOIN reviews r ON r.id = c.review_id
+WHERE r.owner_id = $1 AND starts_with(c.id, $2::text)
+ORDER BY c.id COLLATE "C" LIMIT $3
+`
+
+type CommentStreamsParams struct {
+	OwnerID  string
+	Prefix   string
+	RowLimit int32
+}
+
+type CommentStreamsRow struct {
+	CommentID string
+	StreamKey string
+}
+
+// The owner's comments whose ID starts with a prefix, with their stream keys.
+func (q *Queries) CommentStreams(ctx context.Context, arg CommentStreamsParams) ([]CommentStreamsRow, error) {
+	rows, err := q.db.Query(ctx, commentStreams, arg.OwnerID, arg.Prefix, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CommentStreamsRow
+	for rows.Next() {
+		var i CommentStreamsRow
+		if err := rows.Scan(&i.CommentID, &i.StreamKey); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const comments = `-- name: Comments :many
 SELECT c.id, c.data FROM comments c JOIN reviews r ON r.id = c.review_id
 JOIN observations o ON o.owner_id = r.owner_id AND o.stream_key = r.stream_key
@@ -418,6 +456,26 @@ func (q *Queries) StoredVersion(ctx context.Context, arg StoredVersionParams) (S
 	var i StoredVersionRow
 	err := row.Scan(&i.Manifest, &i.Metadata, &i.Modes)
 	return i, err
+}
+
+const streamContext = `-- name: StreamContext :one
+SELECT o.context_id FROM observations o JOIN contexts x ON x.id = o.context_id JOIN diffs d ON d.id = x.anchor_diff_id
+WHERE o.owner_id = $1 AND o.stream_key = $2 AND (d.expires_at IS NULL OR d.expires_at > $3::timestamptz)
+ORDER BY x.last_submitted_at DESC, x.id COLLATE "C" DESC LIMIT 1
+`
+
+type StreamContextParams struct {
+	OwnerID   string
+	StreamKey string
+	Now       time.Time
+}
+
+// The most recently submitted retained context of the owner's stream.
+func (q *Queries) StreamContext(ctx context.Context, arg StreamContextParams) (string, error) {
+	row := q.db.QueryRow(ctx, streamContext, arg.OwnerID, arg.StreamKey, arg.Now)
+	var context_id string
+	err := row.Scan(&context_id)
+	return context_id, err
 }
 
 const streamReplies = `-- name: StreamReplies :many

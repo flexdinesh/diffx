@@ -363,7 +363,7 @@ func (store *Store) ResolveIdentityToken(ctx context.Context, secretHash string,
 	if err != nil {
 		return identityservice.TokenIdentity{}, err
 	}
-	return identityservice.TokenIdentity{Account: account(row.UserID, row.Email, row.Admin, row.Method), Purpose: identityservice.Purpose(row.Purpose), ExpiresAt: millisecond(row.ExpiresAt)}, nil
+	return identityservice.TokenIdentity{Account: account(row.UserID, row.Email, row.Admin, row.Method), Name: row.Name, Purpose: identityservice.Purpose(row.Purpose), ExpiresAt: millisecond(row.ExpiresAt)}, nil
 }
 
 func (store *Store) IdentityAccounts(ctx context.Context) ([]identityservice.Account, error) {

@@ -140,7 +140,9 @@ type CreatedToken struct {
 }
 
 type TokenIdentity struct {
-	Account   Account
+	Account Account
+	// Name labels the token's writes.
+	Name      string
 	Purpose   Purpose
 	ExpiresAt time.Time
 }

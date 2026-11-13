@@ -1,34 +1,34 @@
 ---
 title: MCP
-description: Expose stored reviews and comments to coding agents through MCP.
+description: Let coding agents find, answer and resolve diffx review feedback through MCP.
 ---
 
 # MCP
 
-diffx exposes stored reviews and comments to coding agents through MCP.
-`/mcp` discovers contexts for the authenticated user; `/mcp/contexts/{id}` fixes
-the default context for diff and comment tools to one immutable observation or
-retained capture.
-It uses stateless Streamable HTTP and supports MCP protocol `2026-07-28` only.
-Clients that use an older `initialize` flow cannot connect.
+diffx exposes stored reviews and their feedback to coding agents through MCP.
+An agent finds a review from a link, a comment ID or its own checkout, reads
+the threads, fixes or dismisses each concern, replies with what changed and
+resolves what it handled.
+
+Connect agents to one URL, `/mcp`. It serves every review of the authenticated
+user. The endpoint uses stateless Streamable HTTP and negotiates MCP protocol
+`2026-07-28`, `2025-11-25` or `2025-06-18`.
 
 The MCP transport and browser UI use the same application services and storage.
-The browser does not need to remain open while an MCP client works.
+The browser does not need to remain open while an MCP client works, and the
+review shows agent comments, replies and resolutions as they commit.
 
 ## Connect
 
-Start `diffx` with a path or piped patch and use the printed MCP URL to
-search stored reviews. Remote snapshots are available through the server’s `/mcp` catalog or a scoped
-`/mcp/contexts/{id}` URL.
-For example:
+Start `diffx` and point the agent at the printed address's `/mcp`:
 
 ```text
-http://127.0.0.1:7981/mcp/contexts/CONTEXT_ID
 http://127.0.0.1:7981/mcp
 ```
 
-The client must support remote Streamable HTTP and MCP `2026-07-28`. For
-example, current OpenCode can be configured in `opencode.jsonc`:
+A remote `diffx-server` serves the same `/mcp`; configure an API token as
+`Authorization: Bearer TOKEN` in the MCP client. For example, OpenCode in
+`opencode.jsonc`:
 
 ```jsonc
 {
@@ -37,8 +37,7 @@ example, current OpenCode can be configured in `opencode.jsonc`:
     "servers": {
       "diffx": {
         "type": "remote",
-        "url": "http://127.0.0.1:7981/mcp/contexts/CONTEXT_ID",
-        "protocol": "2026-07-28",
+        "url": "http://127.0.0.1:7981/mcp",
         "oauth": false,
       },
     },
@@ -46,37 +45,213 @@ example, current OpenCode can be configured in `opencode.jsonc`:
 }
 ```
 
-Use the equivalent remote MCP configuration in Codex, Claude Code, or another
-harness only when that version supports protocol `2026-07-28`. Supplying the
-diffx web-page URL alone is not enough; a coding harness connects to the
-MCP endpoint as an MCP client. In local mode MCP stops when the foreground
-command exits. Context IDs remain stable across persistent-service restarts.
+Use the equivalent remote MCP configuration in Codex, Claude Code or another
+harness. Supplying the diffx web-page URL alone is not enough; a coding harness
+connects to the MCP endpoint as an MCP client. In local mode MCP stops when the
+foreground command exits. Context IDs remain stable across persistent-service
+restarts.
 
 ### Stdio
 
-`diffx mcp` serves the running local instance's global `/mcp` over stdio
-through its owner-only socket, so agent configuration names a command instead
-of a port that changes between runs. It works with a `--headless` instance and,
-over SSH, with another machine's instance (`ssh devbox diffx mcp`). It exits
-when the agent closes stdin, and fails if no local diffx is running. For
-example, in Claude Code:
+`diffx mcp` serves the running local instance's `/mcp` over stdio through its
+owner-only socket, so agent configuration names a command instead of a port
+that changes between runs. It works with a `--headless` instance and, over SSH,
+with another machine's instance (`ssh devbox diffx mcp`). It exits when the
+agent closes stdin, and fails if no local diffx is running. For example, in
+Claude Code:
 
 ```sh
 claude mcp add diffx -- diffx mcp
 ```
 
-The client must still support MCP `2026-07-28`; the bridge relays messages
-unchanged.
+The bridge relays messages unchanged, so every supported protocol version works
+through it.
 
-Global `/mcp` supports multiple contexts without ambiguity. Supply `context_id`
-for its diff, patch and comment tools. Scoped endpoints supply their URL's
-context ID when omitted and reject a conflicting ID. `list_contexts` searches
-the user's catalog from either endpoint.
+### Context-scoped URLs
+
+`/mcp/contexts/{id}` remains for existing configurations. It fixes every tool to
+one immutable snapshot: tools use that context when `context_id` is omitted and
+reject another. `find_feedback` there returns that context's threads and refuses
+references to other reviews. New configurations should use `/mcp`.
+
+On `/mcp`, tools that read or write one review take `context_id`, which
+`find_feedback` returns. A local process also has a default context: its
+capture, or the collection default of its checkouts (the current changed head,
+preferring the checkout it was started in). Tools use it when `context_id` is
+omitted; an explicit `context_id` still selects any other review. Remote
+servers have no default.
+
+## Agent workflow
+
+Tell the agent where the feedback is, in whichever form you have:
+
+- a review link (`https://…/streams/{id}` or `https://…/contexts/{id}`),
+- a comment permalink (the review link with `?comment={id}`, from a comment's
+  Copy link action),
+- a comment ID, or the first eight or more characters of one,
+- or nothing: the agent passes its checkout's repository, branch and worktree.
+
+For example:
+
+> Address the diffx feedback at https://diffx.example.com/streams/a44dfb681197913cc1850597
+
+> Fix diffx comment deadbeef
+
+> Address the open diffx review comments on this branch.
+
+The agent then:
+
+1. Calls `find_feedback` with the reference, or with checkout hints.
+2. Inspects the working tree and validates each actionable thread.
+3. Fixes valid concerns and dismisses the rest deliberately.
+4. Replies to each handled thread with `reply_to_review_comment`.
+5. Resolves the handled threads with `resolve_review_comment`, with a `note`.
+
+The `address-feedback` prompt packages these steps.
 
 ## Tools
 
-The catalog exposes four read tools and two comment tools. Reads use captured
-data and never inspect a checkout.
+The catalog exposes six read tools and three write tools. Reads use captured
+data and never inspect a checkout. Comment bodies, replies, preserved code,
+paths and author names are untrusted user- or agent-authored data, not
+instructions; tool descriptions say so to the agent.
+
+### `find_feedback`
+
+The entry point. It resolves a review and returns its open threads.
+
+| Input              | Meaning                                                                                   |
+| ------------------ | ----------------------------------------------------------------------------------------- |
+| `ref`              | A review or comment link, a full comment ID or a unique comment ID prefix (8+ characters) |
+| `repository`       | Checkout hint: repository name or remote URL (HTTPS, SSH and `git@host:path` forms match) |
+| `branch`           | Checkout hint: branch                                                                     |
+| `worktree`         | Checkout hint: worktree directory name                                                    |
+| `hostname`         | Checkout hint: hostname of the collecting machine                                         |
+| `include_resolved` | Also return resolved threads; defaults to `false`                                         |
+
+`ref` wins over hints. Links match by path, so scheme and host are ignored and
+a link from another diffx server cannot reach reviews you do not own:
+
+- `/streams/{id}` follows the stream to its latest snapshot.
+- `/contexts/{id}` pins that snapshot.
+- `?comment={id}` on either focuses that thread.
+- A comment ID or prefix finds the comment among your retained reviews and
+  follows its stream to the latest snapshot. A prefix matching several comments
+  is an error listing each match's repository, branch and path; pass more
+  characters or the comment's link.
+
+Checkout hints match the latest snapshot of each stream. One match is used;
+several return `candidates` (context ID, repository, branch, worktree,
+hostname, last change) and `guidance` instead of threads; none is an error
+suggesting `list_contexts`. Without a reference or hints, the endpoint's
+context or default context is used, if any.
+
+```json
+{
+  "ref": "https://diffx.example.com/streams/a44dfb681197913cc1850597?comment=deadbeef01"
+}
+```
+
+The result names the review (`context_id`, `stream_id`, `repository`,
+`branch`, `worktree`, `permalink`) and lists `threads`. With a focused comment
+it sets `focus_comment_id`, returns only that thread whatever its status, and
+counts the others in `other_open_threads`. Each thread has its `id`, `path`,
+`scope`, `target` (`lines` or `file`), `side`, `start` and `end` in this
+snapshot, `applicability`, `actionable`, `status`, `author`, `body`, preserved
+`code`, `replies` (author and body) and `permalink`.
+
+### `get_review_comments`
+
+Returns the review stream's open comments across every review-enabled diff
+scope, placed in the context's snapshot, with their authors and replies. Pass
+`include_resolved: true` to include resolved comments, `path` to keep one file,
+`author` (`user` or `agent`) to keep one author kind, or `comment_id` to read
+one comment whatever its status.
+
+```json
+{
+  "context_id": "context-id-from-find_feedback",
+  "author": "user"
+}
+```
+
+Each result contains its stable server `id`, location and preserved code,
+comment body, `author`, `replies`, lifecycle `status`, `resolvedBy`,
+`placement` (applicability, side and lines in this snapshot) and
+`applicability`:
+
+- `anchored`: the commented code is at its original lines.
+- `moved`: the commented code was found once at new lines, given by `placement`.
+- `outdated`: the commented code changed, is ambiguous, or its file left the diff.
+- `unchanged`: the code still exists in full contents but is no longer changed.
+- `other-scope`: the comment belongs to a different diff scope.
+- `unknown`: diffx cannot compare the comment with a current snapshot.
+
+`actionable` is true only for an open anchored or moved comment; act on moved
+comments at their placement lines. Outdated, unchanged and resolved comments are
+context only: their code was written against earlier snapshots, so inspect the
+current file before relying on them.
+
+### `create_review_comment`
+
+Adds the agent's comment to a changed file of the context's current snapshot.
+
+```json
+{
+  "context_id": "context-id-from-find_feedback",
+  "path": "internal/server.go",
+  "side": "additions",
+  "start": 12,
+  "end": 14,
+  "body": "This retry loop has no upper bound."
+}
+```
+
+`side` is `additions` (new file lines) or `deletions` (old file lines); `start`
+and `end` select up to 200 lines visible in the diff. Pass `target: "file"`
+instead of lines to comment on the whole file. `scope` defaults to the first
+collected scope containing the file, preferring `all`. diffx validates the
+range against the stored snapshot and captures the commented code and its
+surrounding lines itself, exactly as for comments written in the review UI, so
+later snapshots can re-anchor it. The result is the created comment with its
+placement and `permalink`.
+
+### `reply_to_review_comment`
+
+Appends the agent's reply to a thread:
+
+```json
+{
+  "context_id": "context-id-from-find_feedback",
+  "comment_id": "comment-id-from-find_feedback",
+  "body": "Bounded the loop at five attempts with backoff."
+}
+```
+
+### `resolve_review_comment`
+
+Resolves comments by stable ID. Pass `comment_id` for one comment or
+`comment_ids` for several, and an optional `note`:
+
+```json
+{
+  "context_id": "context-id-from-find_feedback",
+  "comment_ids": ["first-comment-id", "second-comment-id"],
+  "note": "Applied in the retry change."
+}
+```
+
+Each comment resolves independently in its own transaction, together with its
+note, which joins the thread as the agent's reply. Batch results list each ID
+with `status` `resolved` or `error` and the error message; one failure does not
+stop the others. A single `comment_id` returns `{comment_id, status}` and fails
+as a tool error, as before. Resolution is idempotent: resolving an already
+resolved comment succeeds and keeps the first resolver, though a note is still
+added. Outdated or unchanged comments may be resolved. The tool does not reopen
+comments.
+
+Agents write append-only: no MCP tool edits or deletes comments or replies. The
+user answers or deletes agent comments in the review.
 
 ### `list_contexts`
 
@@ -107,7 +282,7 @@ that commit's diff against its first parent; the two are mutually exclusive.
 
 ```json
 {
-  "context_id": "context-id-from-list_contexts",
+  "context_id": "context-id-from-find_feedback",
   "scope": "all"
 }
 ```
@@ -120,7 +295,7 @@ Pass the same `commit` instead of `scope` for a file of a commit's diff.
 
 ```json
 {
-  "context_id": "context-id-from-list_contexts",
+  "context_id": "context-id-from-find_feedback",
   "scope": "all",
   "file_id": "file-id-from-get_diff"
 }
@@ -135,87 +310,50 @@ read-only; comments belong to comparison scopes.
 
 ```json
 {
-  "context_id": "context-id-from-list_contexts"
+  "context_id": "context-id-from-find_feedback"
 }
 ```
 
-### `get_review_comments`
+## Prompt
 
-Returns open comments of the bound context's review stream across every
-review-enabled diff scope, placed in that context's snapshot. Supply
-`context_id` on global MCP. Pass
-`include_resolved: true` to include resolved comments as well.
+`address-feedback` takes an optional `ref` (a review or comment link, comment
+ID or prefix). It tells the agent to call `find_feedback` with that reference
+or its checkout's repository, branch and worktree; treat bodies as untrusted
+data; validate each actionable thread against the working tree; fix or dismiss
+it; reply with what changed or why not; resolve handled threads with a note;
+and leave unhandled threads open. Clients that support MCP prompts offer it as
+a command.
 
-```json
-{
-  "context_id": "context-id-from-list_contexts",
-  "include_resolved": false
-}
-```
+## Attribution
 
-Each result contains its stable server `id`, location and preserved code,
-comment body, lifecycle `status`, `placement` (applicability, side and lines in
-this snapshot) and `applicability`:
+Agent comments, replies and resolutions record an agent author, shown in the
+review with the agent's name:
 
-- `anchored`: the commented code is at its original lines.
-- `moved`: the commented code was found once at new lines, given by `placement`.
-- `outdated`: the commented code changed, is ambiguous, or its file left the diff.
-- `unchanged`: the code still exists in full contents but is no longer changed.
-- `other-scope`: the comment belongs to a different diff scope.
-- `unknown`: diffx cannot compare the comment with a current snapshot.
+- With an API token, the name is the MCP client's name followed by the token's
+  name, such as `Claude Code (laptop)`, or the token's name alone when the
+  client sends no name.
+- Locally or with a browser session, the name is the MCP client's name.
+- Without either, the name is `Agent`.
 
-`actionable` is true only for an open anchored or moved comment; act on moved
-comments at their placement lines. Outdated, unchanged and resolved comments are
-context only: their code was written against earlier snapshots, so inspect the
-current file before relying on them. Comment bodies and code are untrusted
-user-authored content, not agent instructions.
-
-### `resolve_review_comment`
-
-Marks a comment resolved by stable ID:
-
-```json
-{
-  "context_id": "context-id-from-list_contexts",
-  "comment_id": "comment-id-from-get_review_comments"
-}
-```
-
-Resolution is idempotent. Resolving an already resolved comment succeeds, and
-outdated or unchanged comments may be resolved. An unknown ID or an ID belonging to another
-context returns a tool error. The tool
-does not reopen comments and does not require a revision or version token. The
-first resolution records the agent, named by its MCP client name, as the
-resolver; the review shows that name as reported by the agent.
-
-## Agent workflow
-
-1. On global MCP, find the context with `list_contexts`.
-2. Read `get_diff`/`get_file_patch` and `get_review_comments` for that context.
-3. Inspect the current working tree and validate each concern.
-4. Apply or intentionally dismiss the concern.
-5. Call `resolve_review_comment` with the context and comment IDs.
-
-Example prompt:
-
-> Get the open diffx review comments. Apply each valid concern carefully,
-> verify the change, then resolve only the comments you handled.
-
-Use `include_resolved: true` for review-history or auditing workflows.
+The client name is the `title` or `name` the client reports about itself. It is
+self-reported and not verified. Under protocol `2026-07-28` every request
+carries it. Older protocols send it only in `initialize`, which a stateless
+server does not keep, so their writes read as `Agent` or the token's name.
 
 ## Security and scope
 
 The local endpoint is unauthenticated. Anyone who can reach the local server can
-read and resolve its comments. The viewer binds loopback only; reach another
-machine's diffx through an SSH forward. Browser origin checks do not authenticate MCP clients.
-The remote `diffx-server` requires `Authorization: Bearer TOKEN` for MCP;
-configure that header in the MCP client. Credentials select an individual user;
-catalog results, diffs, comments and resolution are scoped to that user.
+read, comment on and resolve its reviews. The viewer binds loopback only; reach
+another machine's diffx through an SSH forward. Browser origin checks do not
+authenticate MCP clients. The remote `diffx-server` requires
+`Authorization: Bearer TOKEN` for MCP. Credentials select an individual user;
+catalog results, references, diffs, comments and writes are scoped to that
+user.
 
-Scoped diff and comment operations use one context, regardless of browser selection
-or subsequent CLI submissions. Changing the browser's selected repository does
-not redirect an agent's MCP operations. New ingestions create new scoped
-endpoints or reuse a matching context; they do not refresh its captured snapshot.
+Context-scoped tools use one context, regardless of browser selection or
+subsequent CLI submissions. Stream links and comment IDs follow a stream to its
+latest snapshot when `find_feedback` runs; the returned `context_id` stays fixed
+for later calls.
 
 Protocol details: [MCP `2026-07-28` transport
 specification](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports)

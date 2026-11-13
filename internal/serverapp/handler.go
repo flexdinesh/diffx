@@ -231,24 +231,22 @@ func stream(ctx context.Context, service *contextservice.Service, w http.Respons
 
 func contextMCP(service *contextservice.Service, catalog *reviewservice.Catalog, current *defaultContext) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := current.get()
+		scoped, fallback := "", current.get()
 		if strings.HasPrefix(r.URL.Path, "/mcp/contexts/") {
-			id = strings.TrimPrefix(r.URL.Path, "/mcp/contexts/")
-			if id == "" || strings.Contains(id, "/") {
+			scoped = strings.TrimPrefix(r.URL.Path, "/mcp/contexts/")
+			if scoped == "" || strings.Contains(scoped, "/") {
 				http.NotFound(w, r)
+				return
+			}
+			if _, err := service.Resolve(r.Context(), scoped); err != nil {
+				applicationError(w, err)
 				return
 			}
 		} else if r.URL.Path != "/mcp" {
 			http.NotFound(w, r)
 			return
 		}
-		if id != "" {
-			if _, err := service.Resolve(r.Context(), id); err != nil {
-				applicationError(w, err)
-				return
-			}
-		}
-		mcpapi.NewCatalog(catalog, id, buildversion.String()).ServeHTTP(w, r)
+		mcpapi.NewCatalog(catalog, scoped, fallback, buildversion.String()).ServeHTTP(w, r)
 	})
 }
 

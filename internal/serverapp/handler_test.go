@@ -513,7 +513,7 @@ func TestGlobalMCPDiscoversStoredReviewsAndRejectsForeignContexts(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools.Tools) != 6 {
+	if len(tools.Tools) != 9 {
 		t.Fatalf("global tools: %#v", tools)
 	}
 	call := func(name string, args map[string]any, wantError bool) *mcp.CallToolResult {

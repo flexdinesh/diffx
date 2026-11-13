@@ -645,7 +645,7 @@ RETURNING a.user_id,
   COALESCE((SELECT g.email FROM google_identities g WHERE g.user_id = a.user_id), a.email)::text AS email,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
-  t.purpose, t.expires_at
+  t.name, t.purpose, t.expires_at
 `
 
 type ResolveIdentityTokenParams struct {
@@ -658,6 +658,7 @@ type ResolveIdentityTokenRow struct {
 	Email     string
 	Admin     bool
 	Method    string
+	Name      string
 	Purpose   string
 	ExpiresAt time.Time
 }
@@ -671,6 +672,7 @@ func (q *Queries) ResolveIdentityToken(ctx context.Context, arg ResolveIdentityT
 		&i.Email,
 		&i.Admin,
 		&i.Method,
+		&i.Name,
 		&i.Purpose,
 		&i.ExpiresAt,
 	)

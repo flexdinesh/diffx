@@ -12,6 +12,8 @@ import (
 // ContextProvider must resolve IDs within the authenticated user's catalog.
 // Resolve validates ownership and expiry before any review storage is accessed.
 type ContextProvider interface {
+	UserID() string
+	Get(context.Context, string) (contextservice.Context, error)
 	ListFiltered(context.Context, int, string, ingestion.Filter) (contextservice.Page, error)
 	Resolve(context.Context, string) (reviewsession.Session, error)
 	CommentEvents
@@ -30,7 +32,7 @@ func (catalog *Catalog) ListContexts(ctx context.Context, limit int, cursor stri
 }
 func (catalog *Catalog) Review(ctx context.Context, id string) (*Service, error) {
 	if id == "" {
-		return nil, review.Error(400, "context_id required; use list_contexts to select a review")
+		return nil, review.Error(400, "context_id required; use find_feedback or list_contexts to select a review")
 	}
 	active, err := catalog.provider.Resolve(ctx, id)
 	if err != nil {

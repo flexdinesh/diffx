@@ -73,6 +73,7 @@ func Run[S Store](t *testing.T, harness Harness[S]) {
 		{"CommentThreadsKeepOrderResolutionAndEndWithTheirComment", harness.commentThreadsKeepOrderResolutionAndEndWithTheirComment},
 		{"CommentThreadsEndWithTheirStream", harness.commentThreadsEndWithTheirStream},
 		{"ImportedThreadsRoundTripWithoutOverwriting", harness.importedThreadsRoundTripWithoutOverwriting},
+		{"CommentAndStreamLookupStayOwnerScopedAndRetained", harness.commentAndStreamLookupStayOwnerScopedAndRetained},
 		{"ObservationFilePreviewPreservesScopeIdentityAndFingerprint", harness.observationFilePreviewPreservesScopeIdentityAndFingerprint},
 		{"ObservationFilePreviewRejectsUnownedOrMissingResources", harness.observationFilePreviewRejectsUnownedOrMissingResources},
 		{"ObservationFilePreviewRejectsExpiredAndDeletedContexts", harness.observationFilePreviewRejectsExpiredAndDeletedContexts},

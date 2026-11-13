@@ -155,7 +155,7 @@ RETURNING a.user_id,
   COALESCE((SELECT g.email FROM google_identities g WHERE g.user_id = a.user_id), a.email)::text AS email,
   EXISTS (SELECT 1 FROM admin_account m WHERE m.user_id = a.user_id) AS admin,
   CASE WHEN EXISTS (SELECT 1 FROM google_identities g WHERE g.user_id = a.user_id) THEN 'google' ELSE 'password' END::text AS method,
-  t.purpose, t.expires_at;
+  t.name, t.purpose, t.expires_at;
 
 -- name: IdentityAccounts :many
 SELECT a.user_id,

@@ -10,6 +10,7 @@ import (
 
 	"github.com/flexdinesh/diffx/internal/pgstore/pgdb"
 	"github.com/flexdinesh/diffx/internal/review"
+	"github.com/flexdinesh/diffx/internal/reviewdata"
 	"github.com/flexdinesh/diffx/internal/reviewservice"
 	"github.com/jackc/pgx/v5"
 )
@@ -419,4 +420,25 @@ func (store *Store) StoredVersion(ctx context.Context, ownerID, diffID, versionI
 		return review.RepositoryDiff{}, fmt.Errorf("invalid stored diff version: %w", err)
 	}
 	return snapshot, nil
+}
+
+// CommentStreams lists up to limit of the owner's comments whose ID starts
+// with prefix, ordered by ID, with their stream keys.
+func (store *Store) CommentStreams(ctx context.Context, ownerID, prefix string, limit int) ([]reviewdata.CommentStream, error) {
+	rows, err := store.queries.CommentStreams(ctx, pgdb.CommentStreamsParams{OwnerID: ownerID, Prefix: prefix, RowLimit: int32(limit)})
+	if err != nil {
+		return nil, err
+	}
+	streams := make([]reviewdata.CommentStream, 0, len(rows))
+	for _, row := range rows {
+		streams = append(streams, reviewdata.CommentStream{CommentID: row.CommentID, StreamKey: row.StreamKey})
+	}
+	return streams, nil
+}
+
+// StreamContext returns the most recently submitted retained context of the
+// owner's stream.
+func (store *Store) StreamContext(ctx context.Context, ownerID, streamKey string) (string, error) {
+	id, err := store.queries.StreamContext(ctx, pgdb.StreamContextParams{OwnerID: ownerID, StreamKey: streamKey, Now: time.Now()})
+	return id, noRows(err)
 }

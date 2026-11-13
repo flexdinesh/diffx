@@ -43,9 +43,8 @@ takes an optional `{"note"}` that joins the thread in the same transaction and
 records `resolvedBy` and `resolvedAt`. Comment lists accept `author=user` or
 `author=agent`.
 
-Compatible coding agents can discover stored reviews through `/mcp` or use the
-printed `/mcp/contexts/{id}` URL; see
-[MCP](mcp.md). A compatible browser can expose the same tools through
+Compatible coding agents find, answer and resolve review feedback through
+`/mcp`; see [MCP](mcp.md). A compatible browser can expose the same tools through
 WebMCP while the page is open; see [WebMCP](webmcp.md).
 
 Local data lives in `$XDG_STATE_HOME/diffx/state.db`, or
