@@ -117,3 +117,15 @@ DELETE FROM comment_replies p WHERE p.comment_id = @comment_id AND p.id = @id AN
   SELECT c.id FROM comments c JOIN reviews r ON r.id = c.review_id
   JOIN observations o ON o.owner_id = r.owner_id AND o.stream_key = r.stream_key WHERE o.context_id = @context_id
 );
+
+-- name: CommentStreams :many
+-- The owner's comments whose ID starts with a prefix, with their stream keys.
+SELECT c.id AS comment_id, r.stream_key FROM comments c JOIN reviews r ON r.id = c.review_id
+WHERE r.owner_id = @owner_id AND starts_with(c.id, @prefix::text)
+ORDER BY c.id COLLATE "C" LIMIT @row_limit;
+
+-- name: StreamContext :one
+-- The most recently submitted retained context of the owner's stream.
+SELECT o.context_id FROM observations o JOIN contexts x ON x.id = o.context_id JOIN diffs d ON d.id = x.anchor_diff_id
+WHERE o.owner_id = @owner_id AND o.stream_key = @stream_key AND (d.expires_at IS NULL OR d.expires_at > @now::timestamptz)
+ORDER BY x.last_submitted_at DESC, x.id COLLATE "C" DESC LIMIT 1;

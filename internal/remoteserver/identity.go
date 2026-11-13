@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/diffx/internal/authhttp"
+	"github.com/flexdinesh/diffx/internal/caller"
 	"github.com/flexdinesh/diffx/internal/githubsync"
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/pushservice"
@@ -29,11 +30,22 @@ type transport struct {
 	push         *pushservice.Service
 }
 type principal struct {
-	account identityservice.Account
-	session *identityservice.Session
-	secret  string
-	purpose identityservice.Purpose
+	account   identityservice.Account
+	session   *identityservice.Session
+	secret    string
+	purpose   identityservice.Purpose
+	tokenName string
 }
+
+// caller is how the principal authenticated, for transports that attribute
+// writes.
+func (p principal) caller() caller.Caller {
+	if p.session != nil {
+		return caller.Caller{Kind: caller.KindSession}
+	}
+	return caller.Caller{Kind: caller.KindAPIToken, Name: p.tokenName}
+}
+
 type accountJSON struct {
 	ID     string                 `json:"id"`
 	Email  string                 `json:"email"`
@@ -67,7 +79,7 @@ func (remote *transport) authenticate(r *http.Request) (principal, error) {
 		}
 		secret := strings.TrimPrefix(value, "Bearer ")
 		token, err := remote.identity.AuthenticateToken(r.Context(), secret)
-		return principal{account: token.Account, secret: secret, purpose: token.Purpose}, err
+		return principal{account: token.Account, secret: secret, purpose: token.Purpose, tokenName: token.Name}, err
 	}
 	cookie, err := r.Cookie(authhttp.SessionCookie)
 	if errors.Is(err, http.ErrNoCookie) {
@@ -178,6 +190,7 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		authhttp.IdentityError(w, err)
 		return
 	}
+	r = r.WithContext(caller.With(r.Context(), p.caller()))
 	if r.URL.Path == "/api/v2/events" || strings.HasPrefix(r.URL.Path, "/mcp") {
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()

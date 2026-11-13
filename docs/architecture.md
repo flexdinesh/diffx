@@ -244,8 +244,16 @@ owner. See [development.md](development.md) for isolated checkout commands.
 - `hooks`: finite scheduling, coalescing and session-aware suppression.
 - `httpapi`, `mcpapi`: transport parsing, projection and error mapping. Both
   reach review operations through `reviewservice.Catalog` and hold no store.
-  `mcpapi` also owns the stdio bridge (`diffx mcp`), which relays MCP messages
-  unchanged to an HTTP endpoint its caller dials, here the local socket.
+  `reviewservice` owns feedback resolution (links, comment ID prefixes,
+  checkout hints) and path-addressed comment creation; stores only look up an
+  owner's comment streams and a stream's latest retained context. `mcpapi`
+  builds its tool set per request from the request's `caller` and names agent
+  authors from it. It also owns the stdio bridge (`diffx mcp`), which relays
+  MCP messages unchanged to an HTTP endpoint its caller dials, here the local
+  socket.
+- `caller`: the authenticated caller of a request (local, session, API token
+  or OAuth client, with name, verification and scopes), a dependency-free leaf
+  that compositions set and transports read to attribute writes.
 - `serverapp`: transport/task composition; `localserver`: local lifecycle;
   `controlapi`: its private control API, credential-free because composition
   mounts it only on the owner's socket; `unixsocket`: socket bind, dial and
@@ -281,7 +289,9 @@ describe atomic application operations, not independently committed CRUD steps.
 
 Local composition resolves its stable owner automatically and exposes no account
 management routes. Remote composition resolves sessions or API tokens to opaque
-account IDs before application access. Review operations receive an owner without
+account IDs before application access, and records the request's `caller` (a
+session, or an API token with its name); local composition records none, which
+transports treat as the local owner with full access. Review operations receive an owner without
 mode branches. `remoteserver` activates owner-scoped services on demand, including
 for accounts created after startup; requests, events and workers share that owner
 registry and its shutdown lifetime; disabling or deleting an account stops its

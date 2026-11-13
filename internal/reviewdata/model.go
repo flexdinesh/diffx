@@ -63,6 +63,12 @@ type ContextInfo struct {
 	LatestContextID *string
 }
 
+// CommentStream locates a stored comment's review stream within its owner.
+type CommentStream struct {
+	CommentID string
+	StreamKey string
+}
+
 type SessionAssociation struct {
 	SourceID        string `json:"sourceId"`
 	Harness         string `json:"harness"`

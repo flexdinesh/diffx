@@ -22,8 +22,8 @@ origin and lifecycle rules apply.
 
 Codex, Claude Code, and OpenCode running on a local machine are coding
 harnesses, not inherently browser agents. They can work with diffx without
-opening its page when they support MCP `2026-07-28`: configure the diffx
-[`/mcp/contexts/{id}` endpoint](mcp.md). A harness cannot obtain WebMCP tools merely from a
+opening its page through MCP: configure the diffx
+[`/mcp` endpoint](mcp.md). A harness cannot obtain WebMCP tools merely from a
 page URL unless it is driving a WebMCP-capable browser.
 
 ## Registered tools
@@ -35,7 +35,7 @@ When the selected context's review-comments capability is enabled, the page regi
 - `resolve_review_comment`: idempotently resolves the comment identified by
   `comment_id`.
 
-The tools have the same input and behavior as their [MCP
+The tools behave like the single-comment forms of their [MCP
 counterparts](mcp.md). Results use real server comment IDs and identify
 every comment's lifecycle status, applicability, and whether it is currently
 actionable. Outdated and unchanged comments are returned and may be resolved by ID.

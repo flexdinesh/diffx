@@ -458,3 +458,36 @@ func (store *Store) StoredVersion(ctx context.Context, ownerID, diffID, versionI
 func VersionID(diffID, revision string) string {
 	return reviewdata.VersionID(diffID, revision)
 }
+
+// CommentStreams lists up to limit of the owner's comments whose ID starts
+// with prefix, ordered by ID, with their stream keys.
+func (store *Store) CommentStreams(ctx context.Context, ownerID, prefix string, limit int) ([]reviewdata.CommentStream, error) {
+	rows, err := store.db.QueryContext(ctx, `SELECT c.id, r.stream_key FROM comments c JOIN reviews r ON r.id=c.review_id
+		WHERE r.owner_id=? AND substr(c.id,1,length(?))=? ORDER BY c.id LIMIT ?`, ownerID, prefix, prefix, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	streams := make([]reviewdata.CommentStream, 0)
+	for rows.Next() {
+		var stream reviewdata.CommentStream
+		if err := rows.Scan(&stream.CommentID, &stream.StreamKey); err != nil {
+			return nil, err
+		}
+		streams = append(streams, stream)
+	}
+	return streams, rows.Err()
+}
+
+// StreamContext returns the most recently submitted retained context of the
+// owner's stream.
+func (store *Store) StreamContext(ctx context.Context, ownerID, streamKey string) (string, error) {
+	var id string
+	err := store.db.QueryRowContext(ctx, `SELECT o.context_id FROM observations o JOIN contexts x ON x.id=o.context_id JOIN diffs d ON d.id=x.anchor_diff_id
+		WHERE o.owner_id=? AND o.stream_key=? AND (d.expires_at IS NULL OR d.expires_at>?)
+		ORDER BY x.last_submitted_at DESC, x.id DESC LIMIT 1`, ownerID, streamKey, time.Now().UnixMilli()).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return id, err
+}

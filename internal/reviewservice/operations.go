@@ -27,6 +27,17 @@ type MutationStore interface {
 	ObservationPatch(context.Context, string, string, review.DiffMode, string, string) (review.FilePatch, error)
 	CommitStore
 	ThreadStore
+	LookupStore
+}
+
+// LookupStore finds an owner's retained review streams across contexts.
+type LookupStore interface {
+	// CommentStreams lists up to limit of the owner's comments whose ID
+	// starts with prefix, ordered by ID, with their stream keys.
+	CommentStreams(ctx context.Context, ownerID, prefix string, limit int) ([]reviewdata.CommentStream, error)
+	// StreamContext returns the most recently submitted retained context of
+	// the owner's stream, or reviewdata.ErrNotFound.
+	StreamContext(ctx context.Context, ownerID, streamKey string) (string, error)
 }
 
 // ThreadStore keeps comment threads and resolutions. Each write is one atomic

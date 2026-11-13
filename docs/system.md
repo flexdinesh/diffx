@@ -653,6 +653,26 @@ navigation: it selects the comment's scope and file, scrolls and pulses. The
 parameter is consumed from the URL. An unknown ID leaves the review open with a
 quiet notice.
 
+MCP agents start from `find_feedback`. It resolves, within the owner's visible
+reviews, a review or comment link (matched by path; scheme and host are
+ignored), a full comment ID, or a unique comment ID prefix of at least eight
+characters; otherwise checkout hints (repository name or remote URL, branch,
+worktree, hostname) matched against latest stream heads; otherwise the
+endpoint's context or the local default. Stream links and comment IDs follow
+the stream's latest retained head; context links pin their snapshot. An
+ambiguous prefix or several matching heads are reported with candidates, never
+guessed. Agents write through `create_review_comment`, which validates the
+range against the stored snapshot and captures code and anchor exactly as the
+review UI's create does, `reply_to_review_comment`, and `resolve_review_comment`
+for one or several comments, each resolved independently with an optional
+note. They never edit or delete. Agent writes name the caller: a caller whose
+identity the composition established supplies its recorded name and
+verification; API tokens append the token name to the MCP client's
+self-reported name; otherwise the client name alone, or `Agent` when absent.
+Stateless requests carry the client name only under protocol `2026-07-28`.
+The tool set is built per request, omitting write tools for callers whose
+scopes exclude `comments:write`.
+
 `GET /api/v2/events` supplies transient server-sent hints. `ingestion` events
 name a changed context; `comments` events name the context and stream
 (`streamId` empty for piped captures) after any committed comment, reply or
@@ -796,7 +816,8 @@ defaults to 90 days and is selectable from 1–365 days. Two fixed presets apply
 `collector` permits ingestion, job polling, health and reconciliation catalog/
 context metadata reads; `api` permits the owner's review REST/MCP, events and
 ingestion. Neither preset permits account, password or token management. Those
-operations require a browser session. Revocation and expiry take effect at
+operations require a browser session. A token's name labels agent comments,
+replies and resolutions written with it through MCP. Revocation and expiry take effect at
 authentication; rotating credentials does not change account or replay identity.
 
 Each authenticated user can receive observations
