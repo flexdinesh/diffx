@@ -627,11 +627,42 @@ their path or a rename. Open outdated or unchanged comments can be carried to
 the viewed snapshot as file comments keeping their original code and lines.
 Reviewed marks carry to snapshots whose stored file patch is identical.
 
-`GET /api/v2/events` supplies transient server-sent ingestion notifications.
-The browser reloads the catalog on events and reconnection. An arrival does not
+Each comment names its author: the user (`kind: user`, shown as “You”; legacy
+comments without an author read as the user) or an agent (`kind: agent`) with a
+self-reported name and client ID, marked `verified` only when the server
+established the agent's identity. The stream belongs to one owner, so the user
+needs no account identity on comments. Human REST writes record the user.
+A comment holds one level of replies in creation order, each with its own
+author, body, creation and edit time. Stores keep replies in their own table
+beside the comment, so adding a reply is one atomic insert, never a rewrite of
+the comment; replies end with their comment and with the stream's review state.
+The user edits only their own replies and deletes any reply or comment in their
+review; agent comments and replies are append-only, so the user answers them
+instead of editing them. Resolving records the resolver and time; repeating it
+keeps the first resolution and stays idempotent. An optional resolution note
+joins the thread as the resolver's reply in the same transaction, also on a
+repeat. Reopening clears the resolution. Comment lists accept an `author`
+filter (`user` or `agent`) on the comment's author; replies do not affect it.
+Exports name agent authors on comments and every reply's author; user comments
+keep their original form.
+
+A comment permalink is the review's live URL with `?comment={id}`
+(`/streams/{streamId}?comment=` or, without a stream, `/contexts/{contextId}?comment=`).
+Opening one waits for the stream's comments and diff, then uses comment
+navigation: it selects the comment's scope and file, scrolls and pulses. The
+parameter is consumed from the URL. An unknown ID leaves the review open with a
+quiet notice.
+
+`GET /api/v2/events` supplies transient server-sent hints. `ingestion` events
+name a changed context; `comments` events name the context and stream
+(`streamId` empty for piped captures) after any committed comment, reply or
+resolution change. The browser reloads the catalog on ingestion events and
+reconnection, and reloads the open stream's comments on a matching comments
+event, an empty-context ingestion event or reconnection. Reloading replaces
+saved comments only; the comment draft and open reply composers stay. An arrival does not
 silently replace the observation being reviewed. The event stream is a hint to
 query durable state, not a durable queue or an event replay log. Every server
-replica streams contexts committed by any replica. An empty `contextId` means
+replica streams contexts and comment changes committed by any replica. An empty `contextId` means
 changes may have been missed, such as after a replica's database listener
 reconnects; clients reload the catalog as for any event.
 
@@ -790,7 +821,7 @@ removing all scopes and previews. A remote pass takes a transaction advisory
 try-lock and skips while another replica's pass holds it. Commit diffs share their observation's
 expiry: fresh matching submissions extend them, and pruning and deletion remove
 them. Deleting or pruning a snapshot keeps its
-stream's comments and marks while another snapshot of the stream remains; the
+stream's comments, replies and marks while another snapshot of the stream remains; the
 same transaction deletes them with the stream's last snapshot. Compact replay
 identities and stream heads survive deletion and expiry, preventing replay
 resurrection and regression of freshness. Incompatible schemas are refused without resetting data;

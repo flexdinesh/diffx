@@ -286,13 +286,16 @@ mode branches. `remoteserver` activates owner-scoped services on demand, includi
 for accounts created after startup; requests, events and workers share that owner
 registry and its shutdown lifetime; disabling or deleting an account stops its
 services and event streams. Replicas share no memory, so `pgstore` sends a
-`NOTIFY` in the transaction that ingests or deletes a context, disables or
-deletes an account, changes app settings, or queues an ingestion job; a
-rollback sends none. Each replica's dedicated listening session relays every
-commit, its own included, to that owner's subscribers, removes the account's
-services, reloads the admission settings snapshot or wakes the worker.
+`NOTIFY` in the transaction that ingests or deletes a context, changes a
+stream's comments, replies or resolutions, disables or deletes an account,
+changes app settings, or queues an ingestion job; a rollback sends none. Each
+replica's dedicated listening session relays every commit, its own included,
+to that owner's subscribers, removes the account's services, reloads the
+admission settings snapshot or wakes the worker.
 Remote services therefore skip in-process publication
-(`contextservice.ExternalEvents`); local composition keeps it. Notifications
+(`contextservice.ExternalEvents`); local composition keeps it. `reviewservice`
+reports committed comment changes to the context provider it was resolved
+through (`CommentEvents`), which publishes them only in local composition. Notifications
 are hints: after a lost session the listener reconnects with backoff, asks
 every active owner's clients to reload and reloads settings, and the worker
 keeps polling.
@@ -468,7 +471,8 @@ uses `X-Diffx-State` to pin submission and polling to the destination identity;
 older protocols are rejected. Release artifacts use the explicit `diffx` project
 name, independent of the checkout directory.
 
-Local SQLite schema 16 preserves current state across starts. It drops the
+Local SQLite schema 17 preserves current state across starts. Schema 17 added
+`comment_replies`, which cascades with its comment. Schema 16 dropped the
 server-only tables earlier schemas created in every local database
 (accounts, sessions, tokens, administration, Google sign-in, invites, GitHub
 integration, push notifications and the `ingestion_jobs` queue), because server

@@ -41,9 +41,18 @@ func versionFor(ctx context.Context, transaction *sql.Tx, diffID, versionID stri
 	return nil
 }
 
-// Comments returns the stream's comments while the context is retained.
+// Comments returns the stream's comments with their replies while the context is retained.
 func (store *Store) Comments(ctx context.Context, contextID string) ([]review.ReviewComment, error) {
-	rows, err := store.db.QueryContext(ctx, `SELECT c.data FROM comments c JOIN reviews r ON r.id=c.review_id
+	transaction, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer transaction.Rollback()
+	replies, err := streamReplies(ctx, transaction, contextID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := transaction.QueryContext(ctx, `SELECT c.id, c.data FROM comments c JOIN reviews r ON r.id=c.review_id
 		JOIN observations o ON o.owner_id=r.owner_id AND o.stream_key=r.stream_key
 		JOIN contexts x ON x.id=o.context_id JOIN diffs d ON d.id=x.anchor_diff_id
 		WHERE o.context_id=? AND (d.expires_at IS NULL OR d.expires_at>?) ORDER BY c.created_at, c.id`, contextID, time.Now().UnixMilli())
@@ -53,17 +62,40 @@ func (store *Store) Comments(ctx context.Context, contextID string) ([]review.Re
 	defer rows.Close()
 	comments := make([]review.ReviewComment, 0)
 	for rows.Next() {
-		var raw string
-		if err := rows.Scan(&raw); err != nil {
+		var id, raw string
+		if err := rows.Scan(&id, &raw); err != nil {
 			return nil, err
 		}
-		var comment review.ReviewComment
-		if err := json.Unmarshal([]byte(raw), &comment); err != nil {
+		comment, err := review.StoredComment([]byte(raw), replies[id])
+		if err != nil {
 			return nil, err
 		}
 		comments = append(comments, comment)
 	}
 	return comments, rows.Err()
+}
+
+// streamReplies groups the context stream's replies by comment, in creation order.
+func streamReplies(ctx context.Context, transaction *sql.Tx, contextID string) (map[string][]review.CommentReply, error) {
+	rows, err := transaction.QueryContext(ctx, `SELECT p.comment_id, p.data FROM comment_replies p JOIN comments c ON c.id=p.comment_id
+		WHERE c.review_id IN (`+streamReviews+`) ORDER BY p.created_at, p.rowid`, contextID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	replies := make(map[string][]review.CommentReply)
+	for rows.Next() {
+		var commentID, raw string
+		if err := rows.Scan(&commentID, &raw); err != nil {
+			return nil, err
+		}
+		var reply review.CommentReply
+		if err := json.Unmarshal([]byte(raw), &reply); err != nil {
+			return nil, err
+		}
+		replies[commentID] = append(replies[commentID], reply)
+	}
+	return replies, rows.Err()
 }
 
 // PutComment stores a comment in the context's stream review. New references
@@ -117,8 +149,7 @@ func (store *Store) writeComment(ctx context.Context, contextID string, comment 
 			return false, errors.New("comment belongs to a different diff")
 		}
 	}
-	comment.Placement = nil
-	raw, err := json.Marshal(comment)
+	raw, err := review.StorableComment(comment)
 	if err != nil {
 		return false, err
 	}
@@ -141,6 +172,133 @@ func (store *Store) writeComment(ctx context.Context, contextID string, comment 
 			return false, nil
 		}
 		return false, errors.New("comment ID belongs to another review")
+	}
+	// Imported threads keep their replies; existing replies are never overwritten.
+	if !existing {
+		for _, reply := range comment.Replies {
+			if _, err := insertReply(ctx, transaction, comment.ID, reply, true); err != nil {
+				return false, err
+			}
+		}
+	}
+	return true, transaction.Commit()
+}
+
+func insertReply(ctx context.Context, transaction *sql.Tx, commentID string, reply review.CommentReply, keepExisting bool) (bool, error) {
+	raw, err := json.Marshal(reply)
+	if err != nil {
+		return false, err
+	}
+	statement := `INSERT INTO comment_replies(comment_id, id, data, created_at) VALUES(?, ?, ?, ?)`
+	if keepExisting {
+		statement += ` ON CONFLICT DO NOTHING`
+	}
+	result, err := transaction.ExecContext(ctx, statement, commentID, reply.ID, string(raw), int64(reply.CreatedAt))
+	if err != nil {
+		return false, err
+	}
+	inserted, err := result.RowsAffected()
+	return inserted == 1, err
+}
+
+// streamComment reads a comment of the context's stream for a thread write.
+func streamComment(ctx context.Context, transaction *sql.Tx, contextID, commentID string) (review.ReviewComment, bool, error) {
+	var raw string
+	err := transaction.QueryRowContext(ctx, `SELECT data FROM comments WHERE id=? AND review_id IN (`+streamReviews+`)`, commentID, contextID).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return review.ReviewComment{}, false, nil
+	}
+	if err != nil {
+		return review.ReviewComment{}, false, err
+	}
+	comment, err := review.StoredComment([]byte(raw), nil)
+	return comment, err == nil, err
+}
+
+// AddReply appends a reply to a stream comment and reports false when the
+// comment no longer exists.
+func (store *Store) AddReply(ctx context.Context, contextID, commentID string, reply review.CommentReply) (bool, error) {
+	transaction, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer transaction.Rollback()
+	if _, found, err := streamComment(ctx, transaction, contextID, commentID); err != nil || !found {
+		return false, err
+	}
+	if inserted, err := insertReply(ctx, transaction, commentID, reply, false); err != nil || !inserted {
+		return false, err
+	}
+	return true, transaction.Commit()
+}
+
+// EditReply replaces a reply's body and reports false when it no longer exists.
+func (store *Store) EditReply(ctx context.Context, contextID, commentID, replyID, body string, editedAt float64) (bool, error) {
+	transaction, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer transaction.Rollback()
+	var raw string
+	err = transaction.QueryRowContext(ctx, `SELECT data FROM comment_replies WHERE comment_id=? AND id=? AND comment_id IN (SELECT id FROM comments WHERE review_id IN (`+streamReviews+`))`, commentID, replyID, contextID).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var reply review.CommentReply
+	if err := json.Unmarshal([]byte(raw), &reply); err != nil {
+		return false, err
+	}
+	reply.Body, reply.EditedAt = body, editedAt
+	updated, err := json.Marshal(reply)
+	if err != nil {
+		return false, err
+	}
+	if _, err := transaction.ExecContext(ctx, `UPDATE comment_replies SET data=? WHERE comment_id=? AND id=?`, string(updated), commentID, replyID); err != nil {
+		return false, err
+	}
+	return true, transaction.Commit()
+}
+
+// DeleteReply removes one reply of a stream comment.
+func (store *Store) DeleteReply(ctx context.Context, contextID, commentID, replyID string) (bool, error) {
+	result, err := store.db.ExecContext(ctx, `DELETE FROM comment_replies WHERE comment_id=? AND id=? AND comment_id IN (SELECT id FROM comments WHERE review_id IN (`+streamReviews+`))`, commentID, replyID, contextID)
+	if err != nil {
+		return false, err
+	}
+	deleted, err := result.RowsAffected()
+	return deleted == 1, err
+}
+
+// ResolveComment resolves a stream comment and appends an optional note in one
+// transaction. An already resolved comment keeps its resolution and still
+// gains the note. It reports false when the comment no longer exists.
+func (store *Store) ResolveComment(ctx context.Context, contextID, commentID string, by review.CommentAuthor, at float64, note *review.CommentReply) (bool, error) {
+	transaction, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer transaction.Rollback()
+	comment, found, err := streamComment(ctx, transaction, contextID, commentID)
+	if err != nil || !found {
+		return false, err
+	}
+	if comment.Status != "resolved" {
+		comment.Status, comment.ResolvedBy, comment.ResolvedAt = "resolved", &by, at
+		raw, err := review.StorableComment(comment)
+		if err != nil {
+			return false, err
+		}
+		if _, err := transaction.ExecContext(ctx, `UPDATE comments SET data=? WHERE id=?`, string(raw), commentID); err != nil {
+			return false, err
+		}
+	}
+	if note != nil {
+		if inserted, err := insertReply(ctx, transaction, commentID, *note, false); err != nil || !inserted {
+			return false, err
+		}
 	}
 	return true, transaction.Commit()
 }

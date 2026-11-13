@@ -42,21 +42,37 @@ func versionFor(ctx context.Context, queries *pgdb.Queries, diffID, versionID st
 	return nil
 }
 
-// Comments returns the stream's comments while the context is retained.
+// Comments returns the stream's comments with their replies while the context is retained.
 func (store *Store) Comments(ctx context.Context, contextID string) ([]review.ReviewComment, error) {
-	rows, err := store.queries.Comments(ctx, pgdb.CommentsParams{ContextID: contextID, Now: time.Now()})
-	if err != nil {
-		return nil, err
-	}
-	comments := make([]review.ReviewComment, 0, len(rows))
-	for _, raw := range rows {
-		var comment review.ReviewComment
-		if err := json.Unmarshal(raw, &comment); err != nil {
-			return nil, err
+	var comments []review.ReviewComment
+	err := store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
+		replyRows, err := queries.StreamReplies(ctx, contextID)
+		if err != nil {
+			return err
 		}
-		comments = append(comments, comment)
-	}
-	return comments, nil
+		replies := make(map[string][]review.CommentReply)
+		for _, row := range replyRows {
+			var reply review.CommentReply
+			if err := json.Unmarshal(row.Data, &reply); err != nil {
+				return err
+			}
+			replies[row.CommentID] = append(replies[row.CommentID], reply)
+		}
+		rows, err := queries.Comments(ctx, pgdb.CommentsParams{ContextID: contextID, Now: time.Now()})
+		if err != nil {
+			return err
+		}
+		comments = make([]review.ReviewComment, 0, len(rows))
+		for _, row := range rows {
+			comment, err := review.StoredComment(row.Data, replies[row.ID])
+			if err != nil {
+				return err
+			}
+			comments = append(comments, comment)
+		}
+		return nil
+	})
+	return comments, err
 }
 
 // PutComment stores a comment in the context's stream review. New references
@@ -109,8 +125,7 @@ func (store *Store) writeComment(ctx context.Context, contextID string, comment 
 				return errors.New("comment belongs to a different diff")
 			}
 		}
-		comment.Placement = nil
-		raw, err := json.Marshal(comment)
+		raw, err := review.StorableComment(comment)
 		if err != nil {
 			return err
 		}
@@ -129,10 +144,161 @@ func (store *Store) writeComment(ctx context.Context, contextID string, comment 
 			}
 			return errors.New("comment ID belongs to another review")
 		}
+		// Imported threads keep their replies; existing replies are never overwritten.
+		if !existing {
+			for _, reply := range comment.Replies {
+				if containsNUL(reply.ID) {
+					return ErrNUL
+				}
+				raw, err := json.Marshal(reply)
+				if err != nil {
+					return err
+				}
+				if err := queries.ImportReply(ctx, pgdb.ImportReplyParams{CommentID: comment.ID, ID: reply.ID, Data: raw, CreatedAt: int64(reply.CreatedAt)}); err != nil {
+					return err
+				}
+			}
+		}
 		written = true
-		return nil
+		return notifyComments(ctx, queries, contextID)
 	})
 	return written, err
+}
+
+// lockComment locks a stream comment for a thread write; found is false when
+// the comment no longer exists.
+func lockComment(ctx context.Context, queries *pgdb.Queries, contextID, commentID string) (review.ReviewComment, bool, error) {
+	raw, err := queries.LockStreamComment(ctx, pgdb.LockStreamCommentParams{ID: commentID, ContextID: contextID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return review.ReviewComment{}, false, nil
+	}
+	if err != nil {
+		return review.ReviewComment{}, false, err
+	}
+	comment, err := review.StoredComment(raw, nil)
+	return comment, err == nil, err
+}
+
+func containsNUL(values ...string) bool {
+	return strings.ContainsRune(strings.Join(values, ""), 0)
+}
+
+func insertReply(ctx context.Context, queries *pgdb.Queries, commentID string, reply review.CommentReply) error {
+	if containsNUL(reply.ID) {
+		return ErrNUL
+	}
+	raw, err := json.Marshal(reply)
+	if err != nil {
+		return err
+	}
+	inserted, err := queries.InsertReply(ctx, pgdb.InsertReplyParams{CommentID: commentID, ID: reply.ID, Data: raw, CreatedAt: int64(reply.CreatedAt)})
+	if err == nil && inserted != 1 {
+		err = errors.New("reply was not stored")
+	}
+	return err
+}
+
+// AddReply appends a reply to a stream comment and reports false when the
+// comment no longer exists.
+func (store *Store) AddReply(ctx context.Context, contextID, commentID string, reply review.CommentReply) (bool, error) {
+	if containsNUL(commentID) {
+		return false, ErrNUL
+	}
+	added := false
+	err := store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
+		if _, found, err := lockComment(ctx, queries, contextID, commentID); err != nil || !found {
+			return err
+		}
+		if err := insertReply(ctx, queries, commentID, reply); err != nil {
+			return err
+		}
+		added = true
+		return notifyComments(ctx, queries, contextID)
+	})
+	return added, err
+}
+
+// EditReply replaces a reply's body and reports false when it no longer exists.
+func (store *Store) EditReply(ctx context.Context, contextID, commentID, replyID, body string, editedAt float64) (bool, error) {
+	if containsNUL(commentID, replyID) {
+		return false, ErrNUL
+	}
+	edited := false
+	err := store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
+		raw, err := queries.LockStreamReply(ctx, pgdb.LockStreamReplyParams{CommentID: commentID, ID: replyID, ContextID: contextID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		var reply review.CommentReply
+		if err := json.Unmarshal(raw, &reply); err != nil {
+			return err
+		}
+		reply.Body, reply.EditedAt = body, editedAt
+		updated, err := json.Marshal(reply)
+		if err != nil {
+			return err
+		}
+		if err := queries.SetReplyData(ctx, pgdb.SetReplyDataParams{Data: updated, CommentID: commentID, ID: replyID}); err != nil {
+			return err
+		}
+		edited = true
+		return notifyComments(ctx, queries, contextID)
+	})
+	return edited, err
+}
+
+// DeleteReply removes one reply of a stream comment.
+func (store *Store) DeleteReply(ctx context.Context, contextID, commentID, replyID string) (bool, error) {
+	if containsNUL(commentID, replyID) {
+		return false, ErrNUL
+	}
+	deleted := false
+	err := store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
+		count, err := queries.DeleteStreamReply(ctx, pgdb.DeleteStreamReplyParams{CommentID: commentID, ID: replyID, ContextID: contextID})
+		if err != nil || count != 1 {
+			return err
+		}
+		deleted = true
+		return notifyComments(ctx, queries, contextID)
+	})
+	return deleted, err
+}
+
+// ResolveComment resolves a stream comment and appends an optional note in one
+// transaction. An already resolved comment keeps its resolution and still
+// gains the note. It reports false when the comment no longer exists.
+func (store *Store) ResolveComment(ctx context.Context, contextID, commentID string, by review.CommentAuthor, at float64, note *review.CommentReply) (bool, error) {
+	if containsNUL(commentID) {
+		return false, ErrNUL
+	}
+	resolved := false
+	err := store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
+		comment, found, err := lockComment(ctx, queries, contextID, commentID)
+		if err != nil || !found {
+			return err
+		}
+		if comment.Status != "resolved" {
+			comment.Status, comment.ResolvedBy, comment.ResolvedAt = "resolved", &by, at
+			raw, err := review.StorableComment(comment)
+			if err != nil {
+				return err
+			}
+			if err := queries.SetCommentData(ctx, pgdb.SetCommentDataParams{Data: raw, ID: commentID}); err != nil {
+				return err
+			}
+		}
+		if note != nil {
+			if err := insertReply(ctx, queries, commentID, *note); err != nil {
+				return err
+			}
+		}
+		resolved = true
+		return notifyComments(ctx, queries, contextID)
+	})
+	return resolved, err
 }
 
 func (store *Store) ImportComments(ctx context.Context, contextID string, comments []review.ReviewComment) ([]review.ReviewComment, error) {
@@ -168,7 +334,15 @@ func (store *Store) DeleteComments(ctx context.Context, contextID string, select
 			ids = append(ids, id)
 		}
 	}
-	deleted, err := store.queries.DeleteStreamComments(ctx, pgdb.DeleteStreamCommentsParams{Ids: ids, ContextID: contextID})
+	var deleted int64
+	err := store.inTx(ctx, func(_ pgx.Tx, queries *pgdb.Queries) error {
+		var err error
+		deleted, err = queries.DeleteStreamComments(ctx, pgdb.DeleteStreamCommentsParams{Ids: ids, ContextID: contextID})
+		if err != nil || deleted == 0 {
+			return err
+		}
+		return notifyComments(ctx, queries, contextID)
+	})
 	return int(deleted), err
 }
 

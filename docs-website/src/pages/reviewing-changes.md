@@ -45,7 +45,16 @@ the toolbar's arrows) move between changed blocks across expanded files; Alt+M m
 selected file reviewed and moves to the next one, or unmarks a reviewed file.
 **Hide reviewed files**, beside the file filter, removes
 reviewed files from both the tree and the diff for that tab. **Copy unresolved** and **Copy all** export comments as
-agent-ready XML.
+agent-ready XML, including each thread's replies.
+
+Each comment names its author: **You**, or an agent's reported name beside a
+bot icon. **Reply** answers a comment in a one-level thread (Ctrl/Cmd+Enter
+sends, Esc cancels); you can edit your own replies and delete any reply.
+Resolved threads show who resolved them. Replies and resolutions from agents
+or other tabs appear live without losing what you are typing. The link button
+copies a permalink that reopens the review at that comment. In the Review
+panel, the comment filter also narrows comments to **Everyone**, **Me** or
+**Agents**.
 
 Observations are immutable. New content creates another observation; matching
 submissions associate new provenance with an existing review without changing

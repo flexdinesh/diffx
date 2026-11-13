@@ -21,7 +21,9 @@ Public v1 routes and synchronous ingestion are removed.
 `worktree`, `hostname`, `sourceId`, `runId`, `harness`, `sessionId` and `sessionName`
 filters; `latest=true` omits stale snapshots. Each context names its `streamId` and
 the stream's current `latestContextId`. Session filters search submission associations. Scoped review operations
-use `/api/v2/contexts/{id}/...`; `/api/v2/events` sends ingestion notifications.
+use `/api/v2/contexts/{id}/...`; `/api/v2/events` sends `ingestion` hints and
+`comments` hints (`contextId`, `streamId`) after any comment, reply or
+resolution change in a review stream.
 A context with captured branch commits carries `commits` (`count`, `omitted`).
 `GET /api/v2/contexts/{id}/commits` lists them oldest first with change totals;
 `.../commits/{oid}/diff`, `.../commits/{oid}/files/{fileId}/patch` and
@@ -33,6 +35,14 @@ Latest means the most recently collected submission for each source, repository,
 checkout, branch and comparison policy; arrival order breaks ties. It does not guarantee current
 filesystem state. Older snapshots stay stale when newer reviews expire.
 
+Comments carry an `author` (`kind` `user` or `agent`, with an agent's reported
+`name`) and one level of `replies`. `POST .../comments/{commentId}/replies` adds
+a reply as the user; `PATCH` and `DELETE .../replies/{replyId}` edit the user's
+own replies and delete any reply. `POST .../review/comments/{commentId}/resolve`
+takes an optional `{"note"}` that joins the thread in the same transaction and
+records `resolvedBy` and `resolvedAt`. Comment lists accept `author=user` or
+`author=agent`.
+
 Compatible coding agents can discover stored reviews through `/mcp` or use the
 printed `/mcp/contexts/{id}` URL; see
 [MCP](mcp.md). A compatible browser can expose the same tools through
@@ -42,7 +52,7 @@ Local data lives in `$XDG_STATE_HOME/diffx/state.db`, or
 `~/.local/state/diffx/state.db`. An isolated `DIFFX_RUNTIME_DIR` moves the
 default database, manual sync and hook state, and config into that directory.
 `--state memory` disables persistence.
-Current schema 15 state persists across restarts; schema 11 to 14 state upgrades in place. When local state comes from
+Current schema 17 state persists across restarts; schema 11 to 16 state upgrades in place. When local state comes from
 an older diffx, `diffx` asks before moving it to a backup beside the database
 and starting fresh; scripts pass `--reset-state`, which backs up and resets
 current state too. Only the newest backup is kept. Newer or unrecognized

@@ -56,10 +56,13 @@ func PublicReviewRoute(method, route string) bool {
 		}
 	}
 	if len(p) == 4 {
-		return method == http.MethodGet && p[1] == "commits" && p[3] == "diff" || method == http.MethodPost && p[1] == "comments" && p[3] == "carry"
+		return method == http.MethodGet && p[1] == "commits" && p[3] == "diff" ||
+			method == http.MethodPost && p[1] == "comments" && (p[3] == "carry" || p[3] == "replies")
 	}
 	if len(p) == 5 {
-		return p[1] == "diffs" && p[3] == "versions" && method == http.MethodGet || p[1] == "review" && p[2] == "comments" && p[4] == "resolve" && method == http.MethodPost
+		return p[1] == "diffs" && p[3] == "versions" && method == http.MethodGet ||
+			p[1] == "review" && p[2] == "comments" && p[4] == "resolve" && method == http.MethodPost ||
+			p[1] == "comments" && p[3] == "replies" && p[4] != "" && (method == http.MethodPatch || method == http.MethodDelete)
 	}
 	if len(p) == 6 && (p[1] == "diffs" || p[1] == "commits") && p[3] == "files" && (p[5] == "patch" || p[5] == "contents") {
 		return method == http.MethodGet

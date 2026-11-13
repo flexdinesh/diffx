@@ -3,6 +3,7 @@ package pgstore
 import (
 	"context"
 
+	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/pgstore/pgdb"
 )
 
@@ -20,12 +21,25 @@ const (
 	jobChannel = "diffx_job"
 	// settingsChannel announces changed app settings. Payload: empty.
 	settingsChannel = "diffx_settings"
+	// commentChannel announces a committed comment, reply or resolution change
+	// in a review stream. Payload: "<owner ID> <context ID> <stream ID>"; the
+	// stream ID is empty for piped captures.
+	commentChannel = "diffx_comment"
 )
 
-var channels = []string{contextChannel, accountChannel, jobChannel, settingsChannel}
+var channels = []string{contextChannel, accountChannel, jobChannel, settingsChannel, commentChannel}
 
 func notifyContext(ctx context.Context, queries *pgdb.Queries, ownerID, contextID string) error {
 	return queries.Notify(ctx, pgdb.NotifyParams{Channel: contextChannel, Payload: ownerID + " " + contextID})
+}
+
+// notifyComments announces a comment change in the context's stream.
+func notifyComments(ctx context.Context, queries *pgdb.Queries, contextID string) error {
+	stream, err := queries.CommentStream(ctx, contextID)
+	if err != nil {
+		return err
+	}
+	return queries.Notify(ctx, pgdb.NotifyParams{Channel: commentChannel, Payload: stream.OwnerID + " " + contextID + " " + ingestion.PublicStreamID(stream.StreamKey)})
 }
 
 func notifyAccount(ctx context.Context, queries *pgdb.Queries, accountID string) error {

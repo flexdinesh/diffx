@@ -297,6 +297,61 @@ test("Go distribution implements the API contract", async (t) => {
   assert.equal(created.data?.path, file.path);
   assert.equal(created.data?.code, "+ export const value = 2;");
   assert.equal(created.data?.body, "Keep the new value.");
+  assert.deepEqual(created.data?.author, { kind: "user" });
+
+  const commentId = created.data?.id ?? "";
+  const replied = await client.POST(
+    "/api/v2/contexts/{contextId}/comments/{commentId}/replies",
+    {
+      params: { path: { contextId, commentId } },
+      body: { body: "Why keep it?" },
+    },
+  );
+  assert.equal(replied.response.status, 201);
+  conforms("ReviewComment", replied.data);
+  const replyId = replied.data?.replies?.[0]?.id ?? "";
+  const edited = await client.PATCH(
+    "/api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId}",
+    {
+      params: { path: { contextId, commentId, replyId } },
+      body: { body: "Why keep this value?" },
+    },
+  );
+  conforms("ReviewComment", edited.data);
+  assert.equal(edited.data?.replies?.[0]?.body, "Why keep this value?");
+  const resolution = await client.POST(
+    "/api/v2/contexts/{contextId}/review/comments/{commentId}/resolve",
+    {
+      params: { path: { contextId, commentId } },
+      body: { note: "Kept on purpose." },
+    },
+  );
+  conforms("ResolveReviewComment", resolution.data);
+  const agentComments = await client.GET(
+    "/api/v2/contexts/{contextId}/review/comments",
+    {
+      params: {
+        path: { contextId },
+        query: { includeResolved: true, author: "user" },
+      },
+    },
+  );
+  const thread = agentComments.data?.comments[0];
+  conforms("AgentReviewComment", thread);
+  assert.deepEqual(thread?.resolvedBy, { kind: "user" });
+  assert.deepEqual(
+    thread?.replies?.map((reply) => reply.body),
+    ["Why keep this value?", "Kept on purpose."],
+  );
+  const removed = await client.DELETE(
+    "/api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId}",
+    { params: { path: { contextId, commentId, replyId } } },
+  );
+  assert.equal(removed.response.status, 204);
+  const byAgents = await client.GET("/api/v2/contexts/{contextId}/comments", {
+    params: { path: { contextId }, query: { author: "agent" } },
+  });
+  assert.deepEqual(byAgents.data, { comments: [] });
 
   for (const path of [
     "/api/v1/session",

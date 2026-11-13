@@ -14,6 +14,7 @@ import (
 type ContextProvider interface {
 	ListFiltered(context.Context, int, string, ingestion.Filter) (contextservice.Page, error)
 	Resolve(context.Context, string) (reviewsession.Session, error)
+	CommentEvents
 }
 
 type Catalog struct {
@@ -36,6 +37,7 @@ func (catalog *Catalog) Review(ctx context.Context, id string) (*Service, error)
 		return nil, err
 	}
 	service := New(active, catalog.store)
+	service.events = catalog.provider
 	return service, nil
 }
 func (catalog *Catalog) GetDiff(ctx context.Context, id string, scope review.DiffMode) (review.RepositoryDiff, error) {

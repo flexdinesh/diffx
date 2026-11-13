@@ -48,9 +48,17 @@ Object.defineProperty(globalThis, "matchMedia", {
     removeEventListener() {},
   }),
 });
+// Open server event streams, so tests can deliver server-sent hints.
+export const eventStreams = new Set<EventTarget>();
 Object.defineProperty(globalThis, "EventSource", {
   value: class extends dom.window.EventTarget {
-    close() {}
+    constructor() {
+      super();
+      eventStreams.add(this);
+    }
+    close() {
+      eventStreams.delete(this);
+    }
   },
 });
 

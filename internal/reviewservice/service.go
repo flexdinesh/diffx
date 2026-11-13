@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/flexdinesh/diffx/internal/review"
 	"github.com/flexdinesh/diffx/internal/reviewsession"
@@ -40,9 +42,16 @@ type Resolution struct {
 	Status    string `json:"status"`
 }
 
+// CommentEvents hears committed comment, reply and resolution changes of a
+// context's stream. Compositions whose store announces changes ignore it.
+type CommentEvents interface {
+	CommentsChanged(contextID, streamID string)
+}
+
 type Service struct {
 	session reviewsession.Session
 	store   MutationStore
+	events  CommentEvents
 }
 
 func New(active reviewsession.Session, store MutationStore) *Service {
@@ -50,10 +59,35 @@ func New(active reviewsession.Session, store MutationStore) *Service {
 	return service
 }
 
-// ListComments returns the stream's comments placed in this context. Only open
-// comments that render on current lines are actionable.
-func (service *Service) ListComments(ctx context.Context, includeResolved bool) ([]Comment, error) {
+// changed announces a committed comment change of this context's stream.
+func (service *Service) changed() {
+	if service.events != nil {
+		service.events.CommentsChanged(service.session.ContextID, service.session.StreamID)
+	}
+}
+
+// ParseAuthorFilter accepts an empty filter or a comment author kind.
+func ParseAuthorFilter(value string) (string, error) {
+	if value != "" && value != review.AuthorUser && value != review.AuthorAgent {
+		return "", review.Error(400, "Invalid author filter")
+	}
+	return value, nil
+}
+
+// writtenBy reports whether a comment's author matches a parsed filter.
+func writtenBy(comment review.ReviewComment, author string) bool {
+	return author == "" || comment.Author != nil && comment.Author.Kind == author
+}
+
+// ListComments returns the stream's comments placed in this context, optionally
+// only those written by one author kind. Only open comments that render on
+// current lines are actionable.
+func (service *Service) ListComments(ctx context.Context, includeResolved bool, author string) ([]Comment, error) {
 	if err := service.requireComments(); err != nil {
+		return nil, err
+	}
+	author, err := ParseAuthorFilter(author)
+	if err != nil {
 		return nil, err
 	}
 	storedComments, err := service.store.Comments(ctx, service.session.ContextID)
@@ -62,7 +96,7 @@ func (service *Service) ListComments(ctx context.Context, includeResolved bool) 
 	}
 	selected := make([]review.ReviewComment, 0, len(storedComments))
 	for _, comment := range storedComments {
-		if includeResolved || comment.Status == "open" {
+		if (includeResolved || comment.Status == "open") && writtenBy(comment, author) {
 			selected = append(selected, comment)
 		}
 	}
@@ -120,31 +154,34 @@ func (service *Service) place(ctx context.Context, comments []review.ReviewComme
 	return nil
 }
 
-func (service *Service) ResolveComment(ctx context.Context, commentID string) (Resolution, error) {
+// ResolveComment resolves a comment idempotently, recording its resolver.
+// A non-empty note joins the thread as the resolver's reply in the same
+// transaction, also when the comment was already resolved.
+func (service *Service) ResolveComment(ctx context.Context, commentID string, author review.CommentAuthor, note string) (Resolution, error) {
 	if err := service.requireComments(); err != nil {
 		return Resolution{}, err
 	}
-	comments, err := service.store.Comments(ctx, service.session.ContextID)
+	if !author.Valid() {
+		return Resolution{}, review.Error(400, "Invalid comment author")
+	}
+	now := float64(time.Now().UnixMilli())
+	var reply *review.CommentReply
+	if note = strings.TrimSpace(note); note != "" {
+		id, err := randomID()
+		if err != nil {
+			return Resolution{}, err
+		}
+		reply = &review.CommentReply{ID: id, Author: author, Body: note, CreatedAt: now}
+	}
+	resolved, err := service.store.ResolveComment(ctx, service.session.ContextID, commentID, author, now, reply)
 	if err != nil {
 		return Resolution{}, err
 	}
-	for _, comment := range comments {
-		if comment.ID != commentID {
-			continue
-		}
-		if comment.Status != "resolved" {
-			comment.Status = "resolved"
-			replaced, err := service.store.ReplaceComment(ctx, service.session.ContextID, comment)
-			if err != nil {
-				return Resolution{}, err
-			}
-			if !replaced {
-				return Resolution{}, &CommentNotFoundError{CommentID: commentID}
-			}
-		}
-		return Resolution{CommentID: comment.ID, Status: "resolved"}, nil
+	if !resolved {
+		return Resolution{}, &CommentNotFoundError{CommentID: commentID}
 	}
-	return Resolution{}, &CommentNotFoundError{CommentID: commentID}
+	service.changed()
+	return Resolution{CommentID: commentID, Status: "resolved"}, nil
 }
 
 func (service *Service) requireComments() error {

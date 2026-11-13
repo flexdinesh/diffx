@@ -45,6 +45,8 @@ func (provider *testProvider) Get(ctx context.Context, id string) (contextservic
 	active, err := provider.Resolve(ctx, id)
 	return contextservice.Context{ID: id, Kind: "observation", Name: "patch", Capabilities: active.Capabilities, Availability: "available"}, err
 }
+func (provider *testProvider) CommentsChanged(string, string) {}
+
 func (provider *testProvider) Delete(ctx context.Context, id string) error {
 	if err := ctx.Err(); err != nil {
 		return err

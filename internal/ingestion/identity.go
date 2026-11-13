@@ -87,6 +87,15 @@ func StreamKey(contextID string, metadata Metadata) string {
 	return StreamID(metadata.SourceID, metadata.RepositoryKey, metadata.CheckoutKey, BranchIdentity(metadata), ComparisonPolicy(metadata))
 }
 
+// PublicStreamID is the stream ID a stream key exposes; the context-keyed
+// streams of piped observations have none.
+func PublicStreamID(streamKey string) string {
+	if strings.HasPrefix(streamKey, "context:") {
+		return ""
+	}
+	return streamKey
+}
+
 // Payload is a request's stored representation and its replay hash. A replay
 // under the same submission identity must hash identically.
 func Payload(request Request) ([]byte, string, error) {

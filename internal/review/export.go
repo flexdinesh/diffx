@@ -117,6 +117,11 @@ func FormatComments(comments []ReviewComment, includeResolved bool) string {
 				if place.Applicability.Stale() || comment.CarriedFrom != nil {
 					state += ` stale="true"`
 				}
+				// User comments keep the original form; agent comments name their author.
+				if author := comment.Author; author != nil && author.Kind == AuthorAgent {
+					state += authorAttributes(*author)
+				}
+				body := append([]string{"        <body>" + xml(comment.Body) + "</body>"}, replyLines(comment.Replies)...)
 				if comment.Target == "file" {
 					if carried := comment.CarriedFrom; carried != nil {
 						lines = append(lines,
@@ -126,7 +131,7 @@ func FormatComments(comments []ReviewComment, includeResolved bool) string {
 					} else {
 						lines = append(lines, fmt.Sprintf(`      <comment id="%s" selection="file" %s>`, exported.id, state))
 					}
-					lines = append(lines, "        <body>"+xml(comment.Body)+"</body>", "      </comment>")
+					lines = append(append(lines, body...), "      </comment>")
 					continue
 				}
 				start, end := comment.Start, comment.End
@@ -140,15 +145,32 @@ func FormatComments(comments []ReviewComment, includeResolved bool) string {
 				lines = append(lines,
 					fmt.Sprintf(`      <comment id="%s" selection="%s" line="%d" end-line="%d" side="%s" %s>`, exported.id, selection, start, end, comment.Side, state),
 					"        <code>"+xml(comment.Code)+"</code>",
-					"        <body>"+xml(comment.Body)+"</body>",
-					"      </comment>",
 				)
+				lines = append(append(lines, body...), "      </comment>")
 			}
 			lines = append(lines, "    </file>")
 		}
 		lines = append(lines, "  </review>")
 	}
 	return strings.Join(append(lines, "</code-review-comments>"), "\n")
+}
+
+// authorAttributes names an author kind and any reported name.
+func authorAttributes(author CommentAuthor) string {
+	attributes := ` author="` + attribute(author.Kind) + `"`
+	if author.Name != "" {
+		attributes += ` author-name="` + attribute(author.Name) + `"`
+	}
+	return attributes
+}
+
+// replyLines exports a thread's replies in order, each naming its author.
+func replyLines(replies []CommentReply) []string {
+	lines := make([]string, 0, len(replies))
+	for _, reply := range replies {
+		lines = append(lines, "        <reply"+authorAttributes(reply.Author)+">"+xml(reply.Body)+"</reply>")
+	}
+	return lines
 }
 
 func value(pointer *string) string {

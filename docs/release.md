@@ -43,8 +43,8 @@ arm64; Windows is not supported. Archives include the native binary, README,
 and license. The embedded web application needs no installed Node.js
 runtime.
 
-Stop running binaries before upgrading. Local schema 11 through 15 state upgrades in place to
-schema 16 and survives subsequent starts; older, future or unrecognized schemas are refused without
+Stop running binaries before upgrading. Local schema 11 through 16 state upgrades in place to
+schema 17 and survives subsequent starts; older, future or unrecognized schemas are refused without
 resetting data. Local `diffx` offers to back up older state beside it and start
 fresh, or does so with `--reset-state`. Servers migrate their Postgres database
 at startup and never reset it. Server schema 10 refuses older binaries, so stop

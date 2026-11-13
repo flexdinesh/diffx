@@ -5,7 +5,7 @@ import {
   type ApiChangedFile as ChangedFile,
   type ApiRepositoryDiff as RepositoryDiff,
 } from "@diffx/api";
-import type { ReviewComment } from "./review-comments.ts";
+import type { CommentReply, ReviewComment } from "./review-comments.ts";
 import { isDiffMode } from "./diff-mode.ts";
 import {
   type Dispatch,
@@ -18,6 +18,7 @@ import {
   useState,
 } from "react";
 import { createRequestOwner } from "./request-owner.ts";
+import { subscribeServerEvents } from "./server-events.ts";
 import {
   commentContext,
   commentStale,
@@ -53,6 +54,10 @@ function fileBlock(content: string) {
 
 export function useReview(
   contextId: string,
+  /** The open context's review stream; "" for piped captures. */
+  streamId: string,
+  /** Absolute link to this review, without a comment. */
+  reviewUrl: string,
   repository: RepositoryDiff | null,
   draft: ReviewComment | null,
   setDraft: Dispatch<SetStateAction<ReviewComment | null>>,
@@ -61,12 +66,15 @@ export function useReview(
   const [stored, setStored] = useState<{
     key: string;
     comments: ReviewComment[];
+    /** The stream's comments have been read at least once. */
+    loaded?: boolean;
   }>({ key: "", comments: [] });
   const key = contextId ? `diffx:comments:${contextId}` : stored.key;
   const previousKey = useRef("");
   const requests = useRef<ReturnType<typeof createRequestOwner> | null>(null);
   const refreshComments = useRef<() => void>(() => {});
   const comments = enabled && stored.key === key ? stored.comments : noComments;
+  const loaded = enabled && stored.key === key && !!stored.loaded;
   // Stream comments split by where they apply in the viewed snapshot.
   const { currentComments, outdatedComments } = useMemo(
     () => ({
@@ -82,6 +90,21 @@ export function useReview(
   const [feedback, setFeedback] = useState("");
   const [copyContent, setCopyContent] = useState<CopyContent | null>(null);
   const [pending, setPending] = useState(new Set<string>());
+  // Open reply composers by comment ID. They live beside saved comments, so
+  // reloads, live updates and remounted annotation slots keep their text.
+  const [replyDrafts, setReplyDrafts] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
+  const setReplyDraft = useCallback(
+    (commentId: string, body: string | null) =>
+      setReplyDrafts((current) => {
+        const next = new Map(current);
+        if (body === null) next.delete(commentId);
+        else next.set(commentId, body);
+        return next;
+      }),
+    [],
+  );
   const [saveError, setSaveError] = useState<{
     draftId: string;
     message: string;
@@ -101,6 +124,7 @@ export function useReview(
       current.key === key ? current : { key, comments: [] },
     );
     setPending(new Set());
+    setReplyDrafts(new Map());
     setSaveError(null);
     async function load(force = false) {
       const request = owner.beginRead(force);
@@ -115,7 +139,17 @@ export function useReview(
           setFeedback(errorDetail(result.error, "Unable to load comments"));
           return;
         }
-        setStored({ key, comments: result.data.comments });
+        // Live hints and polling reread unchanged comments; keeping the same
+        // state avoids re-rendering annotations under navigation cues.
+        const comments = result.data.comments;
+        const serialized = JSON.stringify(comments);
+        setStored((current) =>
+          current.key === key &&
+          current.loaded &&
+          JSON.stringify(current.comments) === serialized
+            ? current
+            : { key, comments, loaded: true },
+        );
       } catch (error) {
         if (!request.isCurrent()) return;
         setFeedback(errorDetail(error, "Unable to load comments"));
@@ -128,11 +162,28 @@ export function useReview(
     const timer = setInterval(() => {
       if (!document.hidden) void load();
     }, 3_000);
+    // Another writer (an agent, another tab or replica) changed this stream's
+    // thread. Reloading replaces saved comments only; drafts and open reply
+    // composers are separate state and stay as they are.
+    const unsubscribe = subscribeServerEvents({
+      comments: (change) => {
+        if (
+          change.contextId === contextId ||
+          (!!streamId && change.streamId === streamId)
+        )
+          void load(true);
+      },
+      ingestion: (changed) => {
+        if (!changed) void load(true);
+      },
+      reconnect: () => void load(true),
+    });
     return () => {
       owner.dispose();
       clearInterval(timer);
+      unsubscribe();
     };
-  }, [contextId, enabled, key, setDraft]);
+  }, [contextId, streamId, enabled, key, setDraft]);
 
   const startMutation = useCallback(
     (id: string) => {
@@ -495,6 +546,124 @@ export function useReview(
     [contextId, startMutation, finishMutation, replace],
   );
 
+  // Thread writes return whether they committed, so composers close only then.
+  const addReply = useCallback(
+    async (comment: ReviewComment, body: string) => {
+      const id = `${comment.id}:reply`;
+      const request = startMutation(id);
+      if (!request) return false;
+      try {
+        const { data, error } = await api.POST(
+          "/api/v2/contexts/{contextId}/comments/{commentId}/replies",
+          {
+            params: { path: { contextId, commentId: comment.id } },
+            body: { body: body.trim() },
+            signal: request.signal,
+          },
+        );
+        if (!request.isCurrent()) return false;
+        if (!data) {
+          setFeedback(errorDetail(error, "Unable to reply"));
+          return false;
+        }
+        replace(data);
+        setReplyDraft(comment.id, null);
+        setFeedback("Reply saved.");
+        return true;
+      } catch (error) {
+        if (request.isCurrent())
+          setFeedback(errorDetail(error, "Unable to reply"));
+        return false;
+      } finally {
+        finishMutation(id, request);
+      }
+    },
+    [contextId, startMutation, finishMutation, replace, setReplyDraft],
+  );
+
+  const editReply = useCallback(
+    async (comment: ReviewComment, reply: CommentReply, body: string) => {
+      const id = `${comment.id}:${reply.id}`;
+      const request = startMutation(id);
+      if (!request) return false;
+      try {
+        const { data, error } = await api.PATCH(
+          "/api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId}",
+          {
+            params: {
+              path: { contextId, commentId: comment.id, replyId: reply.id },
+            },
+            body: { body: body.trim() },
+            signal: request.signal,
+          },
+        );
+        if (!request.isCurrent()) return false;
+        if (!data) {
+          setFeedback(errorDetail(error, "Unable to save reply"));
+          return false;
+        }
+        replace(data);
+        setFeedback("Reply saved.");
+        return true;
+      } catch (error) {
+        if (request.isCurrent())
+          setFeedback(errorDetail(error, "Unable to save reply"));
+        return false;
+      } finally {
+        finishMutation(id, request);
+      }
+    },
+    [contextId, startMutation, finishMutation, replace],
+  );
+
+  const deleteReply = useCallback(
+    async (comment: ReviewComment, reply: CommentReply) => {
+      const id = `${comment.id}:${reply.id}`;
+      const request = startMutation(id);
+      if (!request) return;
+      try {
+        const { response, error } = await api.DELETE(
+          "/api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId}",
+          {
+            params: {
+              path: { contextId, commentId: comment.id, replyId: reply.id },
+            },
+            signal: request.signal,
+          },
+        );
+        if (!request.isCurrent()) return;
+        if (!response.ok) {
+          setFeedback(errorDetail(error, "Unable to delete reply"));
+          return;
+        }
+        setStored((current) =>
+          current.key !== key
+            ? current
+            : {
+                ...current,
+                comments: current.comments.map((entry) =>
+                  entry.id === comment.id
+                    ? {
+                        ...entry,
+                        replies: (entry.replies ?? []).filter(
+                          (candidate) => candidate.id !== reply.id,
+                        ),
+                      }
+                    : entry,
+                ),
+              },
+        );
+        setFeedback("Reply deleted.");
+      } catch (error) {
+        if (request.isCurrent())
+          setFeedback(errorDetail(error, "Unable to delete reply"));
+      } finally {
+        finishMutation(id, request);
+      }
+    },
+    [contextId, key, startMutation, finishMutation],
+  );
+
   const resolveComment = useCallback(
     async (commentId: string, signal: AbortSignal) => {
       const request = startMutation(commentId);
@@ -588,9 +757,23 @@ export function useReview(
     [contextId, writeClipboard],
   );
 
+  // Permalinks open the review and navigate to one comment.
+  const copyLink = useCallback(
+    (comment: ReviewComment) => {
+      const url = new URL(reviewUrl);
+      url.searchParams.set("comment", comment.id);
+      void writeClipboard(
+        { label: "Comment link", text: url.href, title: "Copy comment link" },
+        "Copied comment link.",
+      );
+    },
+    [reviewUrl, writeClipboard],
+  );
+
   return useMemo(
     () => ({
       comments,
+      loaded,
       currentComments,
       outdatedComments,
       feedback,
@@ -607,6 +790,12 @@ export function useReview(
       resolveComment,
       remove,
       removeComments,
+      replyDrafts,
+      setReplyDraft,
+      addReply,
+      editReply,
+      deleteReply,
+      copyLink,
       copy: (includeResolved: boolean) => copy(includeResolved),
       copyComment: (comment: ReviewComment) => copy(true, comment.id),
       copySidebarComment: (comment: ReviewComment) =>
@@ -630,6 +819,7 @@ export function useReview(
     }),
     [
       comments,
+      loaded,
       currentComments,
       outdatedComments,
       feedback,
@@ -645,6 +835,12 @@ export function useReview(
       resolveComment,
       remove,
       removeComments,
+      replyDrafts,
+      setReplyDraft,
+      addReply,
+      editReply,
+      deleteReply,
+      copyLink,
       copy,
       writeClipboard,
       copyContent,

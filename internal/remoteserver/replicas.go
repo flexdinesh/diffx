@@ -16,7 +16,7 @@ type changeFeed interface {
 }
 
 // replicate applies committed changes to this replica: owners' subscribers
-// hear about their contexts, removed accounts lose their services and streams,
+// hear about their contexts and stream comments, removed accounts lose their services and streams,
 // the worker wakes for queued jobs and settings reload. A resync makes every
 // active owner's clients reload their catalog, lets the worker look for missed
 // jobs and reloads settings.
@@ -32,6 +32,8 @@ func replicate(feed changeFeed, applications *registry, wake, reload chan<- stru
 			switch change.Kind {
 			case pgstore.ContextChanged:
 				applications.notify(change.OwnerID, change.ContextID)
+			case pgstore.CommentsChanged:
+				applications.notifyComments(change.OwnerID, change.ContextID, change.StreamID)
 			case pgstore.AccountRemoved:
 				_ = applications.remove(change.OwnerID)
 			case pgstore.JobQueued:
@@ -83,6 +85,16 @@ func (registry *registry) notify(ownerID, contextID string) {
 	registry.mu.Unlock()
 	if ok {
 		app.service.Notify(contextID)
+	}
+}
+
+// notifyComments reaches only owners with services here.
+func (registry *registry) notifyComments(ownerID, contextID, streamID string) {
+	registry.mu.Lock()
+	app, ok := registry.applications[ownerID]
+	registry.mu.Unlock()
+	if ok {
+		app.service.NotifyComments(contextID, streamID)
 	}
 }
 

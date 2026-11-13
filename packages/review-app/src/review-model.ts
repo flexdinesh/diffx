@@ -2,7 +2,7 @@ import type {
   ApiChangedFile as ChangedFile,
   ApiRepositoryDiff as RepositoryDiff,
 } from "@diffx/api";
-import type { ReviewComment } from "./review-comments.ts";
+import type { CommentAuthor, ReviewComment } from "./review-comments.ts";
 
 export {
   commentContext,
@@ -10,7 +10,12 @@ export {
   lineContext,
   parseComments,
 } from "./review-comments.ts";
-export type { ReviewComment, ReviewOrigin } from "./review-comments.ts";
+export type {
+  CommentAuthor,
+  CommentReply,
+  ReviewComment,
+  ReviewOrigin,
+} from "./review-comments.ts";
 
 export type CommentAnnotation =
   | { kind: "saved"; comment: ReviewComment }
@@ -79,4 +84,24 @@ export function commentInFile(
   file: Pick<ChangedFile, "path" | "oldPath">,
 ) {
   return comment.path === file.path || comment.path === file.oldPath;
+}
+
+/** Who the Comments panel shows: everyone, the user, or agents. */
+export type AuthorFilter = "everyone" | "me" | "agents";
+
+/** Legacy comments without an author were written by the user. */
+export function writtenByAgent(author: CommentAuthor | undefined) {
+  return author?.kind === "agent";
+}
+
+export function authorMatches(comment: ReviewComment, filter: AuthorFilter) {
+  return (
+    filter === "everyone" ||
+    (filter === "agents") === writtenByAgent(comment.author)
+  );
+}
+
+/** The user is "You"; agents go by the name they report. */
+export function authorName(author: CommentAuthor | undefined) {
+  return writtenByAgent(author) ? author?.name || "Agent" : "You";
 }

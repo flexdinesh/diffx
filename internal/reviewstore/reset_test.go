@@ -28,7 +28,7 @@ func TestOlderSchemaRefusedWithoutReset(t *testing.T) {
 			store.Close()
 			t.Fatal("accepted older schema")
 		} else {
-			for _, text := range []string{path, "schema 10 is older than supported schema 16", "supporting schema 10", "automatic reset is disabled", "back up", "SQLite sidecar files", "--state /path/to/new-state.db", "no saved reviews"} {
+			for _, text := range []string{path, "schema 10 is older than supported schema 17", "supporting schema 10", "automatic reset is disabled", "back up", "SQLite sidecar files", "--state /path/to/new-state.db", "no saved reviews"} {
 				if !strings.Contains(err.Error(), text) {
 					t.Fatalf("missing recovery guidance %q: %v", text, err)
 				}
@@ -101,9 +101,11 @@ func serverObjects(t *testing.T, db interface {
 
 func TestAdditiveSchemaUpgradesInPlace(t *testing.T) {
 	// Schemas before 14 had no captured commit tables. Every schema from 11
-	// through 15 created server-only tables, which schema 16 drops.
-	commits := "DROP TABLE observation_commit_ranges; DROP TABLE observation_commits; "
-	for version, statements := range map[int]string{11: commits, 12: commits, 13: commits, 14: "", 15: ""} {
+	// through 15 created server-only tables, which schema 16 drops. Schemas
+	// before 17 had no comment replies.
+	replies := "DROP TABLE comment_replies; "
+	commits := replies + "DROP TABLE observation_commit_ranges; DROP TABLE observation_commits; "
+	for version, statements := range map[int]string{11: commits + schema15Server, 12: commits + schema15Server, 13: commits + schema15Server, 14: replies + schema15Server, 15: replies + schema15Server, 16: replies} {
 		t.Run(fmt.Sprintf("schema %d", version), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "state.db")
 			store, err := Open(path)
@@ -122,7 +124,7 @@ func TestAdditiveSchemaUpgradesInPlace(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := store.db.Exec(fmt.Sprintf("%s%sPRAGMA user_version=%d", statements, schema15Server, version)); err != nil {
+			if _, err := store.db.Exec(fmt.Sprintf("%sPRAGMA user_version=%d", statements, version)); err != nil {
 				t.Fatal(err)
 			}
 			store.Close()
@@ -136,6 +138,9 @@ func TestAdditiveSchemaUpgradesInPlace(t *testing.T) {
 			}
 			if _, _, err := store.ObservationCommits(t.Context(), user.ID, "missing"); !errors.Is(err, ErrNotFound) {
 				t.Fatalf("upgrade did not create commit tables: %v", err)
+			}
+			if comments, err := store.Comments(t.Context(), binding.ContextID); err != nil || len(comments) != 0 {
+				t.Fatalf("upgrade did not create reply tables: %#v %v", comments, err)
 			}
 			var upgraded int
 			if err := store.db.QueryRow("PRAGMA user_version").Scan(&upgraded); err != nil || upgraded != schemaVersion {

@@ -211,7 +211,13 @@ versions, worker options, and measured geometry. `use-review.ts` and
 `use-reviewed-files.ts` own their REST requests and recovery; reads cannot settle
 across writes or owner disposal. `review-comments.ts` owns comment validation and
 agent-facing formatting; `test/contracts/comments.json` holds examples checked
-by both it and Go. Keep section-only state within its component.
+by both it and Go. `server-events.ts` owns the page's one `/api/v2/events`
+connection, opened by the first subscriber and closed with the last; the
+catalog and `use-review.ts` subscribe to it. `use-review.ts` reloads the open
+stream's comments on its `comments` events and owns reply composer text beside
+saved comments, so reloads never discard drafts. `app-state.tsx` consumes a
+`?comment=` permalink once comments and the diff load, through comment
+navigation. Keep section-only state within its component.
 Selection changes only through explicit navigation; scrolling the diff never
 selects a file. File and change steps share `stepInViewport` in
 `hunk-navigation.ts`, resolved per step from Pierre's measured offsets.

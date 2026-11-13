@@ -26,6 +26,9 @@ const (
 	// Resync: the session was lost and re-established; notifications
 	// committed meanwhile were not delivered, so consumers re-read durable state.
 	Resync
+	// CommentsChanged: a comment, reply or resolution in OwnerID's StreamID
+	// committed through ContextID. StreamID is empty for piped captures.
+	CommentsChanged
 )
 
 // Notification is a hint to query durable state, never a durable event.
@@ -33,6 +36,7 @@ type Notification struct {
 	Kind      NotificationKind
 	OwnerID   string
 	ContextID string
+	StreamID  string
 }
 
 const (
@@ -155,6 +159,12 @@ func parseNotification(notification *pgconn.Notification) (Notification, bool) {
 		return Notification{Kind: JobQueued}, true
 	case settingsChannel:
 		return Notification{Kind: SettingsChanged}, true
+	case commentChannel:
+		fields := strings.Split(notification.Payload, " ")
+		if len(fields) != 3 || fields[0] == "" || fields[1] == "" {
+			return Notification{}, false
+		}
+		return Notification{Kind: CommentsChanged, OwnerID: fields[0], ContextID: fields[1], StreamID: fields[2]}, true
 	}
 	return Notification{}, false
 }

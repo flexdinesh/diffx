@@ -1,8 +1,10 @@
 import type { ApiRepositoryDiff as RepositoryDiff } from "@diffx/api";
 import {
+  BotIcon,
   CheckCircle2Icon,
   CircleDotIcon,
   CopyIcon,
+  LinkIcon,
   PencilIcon,
   PinIcon,
   RotateCcwIcon,
@@ -40,13 +42,18 @@ import {
 } from "./app-state.tsx";
 import { useAppearance } from "./appearance-context.tsx";
 import { CopyPathButton } from "./CopyPathButton.tsx";
+import { relativeAge } from "./project-nav.ts";
 import {
+  authorName,
   commentInFile,
   commentStale,
   placedInline,
   placedOutdated,
   placementFor,
+  writtenByAgent,
+  type CommentAuthor,
   type CommentPlacement,
+  type CommentReply,
   type ReviewComment,
 } from "./review-model.ts";
 
@@ -141,7 +148,269 @@ export function ReviewCommentCard({
       onCarry={review.carry}
       onDelete={review.remove}
       onCopy={sidebar ? review.copySidebarComment : review.copyComment}
+      onCopyLink={review.copyLink}
+      thread={{
+        draft: review.replyDrafts.get(comment.id),
+        onDraft: (body) => review.setReplyDraft(comment.id, body),
+        onReply: (body) => review.addReply(comment, body),
+        onEdit: (reply, body) => review.editReply(comment, reply, body),
+        onDelete: (reply) => void review.deleteReply(comment, reply),
+        pending: (id) => review.pending.has(`${comment.id}:${id}`),
+      }}
     />
+  );
+}
+
+/** Thread state and writes for one comment's replies and reply composer. */
+interface ThreadActions {
+  /** The open composer's text; undefined while no composer is open. */
+  draft: string | undefined;
+  /** Updates the composer's text; null closes it. */
+  onDraft: (body: string | null) => void;
+  onReply: (body: string) => Promise<boolean>;
+  onEdit: (reply: CommentReply, body: string) => Promise<boolean>;
+  onDelete: (reply: CommentReply) => void;
+  /** A write is in flight for a reply ID, or "reply" for a new reply. */
+  pending: (id: string) => boolean;
+}
+
+const UNVERIFIED_NAME = "Name reported by the agent";
+
+/** The user reads as "You"; agents as their reported name beside a bot icon. */
+function AuthorLabel({ author }: { author: CommentAuthor | undefined }) {
+  const agent = writtenByAgent(author);
+  const unverified = agent && !author?.verified;
+  return (
+    <span
+      // "You" stays whole; a reported name shares the row with the location.
+      className={cn(
+        "flex items-center gap-1",
+        agent ? "min-w-0 shrink" : "shrink-0",
+      )}
+      title={unverified ? UNVERIFIED_NAME : undefined}
+    >
+      {agent && (
+        <BotIcon className="size-icon-sm shrink-0" aria-hidden="true" />
+      )}
+      <span className="min-w-0 truncate">{authorName(author)}</span>
+      {unverified && <span className="sr-only">{` (${UNVERIFIED_NAME})`}</span>}
+    </span>
+  );
+}
+
+function timestamp(milliseconds: number) {
+  const date = new Date(milliseconds);
+  return { iso: date.toISOString(), full: date.toLocaleString() };
+}
+
+/** A compact reply or reply-edit field with its own actions. */
+function ReplyComposer({
+  label,
+  value,
+  submitLabel,
+  sidebar,
+  pending,
+  focusRequest,
+  onChange,
+  onSubmit,
+  onCancel,
+}: {
+  label: string;
+  value: string;
+  submitLabel: string;
+  sidebar: boolean;
+  pending: boolean;
+  /** Each new non-zero value moves focus to the field. */
+  focusRequest: number;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}) {
+  const input = useRef<HTMLTextAreaElement>(null);
+  const inputId = useId();
+  const errorId = useId();
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!focusRequest) return;
+    input.current?.focus({ preventScroll: true });
+    input.current?.scrollIntoView({ block: "nearest" });
+  }, [focusRequest]);
+  function submit() {
+    if (pending) return;
+    if (!value.trim()) {
+      setError("Enter a reply before sending.");
+      input.current?.focus();
+      return;
+    }
+    setError("");
+    onSubmit();
+  }
+  return (
+    <form
+      className="mt-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+    >
+      <label className="sr-only" htmlFor={inputId}>
+        {label}
+      </label>
+      <Textarea
+        id={inputId}
+        ref={input}
+        placeholder="Reply…"
+        aria-invalid={!!error}
+        aria-describedby={error ? errorId : undefined}
+        rows={2}
+        variant="comment"
+        value={value}
+        onChange={(event) => {
+          if (event.target.value.trim()) setError("");
+          onChange(event.target.value);
+        }}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onCancel();
+          }
+          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            submit();
+          }
+        }}
+      />
+      {!!error && (
+        <p id={errorId} className="mt-1 text-sm text-error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="mt-2 flex items-center justify-end gap-1">
+        {!sidebar && (
+          <span className="mr-auto text-xs text-muted max-md:hidden">
+            {formatShortcut({ mod: true, key: "Enter" })} to{" "}
+            {submitLabel.toLowerCase()}
+          </span>
+        )}
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          touch
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          size="xs"
+          touch
+          disabled={pending}
+          aria-busy={pending}
+        >
+          {submitLabel}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** One reply: author, age, body, and the user's edit and delete actions. */
+function ReplyItem({
+  reply,
+  sidebar,
+  thread,
+}: {
+  reply: CommentReply;
+  sidebar: boolean;
+  thread: ThreadActions;
+}) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const item = useRef<HTMLLIElement>(null);
+  // Agents write append-only; the user edits only their own replies but may
+  // delete any reply in their review.
+  const own = !writtenByAgent(reply.author);
+  const created = timestamp(reply.createdAt);
+  const pending = thread.pending(reply.id);
+  const restoreFocus = () =>
+    requestAnimationFrame(() =>
+      item.current
+        ?.querySelector<HTMLElement>('[data-reply-action="edit"]')
+        ?.focus(),
+    );
+  return (
+    <li ref={item} className="border-t border-separator py-1.5 last:pb-0">
+      <div className="flex min-h-control-compact items-center gap-1 text-xs text-muted">
+        <AuthorLabel author={reply.author} />
+        <span aria-hidden="true">·</span>
+        <time className="shrink-0" dateTime={created.iso} title={created.full}>
+          {relativeAge(reply.createdAt, Date.now())}
+        </time>
+        {!!reply.editedAt && <span className="shrink-0">· edited</span>}
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {own && editing === null && (
+            <IconButton
+              label="Edit reply"
+              size="icon-xs"
+              touch
+              data-reply-action="edit"
+              onClick={() => setEditing(reply.body)}
+            >
+              <PencilIcon aria-hidden="true" />
+            </IconButton>
+          )}
+          <IconButton
+            label="Delete reply"
+            variant="destructive"
+            size="icon-xs"
+            touch
+            disabled={pending}
+            onClick={() => setConfirmDelete(true)}
+          >
+            <Trash2Icon aria-hidden="true" />
+          </IconButton>
+        </span>
+      </div>
+      {editing === null ? (
+        <p className="text-sm whitespace-pre-wrap [overflow-wrap:anywhere]">
+          {reply.body}
+        </p>
+      ) : (
+        <ReplyComposer
+          label="Edit reply"
+          value={editing}
+          submitLabel="Save"
+          sidebar={sidebar}
+          pending={pending}
+          focusRequest={1}
+          onChange={setEditing}
+          onCancel={() => {
+            setEditing(null);
+            restoreFocus();
+          }}
+          onSubmit={() => {
+            void thread.onEdit(reply, editing).then((saved) => {
+              if (!saved) return;
+              setEditing(null);
+              restoreFocus();
+            });
+          }}
+        />
+      )}
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete reply?"
+        description="This permanently removes the reply. This cannot be undone."
+        confirmLabel="Delete reply"
+        onConfirm={() => {
+          thread.onDelete(reply);
+          setConfirmDelete(false);
+        }}
+      />
+    </li>
   );
 }
 
@@ -297,6 +566,8 @@ export function CommentCard({
   onCarry,
   onDelete,
   onCopy,
+  onCopyLink,
+  thread,
 }: {
   comment: ReviewComment;
   sidebar?: boolean;
@@ -309,8 +580,20 @@ export function CommentCard({
   onCarry: (comment: ReviewComment) => void;
   onDelete: (comment: ReviewComment) => void;
   onCopy: (comment: ReviewComment) => void;
+  onCopyLink: (comment: ReviewComment) => void;
+  thread: ThreadActions;
 }) {
   const resolved = comment.status === "resolved";
+  const replies = comment.replies ?? [];
+  const replyButton = useRef<HTMLButtonElement>(null);
+  // Only the card whose Reply was pressed takes focus; the composer's text is
+  // shared with the comment's other card (inline or sidebar).
+  const [focusReply, setFocusReply] = useState(0);
+  const closeReply = () => {
+    thread.onDraft(null);
+    setFocusReply(0);
+    requestAnimationFrame(() => replyButton.current?.focus());
+  };
   const placement = placementFor(comment, repository);
   const { applicability } = placement;
   const stale = commentStale(comment, repository);
@@ -381,12 +664,14 @@ export function CommentCard({
                     : `Line ${lines(comment.start, comment.end)}`}
               </span>
             )}
+            <span aria-hidden="true">·</span>
+            <AuthorLabel author={comment.author} />
           </CardTitle>
           <CardAction>
             <Badge
               variant="status"
               tone={stale ? "warning" : resolved ? "success" : "neutral"}
-              title={`Lifecycle: ${comment.status}; applicability: ${applicability}`}
+              title={`Lifecycle: ${comment.status}${comment.resolvedBy ? ` by ${authorName(comment.resolvedBy)}` : ""}; applicability: ${applicability}`}
             >
               {stale ? (
                 <TriangleAlertIcon aria-hidden="true" />
@@ -418,6 +703,63 @@ export function CommentCard({
                 </pre>
               </details>
             )}
+            {!!replies.length && (
+              <ol
+                className="mt-2"
+                aria-label={`${replies.length} ${replies.length === 1 ? "reply" : "replies"}`}
+              >
+                {replies.map((reply) => (
+                  <ReplyItem
+                    key={reply.id}
+                    reply={reply}
+                    sidebar={sidebar}
+                    thread={thread}
+                  />
+                ))}
+              </ol>
+            )}
+            {/* The resolution closes the thread; the status badge stays short
+                so the sidebar header keeps the location and author. */}
+            {resolved && comment.resolvedBy && (
+              <p
+                className={cn(
+                  "flex min-h-control-compact items-center gap-1 border-t border-separator pt-1.5 text-xs text-muted",
+                  replies.length ? "mt-1.5" : "mt-2",
+                )}
+              >
+                <span className="shrink-0">Resolved by</span>{" "}
+                <AuthorLabel author={comment.resolvedBy} />
+                {!!comment.resolvedAt && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <time
+                      className="shrink-0"
+                      dateTime={timestamp(comment.resolvedAt).iso}
+                      title={timestamp(comment.resolvedAt).full}
+                    >
+                      {relativeAge(comment.resolvedAt, Date.now())}
+                    </time>
+                  </>
+                )}
+              </p>
+            )}
+            {thread.draft !== undefined && (
+              <ReplyComposer
+                label={`Reply to comment at ${location(comment, placement)}`}
+                value={thread.draft}
+                submitLabel="Reply"
+                sidebar={sidebar}
+                pending={thread.pending("reply")}
+                focusRequest={focusReply}
+                onChange={thread.onDraft}
+                onCancel={closeReply}
+                onSubmit={() => {
+                  void thread.onReply(thread.draft ?? "").then((saved) => {
+                    if (saved) closeReply();
+                  });
+                }}
+              />
+            )}
           </CardContent>
           <CardFooter>
             <IconButton
@@ -428,16 +770,42 @@ export function CommentCard({
             >
               <CopyIcon aria-hidden="true" />
             </IconButton>
+            <IconButton
+              label={`Copy link to comment at ${location(comment, placement)}`}
+              size="icon-xs"
+              touch
+              onClick={() => onCopyLink(comment)}
+            >
+              <LinkIcon aria-hidden="true" />
+            </IconButton>
+            {/* Agents' comments are append-only; replies answer them instead. */}
+            {!writtenByAgent(comment.author) && (
+              <IconButton
+                label={`Edit comment at ${location(comment, placement)}`}
+                hint="Edit"
+                size="icon-xs"
+                touch
+                onClick={() => onEdit(comment)}
+              >
+                <PencilIcon aria-hidden="true" />
+              </IconButton>
+            )}
+            {/* Text-only, so the thread and lifecycle actions share one row in
+                the default sidebar. */}
             <Button
+              ref={replyButton}
               type="button"
               variant="ghost"
               size="xs"
               touch
               className="mr-auto"
-              onClick={() => onEdit(comment)}
+              aria-expanded={thread.draft !== undefined}
+              onClick={() => {
+                setFocusReply((current) => current + 1);
+                thread.onDraft(thread.draft ?? "");
+              }}
             >
-              <PencilIcon aria-hidden="true" />
-              Edit
+              Reply
             </Button>
             <Button
               type="button"
@@ -466,16 +834,16 @@ export function CommentCard({
                 Keep open
               </Button>
             )}
-            <Button
-              type="button"
+            <IconButton
+              label={`Delete comment at ${location(comment, placement)}`}
+              hint="Delete"
               variant="destructive"
-              size="xs"
+              size="icon-xs"
               touch
               onClick={() => setConfirmDelete(true)}
             >
               <Trash2Icon aria-hidden="true" />
-              Delete
-            </Button>
+            </IconButton>
           </CardFooter>
         </div>
       </Card>

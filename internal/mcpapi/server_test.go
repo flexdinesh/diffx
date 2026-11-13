@@ -18,11 +18,11 @@ type fakeReviewService struct {
 	resolve func(string) (reviewservice.Resolution, error)
 }
 
-func (service fakeReviewService) ListComments(ctx context.Context, includeResolved bool) ([]reviewservice.Comment, error) {
+func (service fakeReviewService) ListComments(ctx context.Context, includeResolved bool, _ string) ([]reviewservice.Comment, error) {
 	return service.list(ctx, includeResolved)
 }
 
-func (service fakeReviewService) ResolveComment(_ context.Context, commentID string) (reviewservice.Resolution, error) {
+func (service fakeReviewService) ResolveComment(_ context.Context, commentID string, _ review.CommentAuthor, _ string) (reviewservice.Resolution, error) {
 	return service.resolve(commentID)
 }
 

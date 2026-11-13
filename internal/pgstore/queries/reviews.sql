@@ -11,7 +11,7 @@ FOR KEY SHARE OF r;
 SELECT count(*) FROM diff_versions WHERE id = $1 AND diff_id = $2;
 
 -- name: Comments :many
-SELECT c.data FROM comments c JOIN reviews r ON r.id = c.review_id
+SELECT c.id, c.data FROM comments c JOIN reviews r ON r.id = c.review_id
 JOIN observations o ON o.owner_id = r.owner_id AND o.stream_key = r.stream_key
 JOIN contexts x ON x.id = o.context_id JOIN diffs d ON d.id = x.anchor_diff_id
 WHERE o.context_id = @context_id AND (d.expires_at IS NULL OR d.expires_at > @now::timestamptz)
@@ -71,3 +71,49 @@ SELECT v.manifest, o.metadata,
 FROM diff_versions v JOIN diffs d ON d.id = v.diff_id
 JOIN observation_scopes s ON s.diff_id = d.id JOIN observations o ON o.context_id = s.context_id
 WHERE d.owner_id = @owner_id AND d.id = @diff_id AND v.id = @version_id AND (d.expires_at IS NULL OR d.expires_at > @now::timestamptz);
+
+-- name: CommentStream :one
+-- The owner and stream key of a context, for comment change notifications.
+SELECT owner_id, stream_key FROM observations WHERE context_id = $1;
+
+-- name: StreamReplies :many
+-- The context stream's replies, in creation order per comment.
+SELECT p.comment_id, p.data FROM comment_replies p JOIN comments c ON c.id = p.comment_id
+WHERE c.review_id IN (
+  SELECT r.id FROM reviews r JOIN observations o ON o.owner_id = r.owner_id AND o.stream_key = r.stream_key WHERE o.context_id = @context_id
+)
+ORDER BY p.created_at, p.seq;
+
+-- name: LockStreamComment :one
+-- Locks a comment of the context's stream for a thread write.
+SELECT c.data FROM comments c WHERE c.id = @id AND c.review_id IN (
+  SELECT r.id FROM reviews r JOIN observations o ON o.owner_id = r.owner_id AND o.stream_key = r.stream_key WHERE o.context_id = @context_id
+)
+FOR UPDATE OF c;
+
+-- name: SetCommentData :exec
+UPDATE comments SET data = @data WHERE comments.id = @id;
+
+-- name: InsertReply :execrows
+INSERT INTO comment_replies(comment_id, id, data, created_at) VALUES (@comment_id, @id, @data, @created_at);
+
+-- name: ImportReply :exec
+-- Imported threads keep their replies; existing replies are never overwritten.
+INSERT INTO comment_replies(comment_id, id, data, created_at) VALUES (@comment_id, @id, @data, @created_at)
+ON CONFLICT DO NOTHING;
+
+-- name: LockStreamReply :one
+SELECT p.data FROM comment_replies p WHERE p.comment_id = @comment_id AND p.id = @id AND p.comment_id IN (
+  SELECT c.id FROM comments c JOIN reviews r ON r.id = c.review_id
+  JOIN observations o ON o.owner_id = r.owner_id AND o.stream_key = r.stream_key WHERE o.context_id = @context_id
+)
+FOR UPDATE OF p;
+
+-- name: SetReplyData :exec
+UPDATE comment_replies SET data = @data WHERE comment_id = @comment_id AND id = @id;
+
+-- name: DeleteStreamReply :execrows
+DELETE FROM comment_replies p WHERE p.comment_id = @comment_id AND p.id = @id AND p.comment_id IN (
+  SELECT c.id FROM comments c JOIN reviews r ON r.id = c.review_id
+  JOIN observations o ON o.owner_id = r.owner_id AND o.stream_key = r.stream_key WHERE o.context_id = @context_id
+);

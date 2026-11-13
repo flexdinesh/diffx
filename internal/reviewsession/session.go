@@ -77,9 +77,11 @@ type Policies struct {
 }
 
 type Session struct {
-	ID           string
-	User         User
-	ContextID    string
+	ID        string
+	User      User
+	ContextID string
+	// StreamID names the context's review stream; piped captures have none.
+	StreamID     string
 	LocationID   *string
 	RepositoryID *string
 	DiffIDs      map[review.DiffMode]string
