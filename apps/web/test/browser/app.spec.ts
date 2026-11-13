@@ -1474,7 +1474,11 @@ test("inline comments use a distinct structured surface while sidebar comments r
     const headerBox = header.getBoundingClientRect();
     const actionBox = action.getBoundingClientRect();
     return {
-      rightInset: headerBox.right - actionBox.right,
+      // The frame's 12px inline padding, inside its 1px border.
+      rightInset:
+        element.getBoundingClientRect().right -
+        parseFloat(getComputedStyle(element).borderRightWidth) -
+        actionBox.right,
       actionMarginLeft: getComputedStyle(action).marginLeft,
       centerOffset:
         actionBox.top +
