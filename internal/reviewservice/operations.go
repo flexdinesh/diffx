@@ -26,6 +26,16 @@ type MutationStore interface {
 	ObservationFileVersion(context.Context, string, string, review.DiffMode, string) (reviewdata.FileVersion, error)
 	ObservationPatch(context.Context, string, string, review.DiffMode, string, string) (review.FilePatch, error)
 	CommitStore
+	ThreadStore
+}
+
+// ThreadStore keeps comment threads and resolutions. Each write is one atomic
+// store operation that reports false when its comment or reply no longer exists.
+type ThreadStore interface {
+	AddReply(ctx context.Context, contextID, commentID string, reply review.CommentReply) (bool, error)
+	EditReply(ctx context.Context, contextID, commentID, replyID, body string, editedAt float64) (bool, error)
+	DeleteReply(ctx context.Context, contextID, commentID, replyID string) (bool, error)
+	ResolveComment(ctx context.Context, contextID, commentID string, by review.CommentAuthor, at float64, note *review.CommentReply) (bool, error)
 }
 
 // Snapshot reads and capability checks belong to the application, shared by transports.
@@ -81,12 +91,27 @@ type ExportCommentsInput struct {
 	IncludeResolved            bool
 }
 
-// Comments returns the stream's comments placed in this context.
-func (service *Service) Comments(ctx context.Context) ([]review.ReviewComment, error) {
+// Comments returns the stream's comments placed in this context, optionally
+// only those written by one author kind.
+func (service *Service) Comments(ctx context.Context, author string) ([]review.ReviewComment, error) {
 	if err := service.requireComments(); err != nil {
 		return nil, err
 	}
-	return service.placedComments(ctx)
+	author, err := ParseAuthorFilter(author)
+	if err != nil {
+		return nil, err
+	}
+	comments, err := service.placedComments(ctx)
+	if err != nil || author == "" {
+		return comments, err
+	}
+	selected := make([]review.ReviewComment, 0, len(comments))
+	for _, comment := range comments {
+		if writtenBy(comment, author) {
+			selected = append(selected, comment)
+		}
+	}
+	return selected, nil
 }
 
 func (service *Service) placedComments(ctx context.Context) ([]review.ReviewComment, error) {
@@ -121,7 +146,11 @@ func (service *Service) DeleteComment(ctx context.Context, id string) (bool, err
 	if err := service.requireComments(); err != nil {
 		return false, err
 	}
-	return service.store.DeleteComment(ctx, service.session.ContextID, id)
+	deleted, err := service.store.DeleteComment(ctx, service.session.ContextID, id)
+	if deleted {
+		service.changed()
+	}
+	return deleted, err
 }
 func (service *Service) Marks(ctx context.Context, mode review.DiffMode) ([]review.ReviewMark, error) {
 	if !service.session.Capabilities.Diff.Scopes.Allows(mode) {
@@ -221,9 +250,13 @@ type CreateCommentInput struct {
 	Body        string          `json:"body"`
 }
 
-func (service *Service) CreateComment(ctx context.Context, body CreateCommentInput) (review.ReviewComment, error) {
+// CreateComment stores a new open comment written by author.
+func (service *Service) CreateComment(ctx context.Context, body CreateCommentInput, author review.CommentAuthor) (review.ReviewComment, error) {
 	if err := service.requireComments(); err != nil {
 		return review.ReviewComment{}, err
+	}
+	if !author.Valid() {
+		return review.ReviewComment{}, review.Error(400, "Invalid comment author")
 	}
 	validSelection := (body.Target == "" || body.Target == "lines") && (body.Side == "additions" || body.Side == "deletions") && body.Start > 0 && body.End > 0
 	if body.Target == "file" {
@@ -273,13 +306,18 @@ func (service *Service) CreateComment(ctx context.Context, body CreateCommentInp
 		ID: id, DiffID: snapshot.ID, VersionID: snapshot.VersionID, Path: file.Path, Scope: body.Scope, Fingerprint: file.Fingerprint,
 		Target: body.Target, Side: body.Side, Start: start, End: end, Code: code, Anchor: anchor, Body: strings.TrimSpace(body.Body), Status: "open", CreatedAt: float64(time.Now().UnixMilli()),
 		Origin: &review.ReviewOrigin{DiffID: snapshot.ID, VersionID: snapshot.VersionID, Source: snapshot.Source, Repository: snapshot.Name, Branch: snapshot.Branch, Head: snapshot.Head, Revision: snapshot.Revision, File: review.ReviewFileOrigin{Status: file.Status, OldPath: file.OldPath}},
+		Author: &author,
 	}
 	if err := service.store.PutComment(ctx, service.session.ContextID, comment); err != nil {
 		return review.ReviewComment{}, err
 	}
+	service.changed()
 	return service.placedComment(ctx, comment.ID)
 }
 
+// UpdateComment applies the user's edit. Resolving records the user as
+// resolver; reopening clears the resolution. Agent comments keep their body,
+// because agents' writes are append-only and a user edit would misattribute it.
 func (service *Service) UpdateComment(ctx context.Context, commentID string, body UpdateCommentInput) (review.ReviewComment, error) {
 	if err := service.requireComments(); err != nil {
 		return review.ReviewComment{}, err
@@ -296,10 +334,18 @@ func (service *Service) UpdateComment(ctx context.Context, commentID string, bod
 			continue
 		}
 		if body.Body != nil {
+			if comment.Author != nil && comment.Author.Kind == review.AuthorAgent {
+				return review.ReviewComment{}, review.Error(403, "Agent comments cannot be edited")
+			}
 			comment.Body = strings.TrimSpace(*body.Body)
 		}
-		if body.Status != nil {
+		if body.Status != nil && *body.Status != comment.Status {
 			comment.Status = *body.Status
+			comment.ResolvedBy, comment.ResolvedAt = nil, 0
+			if comment.Status == "resolved" {
+				user := review.UserAuthor()
+				comment.ResolvedBy, comment.ResolvedAt = &user, float64(time.Now().UnixMilli())
+			}
 		}
 		replaced, err := service.store.ReplaceComment(ctx, service.session.ContextID, comment)
 		if err != nil {
@@ -308,6 +354,7 @@ func (service *Service) UpdateComment(ctx context.Context, commentID string, bod
 		if !replaced {
 			break
 		}
+		service.changed()
 		return service.placedComment(ctx, comment.ID)
 	}
 	return review.ReviewComment{}, review.Error(404, "Comment not found")
@@ -347,6 +394,7 @@ func (service *Service) CarryComment(ctx context.Context, commentID string) (rev
 	if !replaced {
 		return review.ReviewComment{}, review.Error(404, "Comment not found")
 	}
+	service.changed()
 	return service.placedComment(ctx, carried.ID)
 }
 
@@ -371,6 +419,9 @@ func (service *Service) DeleteComments(ctx context.Context, selection string) (D
 	deleted, err := service.store.DeleteComments(ctx, service.session.ContextID, selected)
 	if err != nil {
 		return DeletedComments{}, err
+	}
+	if deleted > 0 {
+		service.changed()
 	}
 	remaining, err := service.placedComments(ctx)
 	return DeletedComments{Comments: remaining, Deleted: deleted}, err
@@ -401,6 +452,7 @@ func (service *Service) ImportComments(ctx context.Context, input []review.Revie
 	if err != nil {
 		return nil, err
 	}
+	service.changed()
 	if err := service.place(ctx, comments); err != nil {
 		return nil, err
 	}

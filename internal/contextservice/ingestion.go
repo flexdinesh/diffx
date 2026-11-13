@@ -95,13 +95,13 @@ func valueOrEmpty(value *string) string {
 }
 
 // Notifications are hints. Reconnecting clients always reload the durable catalog.
-type events struct {
+type events[T any] struct {
 	mu        sync.Mutex
-	listeners map[chan string]struct{}
+	listeners map[chan T]struct{}
 	closed    bool
 }
 
-func (broker *events) close() {
+func (broker *events[T]) close() {
 	broker.mu.Lock()
 	defer broker.mu.Unlock()
 	broker.closed = true
@@ -111,35 +111,54 @@ func (broker *events) close() {
 	broker.listeners = nil
 }
 
-func (broker *events) publish(id string) {
+func (broker *events[T]) publish(value T) {
 	broker.mu.Lock()
 	defer broker.mu.Unlock()
 	for listener := range broker.listeners {
 		select {
-		case listener <- id:
+		case listener <- value:
 		default:
 		}
+	}
+}
+
+func (broker *events[T]) subscribe(size int) (<-chan T, func()) {
+	channel := make(chan T, size)
+	broker.mu.Lock()
+	if broker.closed {
+		broker.mu.Unlock()
+		close(channel)
+		return channel, func() {}
+	}
+	if broker.listeners == nil {
+		broker.listeners = make(map[chan T]struct{})
+	}
+	broker.listeners[channel] = struct{}{}
+	broker.mu.Unlock()
+	return channel, func() {
+		broker.mu.Lock()
+		delete(broker.listeners, channel)
+		broker.mu.Unlock()
 	}
 }
 
 // Subscribe delivers changed context IDs until unsubscribed; the channel closes
 // when the service closes.
 func (service *Service) Subscribe() (<-chan string, func()) {
-	channel := make(chan string, 1)
-	service.events.mu.Lock()
-	if service.events.closed {
-		service.events.mu.Unlock()
-		close(channel)
-		return channel, func() {}
-	}
-	if service.events.listeners == nil {
-		service.events.listeners = make(map[chan string]struct{})
-	}
-	service.events.listeners[channel] = struct{}{}
-	service.events.mu.Unlock()
-	return channel, func() {
-		service.events.mu.Lock()
-		delete(service.events.listeners, channel)
-		service.events.mu.Unlock()
-	}
+	return service.events.subscribe(1)
+}
+
+// CommentChange names the review stream whose comments, replies or
+// resolutions changed, and the context the change went through. StreamID is
+// empty for piped captures, whose context is their stream.
+type CommentChange struct {
+	ContextID string `json:"contextId"`
+	StreamID  string `json:"streamId"`
+}
+
+// SubscribeComments delivers comment changes until unsubscribed; the channel
+// closes when the service closes. Each change names its stream, so a few are
+// buffered rather than coalesced.
+func (service *Service) SubscribeComments() (<-chan CommentChange, func()) {
+	return service.comments.subscribe(16)
 }

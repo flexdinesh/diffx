@@ -1,5 +1,6 @@
 import { api, errorDetail, type ApiContext } from "@diffx/api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { subscribeServerEvents } from "./server-events.ts";
 
 export type ContextCatalog = {
   contexts: ApiContext[];
@@ -75,20 +76,18 @@ export function useContextCatalog(
       }
     }
     void load();
-    const events = new EventSource("/api/v2/events");
     const update = () => void load();
-    events.addEventListener("message", update);
-    events.addEventListener("ingestion", update);
-    events.addEventListener("open", update);
-    // EventSource hides HTTP status; a normal API read resolves expired identity.
-    events.addEventListener("error", update);
+    const unsubscribe = subscribeServerEvents({
+      ingestion: update,
+      reconnect: update,
+    });
     const visible = () => {
       if (!document.hidden) void load();
     };
     document.addEventListener("visibilitychange", visible);
     return () => {
       controller.abort();
-      events.close();
+      unsubscribe();
       document.removeEventListener("visibilitychange", visible);
     };
   }, [latest, enabled, attempt]);

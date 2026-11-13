@@ -1520,15 +1520,19 @@ test("inline comments use a distinct structured surface while sidebar comments r
   expect(surfaces.header).toBe("rgba(0, 0, 0, 0)");
   expect(surfaces.actions).toBe("rgba(0, 0, 0, 0)");
   await expect(inline.locator('[data-slot="card-header"] svg')).toHaveCount(2);
-  await expect(inline.locator('[data-slot="card-title"] span')).toHaveText(
-    "Line 2–4",
+  await expect(
+    inline.locator('[data-slot="card-title"] > span').first(),
+  ).toHaveText("Line 2–4");
+  // The title names the author after the target; the user reads as "You".
+  await expect(inline.locator('[data-slot="card-title"]')).toContainText(
+    "Line 2–4·You",
   );
-  await expect(inline.locator('[data-slot="card-footer"] svg')).toHaveCount(4);
+  await expect(inline.locator('[data-slot="card-footer"] svg')).toHaveCount(5);
   const commentActions = inline
     .locator('[data-slot="card-footer"]')
     .getByRole("button");
-  await expect(commentActions).toHaveCount(4);
-  await expect(commentActions).toHaveText(["", "Edit", "Resolve", "Delete"]);
+  await expect(commentActions).toHaveCount(6);
+  await expect(commentActions).toHaveText(["", "", "", "Reply", "Resolve", ""]);
   await expect(
     inline.getByRole("button", {
       name: "Copy comment at src/components/Badge.tsx:2–4",
@@ -1542,6 +1546,8 @@ test("inline comments use a distinct structured surface while sidebar comments r
       })),
     ),
   ).toEqual([
+    { height: 24, variant: "ghost" },
+    { height: 24, variant: "ghost" },
     { height: 24, variant: "ghost" },
     { height: 24, variant: "ghost" },
     { height: 24, variant: "outline" },
@@ -1611,7 +1617,7 @@ test("inline comments use a distinct structured surface while sidebar comments r
   await split.click();
   await expect(pairedInline).toHaveAttribute("data-diff-layout", "split");
 
-  await inline.getByRole("button", { name: "Edit", exact: true }).click();
+  await inline.getByRole("button", { name: /^Edit comment at / }).click();
   const editor = page.locator('#viewer form [data-slot="card"]');
   await expect(editor).toBeVisible();
   const editorHeaderOffset = await editor.evaluate((element) => {
@@ -1694,9 +1700,9 @@ test("inline comments use a distinct structured surface while sidebar comments r
   const sidebarActions = sidebar
     .locator('[data-slot="card-footer"]')
     .getByRole("button");
-  await expect(sidebarActions).toHaveCount(4);
+  await expect(sidebarActions).toHaveCount(6);
   // Sidebar and inline cards offer the same labeled actions.
-  await expect(sidebarActions).toHaveText(["", "Edit", "Resolve", "Delete"]);
+  await expect(sidebarActions).toHaveText(["", "", "", "Reply", "Resolve", ""]);
   await expect(
     sidebar.getByRole("button", {
       name: "Copy comment at src/value.ts:3",
@@ -1711,12 +1717,14 @@ test("inline comments use a distinct structured surface while sidebar comments r
   );
   expect(sidebarActionMetrics.map(({ size }) => size)).toEqual([
     "icon-xs",
+    "icon-xs",
+    "icon-xs",
     "xs",
     "xs",
-    "xs",
+    "icon-xs",
   ]);
   expect(sidebarActionMetrics.map(({ height }) => height)).toEqual([
-    24, 24, 24, 24,
+    24, 24, 24, 24, 24, 24,
   ]);
   expect(
     Math.max(...sidebarActionMetrics.map(({ top }) => top)) -
@@ -1725,16 +1733,18 @@ test("inline comments use a distinct structured surface while sidebar comments r
   const sidebarActionSpacing = await sidebarActions.evaluateAll((buttons) => {
     const boxes = buttons.map((button) => button.getBoundingClientRect());
     const copy = boxes[0];
-    const edit = boxes[1];
-    const resolve = boxes[2];
-    if (!copy || !edit || !resolve) throw new Error("Missing sidebar actions");
+    const link = boxes[1];
+    const reply = boxes[3];
+    const resolve = boxes[4];
+    if (!copy || !link || !reply || !resolve)
+      throw new Error("Missing sidebar actions");
     return {
-      copyToEdit: edit.left - copy.right,
-      editToResolve: resolve.left - edit.right,
+      copyToLink: link.left - copy.right,
+      replyToResolve: resolve.left - reply.right,
     };
   });
-  expect(sidebarActionSpacing.copyToEdit).toBeLessThan(
-    sidebarActionSpacing.editToResolve,
+  expect(sidebarActionSpacing.copyToLink).toBeLessThan(
+    sidebarActionSpacing.replyToResolve,
   );
 
   const copyReview = page.getByRole("button", { name: "Copy review" });
@@ -2393,9 +2403,10 @@ test("copy dialog reports clipboard status and restores focus", async ({
   await expect(card).toHaveAttribute("data-expanded", "false");
   await expect(card.locator('[data-slot="card-content"]')).toBeHidden();
   await expect(card.getByText("Outdated", { exact: true })).toBeVisible();
+  // Resolving through the UI records the user as resolver.
   await expect(state).toHaveAttribute(
     "title",
-    "Lifecycle: resolved; applicability: outdated",
+    "Lifecycle: resolved by You; applicability: outdated",
   );
   await expect(expand).toHaveAttribute("aria-expanded", "false");
   await expand.click();
@@ -2666,7 +2677,7 @@ test("file review comments save and reopen without selecting lines", async ({
     .locator('#viewer [data-comment-id] [data-slot="card"]')
     .filter({ hasText: "Review entire config/diffx.json" });
   await expect(card).toBeVisible();
-  await card.getByRole("button", { name: "Edit", exact: true }).click();
+  await card.getByRole("button", { name: /^Edit comment at / }).click();
   const editor = page.locator('#viewer form [data-slot="card"]');
   await expect(editor).toBeVisible();
   await expect(editor.locator('[data-slot="card-title"]')).toContainText(

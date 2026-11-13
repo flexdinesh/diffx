@@ -62,7 +62,15 @@ function review(enabled = true) {
   return renderHook(() => {
     const [currentDraft, setDraft] = useState<ReviewComment | null>(draft);
     return {
-      ...useReview("context", repository, currentDraft, setDraft, enabled),
+      ...useReview(
+        "context",
+        "stream",
+        "http://localhost/streams/stream",
+        repository,
+        currentDraft,
+        setDraft,
+        enabled,
+      ),
       draft: currentDraft,
       setDraft,
     };

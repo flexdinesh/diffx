@@ -132,11 +132,21 @@ func (handler *Handler) api(response http.ResponseWriter, request *http.Request)
 		if err != nil {
 			return true, err
 		}
-		comments, err := handler.review.ListComments(request.Context(), includeResolved)
+		comments, err := handler.review.ListComments(request.Context(), includeResolved, request.URL.Query().Get("author"))
 		return true, writeResult(response, map[string]any{"comments": comments}, err)
 	}
 	if commentID, ok := reviewResolveRoute(pathname); ok && request.Method == http.MethodPost {
-		resolution, err := handler.review.ResolveComment(request.Context(), commentID)
+		// The note is optional. Resolving accepted any body before notes
+		// existed, so only a JSON body is read; others resolve without one.
+		var body struct {
+			Note string `json:"note"`
+		}
+		if request.ContentLength != 0 && strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
+			if err := decodeBody(response, request, &body); err != nil {
+				return true, err
+			}
+		}
+		resolution, err := handler.review.ResolveComment(request.Context(), commentID, review.UserAuthor(), body.Note)
 		if errors.Is(err, reviewservice.ErrCommentNotFound) {
 			err = review.Error(404, "Comment not found")
 		}
@@ -145,7 +155,7 @@ func (handler *Handler) api(response http.ResponseWriter, request *http.Request)
 	if pathname == "/api/review/comments" {
 		switch request.Method {
 		case http.MethodGet:
-			comments, err := handler.review.Comments(request.Context())
+			comments, err := handler.review.Comments(request.Context(), request.URL.Query().Get("author"))
 			return true, writeResult(response, map[string]any{"comments": comments}, err)
 		case http.MethodPost:
 			return true, handler.createComment(response, request)
@@ -162,6 +172,34 @@ func (handler *Handler) api(response http.ResponseWriter, request *http.Request)
 	if commentID, ok := carryRoute(pathname); ok && request.Method == http.MethodPost {
 		comment, err := handler.review.CarryComment(request.Context(), commentID)
 		return true, writeResult(response, comment, err)
+	}
+	if commentID, ok := repliesRoute(pathname); ok && request.Method == http.MethodPost {
+		var body replyInput
+		if err := decodeBody(response, request, &body); err != nil {
+			return true, err
+		}
+		comment, err := handler.review.AddReply(request.Context(), commentID, body.Body, review.UserAuthor())
+		if err != nil {
+			return true, err
+		}
+		return true, writeJSON(response, http.StatusCreated, comment)
+	}
+	if commentID, replyID, ok := replyRoute(pathname); ok {
+		switch request.Method {
+		case http.MethodPatch:
+			var body replyInput
+			if err := decodeBody(response, request, &body); err != nil {
+				return true, err
+			}
+			comment, err := handler.review.EditReply(request.Context(), commentID, replyID, body.Body)
+			return true, writeResult(response, comment, err)
+		case http.MethodDelete:
+			if err := handler.review.DeleteReply(request.Context(), commentID, replyID); err != nil {
+				return true, err
+			}
+			response.WriteHeader(http.StatusNoContent)
+			return true, nil
+		}
 	}
 	if commentID, ok := routeValue(pathname, "/api/review/comments/"); ok {
 		switch request.Method {
@@ -237,6 +275,12 @@ func (handler *Handler) api(response http.ResponseWriter, request *http.Request)
 	if _, ok := carryRoute(pathname); ok {
 		known = true
 	}
+	if _, ok := repliesRoute(pathname); ok {
+		known = true
+	}
+	if _, _, ok := replyRoute(pathname); ok {
+		known = true
+	}
 	if known {
 		return true, review.Error(405, "Method not allowed")
 	}
@@ -310,6 +354,12 @@ func commentRoute(pathname string) bool {
 	if _, ok := carryRoute(pathname); ok {
 		return true
 	}
+	if _, ok := repliesRoute(pathname); ok {
+		return true
+	}
+	if _, _, ok := replyRoute(pathname); ok {
+		return true
+	}
 	_, ok := routeValue(pathname, "/api/review/comments/")
 	return ok
 }
@@ -328,6 +378,24 @@ func reviewResolveRoute(pathname string) (string, bool) {
 
 func carryRoute(pathname string) (string, bool) {
 	return commentAction(pathname, "/api/review/comments/", "/carry")
+}
+
+// replyInput is the user's reply body.
+type replyInput struct {
+	Body string `json:"body"`
+}
+
+func repliesRoute(pathname string) (string, bool) {
+	return commentAction(pathname, "/api/review/comments/", "/replies")
+}
+
+// replyRoute is one reply of a comment's thread.
+func replyRoute(pathname string) (string, string, bool) {
+	parts := strings.Split(strings.TrimPrefix(pathname, "/api/review/comments/"), "/")
+	if !strings.HasPrefix(pathname, "/api/review/comments/") || len(parts) != 3 || parts[0] == "" || parts[1] != "replies" || parts[2] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[2], true
 }
 
 func commentAction(pathname, prefix, suffix string) (string, bool) {
@@ -389,7 +457,7 @@ func (handler *Handler) createComment(response http.ResponseWriter, request *htt
 	if err := decodeBody(response, request, &body); err != nil {
 		return err
 	}
-	comment, err := handler.review.CreateComment(request.Context(), body)
+	comment, err := handler.review.CreateComment(request.Context(), body, review.UserAuthor())
 	if err != nil {
 		return err
 	}

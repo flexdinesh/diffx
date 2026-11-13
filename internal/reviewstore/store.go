@@ -17,7 +17,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 16
+const schemaVersion = 17
 
 // additiveSchema is the oldest schema that opens by upgrading in place. Each
 // later schema only creates tables and indexes, or drops tables that are always
@@ -225,6 +225,10 @@ func (store *Store) initialize(path string) error {
 		`CREATE TABLE IF NOT EXISTS reviews (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, stream_key TEXT NOT NULL, mode TEXT NOT NULL, UNIQUE(owner_id, stream_key, mode))`,
 		`CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, version_id TEXT REFERENCES diff_versions(id) ON DELETE SET NULL, file_id TEXT NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL)`,
 		`CREATE INDEX IF NOT EXISTS comments_review_created ON comments(review_id, created_at)`,
+		// Schema 17: one level of replies per comment, ending with it. Rowid
+		// orders replies created within the same millisecond.
+		`CREATE TABLE IF NOT EXISTS comment_replies (comment_id TEXT NOT NULL REFERENCES comments(id) ON DELETE CASCADE, id TEXT NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(comment_id, id))`,
+		`CREATE INDEX IF NOT EXISTS comment_replies_comment_created ON comment_replies(comment_id, created_at)`,
 		// Marks carry to snapshots whose stored file patch has the same digest.
 		`CREATE TABLE IF NOT EXISTS marks (review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, file_id TEXT NOT NULL, version_id TEXT REFERENCES diff_versions(id) ON DELETE SET NULL, patch_digest TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(review_id, file_id))`,
 	}

@@ -691,6 +691,9 @@ func TestForeignRESTMutationsLeaveReviewStateUntouched(t *testing.T) {
 		{"POST", "/comments/import", map[string]any{"comments": []review.ReviewComment{original}}},
 		{"POST", "/review/comments/foreign-comment/resolve", map[string]any{}},
 		{"POST", "/comments/foreign-comment/carry", nil},
+		{"POST", "/comments/foreign-comment/replies", map[string]string{"body": "Reply"}},
+		{"PATCH", "/comments/foreign-comment/replies/reply", map[string]string{"body": "Reply"}},
+		{"DELETE", "/comments/foreign-comment/replies/reply", nil},
 		{"PUT", "/review-marks/" + file.ID + "?scope=all", map[string]string{"versionId": snapshot.VersionID, "fileVersion": file.Fingerprint}},
 		{"DELETE", "/review-marks/" + file.ID + "?scope=all", nil},
 		{"DELETE", "/review-marks?scope=all", nil},
@@ -711,6 +714,9 @@ func TestForeignRESTMutationsLeaveReviewStateUntouched(t *testing.T) {
 			}
 		})
 	}
+	// Comments stored without an author read as the owner's.
+	user := review.UserAuthor()
+	original.Author = &user
 	comments, err := d.store.Comments(t.Context(), foreign.Context.ID)
 	if err != nil || !reflect.DeepEqual(comments, []review.ReviewComment{original}) {
 		t.Fatalf("foreign comments changed: %#v %v", comments, err)
@@ -855,6 +861,154 @@ func TestStreamReviewSpansSnapshotsInBothCompositions(t *testing.T) {
 			if comments, err := d.store.Comments(t.Context(), later.ContextID); err != nil || len(comments) != 0 {
 				t.Fatalf("stream end kept comments: %#v %v", comments, err)
 			}
+		})
+	}
+}
+
+// Threads, authorship and resolution notes behave alike in both compositions,
+// and every committed comment change reaches event streams as a comments
+// event naming the context and its stream.
+func TestCommentThreadsAndEventsInBothCompositions(t *testing.T) {
+	input, err := collector.CollectPatch(t.Context(), "diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1 +1 @@\n-a\n+b\n", t.TempDir(), collector.Options{SourceID: "source", SubmissionID: "threads"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.Metadata.RepositoryKey, input.Metadata.CheckoutKey = "repo", "checkout"
+	for _, remote := range []bool{false, true} {
+		t.Run(fmt.Sprintf("remote=%v", remote), func(t *testing.T) {
+			d := start(t, "", remote)
+			receipt, err := testsupport.NewClient(d.server.URL, d.token).Submit(t.Context(), input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			base := "/api/v2/contexts/" + receipt.ContextID
+			stream := ingestion.StreamKey(receipt.ContextID, input.Metadata)
+			call := func(method, path string, body any, status int, result any) {
+				t.Helper()
+				var reader io.Reader
+				if body != nil {
+					raw, err := json.Marshal(body)
+					if err != nil {
+						t.Fatal(err)
+					}
+					reader = bytes.NewReader(raw)
+				}
+				response := request(t, d, method, path, reader)
+				defer response.Body.Close()
+				if response.StatusCode != status {
+					raw, _ := io.ReadAll(response.Body)
+					t.Fatalf("%s %s status %d: %s", method, path, response.StatusCode, raw)
+				}
+				if result != nil {
+					if err := json.NewDecoder(response.Body).Decode(result); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+
+			r, err := http.NewRequestWithContext(t.Context(), "GET", d.server.URL+"/api/v2/events", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d.token != "" {
+				r.Header.Set("Authorization", "Bearer "+d.token)
+			}
+			events, err := d.server.Client().Do(r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer events.Body.Close()
+			reader := bufio.NewReader(events.Body)
+			if line, err := reader.ReadString('\n'); err != nil || line != ": connected\n" {
+				t.Fatalf("SSE connected: %q %v", line, err)
+			}
+			lines := make(chan string, 64)
+			go func() {
+				defer close(lines)
+				for {
+					line, err := reader.ReadString('\n')
+					if err != nil {
+						return
+					}
+					lines <- line
+				}
+			}()
+			wantEvent := `{"contextId":"` + receipt.ContextID + `","streamId":"` + stream + `"}`
+			expectComments := func() {
+				t.Helper()
+				timeout := time.After(10 * time.Second)
+				for named := false; ; {
+					select {
+					case line, open := <-lines:
+						if !open {
+							t.Fatal("event stream closed")
+						}
+						if line == "event: comments\n" {
+							named = true
+						} else if named && strings.HasPrefix(line, "data: ") {
+							if got := strings.TrimSpace(strings.TrimPrefix(line, "data: ")); got != wantEvent {
+								t.Fatalf("comments event = %s, want %s", got, wantEvent)
+							}
+							return
+						}
+					case <-timeout:
+						t.Fatal("no comments event")
+					}
+				}
+			}
+
+			file := receipt.Snapshot.Files[0]
+			var created review.ReviewComment
+			call("POST", base+"/comments", map[string]any{"diffId": receipt.Snapshot.ID, "versionId": receipt.Snapshot.VersionID, "fileId": file.ID, "fileVersion": file.Fingerprint, "scope": "all", "target": "file", "side": "additions", "start": 0, "end": 0, "body": "Check"}, 201, &created)
+			if created.Author == nil || *created.Author != review.UserAuthor() {
+				t.Fatalf("created comment author: %#v", created.Author)
+			}
+			expectComments()
+			var replied review.ReviewComment
+			call("POST", base+"/comments/"+created.ID+"/replies", map[string]string{"body": " Why? "}, 201, &replied)
+			if len(replied.Replies) != 1 || replied.Replies[0].Body != "Why?" || replied.Replies[0].Author != review.UserAuthor() {
+				t.Fatalf("reply: %#v", replied.Replies)
+			}
+			expectComments()
+			replyPath := base + "/comments/" + created.ID + "/replies/" + replied.Replies[0].ID
+			var edited review.ReviewComment
+			call("PATCH", replyPath, map[string]string{"body": "Why this?"}, 200, &edited)
+			if edited.Replies[0].Body != "Why this?" || edited.Replies[0].EditedAt == 0 {
+				t.Fatalf("edited reply: %#v", edited.Replies)
+			}
+			expectComments()
+			call("POST", base+"/comments/"+created.ID+"/replies", map[string]string{"body": "  "}, 400, nil)
+			call("POST", base+"/comments/missing/replies", map[string]string{"body": "x"}, 404, nil)
+			call("POST", base+"/review/comments/"+created.ID+"/resolve", map[string]string{"note": "Done"}, 200, nil)
+			expectComments()
+			// Clients that resolve without a body keep working.
+			call("POST", base+"/review/comments/"+created.ID+"/resolve", nil, 200, nil)
+			expectComments()
+			var listed struct{ Comments []review.ReviewComment }
+			call("GET", base+"/comments", nil, 200, &listed)
+			thread := listed.Comments[0]
+			if thread.Status != "resolved" || thread.ResolvedBy == nil || *thread.ResolvedBy != review.UserAuthor() || thread.ResolvedAt == 0 ||
+				len(thread.Replies) != 2 || thread.Replies[1].Body != "Done" {
+				t.Fatalf("resolved thread: %#v", thread)
+			}
+			for author, count := range map[string]int{"user": 1, "agent": 0} {
+				call("GET", base+"/comments?author="+author, nil, 200, &listed)
+				var agent struct{ Comments []reviewservice.Comment }
+				call("GET", base+"/review/comments?includeResolved=true&author="+author, nil, 200, &agent)
+				if len(listed.Comments) != count || len(agent.Comments) != count {
+					t.Fatalf("author %s: %d comments, %d agent comments", author, len(listed.Comments), len(agent.Comments))
+				}
+			}
+			call("GET", base+"/comments?author=robot", nil, 400, nil)
+			call("DELETE", replyPath, nil, 204, nil)
+			expectComments()
+			call("DELETE", replyPath, nil, 404, nil)
+			var reopened review.ReviewComment
+			call("PATCH", base+"/comments/"+created.ID, map[string]string{"status": "open"}, 200, &reopened)
+			if reopened.ResolvedBy != nil || reopened.ResolvedAt != 0 || len(reopened.Replies) != 1 {
+				t.Fatalf("reopened thread: %#v", reopened)
+			}
+			expectComments()
 		})
 	}
 }

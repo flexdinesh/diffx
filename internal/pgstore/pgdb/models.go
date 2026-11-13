@@ -71,6 +71,14 @@ type Comment struct {
 	CreatedAt int64
 }
 
+type CommentReply struct {
+	CommentID string
+	ID        string
+	Data      []byte
+	CreatedAt int64
+	Seq       *int64
+}
+
 type Context struct {
 	ID              string
 	OwnerID         string

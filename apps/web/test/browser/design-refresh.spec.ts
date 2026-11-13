@@ -401,7 +401,7 @@ test("review actions use progressive disclosure, status filters, and confirmed d
     .getByRole("button", { name: /Expand resolved comment/ })
     .click();
   await resolvedCard
-    .getByRole("button", { name: "Delete", exact: true })
+    .getByRole("button", { name: /^Delete comment at / })
     .click();
 
   const dialog = page.getByRole("dialog", { name: "Delete comment?" });
@@ -411,7 +411,7 @@ test("review actions use progressive disclosure, status filters, and confirmed d
   await expect(dialog).toBeHidden();
   await expect(resolvedCard).toBeVisible();
   await resolvedCard
-    .getByRole("button", { name: "Delete", exact: true })
+    .getByRole("button", { name: /^Delete comment at / })
     .click();
   await page
     .getByRole("dialog", { name: "Delete comment?" })
@@ -423,7 +423,7 @@ test("review actions use progressive disclosure, status filters, and confirmed d
   await filterTrigger.click();
   await openFilter.click();
   const openCard = panel.locator('[data-comment-id="open-review-comment"]');
-  await openCard.getByRole("button", { name: "Edit", exact: true }).click();
+  await openCard.getByRole("button", { name: /^Edit comment at / }).click();
   const editor = page.getByRole("textbox", { name: "Review comment" });
   await expect(page.getByText("Edit comment", { exact: true })).toBeVisible();
   await editor.fill("");

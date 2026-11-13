@@ -15,8 +15,8 @@ import (
 const ProtocolVersion = "2026-07-28"
 
 type ReviewService interface {
-	ListComments(context.Context, bool) ([]reviewservice.Comment, error)
-	ResolveComment(context.Context, string) (reviewservice.Resolution, error)
+	ListComments(context.Context, bool, string) ([]reviewservice.Comment, error)
+	ResolveComment(context.Context, string, review.CommentAuthor, string) (reviewservice.Resolution, error)
 }
 
 type getReviewCommentsInput struct {
@@ -99,7 +99,7 @@ func registerTools(server *mcp.Server, service ReviewService, catalog *reviewser
 		if err != nil {
 			return nil, getReviewCommentsOutput{}, err
 		}
-		comments, err := active.ListComments(ctx, input.IncludeResolved)
+		comments, err := active.ListComments(ctx, input.IncludeResolved, "")
 		return &mcp.CallToolResult{}, getReviewCommentsOutput{Comments: comments}, err
 	})
 
@@ -113,14 +113,26 @@ func registerTools(server *mcp.Server, service ReviewService, catalog *reviewser
 			DestructiveHint: &nonDestructive,
 			OpenWorldHint:   &closedWorld,
 		},
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, input resolveReviewCommentInput) (*mcp.CallToolResult, reviewservice.Resolution, error) {
+	}, func(ctx context.Context, request *mcp.CallToolRequest, input resolveReviewCommentInput) (*mcp.CallToolResult, reviewservice.Resolution, error) {
 		active, err := resolve(ctx, input.ContextID)
 		if err != nil {
 			return nil, reviewservice.Resolution{}, err
 		}
-		resolution, err := active.ResolveComment(ctx, input.CommentID)
+		resolution, err := active.ResolveComment(ctx, input.CommentID, agentAuthor(request), "")
 		return &mcp.CallToolResult{}, resolution, err
 	})
+}
+
+// agentAuthor is the calling agent, named by its self-reported client name
+// when the session carries one.
+func agentAuthor(request *mcp.CallToolRequest) review.CommentAuthor {
+	name := ""
+	if request != nil && request.Session != nil {
+		if params := request.Session.InitializeParams(); params != nil && params.ClientInfo != nil {
+			name = params.ClientInfo.Name
+		}
+	}
+	return review.AgentAuthor(name, "")
 }
 
 // Catalog tools use the same owner-scoped application operations as REST.

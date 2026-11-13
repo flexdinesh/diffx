@@ -81,6 +81,64 @@ func (store *storeStub) ReplaceComment(_ context.Context, _ string, comment revi
 	return false, nil
 }
 
+// ResolveComment mirrors the stores' atomic rule: an open comment gains its
+// resolver once; a note joins the thread on every call.
+func (store *storeStub) ResolveComment(_ context.Context, _ string, commentID string, by review.CommentAuthor, at float64, note *review.CommentReply) (bool, error) {
+	if store.putError != nil {
+		return false, store.putError
+	}
+	for index := range store.comments {
+		comment := &store.comments[index]
+		if comment.ID != commentID {
+			continue
+		}
+		if comment.Status != "resolved" {
+			store.putCalls++
+			comment.Status, comment.ResolvedBy, comment.ResolvedAt = "resolved", &by, at
+		}
+		if note != nil {
+			comment.Replies = append(comment.Replies, *note)
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+func (store *storeStub) AddReply(_ context.Context, _ string, commentID string, reply review.CommentReply) (bool, error) {
+	for index := range store.comments {
+		if store.comments[index].ID == commentID {
+			store.comments[index].Replies = append(store.comments[index].Replies, reply)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (store *storeStub) EditReply(_ context.Context, _ string, commentID, replyID, body string, editedAt float64) (bool, error) {
+	for index := range store.comments {
+		for reply := range store.comments[index].Replies {
+			if store.comments[index].ID == commentID && store.comments[index].Replies[reply].ID == replyID {
+				store.comments[index].Replies[reply].Body, store.comments[index].Replies[reply].EditedAt = body, editedAt
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+func (store *storeStub) DeleteReply(_ context.Context, _ string, commentID, replyID string) (bool, error) {
+	for index := range store.comments {
+		replies := store.comments[index].Replies
+		for reply := range replies {
+			if store.comments[index].ID == commentID && replies[reply].ID == replyID {
+				store.comments[index].Replies = append(replies[:reply:reply], replies[reply+1:]...)
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 func TestListCommentsFiltersAndEnrichesInStoredOrder(t *testing.T) {
 	source := &sourceStub{
 		support: diffsource.Support{Scopes: []review.DiffMode{review.DiffStaged, review.DiffUnstaged}},
@@ -97,7 +155,7 @@ func TestListCommentsFiltersAndEnrichesInStoredOrder(t *testing.T) {
 	}}
 	service := New(boundSession(source, reviewsession.Policies{}), store)
 
-	got, err := service.ListComments(context.Background(), false)
+	got, err := service.ListComments(context.Background(), false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +176,7 @@ func TestListCommentsFiltersAndEnrichesInStoredOrder(t *testing.T) {
 		t.Fatalf("snapshot calls = %v", source.calls)
 	}
 
-	got, err = service.ListComments(context.Background(), true)
+	got, err = service.ListComments(context.Background(), true, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +195,7 @@ func TestListCommentsReturnsNonNilEmptySliceWithoutSnapshots(t *testing.T) {
 	}
 	service := New(boundSession(source, reviewsession.Policies{}), &storeStub{})
 
-	got, err := service.ListComments(context.Background(), false)
+	got, err := service.ListComments(context.Background(), false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +217,7 @@ func TestListCommentsPropagatesSnapshotFailure(t *testing.T) {
 	store := &storeStub{comments: []review.ReviewComment{comment("id", review.DiffAll, "file.go", "old", "open")}}
 	service := New(boundSession(source, reviewsession.Policies{}), store)
 
-	if _, err := service.ListComments(context.Background(), false); !errors.Is(err, want) {
+	if _, err := service.ListComments(context.Background(), false, ""); !errors.Is(err, want) {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -174,7 +232,7 @@ func TestListCommentsPropagatesCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	if _, err := service.ListComments(ctx, false); !errors.Is(err, context.Canceled) {
+	if _, err := service.ListComments(ctx, false, ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -184,7 +242,7 @@ func TestResolveCommentIsIdempotentAndAllowsStaleIdentity(t *testing.T) {
 	store := &storeStub{comments: []review.ReviewComment{comment("stale-id", review.DiffAll, "gone.go", "old", "open")}}
 	service := New(boundSession(source, reviewsession.Policies{}), store)
 
-	got, err := service.ResolveComment(t.Context(), "stale-id")
+	got, err := service.ResolveComment(t.Context(), "stale-id", review.UserAuthor(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +253,7 @@ func TestResolveCommentIsIdempotentAndAllowsStaleIdentity(t *testing.T) {
 		t.Fatalf("store = %#v, put calls = %d", store.comments, store.putCalls)
 	}
 
-	got, err = service.ResolveComment(t.Context(), "stale-id")
+	got, err = service.ResolveComment(t.Context(), "stale-id", review.UserAuthor(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +269,7 @@ func TestResolveCommentReturnsTypedNotFoundError(t *testing.T) {
 	source := &sourceStub{support: diffsource.Support{Scopes: []review.DiffMode{review.DiffAll}}}
 	service := New(boundSession(source, reviewsession.Policies{}), &storeStub{})
 
-	_, err := service.ResolveComment(t.Context(), "missing")
+	_, err := service.ResolveComment(t.Context(), "missing", review.UserAuthor(), "")
 	if !errors.Is(err, ErrCommentNotFound) {
 		t.Fatalf("error = %v", err)
 	}
@@ -230,7 +288,7 @@ func TestResolveCommentPropagatesStoreFailure(t *testing.T) {
 	}
 	service := New(boundSession(source, reviewsession.Policies{}), store)
 
-	if _, err := service.ResolveComment(t.Context(), "id"); !errors.Is(err, want) {
+	if _, err := service.ResolveComment(t.Context(), "id", review.UserAuthor(), ""); !errors.Is(err, want) {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -240,10 +298,10 @@ func TestMethodsRejectDisabledCommentCapability(t *testing.T) {
 	store := &storeStub{comments: []review.ReviewComment{comment("id", review.DiffAll, "file.go", "old", "open")}}
 	service := New(boundSession(source, reviewsession.Policies{Comments: reviewsession.DisablePolicy}), store)
 
-	if _, err := service.ListComments(context.Background(), false); !capabilityError(err) {
+	if _, err := service.ListComments(context.Background(), false, ""); !capabilityError(err) {
 		t.Fatalf("list error = %v", err)
 	}
-	if _, err := service.ResolveComment(t.Context(), "id"); !capabilityError(err) {
+	if _, err := service.ResolveComment(t.Context(), "id", review.UserAuthor(), ""); !capabilityError(err) {
 		t.Fatalf("resolve error = %v", err)
 	}
 	if len(source.calls) != 0 || store.putCalls != 0 {
@@ -292,10 +350,19 @@ func TestUpdateCommentPreservesAnchorAndValidatesBeforeWriting(t *testing.T) {
 	}
 	expected := original
 	expected.Body, expected.Status = "revised concern", "resolved"
+	user := review.UserAuthor()
+	// Resolving records the user as resolver at the time of the edit.
+	expected.ResolvedBy, expected.ResolvedAt = &user, got.ResolvedAt
 	expected.Placement = &review.CommentPlacement{Applicability: review.Unknown, Side: "additions", Start: 1, End: 1}
-	if !reflect.DeepEqual(got, expected) || store.putCalls != 1 || store.comments[0].Placement != nil {
+	if !reflect.DeepEqual(got, expected) || got.ResolvedAt <= 0 || store.putCalls != 1 || store.comments[0].Placement != nil {
 		t.Fatalf("updated comment: %#v writes %d", got, store.putCalls)
 	}
+	reopen := "open"
+	got, err = service.UpdateComment(context.Background(), "id", UpdateCommentInput{Status: &reopen})
+	if err != nil || got.Status != "open" || got.ResolvedBy != nil || got.ResolvedAt != 0 {
+		t.Fatalf("reopened comment kept its resolution: %#v %v", got, err)
+	}
+	store.putCalls = 0
 	empty, invalid := "  ", "dismissed"
 	for _, input := range []UpdateCommentInput{{}, {Body: &empty}, {Status: &invalid}} {
 		if _, err := service.UpdateComment(context.Background(), "id", input); err == nil {
@@ -306,7 +373,7 @@ func TestUpdateCommentPreservesAnchorAndValidatesBeforeWriting(t *testing.T) {
 	if _, err := disabled.UpdateComment(context.Background(), "id", UpdateCommentInput{Body: &body}); !capabilityError(err) {
 		t.Fatalf("disabled update: %v", err)
 	}
-	if store.putCalls != 1 {
+	if store.putCalls != 0 {
 		t.Fatalf("invalid/disabled update wrote %d times", store.putCalls)
 	}
 }
@@ -360,7 +427,7 @@ func TestListCommentsPlacesStreamCommentsInViewedSnapshot(t *testing.T) {
 		earlierComment("renamed", "old.go", "+ before", 1),
 	}}
 	service := New(boundSession(streamSource(), reviewsession.Policies{}), store)
-	got, err := service.ListComments(context.Background(), false)
+	got, err := service.ListComments(context.Background(), false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +441,7 @@ func TestListCommentsPlacesStreamCommentsInViewedSnapshot(t *testing.T) {
 			t.Fatalf("%s placement = %#v actionable=%v", comment.ID, comment.Placement, comment.Actionable)
 		}
 	}
-	all, err := service.Comments(context.Background())
+	all, err := service.Comments(context.Background(), "")
 	if err != nil || len(all) != 3 || *all[0].Placement != want[0] {
 		t.Fatalf("REST comments lack placement: %#v %v", all, err)
 	}
@@ -434,12 +501,17 @@ func (store *deletedDuringWriteStub) ReplaceComment(context.Context, string, rev
 	return false, nil
 }
 
+func (store *deletedDuringWriteStub) ResolveComment(context.Context, string, string, review.CommentAuthor, float64, *review.CommentReply) (bool, error) {
+	store.putCalls++
+	return false, nil
+}
+
 func TestCommentEditsReportNotFoundWhenDeletedConcurrently(t *testing.T) {
 	source := &sourceStub{support: diffsource.Support{Scopes: []review.DiffMode{review.DiffAll}}}
 	store := &deletedDuringWriteStub{storeStub{comments: []review.ReviewComment{comment("id", review.DiffAll, "file.go", "old", "open")}}}
 	service := New(boundSession(source, reviewsession.Policies{}), store)
 
-	if _, err := service.ResolveComment(t.Context(), "id"); !errors.Is(err, ErrCommentNotFound) {
+	if _, err := service.ResolveComment(t.Context(), "id", review.UserAuthor(), ""); !errors.Is(err, ErrCommentNotFound) {
 		t.Fatalf("resolve error = %v", err)
 	}
 	body := "edited"

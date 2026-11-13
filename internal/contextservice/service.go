@@ -55,7 +55,8 @@ type Publication struct {
 }
 
 type Service struct {
-	events     events
+	events     events[string]
+	comments   events[CommentChange]
 	external   bool
 	policies   reviewsession.Policies
 	store      Store
@@ -111,7 +112,7 @@ func (scope Scope) selection(contextID string) ingestion.Selection {
 // Option adjusts a composition's service.
 type Option func(*Service)
 
-// ExternalEvents stops Ingest and Delete from notifying subscribers in-process.
+// ExternalEvents stops Ingest, Delete and comment changes from notifying subscribers in-process.
 // The composition instead relays changes its store announces, from every
 // process, through Notify.
 func ExternalEvents() Option {
@@ -143,12 +144,28 @@ func NewScoped(ctx context.Context, store Store, user reviewdata.User, scope Sco
 func (service *Service) Close() error {
 	service.cancel()
 	service.events.close()
+	service.comments.close()
 	return nil
 }
 
 // Notify tells the owner's subscribers that contextID changed elsewhere. An
 // empty contextID means changes may have been missed; subscribers reload.
 func (service *Service) Notify(contextID string) { service.events.publish(contextID) }
+
+// NotifyComments tells the owner's subscribers that a stream's comments
+// changed elsewhere.
+func (service *Service) NotifyComments(contextID, streamID string) {
+	service.comments.publish(CommentChange{ContextID: contextID, StreamID: streamID})
+}
+
+// CommentsChanged reports a committed comment change through contextID. Like
+// ingestion, it notifies in-process subscribers unless the composition relays
+// store-announced changes instead.
+func (service *Service) CommentsChanged(contextID, streamID string) {
+	if !service.external {
+		service.NotifyComments(contextID, streamID)
+	}
+}
 
 // changed notifies in-process subscribers unless the composition relays
 // store-announced changes instead.
@@ -216,6 +233,7 @@ func (service *Service) Resolve(ctx context.Context, id string) (reviewsession.S
 	resolved := reviewsession.Resolve(source, service.policies)
 	resolved.User = reviewsession.User{ID: service.user.ID, Name: service.user.Name}
 	resolved.ContextID = binding.ContextID
+	resolved.StreamID = ingestion.PublicStreamID(ingestion.StreamKey(binding.ContextID, *item.Metadata))
 	resolved.LocationID = binding.LocationID
 	resolved.RepositoryID = binding.RepositoryID
 	resolved.DiffIDs = binding.DiffIDs

@@ -184,7 +184,9 @@ Marks a comment resolved by stable ID:
 Resolution is idempotent. Resolving an already resolved comment succeeds, and
 outdated or unchanged comments may be resolved. An unknown ID or an ID belonging to another
 context returns a tool error. The tool
-does not reopen comments and does not require a revision or version token.
+does not reopen comments and does not require a revision or version token. The
+first resolution records the agent, named by its MCP client name, as the
+resolver; the review shows that name as reported by the agent.
 
 ## Agent workflow
 

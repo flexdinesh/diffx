@@ -12,9 +12,12 @@ import { Button } from "@diffx/ui/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@diffx/ui/components/ui/dropdown-menu";
 import { TabsContent } from "@diffx/ui/components/ui/tabs";
@@ -27,9 +30,11 @@ import {
 import { DraftComment, ReviewCommentCard } from "./review.tsx";
 import { capabilityEnabled, useSession } from "./session-context.tsx";
 import {
+  authorMatches,
   commentStale,
   placedInline,
   placementFor,
+  type AuthorFilter,
   type ReviewComment,
 } from "./review-model.ts";
 
@@ -48,6 +53,21 @@ const DELETE_FILTERS: readonly CommentFilter[] = [
   "outdated",
 ];
 
+const AUTHOR_FILTERS: readonly AuthorFilter[] = ["everyone", "me", "agents"];
+
+function authorLabel(filter: AuthorFilter) {
+  if (filter === "me") return "Me";
+  if (filter === "agents") return "Agents";
+  return "Everyone";
+}
+
+function emptyLabel(filter: CommentFilter, author: AuthorFilter) {
+  const status = filter === "all" ? "" : `${filter} `;
+  const by =
+    author === "me" ? " by you" : author === "agents" ? " by agents" : "";
+  return `No ${status}comments${by}.`;
+}
+
 function filterLabel(filter: CommentFilter) {
   if (filter === "open") return "Open";
   if (filter === "resolved") return "Resolved";
@@ -57,6 +77,7 @@ function filterLabel(filter: CommentFilter) {
 
 export function CommentsPanel() {
   const [filter, setFilter] = useState<CommentFilter>("open");
+  const [author, setAuthor] = useState<AuthorFilter>("everyone");
   const [deleteSelection, setDeleteSelection] = useState<CommentFilter | null>(
     null,
   );
@@ -70,27 +91,28 @@ export function CommentsPanel() {
     (value === "outdated"
       ? commentStale(comment, repository)
       : comment.status === value);
-  const counts = {
-    open: review.comments.filter((comment) => matches(comment, "open")).length,
-    resolved: review.comments.filter((comment) => matches(comment, "resolved"))
-      .length,
-    outdated: review.comments.filter((comment) => matches(comment, "outdated"))
-      .length,
-  };
-  const activeCount =
-    filter === "all" ? review.comments.length : counts[filter];
+  const countsIn = (comments: ReviewComment[]) => ({
+    open: comments.filter((comment) => matches(comment, "open")).length,
+    resolved: comments.filter((comment) => matches(comment, "resolved")).length,
+    outdated: comments.filter((comment) => matches(comment, "outdated")).length,
+  });
+  // Bulk deletion spans every author; the list and its counts follow both filters.
+  const counts = countsIn(review.comments);
+  const authored = review.comments.filter((comment) =>
+    authorMatches(comment, author),
+  );
+  const shownCounts = countsIn(authored);
+  const activeCount = filter === "all" ? authored.length : shownCounts[filter];
   const deleteCount =
     deleteSelection === null
       ? 0
       : deleteSelection === "all"
         ? review.comments.length
         : counts[deleteSelection];
-  const currentComments = review.currentComments.filter((comment) =>
-    matches(comment, filter),
-  );
-  const outdatedComments = review.outdatedComments.filter((comment) =>
-    matches(comment, filter),
-  );
+  const shown = (comment: ReviewComment) =>
+    matches(comment, filter) && authorMatches(comment, author);
+  const currentComments = review.currentComments.filter(shown);
+  const outdatedComments = review.outdatedComments.filter(shown);
   return (
     <TabsContent
       value="comments"
@@ -110,11 +132,12 @@ export function CommentsPanel() {
                       variant="outline"
                       size="xs"
                       touch
-                      aria-label={`Filter comments: ${filterLabel(filter)}`}
+                      aria-label={`Filter comments: ${filterLabel(filter)}${author === "everyone" ? "" : `, ${authorLabel(author)}`}`}
                     />
                   }
                 >
                   {filterLabel(filter)}
+                  {author !== "everyone" && ` · ${authorLabel(author)}`}
                   <CountBadge count={activeCount} />
                   <ChevronDownIcon className="size-3" aria-hidden="true" />
                 </DropdownMenuTrigger>
@@ -123,38 +146,78 @@ export function CommentsPanel() {
                   className="w-max min-w-30"
                   aria-label="Filter comments"
                 >
-                  <DropdownMenuRadioGroup
-                    value={filter}
-                    onValueChange={(value: unknown) => {
-                      if (
-                        value === "open" ||
-                        value === "resolved" ||
-                        value === "outdated" ||
-                        value === "all"
-                      )
-                        setFilter(value);
-                    }}
-                  >
-                    {COMMENT_FILTERS.map((value) => (
-                      <DropdownMenuRadioItem
-                        key={value}
-                        value={value}
-                        closeOnClick
-                        indicator="start"
-                        className="gap-1"
-                      >
-                        <span>{filterLabel(value)}</span>
-                        <CountBadge
-                          className="ml-auto"
-                          count={
-                            value === "all"
-                              ? review.comments.length
-                              : counts[value]
-                          }
-                        />
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
+                  {/* Status and author share one menu so the panel's
+                      controls keep one row in the default sidebar. */}
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>Status</DropdownMenuLabel>
+                    <DropdownMenuRadioGroup
+                      value={filter}
+                      onValueChange={(value: unknown) => {
+                        if (
+                          value === "open" ||
+                          value === "resolved" ||
+                          value === "outdated" ||
+                          value === "all"
+                        )
+                          setFilter(value);
+                      }}
+                    >
+                      {COMMENT_FILTERS.map((value) => (
+                        <DropdownMenuRadioItem
+                          key={value}
+                          value={value}
+                          closeOnClick
+                          indicator="start"
+                          className="gap-1"
+                        >
+                          <span>{filterLabel(value)}</span>
+                          <CountBadge
+                            className="ml-auto"
+                            count={
+                              value === "all"
+                                ? authored.length
+                                : shownCounts[value]
+                            }
+                          />
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>Author</DropdownMenuLabel>
+                    <DropdownMenuRadioGroup
+                      value={author}
+                      onValueChange={(value: unknown) => {
+                        if (
+                          value === "everyone" ||
+                          value === "me" ||
+                          value === "agents"
+                        )
+                          setAuthor(value);
+                      }}
+                    >
+                      {AUTHOR_FILTERS.map((value) => (
+                        <DropdownMenuRadioItem
+                          key={value}
+                          value={value}
+                          closeOnClick
+                          indicator="start"
+                          className="gap-1"
+                        >
+                          <span>{authorLabel(value)}</span>
+                          <CountBadge
+                            className="ml-auto"
+                            count={
+                              review.comments.filter((comment) =>
+                                authorMatches(comment, value),
+                              ).length
+                            }
+                          />
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
               <SplitButton
@@ -234,7 +297,7 @@ export function CommentsPanel() {
         {!!review.comments.length &&
           !currentComments.length &&
           !outdatedComments.length && (
-            <p className="comment-empty">No {filter} comments.</p>
+            <p className="comment-empty">{emptyLabel(filter, author)}</p>
           )}
         <ConfirmDialog
           open={deleteSelection !== null}

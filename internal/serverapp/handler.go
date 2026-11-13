@@ -179,6 +179,8 @@ func stream(ctx context.Context, service *contextservice.Service, w http.Respons
 	}
 	events, unsubscribe := service.Subscribe()
 	defer unsubscribe()
+	comments, unsubscribeComments := service.SubscribeComments()
+	defer unsubscribeComments()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("X-Accel-Buffering", "no")
 	controller := http.NewResponseController(w)
@@ -209,6 +211,14 @@ func stream(ctx context.Context, service *contextservice.Service, w http.Respons
 				ContextID string `json:"contextId"`
 			}{id})
 			if !write("event: ingestion\ndata: " + string(raw) + "\n\n") {
+				return
+			}
+		case change, open := <-comments:
+			if !open {
+				return
+			}
+			raw, _ := json.Marshal(change)
+			if !write("event: comments\ndata: " + string(raw) + "\n\n") {
 				return
 			}
 		case <-ticker.C:

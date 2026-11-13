@@ -18,6 +18,11 @@ import {
   type SetStateAction,
 } from "react";
 import { saveSessionPaths, sessionPaths } from "./preferences.ts";
+import {
+  commentFromUrl,
+  dropCommentFromUrl,
+  reviewUrl,
+} from "./review-route.ts";
 import { streamKey } from "./project-nav.ts";
 import {
   capabilityEnabled,
@@ -204,6 +209,8 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
   const repository = diff.repository;
   const review = useReview(
     contextId,
+    session.streamId ?? "",
+    reviewUrl(session),
     repository,
     draft,
     setDraft,
@@ -249,6 +256,32 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
     showSidebar,
     closeMobile,
   });
+  // A permalink (`?comment=`) opens its comment once the stream's comments and
+  // the first diff load, reusing comment navigation for scope, file and pulse.
+  const [permalink, setPermalink] = useState(commentFromUrl);
+  const { navigateComment } = navigation;
+  useEffect(() => {
+    if (!permalink) return;
+    if (!commentsEnabled) {
+      setPermalink("");
+      dropCommentFromUrl();
+      return;
+    }
+    if (!review.loaded || !repository) return;
+    setPermalink("");
+    dropCommentFromUrl();
+    const linked = review.comments.find((comment) => comment.id === permalink);
+    if (linked) navigateComment(linked);
+    else setFeedback("The linked comment is no longer in this review.");
+  }, [
+    permalink,
+    commentsEnabled,
+    review.loaded,
+    review.comments,
+    repository,
+    navigateComment,
+    setFeedback,
+  ]);
   const piped = repository?.source === "stdin";
   useEffect(() => {
     document.title = `diffx · ${piped ? "Piped" : "Git diff"}`;

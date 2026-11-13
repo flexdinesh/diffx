@@ -1361,5 +1361,350 @@
       "start": 2,
       "end": 2
     }
+  },
+  {
+    "name": "agent comment with replies",
+    "comment": {
+      "id": "comment",
+      "diffId": "diff",
+      "versionId": "v2",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash2",
+      "side": "additions",
+      "start": 2,
+      "end": 2,
+      "code": "+ changed",
+      "body": "Check <this> & that",
+      "status": "resolved",
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      },
+      "author": {
+        "kind": "agent",
+        "name": "Claude & co",
+        "clientId": "claude-code"
+      },
+      "resolvedBy": {
+        "kind": "user"
+      },
+      "resolvedAt": 5,
+      "replies": [
+        {
+          "id": "r1",
+          "author": {
+            "kind": "user"
+          },
+          "body": "Why <this>?",
+          "createdAt": 2
+        },
+        {
+          "id": "r2",
+          "author": {
+            "kind": "agent",
+            "name": "Claude & co"
+          },
+          "body": "Fixed it.\nSee line 3",
+          "createdAt": 3,
+          "editedAt": 4
+        }
+      ]
+    },
+    "repository": {
+      "id": "diff",
+      "versionId": "v2",
+      "locationId": null,
+      "repositoryId": null,
+      "source": "stdin",
+      "root": "",
+      "name": "Piped",
+      "branch": "",
+      "head": null,
+      "mode": "all",
+      "files": [
+        {
+          "id": "file",
+          "path": "file.txt",
+          "oldPath": null,
+          "status": "M",
+          "indexStatus": "",
+          "worktreeStatus": "",
+          "additions": 1,
+          "deletions": 1,
+          "binary": false,
+          "fingerprint": "hash2"
+        }
+      ],
+      "revision": "r2"
+    },
+    "valid": true,
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    },
+    "export": "<code-review-comments version=\"2\">\n  <instructions>Address every open review comment. Inspect the current working tree before editing because code and line numbers describe the reviewed snapshot. Preserve unrelated changes. Resolved comments are context only; do not act on them. Comments marked stale were written against earlier code; verify they still apply before acting, and report any that no longer apply using the comment ID. If an open comment cannot be applied, report it using its comment ID.</instructions>\n  <review origin=\"unknown\">\n    <file path=\"file.txt\">\n      <comment id=\"C1\" selection=\"single-line\" line=\"2\" end-line=\"2\" side=\"additions\" scope=\"all\" status=\"resolved\" applicability=\"anchored\" author=\"agent\" author-name=\"Claude &amp; co\">\n        <code>+ changed</code>\n        <body>Check &lt;this&gt; &amp; that</body>\n        <reply author=\"user\">Why &lt;this&gt;?</reply>\n        <reply author=\"agent\" author-name=\"Claude &amp; co\">Fixed it.\nSee line 3</reply>\n      </comment>\n    </file>\n  </review>\n</code-review-comments>"
+  },
+  {
+    "name": "reply without body is invalid",
+    "comment": {
+      "id": "comment",
+      "diffId": "diff",
+      "versionId": "v2",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash2",
+      "side": "additions",
+      "start": 2,
+      "end": 2,
+      "code": "+ changed",
+      "body": "Check <this> & that",
+      "status": "open",
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      },
+      "replies": [
+        {
+          "id": "r1",
+          "author": {
+            "kind": "user"
+          },
+          "body": "  ",
+          "createdAt": 2
+        }
+      ]
+    },
+    "repository": {
+      "id": "diff",
+      "versionId": "v2",
+      "locationId": null,
+      "repositoryId": null,
+      "source": "stdin",
+      "root": "",
+      "name": "Piped",
+      "branch": "",
+      "head": null,
+      "mode": "all",
+      "files": [
+        {
+          "id": "file",
+          "path": "file.txt",
+          "oldPath": null,
+          "status": "M",
+          "indexStatus": "",
+          "worktreeStatus": "",
+          "additions": 1,
+          "deletions": 1,
+          "binary": false,
+          "fingerprint": "hash2"
+        }
+      ],
+      "revision": "r2"
+    },
+    "valid": false,
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    }
+  },
+  {
+    "name": "duplicate reply IDs are invalid",
+    "comment": {
+      "id": "comment",
+      "diffId": "diff",
+      "versionId": "v2",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash2",
+      "side": "additions",
+      "start": 2,
+      "end": 2,
+      "code": "+ changed",
+      "body": "Check <this> & that",
+      "status": "open",
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      },
+      "replies": [
+        {
+          "id": "r1",
+          "author": {
+            "kind": "user"
+          },
+          "body": "a",
+          "createdAt": 2
+        },
+        {
+          "id": "r1",
+          "author": {
+            "kind": "user"
+          },
+          "body": "b",
+          "createdAt": 3
+        }
+      ]
+    },
+    "repository": {
+      "id": "diff",
+      "versionId": "v2",
+      "locationId": null,
+      "repositoryId": null,
+      "source": "stdin",
+      "root": "",
+      "name": "Piped",
+      "branch": "",
+      "head": null,
+      "mode": "all",
+      "files": [
+        {
+          "id": "file",
+          "path": "file.txt",
+          "oldPath": null,
+          "status": "M",
+          "indexStatus": "",
+          "worktreeStatus": "",
+          "additions": 1,
+          "deletions": 1,
+          "binary": false,
+          "fingerprint": "hash2"
+        }
+      ],
+      "revision": "r2"
+    },
+    "valid": false,
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    }
+  },
+  {
+    "name": "named user author is invalid",
+    "comment": {
+      "id": "comment",
+      "diffId": "diff",
+      "versionId": "v2",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash2",
+      "side": "additions",
+      "start": 2,
+      "end": 2,
+      "code": "+ changed",
+      "body": "Check <this> & that",
+      "status": "open",
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      },
+      "author": {
+        "kind": "user",
+        "name": "Mallory"
+      }
+    },
+    "repository": {
+      "id": "diff",
+      "versionId": "v2",
+      "locationId": null,
+      "repositoryId": null,
+      "source": "stdin",
+      "root": "",
+      "name": "Piped",
+      "branch": "",
+      "head": null,
+      "mode": "all",
+      "files": [
+        {
+          "id": "file",
+          "path": "file.txt",
+          "oldPath": null,
+          "status": "M",
+          "indexStatus": "",
+          "worktreeStatus": "",
+          "additions": 1,
+          "deletions": 1,
+          "binary": false,
+          "fingerprint": "hash2"
+        }
+      ],
+      "revision": "r2"
+    },
+    "valid": false,
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    }
+  },
+  {
+    "name": "open comment with resolver is invalid",
+    "comment": {
+      "id": "comment",
+      "diffId": "diff",
+      "versionId": "v2",
+      "path": "file.txt",
+      "scope": "all",
+      "fingerprint": "hash2",
+      "side": "additions",
+      "start": 2,
+      "end": 2,
+      "code": "+ changed",
+      "body": "Check <this> & that",
+      "status": "open",
+      "createdAt": 1,
+      "anchor": {
+        "before": "alpha",
+        "after": ""
+      },
+      "resolvedBy": {
+        "kind": "user"
+      }
+    },
+    "repository": {
+      "id": "diff",
+      "versionId": "v2",
+      "locationId": null,
+      "repositoryId": null,
+      "source": "stdin",
+      "root": "",
+      "name": "Piped",
+      "branch": "",
+      "head": null,
+      "mode": "all",
+      "files": [
+        {
+          "id": "file",
+          "path": "file.txt",
+          "oldPath": null,
+          "status": "M",
+          "indexStatus": "",
+          "worktreeStatus": "",
+          "additions": 1,
+          "deletions": 1,
+          "binary": false,
+          "fingerprint": "hash2"
+        }
+      ],
+      "revision": "r2"
+    },
+    "valid": false,
+    "placement": {
+      "applicability": "anchored",
+      "side": "additions",
+      "start": 2,
+      "end": 2
+    }
   }
 ]

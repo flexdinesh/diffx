@@ -5,8 +5,15 @@ import type {
 } from "@pierre/diffs";
 import { isDiffMode as diffMode } from "./diff-mode.ts";
 
-import type { ApiReviewComment, ApiReviewMark } from "@diffx/api";
+import type {
+  ApiCommentAuthor,
+  ApiCommentReply,
+  ApiReviewComment,
+  ApiReviewMark,
+} from "@diffx/api";
 export type ReviewComment = ApiReviewComment;
+export type CommentAuthor = ApiCommentAuthor;
+export type CommentReply = ApiCommentReply;
 export type ReviewOrigin = NonNullable<ReviewComment["origin"]>;
 type CommentPlacement = NonNullable<ReviewComment["placement"]>;
 
@@ -121,6 +128,53 @@ function validAnchor(value: unknown) {
   );
 }
 
+const MAX_AUTHOR_NAME = 100;
+
+// Mirrors Go's cleanLabel: no control characters or surrounding space.
+function label(value: unknown) {
+  return (
+    value === undefined ||
+    (typeof value === "string" &&
+      [...value].length <= MAX_AUTHOR_NAME &&
+      value.trim() === value &&
+      !/\p{Cc}/u.test(value))
+  );
+}
+
+function validAuthor(value: unknown): value is CommentAuthor {
+  if (!record(value) || !label(value.name) || !label(value.clientId))
+    return false;
+  if (value.verified !== undefined && typeof value.verified !== "boolean")
+    return false;
+  return (
+    value.kind === "agent" ||
+    (value.kind === "user" && !value.name && !value.clientId && !value.verified)
+  );
+}
+
+function finite(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function validReplies(value: unknown) {
+  if (value === undefined) return true;
+  if (!Array.isArray(value)) return false;
+  const seen = new Set<unknown>();
+  return value.every((reply: unknown) => {
+    if (!record(reply) || typeof reply.id !== "string" || !reply.id)
+      return false;
+    if (seen.has(reply.id)) return false;
+    seen.add(reply.id);
+    return (
+      validAuthor(reply.author) &&
+      typeof reply.body === "string" &&
+      reply.body.trim().length > 0 &&
+      finite(reply.createdAt) &&
+      (reply.editedAt === undefined || finite(reply.editedAt))
+    );
+  });
+}
+
 export function validComment(value: unknown): value is ReviewComment {
   if (!record(value)) return false;
   const carried = value.carriedFrom !== undefined;
@@ -150,7 +204,12 @@ export function validComment(value: unknown): value is ReviewComment {
     Number.isFinite(value.createdAt) &&
     (value.origin === undefined || validOrigin(value.origin)) &&
     (value.anchor === undefined || validAnchor(value.anchor)) &&
-    (!carried || validCarriedFrom(value.carriedFrom))
+    (!carried || validCarriedFrom(value.carriedFrom)) &&
+    (value.author === undefined || validAuthor(value.author)) &&
+    (value.resolvedBy === undefined ||
+      (value.status === "resolved" && validAuthor(value.resolvedBy))) &&
+    (value.resolvedAt === undefined || finite(value.resolvedAt)) &&
+    validReplies(value.replies)
   );
 }
 
@@ -227,6 +286,21 @@ function placement(comment: ReviewComment): CommentPlacement {
   );
 }
 
+function authorAttributes(author: CommentAuthor) {
+  return `author="${attribute(author.kind)}"${author.name ? ` author-name="${attribute(author.name)}"` : ""}`;
+}
+
+// The body, then each reply in thread order naming its author.
+function bodyLines(comment: ReviewComment) {
+  return [
+    `        <body>${xml(comment.body)}</body>`,
+    ...(comment.replies ?? []).map(
+      (reply) =>
+        `        <reply ${authorAttributes(reply.author)}>${xml(reply.body)}</reply>`,
+    ),
+  ];
+}
+
 // Exports comments using their server-computed placements. Unresolved exports
 // include every open comment; stale and carried ones are tagged.
 export function formatComments(
@@ -300,7 +374,12 @@ export function formatComments(
           place.applicability === "outdated" ||
           place.applicability === "unchanged" ||
           comment.carriedFrom !== undefined;
-        const state = `scope="${comment.scope}" status="${comment.status}" applicability="${place.applicability}"${staleComment ? ' stale="true"' : ""}`;
+        // User comments keep the original form; agent comments name their author.
+        const author =
+          comment.author?.kind === "agent"
+            ? ` ${authorAttributes(comment.author)}`
+            : "";
+        const state = `scope="${comment.scope}" status="${comment.status}" applicability="${place.applicability}"${staleComment ? ' stale="true"' : ""}${author}`;
         if (comment.target === "file") {
           const carried = comment.carriedFrom;
           if (carried) {
@@ -311,10 +390,7 @@ export function formatComments(
           } else {
             lines.push(`      <comment id="${id}" selection="file" ${state}>`);
           }
-          lines.push(
-            `        <body>${xml(comment.body)}</body>`,
-            "      </comment>",
-          );
+          lines.push(...bodyLines(comment), "      </comment>");
           continue;
         }
         const inline =
@@ -325,7 +401,7 @@ export function formatComments(
         lines.push(
           `      <comment id="${id}" selection="${selection}" line="${start}" end-line="${end}" side="${comment.side}" ${state}>`,
           `        <code>${xml(comment.code)}</code>`,
-          `        <body>${xml(comment.body)}</body>`,
+          ...bodyLines(comment),
           "      </comment>",
         );
       }

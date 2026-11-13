@@ -13,6 +13,8 @@ import {
 } from "../src/file-tree.ts";
 import {
   commentContext,
+  authorMatches,
+  authorName,
   commentStale,
   createCommentId,
   formatComments,
@@ -574,4 +576,41 @@ test("saved comments retain the new captured comparison scopes", () => {
     { ...comment, scope: "committed" },
   ];
   assert.deepEqual(parseComments(JSON.stringify(comments)), comments);
+});
+
+test("authors: legacy comments are the user's and agents keep their reported names", () => {
+  const base: ReviewComment = {
+    id: "c",
+    diffId: "d",
+    versionId: "v",
+    path: "a.ts",
+    fingerprint: "f",
+    scope: "all",
+    side: "additions",
+    start: 1,
+    end: 1,
+    code: "",
+    body: "x",
+    status: "open",
+    createdAt: 1,
+  };
+  const agent: ReviewComment = {
+    ...base,
+    author: { kind: "agent", name: "Claude" },
+  };
+  assert.equal(authorName(undefined), "You");
+  assert.equal(authorName({ kind: "user" }), "You");
+  assert.equal(authorName({ kind: "agent", name: "Claude" }), "Claude");
+  assert.equal(authorName({ kind: "agent" }), "Agent");
+  assert.deepEqual(
+    [base, agent].map((comment) => [
+      authorMatches(comment, "everyone"),
+      authorMatches(comment, "me"),
+      authorMatches(comment, "agents"),
+    ]),
+    [
+      [true, true, false],
+      [true, false, true],
+    ],
+  );
 });

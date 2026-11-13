@@ -654,9 +654,15 @@ at `/design.html` (see `docs/frontend.md`).
   `--panel` frame with a complete subtle border, no shadow, 8px block margins and
   8px/12px padding. A 24px header row, the body and the action row are separated by
   6px and 8px gaps, not bars or separators, so the frame takes little height from
-  the code. Actions sit 4px apart so a saved comment's four actions fit one row
-  in the default 330px sidebar. Saved titles state the target ("File", "Line 2–4") without repeating
-  "Review comment". Editors title themselves "New comment" or "Edit comment"
+  the code. Actions sit 4px apart so a saved comment's actions fit one row
+  in the default 330px sidebar: compact icon buttons for Copy (XML), Copy link,
+  Edit and Delete, a text-only ghost “Reply”, then the labeled outline
+  Resolve/Reopen at the trailing group. Touch sizing may wrap the row. Saved
+  titles state the target ("File", "Line 2–4") without repeating
+  "Review comment", then “·” and the author: “You” for the user, or an agent's
+  reported name after a lucide `Bot` icon. An unverified agent name carries the
+  title and screen-reader description “Name reported by the agent”. “You” never
+  truncates; an agent name shares the title's space with the sidebar location. Editors title themselves "New comment" or "Edit comment"
   beside the muted mono location, with copy at the header's trailing edge; the
   editor's label is screen-reader only. The focused editor field is the only
   accent: a single accent border, no offset ring. Keep status at the header's
@@ -664,10 +670,26 @@ at `/design.html` (see `docs/frontend.md`).
   actions; editor actions are text-only.
 - Comment actions use `xs` buttons with touch sizing on coarse pointers; each
   file's viewed control uses standard button sizing.
+- Replies sit under the body in one flat list, each separated by a
+  `--separator` hairline: a 24px muted `xs` meta row (author label, “·”,
+  relative age with the full time as title, “· edited”) with trailing
+  icon-only Edit (the user's own replies) and destructive Delete (any reply,
+  confirmed by `ConfirmDialog`), then the body in review text. Agent comments
+  and replies offer no Edit. “Reply” opens a compact composer below the
+  thread that reuses the comment field, with text-only Cancel and primary
+  “Reply” (⌘/Ctrl+Enter submits, Esc or Cancel closes and returns focus to
+  Reply). Composer text survives reloads and live updates, and is shared by the
+  comment's inline and sidebar cards. A resolved thread ends with a hairline
+  muted line “Resolved by You|agent · age”; the status badge stays “Resolved”
+  so the sidebar header keeps its location and author.
 - Resolved comments collapse to their header by default. A labeled chevron
   expands the body and actions; reopening restores the expanded open state.
 - Comment views default to open comments and offer Open, Resolved, Outdated, and
-  All filters. The Comments panel lists Current comments, then an Outdated section
+  All filters. The Comments panel's filter menu adds an Author group
+  (Everyone, Me, Agents) after a separator, with the same radio items and
+  counts; a second trigger would crowd bulk Delete off the 330px row. A chosen
+  author follows the status in the trigger (“Open · Agents”); bulk Delete
+  ignores it. The Comments panel lists Current comments, then an Outdated section
   for comments whose code changed or left the diff. Outdated comments carry an
   "Outdated" badge, a muted placement note, and their original code; they stay
   out of code lines and render in the file's lineNumber 0 slot. File headers and

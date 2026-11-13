@@ -38,6 +38,24 @@ export function streamPath(head: ApiContext) {
     : contextPath(head.id);
 }
 
+/** The absolute live link to a review, which comment permalinks extend. */
+export function reviewUrl(head: ApiContext) {
+  return new URL(streamPath(head), window.location.origin).href;
+}
+
+/** `?comment={id}` opens a review at one comment. */
+export function commentFromUrl() {
+  return new URLSearchParams(window.location.search).get("comment") ?? "";
+}
+
+/** Consumes a handled permalink so scope history and reloads do not repeat it. */
+export function dropCommentFromUrl() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("comment")) return;
+  url.searchParams.delete("comment");
+  window.history.replaceState(window.history.state, "", url);
+}
+
 /** Scope history never re-resolves a live route's selected snapshot. */
 export function sameRoute(left: Route, right: Route) {
   return left.kind === "root"

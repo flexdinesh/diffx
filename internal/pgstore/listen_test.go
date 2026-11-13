@@ -5,7 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flexdinesh/diffx/internal/ingestion"
 	"github.com/flexdinesh/diffx/internal/pgstore"
+	"github.com/flexdinesh/diffx/internal/review"
 )
 
 // listen runs a listener on store until the test ends.
@@ -136,4 +138,55 @@ func TestListenerReconnectsWithResync(t *testing.T) {
 		t.Fatal(err)
 	}
 	expectNotification(t, notifications, pgstore.Notification{Kind: pgstore.ContextChanged, OwnerID: owner, ContextID: binding.ContextID})
+}
+
+// Comment, reply and resolution writes announce their stream from the
+// committing transaction; a rolled-back write announces nothing.
+func TestCommentNotificationsNameTheStreamOnlyOnCommit(t *testing.T) {
+	t.Parallel()
+	stores, owner, _ := replicas(t, 2)
+	keyed, err := stores[0].IngestContext(t.Context(), owner, request("keyed", "a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pipedRequest := request("piped", "b")
+	pipedRequest.Metadata.RepositoryKey, pipedRequest.Metadata.CheckoutKey = "", ""
+	piped, err := stores[0].IngestContext(t.Context(), owner, pipedRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	notifications := listen(t, stores[1])
+	stream := ingestion.StreamKey(keyed.ContextID, request("keyed", "a").Metadata)
+	want := pgstore.Notification{Kind: pgstore.CommentsChanged, OwnerID: owner, ContextID: keyed.ContextID, StreamID: stream}
+	ctx := t.Context()
+	if err := stores[0].PutComment(ctx, keyed.ContextID, review.ReviewComment{ID: "comment", Scope: review.DiffAll, Body: "check", Status: "open", CreatedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	expectNotification(t, notifications, want)
+	user := review.UserAuthor()
+	reply := review.CommentReply{ID: "reply", Author: user, Body: "why", CreatedAt: 2}
+	if ok, err := stores[0].AddReply(ctx, keyed.ContextID, "comment", reply); err != nil || !ok {
+		t.Fatalf("add reply: %v %v", ok, err)
+	}
+	expectNotification(t, notifications, want)
+	// A duplicate reply fails after the comment lock, rolling back the resolution and its notification.
+	if _, err := stores[0].ResolveComment(ctx, keyed.ContextID, "comment", user, 3, &reply); err == nil {
+		t.Fatal("duplicate reply committed")
+	}
+	if comments, err := stores[0].Comments(ctx, keyed.ContextID); err != nil || comments[0].Status != "open" {
+		t.Fatalf("failed resolution committed: %#v %v", comments, err)
+	}
+	if ok, err := stores[0].ResolveComment(ctx, keyed.ContextID, "comment", user, 3, nil); err != nil || !ok {
+		t.Fatalf("resolve: %v %v", ok, err)
+	}
+	expectNotification(t, notifications, want)
+	if ok, err := stores[0].DeleteReply(ctx, keyed.ContextID, "comment", "reply"); err != nil || !ok {
+		t.Fatalf("delete reply: %v %v", ok, err)
+	}
+	expectNotification(t, notifications, want)
+	// Piped captures have no public stream; their context names the review.
+	if err := stores[0].PutComment(ctx, piped.ContextID, review.ReviewComment{ID: "piped", Scope: review.DiffAll, Body: "check", Status: "open", CreatedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	expectNotification(t, notifications, pgstore.Notification{Kind: pgstore.CommentsChanged, OwnerID: owner, ContextID: piped.ContextID})
 }

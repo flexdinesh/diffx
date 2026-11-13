@@ -101,7 +101,7 @@ rename to new.ts
 			}
 		})
 	}
-	comments, err := service.ListComments(t.Context(), false)
+	comments, err := service.ListComments(t.Context(), false, "")
 	if err != nil || len(comments) != 3 {
 		t.Fatalf("agent comments: %#v, %v", comments, err)
 	}
@@ -118,13 +118,13 @@ rename to new.ts
 	}
 	for _, comment := range comments {
 		for range 2 {
-			resolution, err := service.ResolveComment(t.Context(), comment.ID)
+			resolution, err := service.ResolveComment(t.Context(), comment.ID, review.UserAuthor(), "")
 			if err != nil || resolution.Status != "resolved" {
 				t.Fatalf("file resolution: %#v, %v", resolution, err)
 			}
 		}
 	}
-	resolved, err := service.ListComments(t.Context(), true)
+	resolved, err := service.ListComments(t.Context(), true, "")
 	if err != nil || len(resolved) != 3 {
 		t.Fatalf("resolved file comments: %#v, %v", resolved, err)
 	}

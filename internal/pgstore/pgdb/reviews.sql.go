@@ -10,8 +10,25 @@ import (
 	"time"
 )
 
+const commentStream = `-- name: CommentStream :one
+SELECT owner_id, stream_key FROM observations WHERE context_id = $1
+`
+
+type CommentStreamRow struct {
+	OwnerID   string
+	StreamKey string
+}
+
+// The owner and stream key of a context, for comment change notifications.
+func (q *Queries) CommentStream(ctx context.Context, contextID string) (CommentStreamRow, error) {
+	row := q.db.QueryRow(ctx, commentStream, contextID)
+	var i CommentStreamRow
+	err := row.Scan(&i.OwnerID, &i.StreamKey)
+	return i, err
+}
+
 const comments = `-- name: Comments :many
-SELECT c.data FROM comments c JOIN reviews r ON r.id = c.review_id
+SELECT c.id, c.data FROM comments c JOIN reviews r ON r.id = c.review_id
 JOIN observations o ON o.owner_id = r.owner_id AND o.stream_key = r.stream_key
 JOIN contexts x ON x.id = o.context_id JOIN diffs d ON d.id = x.anchor_diff_id
 WHERE o.context_id = $1 AND (d.expires_at IS NULL OR d.expires_at > $2::timestamptz)
@@ -23,19 +40,24 @@ type CommentsParams struct {
 	Now       time.Time
 }
 
-func (q *Queries) Comments(ctx context.Context, arg CommentsParams) ([][]byte, error) {
+type CommentsRow struct {
+	ID   string
+	Data []byte
+}
+
+func (q *Queries) Comments(ctx context.Context, arg CommentsParams) ([]CommentsRow, error) {
 	rows, err := q.db.Query(ctx, comments, arg.ContextID, arg.Now)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items [][]byte
+	var items []CommentsRow
 	for rows.Next() {
-		var data []byte
-		if err := rows.Scan(&data); err != nil {
+		var i CommentsRow
+		if err := rows.Scan(&i.ID, &i.Data); err != nil {
 			return nil, err
 		}
-		items = append(items, data)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -62,6 +84,27 @@ func (q *Queries) DeleteStreamComments(ctx context.Context, arg DeleteStreamComm
 	return result.RowsAffected(), nil
 }
 
+const deleteStreamReply = `-- name: DeleteStreamReply :execrows
+DELETE FROM comment_replies p WHERE p.comment_id = $1 AND p.id = $2 AND p.comment_id IN (
+  SELECT c.id FROM comments c JOIN reviews r ON r.id = c.review_id
+  JOIN observations o ON o.owner_id = r.owner_id AND o.stream_key = r.stream_key WHERE o.context_id = $3
+)
+`
+
+type DeleteStreamReplyParams struct {
+	CommentID string
+	ID        string
+	ContextID string
+}
+
+func (q *Queries) DeleteStreamReply(ctx context.Context, arg DeleteStreamReplyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteStreamReply, arg.CommentID, arg.ID, arg.ContextID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteVisibleMarks = `-- name: DeleteVisibleMarks :exec
 DELETE FROM marks WHERE (review_id, file_id) IN (
   SELECT m.review_id, m.file_id
@@ -82,6 +125,29 @@ type DeleteVisibleMarksParams struct {
 // Removes only marks visible in this context; a null file clears the scope.
 func (q *Queries) DeleteVisibleMarks(ctx context.Context, arg DeleteVisibleMarksParams) error {
 	_, err := q.db.Exec(ctx, deleteVisibleMarks, arg.Mode, arg.ContextID, arg.FileID)
+	return err
+}
+
+const importReply = `-- name: ImportReply :exec
+INSERT INTO comment_replies(comment_id, id, data, created_at) VALUES ($1, $2, $3, $4)
+ON CONFLICT DO NOTHING
+`
+
+type ImportReplyParams struct {
+	CommentID string
+	ID        string
+	Data      []byte
+	CreatedAt int64
+}
+
+// Imported threads keep their replies; existing replies are never overwritten.
+func (q *Queries) ImportReply(ctx context.Context, arg ImportReplyParams) error {
+	_, err := q.db.Exec(ctx, importReply,
+		arg.CommentID,
+		arg.ID,
+		arg.Data,
+		arg.CreatedAt,
+	)
 	return err
 }
 
@@ -114,6 +180,71 @@ func (q *Queries) InsertComment(ctx context.Context, arg InsertCommentParams) (i
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const insertReply = `-- name: InsertReply :execrows
+INSERT INTO comment_replies(comment_id, id, data, created_at) VALUES ($1, $2, $3, $4)
+`
+
+type InsertReplyParams struct {
+	CommentID string
+	ID        string
+	Data      []byte
+	CreatedAt int64
+}
+
+func (q *Queries) InsertReply(ctx context.Context, arg InsertReplyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertReply,
+		arg.CommentID,
+		arg.ID,
+		arg.Data,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const lockStreamComment = `-- name: LockStreamComment :one
+SELECT c.data FROM comments c WHERE c.id = $1 AND c.review_id IN (
+  SELECT r.id FROM reviews r JOIN observations o ON o.owner_id = r.owner_id AND o.stream_key = r.stream_key WHERE o.context_id = $2
+)
+FOR UPDATE OF c
+`
+
+type LockStreamCommentParams struct {
+	ID        string
+	ContextID string
+}
+
+// Locks a comment of the context's stream for a thread write.
+func (q *Queries) LockStreamComment(ctx context.Context, arg LockStreamCommentParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, lockStreamComment, arg.ID, arg.ContextID)
+	var data []byte
+	err := row.Scan(&data)
+	return data, err
+}
+
+const lockStreamReply = `-- name: LockStreamReply :one
+SELECT p.data FROM comment_replies p WHERE p.comment_id = $1 AND p.id = $2 AND p.comment_id IN (
+  SELECT c.id FROM comments c JOIN reviews r ON r.id = c.review_id
+  JOIN observations o ON o.owner_id = r.owner_id AND o.stream_key = r.stream_key WHERE o.context_id = $3
+)
+FOR UPDATE OF p
+`
+
+type LockStreamReplyParams struct {
+	CommentID string
+	ID        string
+	ContextID string
+}
+
+func (q *Queries) LockStreamReply(ctx context.Context, arg LockStreamReplyParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, lockStreamReply, arg.CommentID, arg.ID, arg.ContextID)
+	var data []byte
+	err := row.Scan(&data)
+	return data, err
 }
 
 const marks = `-- name: Marks :many
@@ -211,6 +342,35 @@ func (q *Queries) ScopeReview(ctx context.Context, arg ScopeReviewParams) (Scope
 	return i, err
 }
 
+const setCommentData = `-- name: SetCommentData :exec
+UPDATE comments SET data = $1 WHERE comments.id = $2
+`
+
+type SetCommentDataParams struct {
+	Data []byte
+	ID   string
+}
+
+func (q *Queries) SetCommentData(ctx context.Context, arg SetCommentDataParams) error {
+	_, err := q.db.Exec(ctx, setCommentData, arg.Data, arg.ID)
+	return err
+}
+
+const setReplyData = `-- name: SetReplyData :exec
+UPDATE comment_replies SET data = $1 WHERE comment_id = $2 AND id = $3
+`
+
+type SetReplyDataParams struct {
+	Data      []byte
+	CommentID string
+	ID        string
+}
+
+func (q *Queries) SetReplyData(ctx context.Context, arg SetReplyDataParams) error {
+	_, err := q.db.Exec(ctx, setReplyData, arg.Data, arg.CommentID, arg.ID)
+	return err
+}
+
 const storedComment = `-- name: StoredComment :one
 SELECT data FROM comments WHERE id = $1 AND review_id = $2
 `
@@ -258,6 +418,40 @@ func (q *Queries) StoredVersion(ctx context.Context, arg StoredVersionParams) (S
 	var i StoredVersionRow
 	err := row.Scan(&i.Manifest, &i.Metadata, &i.Modes)
 	return i, err
+}
+
+const streamReplies = `-- name: StreamReplies :many
+SELECT p.comment_id, p.data FROM comment_replies p JOIN comments c ON c.id = p.comment_id
+WHERE c.review_id IN (
+  SELECT r.id FROM reviews r JOIN observations o ON o.owner_id = r.owner_id AND o.stream_key = r.stream_key WHERE o.context_id = $1
+)
+ORDER BY p.created_at, p.seq
+`
+
+type StreamRepliesRow struct {
+	CommentID string
+	Data      []byte
+}
+
+// The context stream's replies, in creation order per comment.
+func (q *Queries) StreamReplies(ctx context.Context, contextID string) ([]StreamRepliesRow, error) {
+	rows, err := q.db.Query(ctx, streamReplies, contextID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StreamRepliesRow
+	for rows.Next() {
+		var i StreamRepliesRow
+		if err := rows.Scan(&i.CommentID, &i.Data); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateComment = `-- name: UpdateComment :execrows

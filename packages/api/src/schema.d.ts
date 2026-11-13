@@ -567,7 +567,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Server-sent ingestion notifications. Event data contains contextId; query the catalog for durable state after reconnecting. */
+    /** @description Server-sent change hints. `ingestion` events carry contextId; an empty contextId means changes may have been missed, so reload the catalog and open comments. `comments` events carry contextId and streamId (empty for piped captures) after any comment, reply or resolution change in that review stream. Query durable state after reconnecting. */
     get: operations["watchIngestions"];
     put?: never;
     post?: never;
@@ -912,11 +912,54 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** @description Resolve a comment idempotently. An optional note is appended to its thread in the same transaction, also when the comment was already resolved; the first resolution's author and time are kept. */
     post: operations["resolveAgentReviewCommentV2"];
     delete?: never;
     options?: never;
     head?: never;
     patch?: never;
+    trace?: never;
+  };
+  "/api/v2/contexts/{contextId}/comments/{commentId}/replies": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        commentId: components["parameters"]["CommentId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Append a reply to the comment's thread, authored by the user. */
+    post: operations["createCommentReply"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        commentId: components["parameters"]["CommentId"];
+        replyId: components["parameters"]["ReplyId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** @description Delete any reply in the thread, including an agent's. */
+    delete: operations["deleteCommentReply"];
+    options?: never;
+    head?: never;
+    /** @description Edit one of the user's own replies. Agent replies cannot be edited. */
+    patch: operations["updateCommentReply"];
     trace?: never;
   };
   "/api/v2/contexts/{contextId}/comments/{commentId}/carry": {
@@ -1851,6 +1894,12 @@ export interface components {
       origin?: components["schemas"]["ReviewOrigin"];
       anchor?: components["schemas"]["CommentAnchor"];
       carriedFrom?: components["schemas"]["CommentCarriedFrom"];
+      author?: components["schemas"]["CommentAuthor"];
+      resolvedBy?: components["schemas"]["CommentAuthor"];
+      /** @description Milliseconds of the latest resolution; absent while open. */
+      resolvedAt?: number;
+      /** @description One level of replies in creation order. */
+      replies?: components["schemas"]["CommentReply"][];
       placement?: components["schemas"]["CommentPlacement"];
     };
     AgentReviewComment: {
@@ -1877,6 +1926,12 @@ export interface components {
       origin?: components["schemas"]["ReviewOrigin"];
       anchor?: components["schemas"]["CommentAnchor"];
       carriedFrom?: components["schemas"]["CommentCarriedFrom"];
+      author?: components["schemas"]["CommentAuthor"];
+      resolvedBy?: components["schemas"]["CommentAuthor"];
+      /** @description Milliseconds of the latest resolution; absent while open. */
+      resolvedAt?: number;
+      /** @description One level of replies in creation order. */
+      replies?: components["schemas"]["CommentReply"][];
       placement?: components["schemas"]["CommentPlacement"];
       applicability: components["schemas"]["CommentApplicability"];
       actionable: boolean;
@@ -1912,6 +1967,29 @@ export interface components {
       side: "additions" | "deletions";
       start: number;
       end: number;
+    };
+    /** @enum {string} */
+    CommentAuthorKind: "user" | "agent";
+    /** @description Who wrote a comment, reply or resolution. Responses always include a comment's author; legacy comments read as the user. Agent names and client IDs are self-reported unless verified is true. */
+    CommentAuthor: {
+      kind: components["schemas"]["CommentAuthorKind"];
+      name?: string;
+      verified?: boolean;
+      clientId?: string;
+    };
+    CommentReply: {
+      id: string;
+      author: components["schemas"]["CommentAuthor"];
+      body: string;
+      createdAt: number;
+      editedAt?: number;
+    };
+    CommentReplyInput: {
+      body: string;
+    };
+    ResolveCommentInput: {
+      /** @description Appended to the thread as a reply by the resolver. */
+      note?: string;
     };
     ResolveReviewComment: {
       comment_id: string;
@@ -2023,6 +2101,9 @@ export interface components {
     FileId: string;
     FileVersion: string;
     CommentId: string;
+    ReplyId: string;
+    /** @description Only comments written by the user or by agents. Replies do not affect the filter. */
+    CommentAuthorFilter: components["schemas"]["CommentAuthorKind"];
   };
   requestBodies: never;
   headers: never;
@@ -3073,7 +3154,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Server-sent events named ingestion, with JSON data containing contextId. */
+      /** @description Server-sent events named ingestion or comments, with JSON data. */
       200: {
         headers: {
           [name: string]: unknown;
@@ -3448,7 +3529,10 @@ export interface operations {
   };
   listCommentsV2: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Only comments written by the user or by agents. Replies do not affect the filter. */
+        author?: components["parameters"]["CommentAuthorFilter"];
+      };
       header?: never;
       path: {
         contextId: components["parameters"]["ContextId"];
@@ -3639,6 +3723,8 @@ export interface operations {
     parameters: {
       query?: {
         includeResolved?: boolean;
+        /** @description Only comments written by the user or by agents. Replies do not affect the filter. */
+        author?: components["parameters"]["CommentAuthorFilter"];
       };
       header?: never;
       path: {
@@ -3672,7 +3758,11 @@ export interface operations {
       };
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["ResolveCommentInput"];
+      };
+    };
     responses: {
       /** @description Idempotently resolved comment. */
       200: {
@@ -3681,6 +3771,86 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ResolveReviewComment"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  createCommentReply: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        commentId: components["parameters"]["CommentId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CommentReplyInput"];
+      };
+    };
+    responses: {
+      /** @description The comment with its updated thread. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReviewComment"];
+        };
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  deleteCommentReply: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        commentId: components["parameters"]["CommentId"];
+        replyId: components["parameters"]["ReplyId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Reply deleted. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      default: components["responses"]["Problem"];
+    };
+  };
+  updateCommentReply: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contextId: components["parameters"]["ContextId"];
+        commentId: components["parameters"]["CommentId"];
+        replyId: components["parameters"]["ReplyId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CommentReplyInput"];
+      };
+    };
+    responses: {
+      /** @description The comment with its updated thread. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReviewComment"];
         };
       };
       default: components["responses"]["Problem"];

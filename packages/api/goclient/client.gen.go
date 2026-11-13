@@ -226,6 +226,24 @@ func (e CommentApplicability) Valid() bool {
 	}
 }
 
+// Defines values for CommentAuthorKind.
+const (
+	CommentAuthorKindAgent CommentAuthorKind = "agent"
+	CommentAuthorKindUser  CommentAuthorKind = "user"
+)
+
+// Valid indicates whether the value is a known member of the CommentAuthorKind enum.
+func (e CommentAuthorKind) Valid() bool {
+	switch e {
+	case CommentAuthorKindAgent:
+		return true
+	case CommentAuthorKindUser:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CommentCarriedFromSide.
 const (
 	CommentCarriedFromSideAdditions CommentCarriedFromSide = "additions"
@@ -932,7 +950,10 @@ type AgentReviewComment struct {
 
 	// Applicability Where a stream comment applies in the viewed snapshot. anchored and moved render inline; outdated means the commented code changed or its file left the diff; unchanged means the code still exists but is no longer changed; other-scope means the comment belongs to another scope; unknown means the snapshot cannot be compared.
 	Applicability CommentApplicability `json:"applicability"`
-	Body          string               `json:"body"`
+
+	// Author Who wrote a comment, reply or resolution. Responses always include a comment's author; legacy comments read as the user. Agent names and client IDs are self-reported unless verified is true.
+	Author *CommentAuthor `json:"author,omitempty"`
+	Body   string         `json:"body"`
 
 	// CarriedFrom Original line selection of an outdated comment kept open at file level.
 	CarriedFrom *CommentCarriedFrom `json:"carriedFrom,omitempty"`
@@ -946,11 +967,20 @@ type AgentReviewComment struct {
 	Path        string              `json:"path"`
 
 	// Placement Server-computed position of a comment in the viewed snapshot. Ignored on import.
-	Placement *CommentPlacement        `json:"placement,omitempty"`
-	Scope     DiffMode                 `json:"scope"`
-	Side      AgentReviewCommentSide   `json:"side"`
-	Start     int                      `json:"start"`
-	Status    AgentReviewCommentStatus `json:"status"`
+	Placement *CommentPlacement `json:"placement,omitempty"`
+
+	// Replies One level of replies in creation order.
+	Replies *[]CommentReply `json:"replies,omitempty"`
+
+	// ResolvedAt Milliseconds of the latest resolution; absent while open.
+	ResolvedAt *float64 `json:"resolvedAt,omitempty"`
+
+	// ResolvedBy Who wrote a comment, reply or resolution. Responses always include a comment's author; legacy comments read as the user. Agent names and client IDs are self-reported unless verified is true.
+	ResolvedBy *CommentAuthor           `json:"resolvedBy,omitempty"`
+	Scope      DiffMode                 `json:"scope"`
+	Side       AgentReviewCommentSide   `json:"side"`
+	Start      int                      `json:"start"`
+	Status     AgentReviewCommentStatus `json:"status"`
 
 	// Target Omitted means a line comment. File comments use additions, zero start/end, and empty code unless carried from an earlier line selection.
 	Target    *AgentReviewCommentTarget `json:"target,omitempty"`
@@ -1079,6 +1109,17 @@ type CommentAnchor struct {
 // CommentApplicability Where a stream comment applies in the viewed snapshot. anchored and moved render inline; outdated means the commented code changed or its file left the diff; unchanged means the code still exists but is no longer changed; other-scope means the comment belongs to another scope; unknown means the snapshot cannot be compared.
 type CommentApplicability string
 
+// CommentAuthor Who wrote a comment, reply or resolution. Responses always include a comment's author; legacy comments read as the user. Agent names and client IDs are self-reported unless verified is true.
+type CommentAuthor struct {
+	ClientId *string           `json:"clientId,omitempty"`
+	Kind     CommentAuthorKind `json:"kind"`
+	Name     *string           `json:"name,omitempty"`
+	Verified *bool             `json:"verified,omitempty"`
+}
+
+// CommentAuthorKind defines model for CommentAuthorKind.
+type CommentAuthorKind string
+
 // CommentCarriedFrom Original line selection of an outdated comment kept open at file level.
 type CommentCarriedFrom struct {
 	End       int                    `json:"end"`
@@ -1101,6 +1142,21 @@ type CommentPlacement struct {
 
 // CommentPlacementSide defines model for CommentPlacement.Side.
 type CommentPlacementSide string
+
+// CommentReply defines model for CommentReply.
+type CommentReply struct {
+	// Author Who wrote a comment, reply or resolution. Responses always include a comment's author; legacy comments read as the user. Agent names and client IDs are self-reported unless verified is true.
+	Author    CommentAuthor `json:"author"`
+	Body      string        `json:"body"`
+	CreatedAt float64       `json:"createdAt"`
+	EditedAt  *float64      `json:"editedAt,omitempty"`
+	Id        string        `json:"id"`
+}
+
+// CommentReplyInput defines model for CommentReplyInput.
+type CommentReplyInput struct {
+	Body string `json:"body"`
+}
 
 // Commit defines model for Commit.
 type Commit struct {
@@ -1740,6 +1796,12 @@ type ResetToken struct {
 	Token string `json:"token"`
 }
 
+// ResolveCommentInput defines model for ResolveCommentInput.
+type ResolveCommentInput struct {
+	// Note Appended to the thread as a reply by the resolver.
+	Note *string `json:"note,omitempty"`
+}
+
 // ResolveReviewComment defines model for ResolveReviewComment.
 type ResolveReviewComment struct {
 	CommentId string                     `json:"comment_id"`
@@ -1753,6 +1815,9 @@ type ResolveReviewCommentStatus string
 type ReviewComment struct {
 	// Anchor Same-side lines around the commented code, captured by the server when the comment is created and used to re-anchor it in later snapshots.
 	Anchor *CommentAnchor `json:"anchor,omitempty"`
+
+	// Author Who wrote a comment, reply or resolution. Responses always include a comment's author; legacy comments read as the user. Agent names and client IDs are self-reported unless verified is true.
+	Author *CommentAuthor `json:"author,omitempty"`
 	Body   string         `json:"body"`
 
 	// CarriedFrom Original line selection of an outdated comment kept open at file level.
@@ -1767,11 +1832,20 @@ type ReviewComment struct {
 	Path        string              `json:"path"`
 
 	// Placement Server-computed position of a comment in the viewed snapshot. Ignored on import.
-	Placement *CommentPlacement   `json:"placement,omitempty"`
-	Scope     DiffMode            `json:"scope"`
-	Side      ReviewCommentSide   `json:"side"`
-	Start     int                 `json:"start"`
-	Status    ReviewCommentStatus `json:"status"`
+	Placement *CommentPlacement `json:"placement,omitempty"`
+
+	// Replies One level of replies in creation order.
+	Replies *[]CommentReply `json:"replies,omitempty"`
+
+	// ResolvedAt Milliseconds of the latest resolution; absent while open.
+	ResolvedAt *float64 `json:"resolvedAt,omitempty"`
+
+	// ResolvedBy Who wrote a comment, reply or resolution. Responses always include a comment's author; legacy comments read as the user. Agent names and client IDs are self-reported unless verified is true.
+	ResolvedBy *CommentAuthor      `json:"resolvedBy,omitempty"`
+	Scope      DiffMode            `json:"scope"`
+	Side       ReviewCommentSide   `json:"side"`
+	Start      int                 `json:"start"`
+	Status     ReviewCommentStatus `json:"status"`
 
 	// Target Omitted means a line comment. File comments use additions, zero start/end, and empty code unless carried from an earlier line selection.
 	Target    *ReviewCommentTarget `json:"target,omitempty"`
@@ -1888,6 +1962,9 @@ type User struct {
 	Name string `json:"name"`
 }
 
+// CommentAuthorFilter defines model for CommentAuthorFilter.
+type CommentAuthorFilter = CommentAuthorKind
+
 // CommentId defines model for CommentId.
 type CommentId = string
 
@@ -1917,6 +1994,9 @@ type PublicOwner = string
 
 // PublicRepo defines model for PublicRepo.
 type PublicRepo = string
+
+// ReplyId defines model for ReplyId.
+type ReplyId = string
 
 // Scope defines model for Scope.
 type Scope = DiffMode
@@ -2035,6 +2115,12 @@ type DeleteCommentsV2Params struct {
 // DeleteCommentsV2ParamsStatus defines parameters for DeleteCommentsV2.
 type DeleteCommentsV2ParamsStatus string
 
+// ListCommentsV2Params defines parameters for ListCommentsV2.
+type ListCommentsV2Params struct {
+	// Author Only comments written by the user or by agents. Replies do not affect the filter.
+	Author *CommentAuthorFilter `form:"author,omitempty" json:"author,omitempty"`
+}
+
 // ExportCommentsV2Params defines parameters for ExportCommentsV2.
 type ExportCommentsV2Params struct {
 	IncludeResolved *bool     `form:"includeResolved,omitempty" json:"includeResolved,omitempty"`
@@ -2106,6 +2192,9 @@ type PutReviewMarkV2Params struct {
 // ListAgentReviewCommentsV2Params defines parameters for ListAgentReviewCommentsV2.
 type ListAgentReviewCommentsV2Params struct {
 	IncludeResolved *bool `form:"includeResolved,omitempty" json:"includeResolved,omitempty"`
+
+	// Author Only comments written by the user or by agents. Replies do not affect the filter.
+	Author *CommentAuthorFilter `form:"author,omitempty" json:"author,omitempty"`
 }
 
 // CompleteGitHubAuthorizationParams defines parameters for CompleteGitHubAuthorization.
@@ -2281,8 +2370,17 @@ type ImportCommentsV2JSONRequestBody ImportCommentsV2JSONBody
 // UpdateCommentV2JSONRequestBody defines body for UpdateCommentV2 for application/json ContentType.
 type UpdateCommentV2JSONRequestBody = UpdateComment
 
+// CreateCommentReplyJSONRequestBody defines body for CreateCommentReply for application/json ContentType.
+type CreateCommentReplyJSONRequestBody = CommentReplyInput
+
+// UpdateCommentReplyJSONRequestBody defines body for UpdateCommentReply for application/json ContentType.
+type UpdateCommentReplyJSONRequestBody = CommentReplyInput
+
 // PutReviewMarkV2JSONRequestBody defines body for PutReviewMarkV2 for application/json ContentType.
 type PutReviewMarkV2JSONRequestBody PutReviewMarkV2JSONBody
+
+// ResolveAgentReviewCommentV2JSONRequestBody defines body for ResolveAgentReviewCommentV2 for application/json ContentType.
+type ResolveAgentReviewCommentV2JSONRequestBody = ResolveCommentInput
 
 // UpdateGitHubFollowJSONRequestBody defines body for UpdateGitHubFollow for application/json ContentType.
 type UpdateGitHubFollowJSONRequestBody UpdateGitHubFollowJSONBody
@@ -2567,7 +2665,7 @@ type ClientInterface interface {
 	DeleteCommentsV2(ctx context.Context, contextId ContextId, params *DeleteCommentsV2Params, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListCommentsV2 performs a GET /api/v2/contexts/{contextId}/comments (the `ListCommentsV2` operationId) request.
-	ListCommentsV2(ctx context.Context, contextId ContextId, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ListCommentsV2(ctx context.Context, contextId ContextId, params *ListCommentsV2Params, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateCommentV2WithBody performs a POST /api/v2/contexts/{contextId}/comments (the `CreateCommentV2` operationId) request,
 	// with any type of body and a specified content type.
@@ -2603,6 +2701,35 @@ type ClientInterface interface {
 	//
 	// Keep an outdated or no-longer-changed comment open as a file-level comment on this context's snapshot. The comment keeps its original code and records where it came from.
 	CarryComment(ctx context.Context, contextId ContextId, commentId CommentId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateCommentReplyWithBody performs a POST /api/v2/contexts/{contextId}/comments/{commentId}/replies (the `CreateCommentReply` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Append a reply to the comment's thread, authored by the user.
+	CreateCommentReplyWithBody(ctx context.Context, contextId ContextId, commentId CommentId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateCommentReply performs a POST /api/v2/contexts/{contextId}/comments/{commentId}/replies (the `CreateCommentReply` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Append a reply to the comment's thread, authored by the user.
+	CreateCommentReply(ctx context.Context, contextId ContextId, commentId CommentId, body CreateCommentReplyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteCommentReply performs a DELETE /api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId} (the `DeleteCommentReply` operationId) request.
+	//
+	// Delete any reply in the thread, including an agent's.
+	DeleteCommentReply(ctx context.Context, contextId ContextId, commentId CommentId, replyId ReplyId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateCommentReplyWithBody performs a PATCH /api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId} (the `UpdateCommentReply` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Edit one of the user's own replies. Agent replies cannot be edited.
+	UpdateCommentReplyWithBody(ctx context.Context, contextId ContextId, commentId CommentId, replyId ReplyId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateCommentReply performs a PATCH /api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId} (the `UpdateCommentReply` operationId) request.
+	// Takes a body of the `application/json` content type.
+	//
+	// Edit one of the user's own replies. Agent replies cannot be edited.
+	UpdateCommentReply(ctx context.Context, contextId ContextId, commentId CommentId, replyId ReplyId, body UpdateCommentReplyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListCommitsV2 performs a GET /api/v2/contexts/{contextId}/commits (the `ListCommitsV2` operationId) request.
 	//
@@ -2650,15 +2777,24 @@ type ClientInterface interface {
 	// ListAgentReviewCommentsV2 performs a GET /api/v2/contexts/{contextId}/review/comments (the `ListAgentReviewCommentsV2` operationId) request.
 	ListAgentReviewCommentsV2(ctx context.Context, contextId ContextId, params *ListAgentReviewCommentsV2Params, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ResolveAgentReviewCommentV2WithBody performs a POST /api/v2/contexts/{contextId}/review/comments/{commentId}/resolve (the `ResolveAgentReviewCommentV2` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Resolve a comment idempotently. An optional note is appended to its thread in the same transaction, also when the comment was already resolved; the first resolution's author and time are kept.
+	ResolveAgentReviewCommentV2WithBody(ctx context.Context, contextId ContextId, commentId CommentId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ResolveAgentReviewCommentV2 performs a POST /api/v2/contexts/{contextId}/review/comments/{commentId}/resolve (the `ResolveAgentReviewCommentV2` operationId) request.
-	ResolveAgentReviewCommentV2(ctx context.Context, contextId ContextId, commentId CommentId, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Takes a body of the `application/json` content type.
+	//
+	// Resolve a comment idempotently. An optional note is appended to its thread in the same transaction, also when the comment was already resolved; the first resolution's author and time are kept.
+	ResolveAgentReviewCommentV2(ctx context.Context, contextId ContextId, commentId CommentId, body ResolveAgentReviewCommentV2JSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSessionV2 performs a GET /api/v2/contexts/{contextId}/session (the `GetSessionV2` operationId) request.
 	GetSessionV2(ctx context.Context, contextId ContextId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// WatchIngestions performs a GET /api/v2/events (the `WatchIngestions` operationId) request.
 	//
-	// Server-sent ingestion notifications. Event data contains contextId; query the catalog for durable state after reconnecting.
+	// Server-sent change hints. `ingestion` events carry contextId; an empty contextId means changes may have been missed, so reload the catalog and open comments. `comments` events carry contextId and streamId (empty for piped captures) after any comment, reply or resolution change in that review stream. Query durable state after reconnecting.
 	WatchIngestions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CompleteGitHubAuthorization performs a GET /api/v2/github/callback (the `CompleteGitHubAuthorization` operationId) request.
@@ -3254,8 +3390,8 @@ func (c *Client) DeleteCommentsV2(ctx context.Context, contextId ContextId, para
 }
 
 // ListCommentsV2 performs a GET /api/v2/contexts/{contextId}/comments (the `ListCommentsV2` operationId) request.
-func (c *Client) ListCommentsV2(ctx context.Context, contextId ContextId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListCommentsV2Request(c.Server, contextId)
+func (c *Client) ListCommentsV2(ctx context.Context, contextId ContextId, params *ListCommentsV2Params, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCommentsV2Request(c.Server, contextId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -3381,6 +3517,85 @@ func (c *Client) UpdateCommentV2(ctx context.Context, contextId ContextId, comme
 // Keep an outdated or no-longer-changed comment open as a file-level comment on this context's snapshot. The comment keeps its original code and records where it came from.
 func (c *Client) CarryComment(ctx context.Context, contextId ContextId, commentId CommentId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCarryCommentRequest(c.Server, contextId, commentId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateCommentReplyWithBody performs a POST /api/v2/contexts/{contextId}/comments/{commentId}/replies (the `CreateCommentReply` operationId) request,
+// with any type of body and a specified content type.
+//
+// Append a reply to the comment's thread, authored by the user.
+func (c *Client) CreateCommentReplyWithBody(ctx context.Context, contextId ContextId, commentId CommentId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateCommentReplyRequestWithBody(c.Server, contextId, commentId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateCommentReply performs a POST /api/v2/contexts/{contextId}/comments/{commentId}/replies (the `CreateCommentReply` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Append a reply to the comment's thread, authored by the user.
+func (c *Client) CreateCommentReply(ctx context.Context, contextId ContextId, commentId CommentId, body CreateCommentReplyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateCommentReplyRequest(c.Server, contextId, commentId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteCommentReply performs a DELETE /api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId} (the `DeleteCommentReply` operationId) request.
+//
+// Delete any reply in the thread, including an agent's.
+func (c *Client) DeleteCommentReply(ctx context.Context, contextId ContextId, commentId CommentId, replyId ReplyId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteCommentReplyRequest(c.Server, contextId, commentId, replyId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateCommentReplyWithBody performs a PATCH /api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId} (the `UpdateCommentReply` operationId) request,
+// with any type of body and a specified content type.
+//
+// Edit one of the user's own replies. Agent replies cannot be edited.
+func (c *Client) UpdateCommentReplyWithBody(ctx context.Context, contextId ContextId, commentId CommentId, replyId ReplyId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateCommentReplyRequestWithBody(c.Server, contextId, commentId, replyId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateCommentReply performs a PATCH /api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId} (the `UpdateCommentReply` operationId) request.
+// Takes a body of the `application/json` content type.
+//
+// Edit one of the user's own replies. Agent replies cannot be edited.
+func (c *Client) UpdateCommentReply(ctx context.Context, contextId ContextId, commentId CommentId, replyId ReplyId, body UpdateCommentReplyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateCommentReplyRequest(c.Server, contextId, commentId, replyId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3577,9 +3792,28 @@ func (c *Client) ListAgentReviewCommentsV2(ctx context.Context, contextId Contex
 	return c.Client.Do(req)
 }
 
+// ResolveAgentReviewCommentV2WithBody performs a POST /api/v2/contexts/{contextId}/review/comments/{commentId}/resolve (the `ResolveAgentReviewCommentV2` operationId) request,
+// with any type of body and a specified content type.
+//
+// Resolve a comment idempotently. An optional note is appended to its thread in the same transaction, also when the comment was already resolved; the first resolution's author and time are kept.
+func (c *Client) ResolveAgentReviewCommentV2WithBody(ctx context.Context, contextId ContextId, commentId CommentId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResolveAgentReviewCommentV2RequestWithBody(c.Server, contextId, commentId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ResolveAgentReviewCommentV2 performs a POST /api/v2/contexts/{contextId}/review/comments/{commentId}/resolve (the `ResolveAgentReviewCommentV2` operationId) request.
-func (c *Client) ResolveAgentReviewCommentV2(ctx context.Context, contextId ContextId, commentId CommentId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewResolveAgentReviewCommentV2Request(c.Server, contextId, commentId)
+// Takes a body of the `application/json` content type.
+//
+// Resolve a comment idempotently. An optional note is appended to its thread in the same transaction, also when the comment was already resolved; the first resolution's author and time are kept.
+func (c *Client) ResolveAgentReviewCommentV2(ctx context.Context, contextId ContextId, commentId CommentId, body ResolveAgentReviewCommentV2JSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResolveAgentReviewCommentV2Request(c.Server, contextId, commentId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3605,7 +3839,7 @@ func (c *Client) GetSessionV2(ctx context.Context, contextId ContextId, reqEdito
 
 // WatchIngestions performs a GET /api/v2/events (the `WatchIngestions` operationId) request.
 //
-// Server-sent ingestion notifications. Event data contains contextId; query the catalog for durable state after reconnecting.
+// Server-sent change hints. `ingestion` events carry contextId; an empty contextId means changes may have been missed, so reload the catalog and open comments. `comments` events carry contextId and streamId (empty for piped captures) after any comment, reply or resolution change in that review stream. Query durable state after reconnecting.
 func (c *Client) WatchIngestions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewWatchIngestionsRequest(c.Server)
 	if err != nil {
@@ -5267,7 +5501,7 @@ func NewDeleteCommentsV2Request(server string, contextId ContextId, params *Dele
 }
 
 // NewListCommentsV2Request constructs an http.Request for the ListCommentsV2 method
-func NewListCommentsV2Request(server string, contextId ContextId) (*http.Request, error) {
+func NewListCommentsV2Request(server string, contextId ContextId, params *ListCommentsV2Params) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -5290,6 +5524,33 @@ func NewListCommentsV2Request(server string, contextId ContextId) (*http.Request
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Author != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "author", *params.Author, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -5623,6 +5884,169 @@ func NewCarryCommentRequest(server string, contextId ContextId, commentId Commen
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewCreateCommentReplyRequest calls the generic CreateCommentReply builder with application/json body
+func NewCreateCommentReplyRequest(server string, contextId ContextId, commentId CommentId, body CreateCommentReplyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateCommentReplyRequestWithBody(server, contextId, commentId, "application/json", bodyReader)
+}
+
+// NewCreateCommentReplyRequestWithBody constructs an http.Request for the CreateCommentReply method, with any body, and a specified content type
+func NewCreateCommentReplyRequestWithBody(server string, contextId ContextId, commentId CommentId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "contextId", contextId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "commentId", commentId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/contexts/%s/comments/%s/replies", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteCommentReplyRequest constructs an http.Request for the DeleteCommentReply method
+func NewDeleteCommentReplyRequest(server string, contextId ContextId, commentId CommentId, replyId ReplyId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "contextId", contextId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "commentId", commentId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "replyId", replyId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/contexts/%s/comments/%s/replies/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateCommentReplyRequest calls the generic UpdateCommentReply builder with application/json body
+func NewUpdateCommentReplyRequest(server string, contextId ContextId, commentId CommentId, replyId ReplyId, body UpdateCommentReplyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateCommentReplyRequestWithBody(server, contextId, commentId, replyId, "application/json", bodyReader)
+}
+
+// NewUpdateCommentReplyRequestWithBody constructs an http.Request for the UpdateCommentReply method, with any body, and a specified content type
+func NewUpdateCommentReplyRequestWithBody(server string, contextId ContextId, commentId CommentId, replyId ReplyId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "contextId", contextId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "commentId", commentId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "replyId", replyId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/contexts/%s/comments/%s/replies/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -6425,6 +6849,18 @@ func NewListAgentReviewCommentsV2Request(server string, contextId ContextId, par
 
 		}
 
+		if params.Author != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "author", *params.Author, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -6439,8 +6875,19 @@ func NewListAgentReviewCommentsV2Request(server string, contextId ContextId, par
 	return req, nil
 }
 
-// NewResolveAgentReviewCommentV2Request constructs an http.Request for the ResolveAgentReviewCommentV2 method
-func NewResolveAgentReviewCommentV2Request(server string, contextId ContextId, commentId CommentId) (*http.Request, error) {
+// NewResolveAgentReviewCommentV2Request calls the generic ResolveAgentReviewCommentV2 builder with application/json body
+func NewResolveAgentReviewCommentV2Request(server string, contextId ContextId, commentId CommentId, body ResolveAgentReviewCommentV2JSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewResolveAgentReviewCommentV2RequestWithBody(server, contextId, commentId, "application/json", bodyReader)
+}
+
+// NewResolveAgentReviewCommentV2RequestWithBody constructs an http.Request for the ResolveAgentReviewCommentV2 method, with any body, and a specified content type
+func NewResolveAgentReviewCommentV2RequestWithBody(server string, contextId ContextId, commentId CommentId, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -6472,10 +6919,12 @@ func NewResolveAgentReviewCommentV2Request(server string, contextId ContextId, c
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -8653,7 +9102,7 @@ type ClientWithResponsesInterface interface {
 	// ListCommentsV2WithResponse performs a GET /api/v2/contexts/{contextId}/comments (the `ListCommentsV2` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
-	ListCommentsV2WithResponse(ctx context.Context, contextId ContextId, reqEditors ...RequestEditorFn) (*ListCommentsV2Response, error)
+	ListCommentsV2WithResponse(ctx context.Context, contextId ContextId, params *ListCommentsV2Params, reqEditors ...RequestEditorFn) (*ListCommentsV2Response, error)
 
 	// CreateCommentV2WithBodyWithResponse performs a POST /api/v2/contexts/{contextId}/comments (the `CreateCommentV2` operationId) request,
 	// with any type of body and a specified content type.
@@ -8701,6 +9150,41 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	CarryCommentWithResponse(ctx context.Context, contextId ContextId, commentId CommentId, reqEditors ...RequestEditorFn) (*CarryCommentResponse, error)
+
+	// CreateCommentReplyWithBodyWithResponse performs a POST /api/v2/contexts/{contextId}/comments/{commentId}/replies (the `CreateCommentReply` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Append a reply to the comment's thread, authored by the user.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	CreateCommentReplyWithBodyWithResponse(ctx context.Context, contextId ContextId, commentId CommentId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateCommentReplyResponse, error)
+
+	// CreateCommentReplyWithResponse performs a POST /api/v2/contexts/{contextId}/comments/{commentId}/replies (the `CreateCommentReply` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Append a reply to the comment's thread, authored by the user.
+	CreateCommentReplyWithResponse(ctx context.Context, contextId ContextId, commentId CommentId, body CreateCommentReplyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCommentReplyResponse, error)
+
+	// DeleteCommentReplyWithResponse performs a DELETE /api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId} (the `DeleteCommentReply` operationId) request.
+	//
+	// Delete any reply in the thread, including an agent's.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	DeleteCommentReplyWithResponse(ctx context.Context, contextId ContextId, commentId CommentId, replyId ReplyId, reqEditors ...RequestEditorFn) (*DeleteCommentReplyResponse, error)
+
+	// UpdateCommentReplyWithBodyWithResponse performs a PATCH /api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId} (the `UpdateCommentReply` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Edit one of the user's own replies. Agent replies cannot be edited.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	UpdateCommentReplyWithBodyWithResponse(ctx context.Context, contextId ContextId, commentId CommentId, replyId ReplyId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateCommentReplyResponse, error)
+
+	// UpdateCommentReplyWithResponse performs a PATCH /api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId} (the `UpdateCommentReply` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Edit one of the user's own replies. Agent replies cannot be edited.
+	UpdateCommentReplyWithResponse(ctx context.Context, contextId ContextId, commentId CommentId, replyId ReplyId, body UpdateCommentReplyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateCommentReplyResponse, error)
 
 	// ListCommitsV2WithResponse performs a GET /api/v2/contexts/{contextId}/commits (the `ListCommitsV2` operationId) request.
 	//
@@ -8774,10 +9258,19 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	ListAgentReviewCommentsV2WithResponse(ctx context.Context, contextId ContextId, params *ListAgentReviewCommentsV2Params, reqEditors ...RequestEditorFn) (*ListAgentReviewCommentsV2Response, error)
 
-	// ResolveAgentReviewCommentV2WithResponse performs a POST /api/v2/contexts/{contextId}/review/comments/{commentId}/resolve (the `ResolveAgentReviewCommentV2` operationId) request.
+	// ResolveAgentReviewCommentV2WithBodyWithResponse performs a POST /api/v2/contexts/{contextId}/review/comments/{commentId}/resolve (the `ResolveAgentReviewCommentV2` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Resolve a comment idempotently. An optional note is appended to its thread in the same transaction, also when the comment was already resolved; the first resolution's author and time are kept.
 	//
 	// Returns a wrapper object for the known response body format(s).
-	ResolveAgentReviewCommentV2WithResponse(ctx context.Context, contextId ContextId, commentId CommentId, reqEditors ...RequestEditorFn) (*ResolveAgentReviewCommentV2Response, error)
+	ResolveAgentReviewCommentV2WithBodyWithResponse(ctx context.Context, contextId ContextId, commentId CommentId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResolveAgentReviewCommentV2Response, error)
+
+	// ResolveAgentReviewCommentV2WithResponse performs a POST /api/v2/contexts/{contextId}/review/comments/{commentId}/resolve (the `ResolveAgentReviewCommentV2` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Resolve a comment idempotently. An optional note is appended to its thread in the same transaction, also when the comment was already resolved; the first resolution's author and time are kept.
+	ResolveAgentReviewCommentV2WithResponse(ctx context.Context, contextId ContextId, commentId CommentId, body ResolveAgentReviewCommentV2JSONRequestBody, reqEditors ...RequestEditorFn) (*ResolveAgentReviewCommentV2Response, error)
 
 	// GetSessionV2WithResponse performs a GET /api/v2/contexts/{contextId}/session (the `GetSessionV2` operationId) request.
 	//
@@ -8786,7 +9279,7 @@ type ClientWithResponsesInterface interface {
 
 	// WatchIngestionsWithResponse performs a GET /api/v2/events (the `WatchIngestions` operationId) request.
 	//
-	// Server-sent ingestion notifications. Event data contains contextId; query the catalog for durable state after reconnecting.
+	// Server-sent change hints. `ingestion` events carry contextId; an empty contextId means changes may have been missed, so reload the catalog and open comments. `comments` events carry contextId and streamId (empty for piped captures) after any comment, reply or resolution change in that review stream. Query durable state after reconnecting.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	WatchIngestionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*WatchIngestionsResponse, error)
@@ -10489,6 +10982,143 @@ func (r CarryCommentResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CarryCommentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateCommentReplyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *ReviewComment
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateCommentReplyResponse) GetJSON201() *ReviewComment {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateCommentReplyResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateCommentReplyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateCommentReplyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateCommentReplyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateCommentReplyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteCommentReplyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DeleteCommentReplyResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteCommentReplyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteCommentReplyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteCommentReplyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteCommentReplyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateCommentReplyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ReviewComment
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateCommentReplyResponse) GetJSON200() *ReviewComment {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UpdateCommentReplyResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateCommentReplyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateCommentReplyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateCommentReplyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateCommentReplyResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -14028,8 +14658,8 @@ func (c *ClientWithResponses) DeleteCommentsV2WithResponse(ctx context.Context, 
 // ListCommentsV2WithResponse performs a GET /api/v2/contexts/{contextId}/comments (the `ListCommentsV2` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) ListCommentsV2WithResponse(ctx context.Context, contextId ContextId, reqEditors ...RequestEditorFn) (*ListCommentsV2Response, error) {
-	rsp, err := c.ListCommentsV2(ctx, contextId, reqEditors...)
+func (c *ClientWithResponses) ListCommentsV2WithResponse(ctx context.Context, contextId ContextId, params *ListCommentsV2Params, reqEditors ...RequestEditorFn) (*ListCommentsV2Response, error) {
+	rsp, err := c.ListCommentsV2(ctx, contextId, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -14135,6 +14765,71 @@ func (c *ClientWithResponses) CarryCommentWithResponse(ctx context.Context, cont
 		return nil, err
 	}
 	return ParseCarryCommentResponse(rsp)
+}
+
+// CreateCommentReplyWithBodyWithResponse performs a POST /api/v2/contexts/{contextId}/comments/{commentId}/replies (the `CreateCommentReply` operationId) request,
+// with any type of body and a specified content type.
+//
+// Append a reply to the comment's thread, authored by the user.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) CreateCommentReplyWithBodyWithResponse(ctx context.Context, contextId ContextId, commentId CommentId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateCommentReplyResponse, error) {
+	rsp, err := c.CreateCommentReplyWithBody(ctx, contextId, commentId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateCommentReplyResponse(rsp)
+}
+
+// CreateCommentReplyWithResponse performs a POST /api/v2/contexts/{contextId}/comments/{commentId}/replies (the `CreateCommentReply` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Append a reply to the comment's thread, authored by the user.
+func (c *ClientWithResponses) CreateCommentReplyWithResponse(ctx context.Context, contextId ContextId, commentId CommentId, body CreateCommentReplyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCommentReplyResponse, error) {
+	rsp, err := c.CreateCommentReply(ctx, contextId, commentId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateCommentReplyResponse(rsp)
+}
+
+// DeleteCommentReplyWithResponse performs a DELETE /api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId} (the `DeleteCommentReply` operationId) request.
+//
+// Delete any reply in the thread, including an agent's.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) DeleteCommentReplyWithResponse(ctx context.Context, contextId ContextId, commentId CommentId, replyId ReplyId, reqEditors ...RequestEditorFn) (*DeleteCommentReplyResponse, error) {
+	rsp, err := c.DeleteCommentReply(ctx, contextId, commentId, replyId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteCommentReplyResponse(rsp)
+}
+
+// UpdateCommentReplyWithBodyWithResponse performs a PATCH /api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId} (the `UpdateCommentReply` operationId) request,
+// with any type of body and a specified content type.
+//
+// Edit one of the user's own replies. Agent replies cannot be edited.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) UpdateCommentReplyWithBodyWithResponse(ctx context.Context, contextId ContextId, commentId CommentId, replyId ReplyId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateCommentReplyResponse, error) {
+	rsp, err := c.UpdateCommentReplyWithBody(ctx, contextId, commentId, replyId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateCommentReplyResponse(rsp)
+}
+
+// UpdateCommentReplyWithResponse performs a PATCH /api/v2/contexts/{contextId}/comments/{commentId}/replies/{replyId} (the `UpdateCommentReply` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Edit one of the user's own replies. Agent replies cannot be edited.
+func (c *ClientWithResponses) UpdateCommentReplyWithResponse(ctx context.Context, contextId ContextId, commentId CommentId, replyId ReplyId, body UpdateCommentReplyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateCommentReplyResponse, error) {
+	rsp, err := c.UpdateCommentReply(ctx, contextId, commentId, replyId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateCommentReplyResponse(rsp)
 }
 
 // ListCommitsV2WithResponse performs a GET /api/v2/contexts/{contextId}/commits (the `ListCommitsV2` operationId) request.
@@ -14293,11 +14988,26 @@ func (c *ClientWithResponses) ListAgentReviewCommentsV2WithResponse(ctx context.
 	return ParseListAgentReviewCommentsV2Response(rsp)
 }
 
-// ResolveAgentReviewCommentV2WithResponse performs a POST /api/v2/contexts/{contextId}/review/comments/{commentId}/resolve (the `ResolveAgentReviewCommentV2` operationId) request.
+// ResolveAgentReviewCommentV2WithBodyWithResponse performs a POST /api/v2/contexts/{contextId}/review/comments/{commentId}/resolve (the `ResolveAgentReviewCommentV2` operationId) request,
+// with any type of body and a specified content type.
+//
+// Resolve a comment idempotently. An optional note is appended to its thread in the same transaction, also when the comment was already resolved; the first resolution's author and time are kept.
 //
 // Returns a wrapper object for the known response body format(s).
-func (c *ClientWithResponses) ResolveAgentReviewCommentV2WithResponse(ctx context.Context, contextId ContextId, commentId CommentId, reqEditors ...RequestEditorFn) (*ResolveAgentReviewCommentV2Response, error) {
-	rsp, err := c.ResolveAgentReviewCommentV2(ctx, contextId, commentId, reqEditors...)
+func (c *ClientWithResponses) ResolveAgentReviewCommentV2WithBodyWithResponse(ctx context.Context, contextId ContextId, commentId CommentId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResolveAgentReviewCommentV2Response, error) {
+	rsp, err := c.ResolveAgentReviewCommentV2WithBody(ctx, contextId, commentId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResolveAgentReviewCommentV2Response(rsp)
+}
+
+// ResolveAgentReviewCommentV2WithResponse performs a POST /api/v2/contexts/{contextId}/review/comments/{commentId}/resolve (the `ResolveAgentReviewCommentV2` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Resolve a comment idempotently. An optional note is appended to its thread in the same transaction, also when the comment was already resolved; the first resolution's author and time are kept.
+func (c *ClientWithResponses) ResolveAgentReviewCommentV2WithResponse(ctx context.Context, contextId ContextId, commentId CommentId, body ResolveAgentReviewCommentV2JSONRequestBody, reqEditors ...RequestEditorFn) (*ResolveAgentReviewCommentV2Response, error) {
+	rsp, err := c.ResolveAgentReviewCommentV2(ctx, contextId, commentId, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -14317,7 +15027,7 @@ func (c *ClientWithResponses) GetSessionV2WithResponse(ctx context.Context, cont
 
 // WatchIngestionsWithResponse performs a GET /api/v2/events (the `WatchIngestions` operationId) request.
 //
-// Server-sent ingestion notifications. Event data contains contextId; query the catalog for durable state after reconnecting.
+// Server-sent change hints. `ingestion` events carry contextId; an empty contextId means changes may have been missed, so reload the catalog and open comments. `comments` events carry contextId and streamId (empty for piped captures) after any comment, reply or resolution change in that review stream. Query durable state after reconnecting.
 //
 // Returns a wrapper object for the known response body format(s).
 func (c *ClientWithResponses) WatchIngestionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*WatchIngestionsResponse, error) {
@@ -15991,6 +16701,101 @@ func ParseCarryCommentResponse(rsp *http.Response) (*CarryCommentResponse, error
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateCommentReplyResponse parses an HTTP response from a CreateCommentReplyWithResponse call
+func ParseCreateCommentReplyResponse(rsp *http.Response) (*CreateCommentReplyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateCommentReplyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ReviewComment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteCommentReplyResponse parses an HTTP response from a DeleteCommentReplyWithResponse call
+func ParseDeleteCommentReplyResponse(rsp *http.Response) (*DeleteCommentReplyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteCommentReplyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateCommentReplyResponse parses an HTTP response from a UpdateCommentReplyWithResponse call
+func ParseUpdateCommentReplyResponse(rsp *http.Response) (*UpdateCommentReplyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateCommentReplyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ReviewComment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
