@@ -126,45 +126,34 @@ configuration variables and installation scopes apply.
 
 ## Configuration
 
-Local server and collector settings resolve in this order:
+Collector settings resolve in this order:
 
 1. Code defaults.
-2. JSON config at `~/.config/diffx/config.json`, with `local` and `remote`
-   sections.
-3. Environment: `DIFFX_LOCAL_PORT`, `DIFFX_LOCAL_STATE`,
-   `DIFFX_LOCAL_WEB_DIR`, `DIFFX_LOCAL_RETENTION_DAYS`, `DIFFX_REMOTE_URL`,
-   `DIFFX_REMOTE_TOKEN`.
-4. Explicit command flags or start/restart inline JSON overrides.
+2. JSON config at `~/.config/diffx/config.json`, in its `remote` section.
+3. Environment: `DIFFX_REMOTE_URL`, `DIFFX_REMOTE_TOKEN`.
+4. Explicit command flags.
 
-`local.*` configures only `diffx [PATH]`; `remote.*` configures only sync and
-hooks. `diffx-server` deployment variables use `DIFFX_SERVER_*` and never
-configure the CLI.
+`remote.*` configures sync and hooks. `diffx-server` deployment variables use
+`DIFFX_SERVER_*` and never configure the CLI.
 
 `DIFFX_CONFIG_PATH` or `--config-file FILE` selects another JSON file.
 Missing files receive defaults; invalid JSON or environment values fail clearly.
 No `.env` file is loaded automatically. Config commands edit file values without
-persisting environment overrides. Restart the local server after changing its
-settings; workers read effective settings each invocation but reuse the running
-server until restarted.
+persisting environment overrides. Workers read effective settings each
+invocation.
 
 ```sh
-diffx config set local.port 7985 --config-file /path/to/config.json
-diffx config set remote.url http://127.0.0.1:7980
-diffx config set local.retentionDays 14
-# Remote config is read by each finite invocation.
+diffx config set remote.url https://diffx.app --config-file /path/to/config.json
+diffx config set remote.token - < /path/to/private-token
 ```
 
 JSON `remote.url` and `remote.token` select remote ingestion through Go;
 environment and explicit `--server`/`--token` override them. Plugins require a
-nonempty remote URL and bearer token; no local fallback.
+nonempty remote URL and bearer token.
 Config files are private because `remote.token` may contain a credential.
-`local.retentionDays` is a positive whole-day local server setting, default seven;
-`--retention-days` overrides it for server startup. Remote collectors do not
-change the remote server's retention. Existing expiries change only after a fresh
+Collectors do not change the server's retention. Existing expiries change only after a fresh
 submission; retries do not extend them.
-The remote server must support `/api/v2/health`; a remote failure never starts or
-redirects into a local service. Remote servers preserve their public listen
-default unless an explicit config file, environment or `--listen` overrides it.
+The server must support `/api/v2/health`.
 
 ## Synchronization
 
@@ -210,7 +199,7 @@ empty observation, superseding the old changed one. Unknown complete content
 identities are collected conservatively rather than falsely suppressed.
 
 Workers save immutable collected payloads before checking the destination, then
-health-check the configured remote destination. No local service is started.
+health-check the configured remote destination.
 Each worker has a one-minute deadline, at most two attempts per payload, and a
 shared one-minute cooldown after failed startup. Pending immutable payloads
 retain retry IDs and survive checkout removal. Retries run on later completion

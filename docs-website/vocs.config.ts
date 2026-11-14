@@ -34,11 +34,10 @@ export default defineConfig({
       items: [
         { text: "Usage", link: "/usage" },
         { text: "Reviewing changes", link: "/reviewing-changes" },
-        { text: "Piped diffs", link: "/piped-diffs" },
       ],
     },
     {
-      text: "Agents and remote",
+      text: "Server and agents",
       items: [
         { text: "Agent hooks and remote ingestion", link: "/agent-hooks" },
         { text: "GitHub pull requests", link: "/github-pull-requests" },

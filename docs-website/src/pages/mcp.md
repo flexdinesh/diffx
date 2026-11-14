@@ -20,40 +20,8 @@ review shows agent comments, replies and resolutions as they commit.
 
 ## Connect
 
-Start `diffx` and point the agent at the printed address's `/mcp`:
-
-```text
-http://127.0.0.1:7981/mcp
-```
-
-Local `diffx` needs no credentials. For example, OpenCode in
-`opencode.jsonc`:
-
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "servers": {
-      "diffx": {
-        "type": "remote",
-        "url": "http://127.0.0.1:7981/mcp",
-        "oauth": false,
-      },
-    },
-  },
-}
-```
-
-Use the equivalent remote MCP configuration in Codex, Claude Code or another
-harness. Supplying the diffx web-page URL alone is not enough; a coding harness
-connects to the MCP endpoint as an MCP client. In local mode MCP stops when the
-foreground command exits. Context IDs remain stable across persistent-service
-restarts.
-
-### diffx-server
-
-A remote `diffx-server` serves the same `/mcp`. With a public URL, MCP clients
-connect by URL alone through OAuth. The client discovers the server's OAuth
+A diffx server serves `/mcp`. With a public URL, MCP clients connect by URL
+alone through OAuth. The client discovers the server's OAuth
 metadata, opens your browser, and you approve it while signed in to diffx. In
 Claude Code:
 
@@ -64,6 +32,8 @@ claude mcp add --transport http diffx https://HOST/mcp
 Then run `/mcp` in Claude Code and choose diffx to sign in. Cursor and other
 clients that register themselves dynamically connect the same way: add
 `https://HOST/mcp` as a remote server and follow the browser prompt.
+Supplying the diffx web-page URL alone is not enough; a coding harness
+connects to the MCP endpoint as an MCP client.
 
 The approval page names the app. Apps identified by a metadata document their
 own domain serves show Verified and that domain; apps that registered
@@ -82,22 +52,6 @@ API tokens still work: configure `Authorization: Bearer TOKEN` with an `api`
 token from Settings instead, for clients without OAuth or for automation. A
 server without a public URL accepts only API tokens.
 
-### Stdio
-
-`diffx mcp` serves the running local instance's `/mcp` over stdio through its
-owner-only socket, so agent configuration names a command instead of a port
-that changes between runs. It works with a `--headless` instance and, over SSH,
-with another machine's instance (`ssh devbox diffx mcp`). It exits when the
-agent closes stdin, and fails if no local diffx is running. For example, in
-Claude Code:
-
-```sh
-claude mcp add diffx -- diffx mcp
-```
-
-The bridge relays messages unchanged, so every supported protocol version works
-through it.
-
 ### Context-scoped URLs
 
 `/mcp/contexts/{id}` remains for existing configurations. It fixes every tool to
@@ -106,11 +60,7 @@ reject another. `find_feedback` there returns that context's threads and refuses
 references to other reviews. New configurations should use `/mcp`.
 
 On `/mcp`, tools that read or write one review take `context_id`, which
-`find_feedback` returns. A local process also has a default context: its
-capture, or the collection default of its checkouts (the current changed head,
-preferring the checkout it was started in). Tools use it when `context_id` is
-omitted; an explicit `context_id` still selects any other review. Remote
-servers have no default.
+`find_feedback` returns. There is no default context.
 
 ## Agent workflow
 
@@ -306,8 +256,8 @@ Returns the stored diff manifest and changed-file IDs. `scope` defaults to
 `all`; `uncommitted`, `committed`, `staged`, and `unstaged` require a collected
 scope. Context `scopeSummaries` lists captured scopes and file counts; manifest
 `comparisonKind` identifies the endpoints. `all` means Combined for a branch
-checkout, Uncommitted for HEAD-only captures, Branch changes for object-only
-captures, or the supplied patch for piped input. Scope selection never collects
+checkout, Uncommitted for HEAD-only captures, or Branch changes for object-only
+captures. Scope selection never collects
 new data. Pass `commit` (an OID from `list_commits`) instead of `scope` to read
 that commit's diff against its first parent; the two are mutually exclusive.
 
@@ -366,7 +316,7 @@ review with the agent's name:
 - With an API token, the name is the MCP client's name followed by the token's
   name, such as `Claude Code (laptop)`, or the token's name alone when the
   client sends no name.
-- Locally or with a browser session, the name is the MCP client's name.
+- With a browser session, the name is the MCP client's name.
 - Without either, the name is `Agent`.
 
 Otherwise the client name is the `title` or `name` the client reports about
@@ -376,10 +326,7 @@ server does not keep, so their writes read as `Agent` or the token's name.
 
 ## Security and scope
 
-The local endpoint is unauthenticated. Anyone who can reach the local server can
-read, comment on and resolve its reviews. The viewer binds loopback only; reach
-another machine's diffx through an SSH forward. Browser origin checks do not
-authenticate MCP clients. The remote `diffx-server` requires
+Browser origin checks do not authenticate MCP clients. The server requires
 `Authorization: Bearer TOKEN` for MCP: an OAuth access token from connecting
 as above, or an `api` token configured as that header in the MCP client.
 Credentials select an individual user; catalog results, references, diffs,

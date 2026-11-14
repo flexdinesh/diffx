@@ -63,8 +63,7 @@ mise run docker:up
 mise run docker:down
 ```
 
-Compose publishes HTTP on `127.0.0.1:7980`, outside the local 7981–7990 range,
-and runs a bundled PostgreSQL 18 whose named volume survives stopping or
+Compose publishes HTTP on `127.0.0.1:7980` and runs a bundled PostgreSQL 18 whose named volume survives stopping or
 recreating the containers. Set
 `DIFFX_SERVER_PORT=7979` to publish another host port. The project is named
 `diffx`, so its database volume is shared by every checkout. Open the app and
@@ -116,8 +115,7 @@ a named API token. `collector` tokens support sync and plugins; `api` tokens als
 support the user's review REST/MCP APIs. Both expire after 90 days by default
 (selectable 1–365 days), can be revoked, and show their secret only once. Browser
 sessions use secure cookies; API/MCP and collectors use bearer tokens. Multiple
-users share one Postgres database with private data per account. Local `diffx`
-automatically supplies its owner and has no login or account settings.
+users share one Postgres database with private data per account.
 
 Invites, signup settings, password reset links and account administration live
 in the admin console, a separate `diffx-console` container on its own origin over the same
@@ -137,7 +135,7 @@ diffx-console user reset-password --email alice@example.com
 Password reset revokes browser sessions; API token
 ownership is independent of passwords. Deploy behind TLS with secure cookies.
 Use `--retention-days 14` or config/environment to change server retention.
-The server defaults to `127.0.0.1:7980`, independent of personal CLI settings,
+The server defaults to `127.0.0.1:7980`, independent of CLI settings,
 and requires `DIFFX_SERVER_DATABASE_URL`. Its image defaults to `0.0.0.0:7980`;
 `DIFFX_SERVER_*` env vars override image defaults, and explicit flags override
 env vars. The CLI never reads `DIFFX_SERVER_*`.
@@ -158,7 +156,7 @@ or `--token`:
 diffx sync --server https://reviews.example.com
 ```
 
-Remote submission does not start a local server. The remote server needs no Git
+The server needs no Git
 installation or repository mount: all queries read committed Postgres data.
 Other producers can submit the same `POST /api/v2/ingestions` contract directly;
 the bundled plugins invoke the Go collector.

@@ -47,18 +47,10 @@ Compatible coding agents find, answer and resolve review feedback through
 `/mcp`; see [MCP](mcp.md). A compatible browser can expose the same tools through
 WebMCP while the page is open; see [WebMCP](webmcp.md).
 
-Local data lives in `$XDG_STATE_HOME/diffx/state.db`, or
-`~/.local/state/diffx/state.db`. An isolated `DIFFX_RUNTIME_DIR` moves the
-default database, manual sync and hook state, and config into that directory.
-`--state memory` disables persistence.
-Current schema 17 state persists across restarts; schema 11 to 16 state upgrades in place. When local state comes from
-an older diffx, `diffx` asks before moving it to a backup beside the database
-and starting fresh; scripts pass `--reset-state`, which backs up and resets
-current state too. Only the newest backup is kept. Newer or unrecognized
-databases are refused unchanged. Servers never reset automatically: to start
-fresh, stop the server, back up its state directory, and explicitly choose a new
-database path.
+The server keeps its data in PostgreSQL and migrates its schema at startup; see
+[server setup](agent-hooks.md). It never resets data automatically: to start
+fresh, stop the server, back up the database, and point it at a new one.
+CLI sync and hook state lives under `~/.local/state/diffx`; an isolated
+`DIFFX_RUNTIME_DIR` moves it and config into that directory.
 Legacy commands and pending producer payloads are retired.
-Stop older processes before upgrading. Local service lifecycle uses the
-owner-only local socket, which also serves this API; the loopback viewer port
-serves it to browsers.
+Stop older collectors before upgrading.

@@ -6,13 +6,21 @@
   "scripts": {
     "dev": "vocs dev",
     "build": "vocs build",
-    "preview": "vocs preview"
+    "preview": "vocs preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "lucide-react": "catalog:",
     "react": "~19.3.1",
     "react-dom": "~19.3.1",
     "vite": "catalog:",
     "vocs": "^2.10.3",
     "waku": "1.0.0-rc.3"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "typescript": "catalog:"
   }
 }

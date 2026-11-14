@@ -296,6 +296,9 @@ importers:
 
   docs-website:
     dependencies:
+      lucide-react:
+        specifier: 'catalog:'
+        version: 1.43.0(react@19.3.1)
       react:
         specifier: ~19.3.1
         version: 19.3.1
@@ -311,6 +314,19 @@ importers:
       waku:
         specifier: 1.0.0-rc.3
         version: 1.0.0-rc.3(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(react-dom@19.3.1(react@19.3.1))(react-server-dom-webpack@19.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(webpack@5.112.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.30)))(react@19.3.1)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.4.1
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.7(@types/react@19.2.18)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
 
   packages/api:
     dependencies:
@@ -11739,6 +11755,10 @@ snapshots:
   lucide-react@1.43.0(react@19.2.8):
     dependencies:
       react: 19.2.8
+
+  lucide-react@1.43.0(react@19.3.1):
+    dependencies:
+      react: 19.3.1
 
   lz-string@1.5.0: {}
 

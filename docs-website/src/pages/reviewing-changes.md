@@ -27,10 +27,7 @@ previous review in the bench's order, and its check marks the review viewed or
 unread. Once every file is reviewed, a notice offers the next review.
 The header names the open review's repository, branch and worktree; the
 repository and branch are menus you can type into to filter, then press Enter
-to switch. In a local checkout
-process, **Sync checkout** or **Sync all checkouts** (Alt+R) collects the
-process's checkouts again; like a
-remote arrival, a newer snapshot of the open stream is announced, not swapped in.
+to switch.
 Collapsed files and folders are remembered across reloads in the same tab. When a newer snapshot
 arrives for the stream you are reviewing, a notice offers **View latest** without
 replacing the open review.
@@ -59,8 +56,7 @@ panel, the comment filter also narrows comments to **Everyone**, **Me** or
 Observations are immutable. New content creates another observation; matching
 submissions associate new provenance with an existing review without changing
 its captured diff. Comments and reviewed marks belong to the checkout's stream
-(or one piped capture) and are stored with the snapshots (SQLite locally,
-Postgres on a server): later snapshots re-anchor
+and are stored with the snapshots: later snapshots re-anchor
 comments to moved code, flag outdated ones, and keep marks on files whose patch
 is unchanged. Deleting one snapshot keeps them; they end with the stream's last
 snapshot. Display preferences remain in the browser.
