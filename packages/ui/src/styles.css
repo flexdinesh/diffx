@@ -189,6 +189,7 @@
   --color-muted: var(--muted);
   --color-hover: var(--hover);
   --color-count: var(--count-bg);
+  --color-tab-inactive: var(--tab-inactive-bg);
   --color-border: var(--border);
   --color-separator: var(--border-muted);
   --color-control: var(--border-control);

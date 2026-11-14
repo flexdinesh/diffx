@@ -1751,13 +1751,36 @@ test("inline comments use a distinct structured surface while sidebar comments r
   await expect(copyReview).toHaveAttribute("data-size", "sm");
   await expect(copyReview).toHaveAttribute("data-variant", "outline");
   await expect(copyReview).toHaveCSS("height", "28px");
-  const [copyBackground, sidebarBackground] = await Promise.all([
-    copyReview.evaluate((button) => getComputedStyle(button).backgroundColor),
+  // Diffx light panels share --bg, so the outline control stands apart from the
+  // sidebar by its control border, not by its fill.
+  const [copyBorder, sidebarBackground] = await Promise.all([
+    copyReview.evaluate((button) => getComputedStyle(button).borderTopColor),
     page
       .locator("#sidebar")
       .evaluate((sidebar) => getComputedStyle(sidebar).backgroundColor),
   ]);
-  expect(copyBackground).not.toBe(sidebarBackground);
+  const luminance = (color: string) => {
+    const channels =
+      color
+        .match(/[\d.]+/g)
+        ?.slice(0, 3)
+        .map(Number) ?? [];
+    if (channels.length !== 3) throw new Error(`Unsupported color: ${color}`);
+    const [red = 0, green = 0, blue = 0] = channels.map((channel) => {
+      const normalized = channel / 255;
+      return normalized <= 0.04045
+        ? normalized / 12.92
+        : ((normalized + 0.055) / 1.055) ** 2.4;
+    });
+    return red * 0.2126 + green * 0.7152 + blue * 0.0722;
+  };
+  const [lighter, darker] = [
+    luminance(copyBorder),
+    luminance(sidebarBackground),
+  ].sort((left, right) => right - left);
+  if (lighter === undefined || darker === undefined)
+    throw new Error("Missing luminance");
+  expect((lighter + 0.05) / (darker + 0.05)).toBeGreaterThanOrEqual(3);
   const copyRestingBackground = await copyReview.evaluate(
     (button) => getComputedStyle(button).backgroundColor,
   );

@@ -38,8 +38,10 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
     <TabsPrimitive.Tab
       data-slot="tabs-trigger"
       className={cn(
-        "relative -mb-px flex min-w-0 flex-1 items-center justify-center gap-1 border-r border-border bg-shell px-1 text-sm font-medium whitespace-nowrap text-secondary hover:text-fg disabled:pointer-events-none disabled:opacity-60 data-active:bg-panel data-active:text-fg [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-icon",
+        "relative -mb-px flex min-w-0 flex-1 items-center justify-center gap-1 border-r border-border bg-tab-inactive px-1 text-sm font-medium whitespace-nowrap text-secondary hover:text-fg disabled:pointer-events-none disabled:opacity-60 data-active:bg-panel data-active:text-fg [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-icon",
         "not-data-active:border-b",
+        // The selected tab's count shares the selected-row treatment.
+        "data-active:**:data-[slot=badge]:border-accent/35 data-active:**:data-[slot=badge]:bg-selected data-active:**:data-[slot=badge]:text-accent",
         className,
       )}
       {...props}

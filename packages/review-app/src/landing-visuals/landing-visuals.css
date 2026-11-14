@@ -184,12 +184,18 @@
   justify-content: center;
   gap: var(--space-1-5);
   color: var(--dx-secondary);
+  background: var(--tab-inactive-bg);
 }
 
 .dxl .dx-tab[data-selected] {
   color: var(--dx-fg);
   box-shadow: none;
   background: var(--dx-bg);
+}
+
+.dxl .dx-tab[data-selected] .dx-count {
+  color: var(--dx-accent);
+  background: var(--dx-accent-bg);
 }
 
 .dxl .dx-count {

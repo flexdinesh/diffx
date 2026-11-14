@@ -1,23 +1,25 @@
 :root,
 [data-palette="diffx-light"] {
   color-scheme: light;
-  --bg: #fafafa;
-  --panel: #f0f0f1;
-  --shell-canvas: #e2e2e3;
-  --surface-raised: #fafafa;
+  --bg: #fff;
+  --panel: #fff;
+  --shell-canvas: #fff;
+  --surface-raised: #fff;
   --fg: #242529;
   --text-secondary: #4d4f55;
   --muted: #62646a;
-  --border: #c9c9ca;
+  --border: #e3e3e5;
   --border-muted: var(--border);
   --border-control: #808186;
-  --hover: #e6e6e7;
-  --shell-hover: #d2d2d4;
+  --hover: #f2f2f3;
+  --shell-hover: #ececee;
   /* Static count/badge fill; a separate role from pointer hover feedback. */
   --count-bg: var(--hover);
+  /* Unselected sidebar tabs; Diffx light tints them below. */
+  --tab-inactive-bg: var(--shell-canvas);
   --diff-file-header: var(--panel);
-  --diff-canvas: #e9e9ea;
-  --diff-canvas-dot: #cfcfd1;
+  --diff-canvas: #f2f2f3;
+  --diff-canvas-dot: #d6d6d9;
   /* Pierre's empty-line hatch on the shell code surface. */
   --diff-buffer-stripe: color-mix(in lab, var(--bg) 88%, var(--fg));
   /* Share of the tint hue in changed-line numbers; the rest mixes toward --fg.
@@ -30,7 +32,7 @@
   --diff-syntax-base-shell: 70%;
   --accent: #3f5fd6;
   --accent-hover: #3452c2;
-  --accent-bg: #e6eafb;
+  --accent-bg: #ebeffc;
   --on-accent: #fff;
   --success: #247446;
   --success-bg: #dafbe1;
@@ -103,7 +105,7 @@
   --reading-width: 42.5rem;
   /* Content column of the signed-out landing page. */
   --landing-width: 72rem;
-  /* The landing page's boxed surface; Diffx light makes it white below. */
+  /* The landing page's boxed surface. */
   --landing-surface: var(--bg);
   --layer-sidebar: 10;
   --layer-backdrop: 9;
@@ -117,10 +119,11 @@
   --ease-standard: ease-out;
 }
 
-/* Diffx light only: palettes and dark keep the landing surface on --bg. */
+/* Diffx light only: its chrome and panels share one white, so unselected tabs
+   need their own faint fill. Palettes and dark keep tabs on --shell-canvas. */
 :root[data-theme="light"]:not([data-palette]),
 [data-palette="diffx-light"] {
-  --landing-surface: #fff;
+  --tab-inactive-bg: #f7f7f8;
 }
 
 :root[data-theme="dark"],

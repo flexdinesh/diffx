@@ -894,7 +894,7 @@ test.describe("iOS-standard phone chrome", () => {
         .getPropertyValue("--shell-canvas")
         .trim(),
     );
-    expect(canvas).not.toBe("#e2e2e3");
+    expect(canvas).not.toBe("#fff");
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
       "content",
       canvas,
