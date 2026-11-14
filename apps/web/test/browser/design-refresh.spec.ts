@@ -193,28 +193,26 @@ test("Diffx themes put context code on the shell surface; palettes keep theirs",
   const useTheme = (theme: string) =>
     page.evaluate((id) => localStorage.setItem("theme-v2", id), theme);
   const viewer = page.locator("#viewer");
-  const read = () =>
-    viewer.evaluate((diff) => {
-      const line = [...diff.querySelectorAll("*")]
-        .flatMap((element) => element.shadowRoot ?? [])
-        .map((root) => root.querySelector("[data-line-type^=context]"))
-        .find((found) => found !== null);
-      return {
-        line: line ? getComputedStyle(line).backgroundColor : null,
-        surface: getComputedStyle(diff).getPropertyValue("--code-surface"),
-      };
-    });
+  const contextLine = viewer
+    .locator('[data-line][data-line-type^="context"]')
+    .first();
   await page.goto("/");
   await useTheme("dark");
   await page.reload();
   await showDiff(page);
   await expect(viewer).toHaveAttribute("data-code-surface", "shell");
-  await expect.poll(async () => (await read()).line).toBe("rgb(40, 44, 51)");
+  await expect(contextLine).toHaveCSS("background-color", "rgb(40, 44, 51)");
   await useTheme("tokyo-night");
   await page.reload();
   await showDiff(page);
   await expect(viewer).not.toHaveAttribute("data-code-surface", "shell");
-  await expect.poll(async () => (await read()).surface).toBe("");
+  await expect
+    .poll(() =>
+      viewer.evaluate((element) =>
+        getComputedStyle(element).getPropertyValue("--code-surface"),
+      ),
+    )
+    .toBe("");
 });
 
 test("interactive controls are square", async ({ page }) => {
