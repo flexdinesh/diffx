@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@diffx/api": "workspace:*",
+    "@diffx/stageshow": "workspace:*",
     "@diffx/ui": "workspace:*",
     "@pierre/diffs": "catalog:",
     "lucide-react": "catalog:",

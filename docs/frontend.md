@@ -72,8 +72,8 @@ keys workspace owners by context. Lint rejects import cycles, Hook-rule
 violations and type assertions. The identity owner loads server mode and the current
 account before mounting review state; distributed login and `/settings` work with
 zero observations. Signed out, `/` renders the landing page (`Landing.tsx`,
-with the Pierre demo passed in from `LandingDemoDiff.tsx` so DOM tests never
-load Pierre) unless it carries a `?signin=` outcome; `/invite`, `/signup`
+with its animated figures passed in from `landing-visuals/` so DOM tests never
+load the stageshow kit) unless it carries a `?signin=` outcome; `/invite`, `/signup`
 (while signup is on) and `/reset-password` render their pages and every other
 path, including `/signin`, renders sign-in (sign-out and expired sessions
 return to `/signin`):

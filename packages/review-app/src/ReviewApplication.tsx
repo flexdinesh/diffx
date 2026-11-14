@@ -31,7 +31,7 @@ import {
   signupOpen,
 } from "./account.tsx";
 import { Landing } from "./Landing.tsx";
-import { LandingDemoDiff } from "./LandingDemoDiff.tsx";
+import { landingVisuals } from "./landing-visuals/index.tsx";
 import { PublicPullRequest } from "./PublicPullRequest.tsx";
 import { PublicReview } from "./PublicReview.tsx";
 import {
@@ -150,7 +150,7 @@ function ApplicationRoutes({ platform }: ReviewApplicationProps) {
       return (
         <Landing
           previews={state.bootstrap.publicPullRequests}
-          demoDiff={<LandingDemoDiff />}
+          visuals={landingVisuals}
         />
       );
     return <SignIn />;

@@ -190,49 +190,34 @@ test("every rendered corner is square, inside Pierre's shadow roots too", async 
 test("Diffx themes put context code on the shell surface; palettes keep theirs", async ({
   page,
 }) => {
-  await page.route("**/api/v2/bootstrap", (route) =>
-    route.fulfill({
-      json: {
-        mode: "remote",
-        publicPullRequests: false,
-        githubEnabled: false,
-        googleEnabled: false,
-        signupEnabled: false,
-        passwordSignupEnabled: false,
-        user: null,
-        csrfToken: null,
-      },
-    }),
-  );
   const useTheme = (theme: string) =>
     page.evaluate((id) => localStorage.setItem("theme-v2", id), theme);
-  const read = () =>
-    page.locator(".landing-diff").evaluate((diff) => {
-      const line = [...diff.querySelectorAll("*")]
-        .flatMap((element) => element.shadowRoot ?? [])
-        .map((root) => root.querySelector("[data-line-type^=context]"))
-        .find((found) => found !== null);
-      if (!line) throw new Error("Missing context line");
-      return {
-        line: getComputedStyle(line).backgroundColor,
-        surface: getComputedStyle(diff).getPropertyValue("--code-surface"),
-      };
-    });
+  const viewer = page.locator("#viewer");
+  const contextLine = viewer
+    .locator('[data-line][data-line-type^="context"]')
+    .first();
+  // Added and deleted files lead the fixture; context lines start further down.
+  await page.setViewportSize({ width: 1440, height: 4_000 });
   await page.goto("/");
   await useTheme("dark");
   await page.reload();
-  await expect(page.locator(".landing-diff")).toHaveAttribute(
-    "data-code-surface",
-    "shell",
-  );
-  await expect.poll(async () => (await read()).line).toBe("rgb(40, 44, 51)");
+  await showDiff(page);
+  await expect(viewer).toHaveAttribute("data-code-surface", "shell");
+  await page
+    .getByRole("button", { name: "src/components/Button.tsx, Modified" })
+    .click();
+  await expect(contextLine).toHaveCSS("background-color", "rgb(40, 44, 51)");
   await useTheme("tokyo-night");
   await page.reload();
-  await expect(page.locator(".landing-diff")).not.toHaveAttribute(
-    "data-code-surface",
-    "shell",
-  );
-  expect((await read()).surface).toBe("");
+  await showDiff(page);
+  await expect(viewer).not.toHaveAttribute("data-code-surface", "shell");
+  await expect
+    .poll(() =>
+      viewer.evaluate((element) =>
+        getComputedStyle(element).getPropertyValue("--code-surface"),
+      ),
+    )
+    .toBe("");
 });
 
 test("interactive controls are square", async ({ page }) => {

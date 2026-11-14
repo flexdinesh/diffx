@@ -15,7 +15,9 @@ the bundled matching CLI; `host` serves embedded assets and proxies allowlisted
 public REST/SSE on one loopback origin. Private control endpoints stay private.
 Browser (`apps/web`) and desktop entries mount `ReviewApplication({ platform })`
 from `packages/review-app`, sharing views, state, styles, workers and Pierre
-geometry. `packages/ui` remains the design-system owner. PWA activation requires
+geometry. `packages/ui` remains the design-system owner; `packages/stageshow`
+is the animation kit (stage, scripted cursor, motion primitives) for the
+signed-out landing page's figures, outside the product design system. PWA activation requires
 the browser entry and remote bootstrap. Desktop has no parallel Go diff widgets,
 token generator or preferences implementation. Web preferences start fresh and
 persist across restarts through a stable desktop loopback origin; server

@@ -31,7 +31,13 @@ function FolderIcon({ open }: { open: boolean }) {
     />
   );
 }
-function FileIcon({ path, reviewed }: { path: string; reviewed: boolean }) {
+export function FileIcon({
+  path,
+  reviewed,
+}: {
+  path: string;
+  reviewed: boolean;
+}) {
   const kind = fileKind(path);
   const monogram = monograms[kind];
   return (
