@@ -14,7 +14,7 @@ Closed and merged pull requests move to the bench's **Closed** view; their
 reviews also stay reachable through search until they expire.
 
 This needs the distributed server, a GitHub App you create, and the
-`diffx-fetcher` container. Local `diffx` has no GitHub integration.
+`diffx-fetcher` container.
 
 ## How it works
 

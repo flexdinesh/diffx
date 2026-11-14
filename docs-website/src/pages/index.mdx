@@ -6,13 +6,20 @@ outline: false
 ---
 
 import { HomePage } from "vocs";
+import { AgentsDemo } from "../components/landing/AgentsDemo.tsx";
+import { BenchDemo } from "../components/landing/BenchDemo.tsx";
+import { CommentsDemo } from "../components/landing/CommentsDemo.tsx";
+import { Feature } from "../components/landing/Feature.tsx";
+import { GitHubDemo } from "../components/landing/GitHubDemo.tsx";
+import { HeroDiff } from "../components/landing/HeroDiff.tsx";
 
 <HomePage.Root>
   <HomePage.Logo />
   <HomePage.Tagline>Review Git changes in your browser.</HomePage.Tagline>
   <HomePage.Description>
-    Read diffs, mark files reviewed, and leave comments without changing your
-    working tree or index.
+    {
+      "Read diffs, mark files reviewed, comment on lines, and let your agents address the feedback."
+    }
   </HomePage.Description>
   <HomePage.Buttons>
     <HomePage.Button href="/getting-started" variant="accent">
@@ -22,22 +29,66 @@ import { HomePage } from "vocs";
   </HomePage.Buttons>
 </HomePage.Root>
 
-## Start here
+<div className="dx-landing">
 
-[Get started](getting-started.md) with installation and your first local review.
+<div className="dx-landing-hero">
+  <HeroDiff />
+</div>
 
-## Your review workflow
+<Feature visual={<BenchDemo />}>
 
-- Compare branch changes, staged changes, and unstaged changes.
-- Review a captured snapshot at your own pace.
-- Keep comments and review progress across restarts.
+## Every review on one bench
+
+diffx opens on **Reviews**: each branch and pull request with changes,
+newest activity first. **Needs attention** collects what is new or
+updated since you last looked, including work your agents just pushed. Move
+with ↑ and ↓, peek with Space, open with Enter.
+
+[Reviewing changes](reviewing-changes.md)
+
+</Feature>
+
+<Feature visual={<GitHubDemo />}>
+
+## Pull requests arrive on their own
+
+Connect GitHub on a diffx server and follow repositories. Their open pull
+requests, drafts included, appear on the bench beside your machines' reviews
+and refresh from GitHub events.
+
+[GitHub pull requests](github-pull-requests.md)
+
+</Feature>
+
+<Feature visual={<CommentsDemo />}>
+
+## Comment on the lines that need work
+
+Comment on any line or file. Comments and reviewed marks carry across new
+snapshots, re-anchor to code that moved, and copy out as agent-ready XML.
+
+[Comments and reviewed marks](reviewing-changes.md)
+
+</Feature>
+
+<Feature visual={<AgentsDemo />}>
+
+## Let agents address the feedback
+
+Connect Claude Code, Codex, Cursor or OpenCode to diffx over MCP. The agent
+finds the open threads, fixes each concern, replies with what changed and
+resolves it. The review shows every reply as it lands.
+
+[MCP](mcp.md)
+
+</Feature>
+
+</div>
 
 ## Guides
 
-- [Usage](usage.md): CLI options, sync, configuration and listeners.
 - [Reviewing changes](reviewing-changes.md): projects, snapshots, comments and
   reviewed marks.
-- [Piped diffs](piped-diffs.md): review a fixed patch from stdin.
 - [Agent hooks and remote ingestion](agent-hooks.md): remote server setup and
   automatic collection.
 - [Agent plugins](plugins.md): install Codex, Claude Code, Pi and OpenCode plugins.

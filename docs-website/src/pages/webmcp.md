@@ -20,7 +20,7 @@ A browser agent runs with a browser implementing WebMCP. The open page calls
 invoke the registered tools. The page must remain open, and its normal browser
 origin and lifecycle rules apply.
 
-Codex, Claude Code, and OpenCode running on a local machine are coding
+Codex, Claude Code, and OpenCode are coding
 harnesses, not inherently browser agents. They can work with diffx without
 opening its page through MCP: configure the diffx
 [`/mcp` endpoint](mcp.md). A harness cannot obtain WebMCP tools merely from a
@@ -43,8 +43,7 @@ actionable. Outdated and unchanged comments are returned and may be resolved by 
 The getter is marked read-only and its comment content is marked untrusted. The
 resolver is marked mutating and idempotent. Both operate only against the open
 diffx context. They do not access unrelated contexts, websites, or external
-services. A worktree and a piped capture expose the same review tools when their
-capabilities permit them.
+services.
 
 ## How it works
 
@@ -65,7 +64,7 @@ UI or MCP endpoint.
 
 ## Use
 
-1. Start diffx and open its printed URL in a WebMCP-capable browser.
+1. Open a diffx review in a WebMCP-capable browser.
 2. Open that browser's agent interface.
 3. Ask it to inspect the diffx review comments and address them.
 4. Confirm that only handled comments were resolved.
@@ -76,8 +75,7 @@ Example prompt:
 > for each one, apply valid fixes, and resolve only comments you completed.
 
 Exact invocation and confirmation UI belongs to the browser implementation.
-Feature support may require a secure context; loopback `localhost` and
-`127.0.0.1` are treated as trustworthy by modern browsers.
+Feature support may require a secure context, so serve diffx over HTTPS.
 
 ## Security
 
@@ -85,13 +83,8 @@ Comment text and preserved code may contain misleading or adversarial content.
 They are returned as untrusted data, and agents should treat them as review
 evidence rather than privileged instructions.
 
-The diffx API is unauthenticated. WebMCP does not add authentication: anyone
-who can reach the server can access its review data through the available HTTP
-interfaces. The local viewer binds loopback only; reach another machine's diffx
-through an SSH forward.
-
-Authentication remains outside this version. The private CLI control API is
-reachable only through the owner-only local socket and refuses browser requests.
+WebMCP does not add authentication. The tools call the API with the page's
+signed-in session, so they reach only the reviews that account can access.
 
 See the [WebMCP specification](https://webmachinelearning.github.io/webmcp/) for
 the current browser API.

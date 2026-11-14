@@ -1,6 +1,6 @@
 ---
 title: Getting started
-description: Install diffx and open your first local review.
+description: Install the diffx CLI and send your first review to a diffx server.
 ---
 
 # Getting started
@@ -36,29 +36,37 @@ Go source installs (`@latest` or a commit SHA) are unsupported because source
 refs lack embedded web assets. Developers can use `mise run install` from a
 configured checkout.
 
-## Open a review
+## Connect to a server
+
+Sign in to [diffx.app](https://diffx.app) or your own
+[diffx server](agent-hooks.md). In the top-right account settings, create a
+`collector` API token; its secret shows only once. Point the CLI at the server:
+
+```sh
+diffx config set remote.url https://diffx.app
+diffx config set remote.token - < /path/to/private-token
+diffx remote status
+```
+
+## Send a review
 
 From your Git repository, run:
 
 ```sh
-diffx
+diffx sync
 ```
 
-Your browser opens the captured changes. Use the file list to navigate, switch
-between Uncommitted, Branch changes, and Combined, and add comments as you review.
-Uncommitted also offers All, Staged, and Unstaged views. Available comparisons
-depend on what the snapshot captured.
-
-To review another repository:
-
-```sh
-diffx /path/to/repo
-```
+The checkout's changes arrive on the server's **Reviews** bench. Open the
+review to navigate files, switch between Uncommitted, Branch changes and
+Combined, mark files reviewed and add comments. Uncommitted also offers All,
+Staged and Unstaged views. Available comparisons depend on what the snapshot
+captured.
 
 ## Capture new changes
 
-A review is a fixed snapshot. After editing your code, use **Sync all
-checkouts** (Alt+R) to capture the latest changes. Comments and review progress
-persist across restarts.
+A review is a fixed snapshot. After editing your code, run `diffx sync` again;
+the review announces the newer snapshot. Comments re-anchor to it, and reviewed
+marks stay on files whose patch is unchanged. Install an [agent plugin](plugins.md) to sync automatically after each
+agent turn.
 
-See [Usage](usage.md) for all options.
+See [Usage](usage.md) for sync options and configuration.
