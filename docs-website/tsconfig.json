@@ -3,5 +3,5 @@
   "compilerOptions": {
     "types": ["node", "vite/client"]
   },
-  "include": ["src/components/**/*.ts", "src/components/**/*.tsx"]
+  "include": ["vocs.config.ts"]
 }

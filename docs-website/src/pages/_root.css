@@ -4,3 +4,200 @@
 *::after {
   border-radius: 0;
 }
+
+/*
+ * Diffx light and dark, mirrored by hand from packages/ui/src/tokens.css.
+ * Vocs sets data-vocs-theme before first paint. Chrome (sidebar, top nav)
+ * takes --panel and the reading area --bg, as in the app.
+ */
+:root[data-vocs-theme="light"] {
+  --vocs-color-gray6: #242529;
+  --vocs-color-gray7: #4d4f55;
+  --vocs-color-gray8: #62646a;
+  --vocs-color-gray9: #808186;
+  --vocs-color-gray10: #a3a4a9;
+  --vocs-color-gray11: #d6d6d9;
+  --vocs-color-gray12: #e3e3e5;
+  --vocs-color-gray13: #f2f2f3;
+  --vocs-color-gray14: #f7f7f8;
+  --vocs-color-red: #b73840;
+  --vocs-color-blue: #3f5fd6;
+  --vocs-color-green: #247446;
+  --vocs-color-yellow: #85620f;
+  --vocs-color-iris: #7954a3;
+  --vocs-background-color-primary: #fff;
+  --vocs-background-color-surface: #fff;
+  --vocs-background-color-surfaceTint: #f2f2f3;
+  --vocs-text-color-primary: #242529;
+  --vocs-text-color-secondary: #4d4f55;
+  --vocs-text-color-muted: #62646a;
+  --vocs-text-color-heading: #242529;
+  --vocs-text-color-link: #3f5fd6;
+  --vocs-text-color-link-hover: #3452c2;
+  --vocs-text-color-quote: #4d4f55;
+}
+
+:root[data-vocs-theme="dark"] {
+  --vocs-color-gray1: #1c2027;
+  --vocs-color-gray2: #21252b;
+  --vocs-color-gray3: #252930;
+  --vocs-color-gray4: #2f343e;
+  --vocs-color-gray5: #363c46;
+  --vocs-color-gray6: #464b57;
+  --vocs-color-gray7: #6b7180;
+  --vocs-color-gray8: #808693;
+  --vocs-color-gray9: #a9afbc;
+  --vocs-color-gray10: #b8bdc7;
+  --vocs-color-gray11: #c8ccd4;
+  --vocs-color-gray12: #dce0e5;
+  --vocs-color-gray13: #e6e9ed;
+  --vocs-color-gray14: #f0f2f5;
+  --vocs-color-red: #ed8a8e;
+  --vocs-color-blue: #74ade8;
+  --vocs-color-green: #70cc95;
+  --vocs-color-yellow: #dfbd68;
+  --vocs-color-iris: #bc9de2;
+  --vocs-background-color-primary: #2f343e;
+  --vocs-background-color-surface: #282c33;
+  --vocs-background-color-surfaceMuted: #2f343e;
+  --vocs-background-color-surfaceTint: #363c46;
+  --vocs-background-color-code-block: #2f343e;
+  --vocs-background-color-inline-code: #363c46;
+  --vocs-background-color-code-highlighted: #363c46;
+  --vocs-border-color-code-highlighted: #464b57;
+  --vocs-border-color-primary: #464b57;
+  --vocs-border-color-secondary: #464b57;
+  --vocs-text-color-primary: #dce0e5;
+  --vocs-text-color-secondary: #b8bdc7;
+  --vocs-text-color-muted: #a9afbc;
+  --vocs-text-color-heading: #dce0e5;
+  --vocs-text-color-link: #74ade8;
+  --vocs-text-color-link-hover: #93c1f0;
+  --vocs-text-color-quote: #b8bdc7;
+}
+
+/* Introduction: how the pieces fit, as one hairline strip. */
+.dx-flow {
+  display: grid;
+  grid-template-columns: 1fr;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--vocs-border-color-primary);
+}
+
+.dx-flow > li {
+  padding: 1rem;
+  border-bottom: 1px solid var(--vocs-border-color-primary);
+}
+
+.dx-flow > li:last-child {
+  border-bottom: 0;
+}
+
+@media (min-width: 720px) {
+  .dx-flow {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .dx-flow > li {
+    border-bottom: 0;
+    border-right: 1px solid var(--vocs-border-color-primary);
+  }
+
+  .dx-flow > li:last-child {
+    border-right: 0;
+  }
+}
+
+.dx-flow strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--vocs-text-color-heading);
+  font-weight: 600;
+}
+
+.dx-flow p {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--vocs-text-color-secondary);
+}
+
+.dx-flow a {
+  font-size: 0.875rem;
+  color: var(--vocs-text-color-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.dx-flow a:hover {
+  color: var(--vocs-text-color-link-hover);
+}
+
+:is(.dx-flow, .dx-paths) code {
+  padding: 0.0625rem 0.3125rem;
+  font-size: 0.8125rem;
+  background: var(--vocs-background-color-inline-code);
+  border: 1px solid var(--vocs-border-color-primary);
+}
+
+/* Introduction: goal-first entry points, one hairline row each. */
+.dx-paths {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--vocs-border-color-primary);
+}
+
+.dx-paths > li {
+  border-bottom: 1px solid var(--vocs-border-color-primary);
+}
+
+.dx-paths a {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.125rem 1rem;
+  padding: 0.75rem 0.25rem;
+  color: var(--vocs-text-color-primary);
+  text-decoration: none;
+  transition: background-color 120ms ease-out;
+}
+
+.dx-paths a:hover {
+  background: var(--vocs-background-color-surfaceTint);
+}
+
+.dx-paths a:focus-visible {
+  outline: 2px solid var(--vocs-text-color-link);
+  outline-offset: -2px;
+}
+
+.dx-paths-goal {
+  font-weight: 500;
+}
+
+.dx-paths-detail {
+  grid-column: 1;
+  font-size: 0.875rem;
+  color: var(--vocs-text-color-secondary);
+}
+
+.dx-paths-page {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+  font-size: 0.8125rem;
+  color: var(--vocs-text-color-link);
+}
+
+@media (max-width: 520px) {
+  .dx-paths a {
+    grid-template-columns: 1fr;
+  }
+
+  .dx-paths-page {
+    grid-row: auto;
+    grid-column: 1;
+  }
+}

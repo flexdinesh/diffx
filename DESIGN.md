@@ -207,6 +207,12 @@ measured elements or replace the application tokens with framework defaults.
   the frontmatter. Keep dots behind opaque code surfaces; they do not tint code.
   Light mode uses the white primary surface and separator-colored dots; dark mode
   uses a deeper charcoal canvas and softened dots. File headers retain `--panel`.
+- The docs site (`docs-website`) mirrors Diffx light and dark by overriding
+  Vocs' `--vocs-*` variables in `src/pages/_root.css`, copied by hand from
+  `tokens.css`: chrome on `--panel`, reading area on `--bg`, links on
+  `--accent`. Update both when a Diffx light or dark value changes. The docs
+  index is an ordinary docs page; the signed-out app landing is the one
+  marketing surface.
 
 ## Typography
 

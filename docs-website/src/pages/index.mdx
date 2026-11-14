@@ -1,97 +1,118 @@
 ---
-title: diffx documentation
-description: Review Git changes in your browser with diffx.
-layout: minimal
-outline: false
+title: Introduction
+description: What diffx is, how its pieces fit together, and where to start.
 ---
 
-import { HomePage } from "vocs";
-import { AgentsDemo } from "../components/landing/AgentsDemo.tsx";
-import { BenchDemo } from "../components/landing/BenchDemo.tsx";
-import { CommentsDemo } from "../components/landing/CommentsDemo.tsx";
-import { Feature } from "../components/landing/Feature.tsx";
-import { GitHubDemo } from "../components/landing/GitHubDemo.tsx";
-import { HeroDiff } from "../components/landing/HeroDiff.tsx";
+# Introduction
 
-<HomePage.Root>
-  <HomePage.Logo />
-  <HomePage.Tagline>Review Git changes in your browser.</HomePage.Tagline>
-  <HomePage.Description>
-    {
-      "Read diffs, mark files reviewed, comment on lines, and let your agents address the feedback."
-    }
-  </HomePage.Description>
-  <HomePage.Buttons>
-    <HomePage.Button href="/getting-started" variant="accent">
-      Get started
-    </HomePage.Button>
-    <HomePage.Button href="https://diffx.app">Open diffx.app</HomePage.Button>
-  </HomePage.Buttons>
-</HomePage.Root>
+diffx opens your Git changes as a readable diff in the browser, keeps your
+review comments, and turns them into instructions a coding agent can act on.
 
-<div className="dx-landing">
+## How diffx fits together
 
-<div className="dx-landing-hero">
-  <HeroDiff />
-</div>
+Changes reach a diffx server from three sources. You review them on one bench,
+and agents pick up what you left.
 
-<Feature visual={<BenchDemo />}>
+<ol className="dx-flow">
+  <li>
+    <strong>Changes arrive</strong>
+    <p>
+      <code>diffx sync</code> from a checkout, an agent plugin after each turn,
+      or a followed GitHub pull request.
+    </p>
+    <a href="/getting-started">Getting started</a>
+  </li>
+  <li>
+    <strong>Reviews bench</strong>
+    <p>
+      One row per stream, newest activity first. Needs attention shows what
+      changed since you looked.
+    </p>
+    <a href="/reviewing-changes">Reviewing changes</a>
+  </li>
+  <li>
+    <strong>Read and comment</strong>
+    <p>
+      Mark files reviewed and comment on lines. Both carry across new
+      snapshots.
+    </p>
+    <a href="/reviewing-changes">Reviewing changes</a>
+  </li>
+  <li>
+    <strong>Agents respond</strong>
+    <p>
+      Over MCP an agent finds open threads, fixes each concern, replies and
+      resolves it.
+    </p>
+    <a href="/mcp">MCP</a>
+  </li>
+</ol>
 
-## Every review on one bench
+## Start here
 
-diffx opens on **Reviews**: each branch and pull request with changes,
-newest activity first. **Needs attention** collects what is new or
-updated since you last looked, including work your agents just pushed. Move
-with ↑ and ↓, peek with Space, open with Enter.
+<ul className="dx-paths">
+  <li>
+    <a href="/getting-started">
+      <span className="dx-paths-goal">Review your local changes</span>
+      <span className="dx-paths-detail">
+        Install the CLI, connect to a server and run <code>diffx sync</code>.
+      </span>
+      <span className="dx-paths-page">Getting started</span>
+    </a>
+  </li>
+  <li>
+    <a href="/plugins">
+      <span className="dx-paths-goal">Sync after every agent turn</span>
+      <span className="dx-paths-detail">
+        Plugins for Claude Code, Codex, OpenCode and Pi.
+      </span>
+      <span className="dx-paths-page">Agent plugins</span>
+    </a>
+  </li>
+  <li>
+    <a href="/github-pull-requests">
+      <span className="dx-paths-goal">Review GitHub pull requests</span>
+      <span className="dx-paths-detail">
+        Connect GitHub on a diffx server and follow repositories.
+      </span>
+      <span className="dx-paths-page">GitHub pull requests</span>
+    </a>
+  </li>
+  <li>
+    <a href="/mcp">
+      <span className="dx-paths-goal">Let agents address your comments</span>
+      <span className="dx-paths-detail">
+        Connect a coding agent to the server's <code>/mcp</code> endpoint.
+      </span>
+      <span className="dx-paths-page">MCP</span>
+    </a>
+  </li>
+  <li>
+    <a href="/agent-hooks">
+      <span className="dx-paths-goal">Run your own server</span>
+      <span className="dx-paths-detail">
+        Remote ingestion, collector tokens and delivery.
+      </span>
+      <span className="dx-paths-page">Agent hooks</span>
+    </a>
+  </li>
+  <li>
+    <a href="/api">
+      <span className="dx-paths-goal">Build on the API</span>
+      <span className="dx-paths-detail">
+        REST contract, ingestion protocol and storage.
+      </span>
+      <span className="dx-paths-page">API and data</span>
+    </a>
+  </li>
+</ul>
 
-[Reviewing changes](reviewing-changes.md)
+:::note
+**Using a coding agent?** Point it at your server's MCP endpoint and it can
+read, reply to and resolve review feedback. Clients sign in through OAuth.
 
-</Feature>
+```sh
+claude mcp add --transport http diffx https://HOST/mcp
+```
 
-<Feature visual={<GitHubDemo />}>
-
-## Pull requests arrive on their own
-
-Connect GitHub on a diffx server and follow repositories. Their open pull
-requests, drafts included, appear on the bench beside your machines' reviews
-and refresh from GitHub events.
-
-[GitHub pull requests](github-pull-requests.md)
-
-</Feature>
-
-<Feature visual={<CommentsDemo />}>
-
-## Comment on the lines that need work
-
-Comment on any line or file. Comments and reviewed marks carry across new
-snapshots, re-anchor to code that moved, and copy out as agent-ready XML.
-
-[Comments and reviewed marks](reviewing-changes.md)
-
-</Feature>
-
-<Feature visual={<AgentsDemo />}>
-
-## Let agents address the feedback
-
-Connect Claude Code, Codex, Cursor or OpenCode to diffx over MCP. The agent
-finds the open threads, fixes each concern, replies with what changed and
-resolves it. The review shows every reply as it lands.
-
-[MCP](mcp.md)
-
-</Feature>
-
-</div>
-
-## Guides
-
-- [Reviewing changes](reviewing-changes.md): projects, snapshots, comments and
-  reviewed marks.
-- [Agent hooks and remote ingestion](agent-hooks.md): remote server setup and
-  automatic collection.
-- [Agent plugins](plugins.md): install Codex, Claude Code, Pi and OpenCode plugins.
-- [MCP](mcp.md): expose reviews and comments to coding agents.
-- [WebMCP](webmcp.md): expose review tools to browser agents.
-- [API and data](api.md): REST contract, storage and upgrades.
+:::
