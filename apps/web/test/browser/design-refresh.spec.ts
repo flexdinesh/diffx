@@ -190,24 +190,11 @@ test("every rendered corner is square, inside Pierre's shadow roots too", async 
 test("Diffx themes put context code on the shell surface; palettes keep theirs", async ({
   page,
 }) => {
-  await page.route("**/api/v2/bootstrap", (route) =>
-    route.fulfill({
-      json: {
-        mode: "remote",
-        publicPullRequests: false,
-        githubEnabled: false,
-        googleEnabled: false,
-        signupEnabled: false,
-        passwordSignupEnabled: false,
-        user: null,
-        csrfToken: null,
-      },
-    }),
-  );
   const useTheme = (theme: string) =>
     page.evaluate((id) => localStorage.setItem("theme-v2", id), theme);
+  const viewer = page.locator("#viewer");
   const read = () =>
-    page.locator(".landing-diff").evaluate((diff) => {
+    viewer.evaluate((diff) => {
       const line = [...diff.querySelectorAll("*")]
         .flatMap((element) => element.shadowRoot ?? [])
         .map((root) => root.querySelector("[data-line-type^=context]"))
@@ -221,18 +208,14 @@ test("Diffx themes put context code on the shell surface; palettes keep theirs",
   await page.goto("/");
   await useTheme("dark");
   await page.reload();
-  await expect(page.locator(".landing-diff")).toHaveAttribute(
-    "data-code-surface",
-    "shell",
-  );
+  await showDiff(page);
+  await expect(viewer).toHaveAttribute("data-code-surface", "shell");
   await expect.poll(async () => (await read()).line).toBe("rgb(40, 44, 51)");
   await useTheme("tokyo-night");
   await page.reload();
-  await expect(page.locator(".landing-diff")).not.toHaveAttribute(
-    "data-code-surface",
-    "shell",
-  );
-  expect((await read()).surface).toBe("");
+  await showDiff(page);
+  await expect(viewer).not.toHaveAttribute("data-code-surface", "shell");
+  await expect.poll(async () => (await read()).surface).toBe("");
 });
 
 test("interactive controls are square", async ({ page }) => {

@@ -1,16 +1,7 @@
+import { ArrowRightIcon, GitPullRequestIcon } from "lucide-react";
 import {
-  ArrowRightIcon,
-  CheckIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  CopyIcon,
-  GitPullRequestIcon,
-} from "lucide-react";
-import {
-  useEffect,
   useRef,
   useState,
-  type ComponentProps,
   type FormEvent,
   type MouseEvent,
   type ReactNode,
@@ -22,12 +13,6 @@ import { Button } from "@diffx/ui/components/ui/button";
 import { Input } from "@diffx/ui/components/ui/input";
 import { navigate } from "./identity-context.tsx";
 import {
-  demoAgentReview,
-  demoRepository,
-  demoSummary,
-  demoTree,
-} from "./landing-demo.ts";
-import {
   demoPullRequests,
   parsePullRequestInput,
   pullRequestName,
@@ -38,8 +23,6 @@ const invalidLink =
   "Enter a GitHub pull request link, like github.com/owner/repo/pull/123.";
 const docsUrl = "https://docs.diffx.app";
 const repositoryUrl = "https://github.com/flexdinesh/diffx";
-const installCommand =
-  "curl -fsSL https://raw.githubusercontent.com/flexdinesh/diffx/main/install.sh | sh";
 
 /** In-app links keep client routing; the URL stays a real href. */
 function appLink(to: string) {
@@ -52,19 +35,28 @@ function appLink(to: string) {
   };
 }
 
+/** The landing figures, one per band; tests may pass stand-ins. */
+export interface LandingVisuals {
+  hero: ReactNode;
+  bench: ReactNode;
+  github: ReactNode;
+  comments: ReactNode;
+  agents: ReactNode;
+}
+
 /**
  * The signed-out home on a remote server: one boxed column that says what
- * diffx does, shows a review in the app's own window, and what it hands an
- * agent. With public pull request previews on, pasting a link is the primary
- * action; otherwise "Go to app" is.
+ * diffx does, shows a review being read in the app's own window, then one band
+ * per feature with its copy beside an animated figure. With public pull
+ * request previews on, pasting a link is the primary action; otherwise
+ * "Go to app" is.
  */
 export function Landing({
   previews,
-  demoDiff,
+  visuals,
 }: {
   previews: boolean;
-  /** The rendered demo review (LandingDemoDiff); tests may pass a stand-in. */
-  demoDiff: ReactNode;
+  visuals: LandingVisuals;
 }) {
   return (
     <div className="landing">
@@ -116,70 +108,52 @@ export function Landing({
               </div>
             )}
           </section>
-          <section
-            className="landing-band landing-demo"
-            aria-label="A diffx review"
-          >
-            <DemoWindow demoDiff={demoDiff} />
-            <div className="landing-handoff">
-              <p className="landing-handoff-intro">
-                Copy the review into any coding agent. Agents also read the same
-                comments over <a href={`${docsUrl}/mcp`}>MCP</a> and{" "}
-                <a href={`${docsUrl}/webmcp`}>WebMCP</a>.
-              </p>
-              <AgentReview />
-            </div>
-          </section>
-          <section className="landing-band landing-steps" aria-label="Steps">
-            <ol>
-              <li>
-                <h2>
-                  <span aria-hidden="true">01</span> Run
-                </h2>
-                <p>
-                  Run <code>diffx</code> in any Git repository. Your browser
-                  opens all, staged, or unstaged changes.
-                </p>
-              </li>
-              <li>
-                <h2>
-                  <span aria-hidden="true">02</span> Review
-                </h2>
-                <p>
-                  Read the diff, mark files reviewed, and comment on the lines
-                  that need work.
-                </p>
-              </li>
-              <li>
-                <h2>
-                  <span aria-hidden="true">03</span> Hand off
-                </h2>
-                <p>
-                  Copy the review as agent-ready XML, or let agents read it over{" "}
-                  <a href={`${docsUrl}/mcp`}>MCP</a> and{" "}
-                  <a href={`${docsUrl}/webmcp`}>WebMCP</a>.
-                </p>
-              </li>
-            </ol>
-          </section>
-          <section
-            className="landing-band landing-close"
-            aria-labelledby="landing-close-title"
-          >
-            <h2 id="landing-close-title" className="landing-heading">
-              Also works locally, without signing in
-            </h2>
-            <p className="landing-copy">
-              This hosted app needs a sign-in. The diffx CLI runs on your
-              machine: install it, run it in any Git repository, and review your
-              changes in the browser. No account needed.
+          <figure className="landing-band landing-showcase">
+            <div aria-hidden="true">{visuals.hero}</div>
+            <figcaption>
+              A demo review, marking files reviewed. Not a real repository.
+            </figcaption>
+          </figure>
+          <Feature id="landing-bench" visual={visuals.bench}>
+            <h2 id="landing-bench">Every review on one bench</h2>
+            <p>
+              diffx opens on Reviews: each branch and pull request with changes,
+              newest activity first. Needs attention collects what is new or
+              updated since you last looked, including work your agents just
+              pushed. Move with ↑ and ↓, peek with Space, open with Enter.
             </p>
-            <CommandRow command={installCommand} label="Copy install command" />
-            <p className="landing-note">
-              macOS and Linux. No Go or Node.js required.{" "}
-              <a href={`${docsUrl}/getting-started`}>Getting started</a>
+            <a href={`${docsUrl}/reviewing-changes`}>Reviewing changes</a>
+          </Feature>
+          <Feature id="landing-github" visual={visuals.github}>
+            <h2 id="landing-github">Pull requests arrive on their own</h2>
+            <p>
+              Connect GitHub and follow repositories. Their open pull requests,
+              drafts included, appear on the bench beside your agents' reviews
+              and refresh from GitHub events.
             </p>
-          </section>
+            <a href={`${docsUrl}/github-pull-requests`}>GitHub pull requests</a>
+          </Feature>
+          <Feature id="landing-comments" visual={visuals.comments}>
+            <h2 id="landing-comments">Comment on the lines that need work</h2>
+            <p>
+              Comment on any line or file. Comments and reviewed marks carry
+              across new snapshots, re-anchor to code that moved, and copy out
+              as agent-ready XML.
+            </p>
+            <a href={`${docsUrl}/reviewing-changes`}>
+              Comments and reviewed marks
+            </a>
+          </Feature>
+          <Feature id="landing-agents" visual={visuals.agents}>
+            <h2 id="landing-agents">Let agents address the feedback</h2>
+            <p>
+              Connect Claude Code, Codex, Cursor or OpenCode to diffx over MCP.
+              The agent finds the open threads, fixes each concern, replies with
+              what changed and resolves it. The review shows every reply as it
+              lands.
+            </p>
+            <a href={`${docsUrl}/mcp`}>MCP</a>
+          </Feature>
         </main>
         <footer className="landing-band landing-footer">
           <span>diffx</span>
@@ -271,180 +245,22 @@ function PullRequestAddress() {
   );
 }
 
-/**
- * The demo review inside a static copy of the app's window: header, file
- * tree, the Pierre diff and the status bar. Only the diff is content; the
- * chrome is decoration and stays out of the accessibility tree.
- */
-function DemoWindow({ demoDiff }: { demoDiff: ReactNode }) {
-  return (
-    <figure className="landing-window">
-      <div className="landing-window-frame">
-        <div className="landing-window-header" aria-hidden="true">
-          <BrandMark />
-          <span className="landing-window-sep">/</span>
-          <span className="landing-window-repo">{demoRepository.name}</span>
-          <span className="landing-window-branch">{demoRepository.branch}</span>
-          <span className="landing-window-controls">
-            <span className="landing-window-segment">
-              <span data-selected="">All</span>
-              <span>Staged</span>
-              <span>Unstaged</span>
-            </span>
-            <span className="landing-window-segment">
-              <span>Split</span>
-              <span data-selected="">Unified</span>
-            </span>
-          </span>
-        </div>
-        <div className="landing-window-body">
-          <div className="landing-window-files" aria-hidden="true">
-            <div className="landing-window-pane-header">
-              <span>
-                Changes{" "}
-                <span className="landing-window-count">
-                  {demoSummary.files}
-                </span>
-              </span>
-              <kbd>Alt+/</kbd>
-            </div>
-            <ul className="landing-window-tree">
-              {demoTree.map((entry) => (
-                <li
-                  key={`${entry.depth}-${entry.name}`}
-                  data-kind={entry.kind}
-                  data-selected={entry.selected ? "" : undefined}
-                  style={{
-                    paddingLeft: `calc(var(--space-3) + ${entry.depth} * var(--space-4))`,
-                  }}
-                >
-                  {entry.kind === "directory" &&
-                    (entry.open ? <ChevronDownIcon /> : <ChevronRightIcon />)}
-                  <span className="landing-window-name">{entry.name}</span>
-                  {entry.status && (
-                    <span
-                      className="landing-window-status"
-                      data-status={entry.status}
-                    >
-                      {entry.status}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <div className="landing-window-summary">
-              <dl>
-                <div>
-                  <dt>Files changed</dt>
-                  <dd>{demoSummary.files}</dd>
-                </div>
-                <div>
-                  <dt>Additions</dt>
-                  <dd className="text-success">+{demoSummary.additions}</dd>
-                </div>
-                <div>
-                  <dt>Deletions</dt>
-                  <dd className="text-error">−{demoSummary.deletions}</dd>
-                </div>
-              </dl>
-              <span
-                className="landing-window-bar"
-                style={{
-                  gridTemplateColumns: `${demoSummary.additions}fr ${demoSummary.deletions}fr`,
-                }}
-              >
-                <span data-kind="addition" />
-                <span data-kind="deletion" />
-              </span>
-            </div>
-          </div>
-          <div className="landing-window-diff">{demoDiff}</div>
-        </div>
-        <div className="landing-window-status-bar" aria-hidden="true">
-          <span className="landing-window-live">Local</span>
-          <span>Working tree · uncommitted</span>
-          <span className="landing-window-keys">Alt+J / Alt+K files</span>
-        </div>
-      </div>
-      <figcaption>
-        The review, with a demo change. Not a real repository.
-      </figcaption>
-    </figure>
-  );
-}
-
-/** Shows exactly what "Copy review" exports for the demo comment. */
-function AgentReview() {
-  return (
-    <div className="landing-agent">
-      <div className="landing-agent-header">
-        <span className="font-mono">code-review-comments.xml</span>
-        <CopyButton text={demoAgentReview} label="Copy demo review">
-          Copy review
-        </CopyButton>
-      </div>
-      <pre className="landing-agent-xml">
-        <code>{demoAgentReview}</code>
-      </pre>
-    </div>
-  );
-}
-
-function CommandRow({ command, label }: { command: string; label: string }) {
-  return (
-    <div className="landing-command">
-      <code>
-        <span aria-hidden="true" className="landing-prompt">
-          ${" "}
-        </span>
-        {command}
-      </code>
-      <CopyButton text={command} label={label} variant="default" />
-    </div>
-  );
-}
-
-function CopyButton({
-  text,
-  label,
-  variant = "outline",
-  children = "Copy",
+/** A feature band: copy on the left, its figure on the right. */
+function Feature({
+  id,
+  visual,
+  children,
 }: {
-  text: string;
-  label: string;
-  variant?: ComponentProps<typeof Button>["variant"];
-  children?: ReactNode;
+  id: string;
+  visual: ReactNode;
+  children: ReactNode;
 }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), 2000);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
   return (
-    <>
-      <Button
-        variant={variant}
-        size="sm"
-        touch
-        aria-label={label}
-        onClick={() => {
-          void navigator.clipboard
-            ?.writeText(text)
-            .then(() => setCopied(true))
-            .catch(() => {});
-        }}
-      >
-        {copied ? (
-          <CheckIcon aria-hidden="true" />
-        ) : (
-          <CopyIcon aria-hidden="true" />
-        )}
-        {copied ? "Copied" : children}
-      </Button>
-      <span className="sr-only" role="status">
-        {copied ? "Copied" : ""}
-      </span>
-    </>
+    <section className="landing-band landing-feature" aria-labelledby={id}>
+      <div className="landing-feature-copy">{children}</div>
+      <div className="landing-feature-visual" aria-hidden="true">
+        {visual}
+      </div>
+    </section>
   );
 }

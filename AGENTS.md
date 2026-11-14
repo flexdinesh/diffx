@@ -4,7 +4,8 @@ One product, multi-project repo. Go CLI/server module at the root (`cmd/`,
 `internal/`, `tools/`); embedded React/Vite app in `apps/web/` and admin
 console in `apps/console/`; OpenAPI contracts (Go embed + generated TS client)
 in `packages/api/` and `packages/console-api/`; shared React design
-system in `packages/ui/`; agent plugins in `packages/plugin-*`; user docs site
+system in `packages/ui/`; landing-page animation kit in `packages/stageshow/`;
+agent plugins in `packages/plugin-*`; user docs site
 in `docs-website/`; maintainer docs in `docs/`; cross-package conformance,
 contract and release tests in `test/`.
 

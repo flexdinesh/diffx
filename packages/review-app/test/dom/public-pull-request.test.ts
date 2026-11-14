@@ -19,7 +19,6 @@ import { AppearanceProvider } from "../../src/appearance-context.tsx";
 import { SignIn, SignUp } from "../../src/account.tsx";
 import { IdentityProvider, useIdentity } from "../../src/identity-context.tsx";
 import { Landing } from "../../src/Landing.tsx";
-import { demoAgentReview } from "../../src/landing-demo.ts";
 import {
   PublicLayout,
   PublicPullRequest,
@@ -509,8 +508,17 @@ test("members get their account and Settings instead of Sign in", async () => {
   );
 });
 
+/** Text stand-ins: DOM tests never load the animated figures. */
+const visuals = {
+  hero: "hero figure",
+  bench: "bench figure",
+  github: "github figure",
+  comments: "comments figure",
+  agents: "agents figure",
+};
+
 test("the landing page validates a pasted link and opens its preview", () => {
-  render(createElement(Landing, { previews: true, demoDiff: null }));
+  render(createElement(Landing, { previews: true, visuals }));
   const field = screen.getByLabelText("Pull request URL");
   assert.equal(
     field.getAttribute("placeholder"),
@@ -549,8 +557,8 @@ test("the landing page validates a pasted link and opens its preview", () => {
   );
 });
 
-test("the landing page sends visitors to the app and shows the demo review", () => {
-  render(createElement(Landing, { previews: false, demoDiff: null }));
+test("the landing page sends visitors to the app and shows each feature", () => {
+  render(createElement(Landing, { previews: false, visuals }));
   assert.ok(
     screen.getByRole("heading", {
       level: 1,
@@ -563,11 +571,48 @@ test("the landing page sends visitors to the app and shows the demo review", () 
   const app = screen.getAllByRole("link", { name: "Go to app" });
   assert.ok(app.length > 0);
   for (const link of app) assert.equal(link.getAttribute("href"), "/signin");
-  // The hand-off shows exactly what Copy review exports for the demo comment.
-  const exported = document.querySelector(".landing-agent-xml");
-  assert.equal(exported?.textContent, demoAgentReview);
-  assert.match(demoAgentReview, /line="11"/);
-  assert.match(demoAgentReview, /await sleep\(baseDelay \* 2 \*\* attempt\);/);
+  // One band per feature: its heading labels the band, its figure is
+  // decoration and its docs link explains more.
+  const features: [
+    heading: string,
+    figure: string,
+    link: string,
+    href: string,
+  ][] = [
+    [
+      "Every review on one bench",
+      visuals.bench,
+      "Reviewing changes",
+      "/reviewing-changes",
+    ],
+    [
+      "Pull requests arrive on their own",
+      visuals.github,
+      "GitHub pull requests",
+      "/github-pull-requests",
+    ],
+    [
+      "Comment on the lines that need work",
+      visuals.comments,
+      "Comments and reviewed marks",
+      "/reviewing-changes",
+    ],
+    ["Let agents address the feedback", visuals.agents, "MCP", "/mcp"],
+  ];
+  for (const [heading, figure, link, href] of features) {
+    const band = screen.getByRole("region", { name: heading });
+    assert.equal(
+      within(band).getByRole("link", { name: link }).getAttribute("href"),
+      `https://docs.diffx.app${href}`,
+    );
+    assert.equal(
+      band.querySelector("[aria-hidden='true']")?.textContent,
+      figure,
+    );
+  }
+  // The hosted app is the only way in; nothing offers a local install.
+  assert.equal(screen.queryByText(/without signing in/), null);
+  assert.equal(screen.queryByText(/install\.sh/), null);
   fireEvent.click(app[0] ?? document.body);
   assert.equal(window.location.pathname, "/signin");
 });

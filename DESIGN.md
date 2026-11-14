@@ -942,14 +942,14 @@ at `/design.html` (see `docs/frontend.md`).
 
 ### Signed-out landing page
 
-The one Persuade surface: it tells what diffx does by showing a review in the
-app's own window, then what that review hands an agent, in the same world as
-the app.
+The one Persuade surface: it tells what diffx does by showing a review being
+read in the app's own window, then one band per feature, each showing that
+feature at work, in the same world as the app.
 
 - One boxed column, `--landing-width`, on `--landing-surface` (white in Diffx
   light, `--bg` in every other theme). The box has 1px `--border` sides and a
   full-width hairline under every band; bands inset by `--page-gutter`. Bands:
-  top bar, hero, demo, steps, local CLI close and footer.
+  top bar, hero, showcase, the four feature bands and footer.
 - Top bar: cells split by hairlines, editor-tab style: brand, the mono motto
   "A review bench for your changes." (hidden below 768px), mono Docs and
   GitHub links, and "Go to app" to `/signin`, filled with `--fg` on
@@ -961,24 +961,22 @@ the app.
   requests in one subgrid of icon, mono `owner/repo`, mono `#n` and title.
   With previews off, "Go to app" is the filled primary beside an outline
   "Read the docs".
-- Demo: a static copy of the app window (1px `--border`): a `--shell-canvas`
-  header with the brand mark only, repository, branch chip and static scope
-  and view segments; a `--panel` "Changes" tree with its summary and bar; the
-  Pierre demo diff (unified, wrapped, simple hunk separators, one static
-  inline comment card) flush to its pane, its file header level with the
-  tree's; and a status bar. The chrome is `aria-hidden`; the figure caption
-  labels it a demo. Below 1012px the tree and segments drop and only the diff
-  remains. Under the window, one prose line and exactly what `formatComments`
-  exports for the demo comment, with "Copy review". There is no comments pane
-  and no scroll-driven motion.
-- Steps: three hairline-split cells, Run, Review and Hand off, numbered because
-  the order is the workflow; they stack below 768px.
-- Close: "Also works locally, without signing in" separates the hosted app,
-  which needs a sign-in, from the local CLI, which needs no account. The
-  `curl` installer command with its Copy action, then supported platforms and
-  Getting started.
-- The comment card must stay fully visible in the first viewport at
-  1440x900.
+- Showcase: an animated figure of the app's review window on the dotted diff
+  canvas: header, Changes tree with the app's file icons, and three files.
+  Alt+M marks the open file reviewed; it collapses to its header and the
+  selection moves to the next file. The caption labels it a demo.
+- Features, in order: the Reviews bench (a branch arrives in Needs attention
+  and Space peeks at it), GitHub pull requests (connect, follow repositories,
+  pull requests arrive), comments (a line comment is written and saved) and
+  agents over MCP (an agent finds, fixes, replies to and resolves the thread).
+  Each band puts its copy (an `--text-xl` heading, one prose paragraph and a
+  docs link) left at 5fr and its figure right at 7fr; they stack below 1012px.
+- Figures are faux product UI built with `packages/stageshow` on the app's
+  tokens, Pierre syntax tokens and file icons, never screenshots. Each plays
+  once when scrolled into view, shows its final frame under reduced motion,
+  and has its own phone design. Figures are `aria-hidden`; the copy beside
+  them carries the meaning. Real file icons keep their filled monograms beside
+  outline folder icons, as in the app.
 - Accent is limited to the primary actions, the selected demo states and inline
   prose links. Claims come only from the user docs; demo data is labelled;
   there are no feature card grids, kickers or decorative imagery.
