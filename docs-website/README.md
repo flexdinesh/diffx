@@ -42,16 +42,27 @@ The pnpm workspace also exposes `pnpm --filter @diffx/docs dev`, `build`, and
 
 Keep pages brief.
 
-## Deploy (Cloudflare Pages)
+## Deploy (Cloudflare Workers)
 
-- Root directory: repository root.
-- Build command: `pnpm build:docs`.
-- Output directory: `docs-website/dist/public`.
-- Node version: from `.node-version`.
-- Environment: `HUSKY=0`.
+The site deploys as static files through Cloudflare Workers Static Assets and
+Workers Builds, with no Worker code. `wrangler.jsonc` owns the Worker names,
+compatibility date, assets directory (`dist/public`) and 404 handling
+(`404-page` serves `404.html`). Wrangler stays out of the lockfile; deploys
+run it through `npx`. Build and deploy commands live in the dashboard:
 
-`DIFFX_DOCS_URL` sets the site URL. Production leaves it unset, which defaults
-to `https://docs.diffx.app`. Staging sets
-`DIFFX_DOCS_URL=https://stagingdocs.diffx.app`; any non-production URL emits
-`noindex, nofollow`, points canonical links at production, and skips
+| Setting         | Production                                                                  | Staging                                                                  |
+| --------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Worker name     | `diffx-docs`                                                                | `diffx-docs-staging`                                                     |
+| Root directory  | repository root                                                             | repository root                                                          |
+| Build command   | `pnpm install --frozen-lockfile --filter @diffx/docs... && pnpm build:docs` | same                                                                     |
+| Deploy command  | `npx wrangler deploy --config docs-website/wrangler.jsonc --env ""`         | `npx wrangler deploy --config docs-website/wrangler.jsonc --env staging` |
+| Build variables | `SKIP_DEPENDENCY_INSTALL=1`, `HUSKY=0`                                      | same, plus `DIFFX_DOCS_URL=https://stagingdocs.diffx.app`                |
+
+Worker names must match `wrangler.jsonc`. Node comes from `.node-version` and
+pnpm from `packageManager`. The filtered install skips the application
+workspaces; `HUSKY=0` skips the root `prepare` hook.
+
+`DIFFX_DOCS_URL` is read at build time and sets the site URL. Production leaves
+it unset, which defaults to `https://docs.diffx.app`. Any non-production URL
+emits `noindex, nofollow`, points canonical links at production, and skips
 `sitemap.xml` and `robots.txt`.
