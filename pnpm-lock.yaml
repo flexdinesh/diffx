@@ -296,9 +296,6 @@ importers:
 
   docs-website:
     dependencies:
-      lucide-react:
-        specifier: 'catalog:'
-        version: 1.43.0(react@19.3.1)
       react:
         specifier: ~19.3.1
         version: 19.3.1
@@ -11782,10 +11779,6 @@ snapshots:
   lucide-react@1.43.0(react@19.2.8):
     dependencies:
       react: 19.2.8
-
-  lucide-react@1.43.0(react@19.3.1):
-    dependencies:
-      react: 19.3.1
 
   lz-string@1.5.0: {}
 
