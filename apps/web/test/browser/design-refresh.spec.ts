@@ -196,11 +196,16 @@ test("Diffx themes put context code on the shell surface; palettes keep theirs",
   const contextLine = viewer
     .locator('[data-line][data-line-type^="context"]')
     .first();
+  // Added and deleted files lead the fixture; context lines start further down.
+  await page.setViewportSize({ width: 1440, height: 4_000 });
   await page.goto("/");
   await useTheme("dark");
   await page.reload();
   await showDiff(page);
   await expect(viewer).toHaveAttribute("data-code-surface", "shell");
+  await page
+    .getByRole("button", { name: "src/components/Button.tsx, Modified" })
+    .click();
   await expect(contextLine).toHaveCSS("background-color", "rgb(40, 44, 51)");
   await useTheme("tokyo-night");
   await page.reload();
