@@ -3,9 +3,10 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Copy,
   Folder,
   FolderOpen,
-  MessageSquarePlus,
+  MessageSquare,
   Plus,
   UnfoldVertical,
 } from "lucide-react";
@@ -35,23 +36,30 @@ const keywords = new Set([
   "async",
   "await",
   "catch",
-  "const",
-  "describe",
   "export",
   "for",
   "from",
-  "function",
   "if",
   "import",
-  "let",
   "new",
   "return",
   "throw",
   "try",
 ]);
-const types = new Set(["Promise", "T", "void", "number", "string"]);
+/** Pierre colors declarations, arrows and type names as storage. */
+const storage = new Set([
+  "const",
+  "function",
+  "let",
+  "Promise",
+  "T",
+  "void",
+  "number",
+  "string",
+]);
+const operator = /^(?:=>|[=+\-*/<>!|&?%]+)$/;
 const tokenPattern =
-  /("(?:[^"\\]|\\.)*"|`[^`]*`)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_$][\w$]*)|(\s+)|([^\sA-Za-z_$\d"`]+)/g;
+  /("(?:[^"\\]|\\.)*"|`[^`]*`)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_$][\w$]*)|(\s+)|(=>|[=+\-*/<>!|&?%]+|[^\sA-Za-z_$\d"`])/g;
 
 /** A small TypeScript highlighter in Pierre's palette, for demo lines. */
 export function Code({ text }: { text: string }) {
@@ -76,8 +84,8 @@ export function Code({ text }: { text: string }) {
       const after = text.slice((match.index ?? 0) + whole.length);
       const className = keywords.has(word)
         ? "t-kw"
-        : types.has(word)
-          ? "t-type"
+        : storage.has(word)
+          ? "t-store"
           : after.startsWith("(") || after.startsWith("<")
             ? "t-fn"
             : "t-var";
@@ -90,7 +98,16 @@ export function Code({ text }: { text: string }) {
       spans.push(whole);
     } else {
       spans.push(
-        <span key={key} className="t-punct">
+        <span
+          key={key}
+          className={
+            whole === "=>"
+              ? "t-store"
+              : operator.test(whole)
+                ? "t-op"
+                : "t-punct"
+          }
+        >
           {whole}
         </span>,
       );
@@ -149,14 +166,18 @@ export function DiffRow({
   );
 }
 
+/** Pierre's file header as the review draws it: status glyph, path, copy,
+ * counts (deletions first), the Reviewed toggle and a file comment button. */
 export function FileHeader({
   path,
+  status,
   plus,
   minus,
   reviewed,
   reviewedTarget,
 }: {
   path: string;
+  status: "M" | "A";
   plus: number;
   minus: number;
   reviewed: boolean;
@@ -165,11 +186,12 @@ export function FileHeader({
   return (
     <div className="dx-file-header">
       <ChevronDown className="dx-chevron" />
-      <FileIcon path={path} reviewed={false} />
+      <span className="dx-change" data-status={status} />
       <span className="dx-file-path">{path}</span>
+      <Copy className="dx-copy" />
       <span className="dx-file-stats">
+        {minus > 0 && <span className="dx-minus">-{minus}</span>}
         {plus > 0 && <span className="dx-plus">+{plus}</span>}
-        {minus > 0 && <span className="dx-minus">−{minus}</span>}
       </span>
       <span className="dx-reviewed" data-target={reviewedTarget}>
         <span className="dx-check" data-on={reviewed || undefined}>
@@ -178,7 +200,7 @@ export function FileHeader({
         Reviewed
       </span>
       <span className="dx-file-comment">
-        <MessageSquarePlus />
+        <MessageSquare />
       </span>
     </div>
   );

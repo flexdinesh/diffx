@@ -1,7 +1,8 @@
 /*
  * Landing page figures: faux diffx UI drawn with the app's own tokens
- * (packages/ui/src/tokens.css) and Pierre's syntax palette. Vocs sets
- * `color-scheme` on <html>, so `light-dark()` follows the docs theme.
+ * (packages/ui/src/tokens.css). Code takes Pierre's colors: a palette theme
+ * defines `--diffs-*`; the default Diffx themes render with Pierre's own
+ * pierre-light/pierre-dark, mirrored as the `--pierre-*` fallbacks.
  */
 .dxl {
   --dx-bg: var(--bg);
@@ -11,6 +12,7 @@
   --dx-secondary: var(--text-secondary);
   --dx-muted: var(--muted);
   --dx-border: var(--border);
+  --dx-separator: var(--border-muted);
   --dx-control: var(--border-control);
   --dx-hover: var(--hover);
   --dx-canvas: var(--diff-canvas);
@@ -22,40 +24,30 @@
   --dx-success-bg: var(--success-bg);
   --dx-warning: var(--warning);
   --dx-error: var(--error);
-  --dx-anchor: var(--review-anchor);
   --dx-brand-removed: var(--brand-removed);
   --dx-brand-added: var(--brand-added);
-  --dx-file-code: var(--file-code);
-  --dx-file-markup: var(--file-markup);
-  --dx-file-data: var(--file-data);
-  --dx-code-bg: var(--diffs-background);
-  --dx-code-fg: var(--diffs-foreground);
-  --dx-code-num: var(--diff-number-base);
-  --dx-add: var(--diffs-addition-color-override);
-  --dx-del: var(--diffs-deletion-color-override);
-  --dx-syn-kw: var(--diffs-token-keyword);
-  --dx-syn-str: var(--diffs-token-string);
-  --dx-syn-fn: var(--diffs-token-function);
-  --dx-syn-num: var(--diffs-token-constant);
-  --dx-syn-type: var(--diffs-token-keyword);
-  --dx-syn-var: var(--diffs-token-parameter);
-  --dx-syn-punct: var(--diffs-token-punctuation);
-  --dx-sans: var(--font-sans);
-  --dx-mono: var(--font-mono);
+  --dx-code-bg: var(--bg);
+  --dx-code-fg: var(--diffs-foreground, var(--pierre-fg));
+  --dx-add: var(--diffs-addition-color-override, var(--pierre-addition));
+  --dx-del: var(--diffs-deletion-color-override, var(--pierre-deletion));
+  --dx-syn-kw: var(--diffs-token-keyword, var(--pierre-keyword));
+  --dx-syn-store: var(--diffs-token-keyword, var(--pierre-storage));
+  --dx-syn-str: var(--diffs-token-string, var(--pierre-string));
+  --dx-syn-fn: var(--diffs-token-function, var(--pierre-function));
+  --dx-syn-num: var(--diffs-token-constant, var(--pierre-constant));
+  --dx-syn-var: var(--diffs-token-parameter, var(--pierre-variable));
+  --dx-syn-punct: var(--diffs-token-punctuation, var(--pierre-punctuation));
+  --dx-syn-op: var(--diffs-token-punctuation, var(--pierre-operator));
 
   /* Kit tokens the cursor and keycaps read. */
   --ss-accent: var(--dx-accent);
 }
 
-/* The figure ground: the app's dotted diff canvas, the "quiet frame". */
+/* The page is the ground: no plate, no outline, no window shadow. Windows
+   meet the band's hairlines and bleed past them. */
 .dxl .ss-stage {
   overflow: hidden;
-  background-color: var(--dx-canvas);
-  background-image: radial-gradient(var(--dx-dot) 1px, transparent 1.2px);
-  background-size: 12px 12px;
-  /* Drawn over the content, so the design size stays the full stage. */
-  outline: 1px solid var(--dx-border);
-  outline-offset: -1px;
+  background: transparent;
   font-family: var(--font-sans);
   font-size: var(--text-sm);
   line-height: var(--leading-ui);
@@ -78,7 +70,6 @@
   flex-direction: column;
   background: var(--dx-bg);
   border: 1px solid var(--dx-border);
-  box-shadow: var(--shadow-overlay);
   overflow: hidden;
 }
 
@@ -122,15 +113,6 @@
   font-weight: var(--weight-semibold);
 }
 
-.dxl .dx-crumb--mono {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-}
-
-.dxl .dx-sep {
-  color: var(--dx-muted);
-}
-
 .dxl .dx-header-actions {
   display: flex;
   align-items: center;
@@ -145,13 +127,6 @@
   width: 32px;
   height: 32px;
   color: var(--dx-fg);
-}
-
-.dxl .dx-stepper {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--dx-muted);
-  padding: 0 var(--space-1);
 }
 
 .dxl .dx-body {
@@ -401,6 +376,7 @@
   position: relative;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
   padding: var(--space-3);
   background-color: var(--dx-canvas);
   background-image: radial-gradient(var(--dx-dot) 1px, transparent 1.2px);
@@ -424,11 +400,16 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  height: 38px;
-  padding: 0 var(--space-2) 0 calc(var(--space-1) * 2.5);
-  background: var(--dx-panel);
+  height: calc(2 * var(--space-4) + var(--space-1));
+  padding: 0 var(--space-2) 0 var(--space-3);
+  background: var(--diff-file-header, var(--dx-bg));
+  border-bottom: 1px solid var(--dx-border);
   color: var(--dx-fg);
   white-space: nowrap;
+}
+
+.dxl .dx-file[data-collapsed] .dx-file-header {
+  border-bottom-color: transparent;
 }
 
 .dxl .dx-file-header svg.lucide {
@@ -442,9 +423,25 @@
   transform: rotate(-90deg);
 }
 
+/* The app's square status glyphs (style.css), masked in the status color. */
+.dxl .dx-change {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  background: currentColor;
+  mask: var(--status-glyph-change) center / contain no-repeat;
+  color: var(--dx-warning);
+}
+
+.dxl .dx-change[data-status="A"] {
+  mask-image: var(--status-glyph-new);
+  color: var(--dx-success);
+}
+
 .dxl .dx-file-path {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dxl .dx-file-stats {
@@ -463,15 +460,16 @@
   color: var(--dx-error);
 }
 
+/* Button's outline-check variant: muted, success once pressed. */
 .dxl .dx-reviewed {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1-5);
-  height: 26px;
-  padding: 0 calc(var(--space-1) * 2.5) 0 var(--space-2);
-  border: 1px solid var(--dx-border);
+  height: var(--control-small);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--dx-separator);
   background: var(--dx-bg);
-  color: var(--dx-fg);
+  color: var(--dx-muted);
   transition:
     background-color 160ms ease,
     border-color 160ms ease;
@@ -516,12 +514,16 @@
   transform: none;
 }
 
+.dxl .dx-reviewed:has(.dx-check[data-on]) {
+  color: var(--dx-success);
+}
+
 .dxl .dx-file-comment {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--dx-border);
+  width: var(--control-small);
+  height: var(--control-small);
+  border: 1px solid var(--dx-separator);
   background: var(--dx-bg);
 }
 
@@ -543,7 +545,7 @@
 .dxl .dx-num {
   padding-right: calc(var(--space-1) * 2.5);
   text-align: right;
-  color: var(--dx-code-num);
+  color: color-mix(in lab, var(--dx-code-fg) 65%, var(--dx-code-bg));
   user-select: none;
 }
 
@@ -553,31 +555,62 @@
   padding-left: var(--space-3);
 }
 
+/* Change rows: Pierre's tint, a deeper gutter, a 4px bar in the gutter
+   (dashed for deletions) and line numbers in the change hue. */
 .dxl .dx-row[data-kind="add"] {
-  background: color-mix(in srgb, var(--dx-add) 11%, var(--dx-code-bg));
+  background: color-mix(
+    in lab,
+    var(--dx-code-bg) var(--pierre-tint),
+    var(--dx-add)
+  );
 }
 
 .dxl .dx-row[data-kind="add"] .dx-num {
-  background: color-mix(in srgb, var(--dx-add) 20%, var(--dx-code-bg));
-  color: color-mix(in srgb, var(--dx-add) 70%, var(--dx-code-fg));
-  box-shadow: none;
+  background: color-mix(
+    in lab,
+    var(--dx-code-bg) var(--pierre-tint-gutter),
+    var(--dx-add)
+  );
+  color: color-mix(in lab, var(--dx-add) 70%, var(--dx-code-fg));
 }
 
 .dxl .dx-row[data-kind="del"] {
-  background: color-mix(in srgb, var(--dx-del) 10%, var(--dx-code-bg));
+  background: color-mix(
+    in lab,
+    var(--dx-code-bg) var(--pierre-tint),
+    var(--dx-del)
+  );
 }
 
 .dxl .dx-row[data-kind="del"] .dx-num {
-  background: color-mix(in srgb, var(--dx-del) 18%, var(--dx-code-bg));
-  color: color-mix(in srgb, var(--dx-del) 70%, var(--dx-code-fg));
-  box-shadow: none;
+  background: color-mix(
+    in lab,
+    var(--dx-code-bg) var(--pierre-tint-gutter),
+    var(--dx-del)
+  );
+  color: color-mix(in lab, var(--dx-del) 75%, var(--dx-code-fg));
+}
+
+.dxl .dx-row:is([data-kind="add"], [data-kind="del"]) .dx-num::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--dx-add);
+}
+
+.dxl .dx-row[data-kind="del"] .dx-num::before {
+  background: linear-gradient(
+    0deg,
+    color-mix(in lab, var(--dx-code-bg) var(--pierre-tint), var(--dx-del)) 50%,
+    var(--dx-del) 50%
+  );
+  background-size: 4px 4px;
 }
 
 .dxl .dx-row[data-kind="hunk"] {
   background: var(--dx-panel);
   color: var(--dx-muted);
-  font-family: var(--font-sans);
-  font-size: var(--text-xs);
 }
 
 .dxl .dx-row[data-kind="hunk"] .dx-num {
@@ -591,17 +624,17 @@
   height: 14px;
 }
 
-/* A visible comment tints the rows it covers. */
-.dxl .dx-row[data-anchored] .dx-num {
-  background: color-mix(in srgb, var(--dx-add) 34%, var(--dx-code-bg));
+/* A commented line darkens its tint, as DiffWorkspace's data-commented-line. */
+.dxl .dx-row[data-anchored][data-kind="add"] {
+  background: color-mix(
+    in srgb,
+    color-mix(in lab, var(--dx-code-bg) var(--pierre-tint), var(--dx-add)) 76%,
+    color-mix(in srgb, var(--dx-add) 72%, var(--pierre-comment-shade))
+  );
 }
 
-.dxl .dx-row[data-anchored]::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: color-mix(in srgb, var(--dx-add) 9%, transparent);
-  pointer-events: none;
+.dxl .dx-row[data-anchored][data-kind="ctx"] {
+  background: color-mix(in srgb, var(--dx-code-bg) 84%, var(--review-anchor));
 }
 
 .dxl .dx-row[data-hovered] .dx-num {
@@ -648,8 +681,9 @@
 .dxl .t-num {
   color: var(--dx-syn-num);
 }
-.dxl .t-type {
-  color: var(--dx-syn-type);
+.dxl .t-type,
+.dxl .t-store {
+  color: var(--dx-syn-store);
 }
 .dxl .t-var {
   color: var(--dx-syn-var);
@@ -657,21 +691,38 @@
 .dxl .t-punct {
   color: var(--dx-syn-punct);
 }
+.dxl .t-op {
+  color: var(--dx-syn-op);
+}
 
 /* ---------- Comment card ---------- */
 
+/* Threads sit in the code column, as the review's inline annotations. */
 .dxl .dx-annotation {
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-2)
+    calc(var(--space-12) + var(--space-2));
   background: var(--dx-code-bg);
   font-family: var(--font-sans);
   white-space: normal;
 }
 
 .dxl .dx-comment {
-  padding: var(--space-2) var(--space-3) var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-2);
   background: var(--dx-panel);
   border: 1px solid var(--dx-border);
   color: var(--dx-fg);
+}
+
+.dxl .dx-comment-label {
+  color: var(--dx-secondary);
+}
+
+.dxl .dx-danger {
+  color: var(--dx-error);
+}
+
+.dxl .dx-danger svg.lucide {
+  color: var(--dx-error);
 }
 
 .dxl .dx-comment-head {
@@ -681,10 +732,6 @@
   height: 24px;
   margin-bottom: var(--space-1-5);
   white-space: nowrap;
-}
-
-.dxl .dx-comment-title {
-  font-weight: var(--weight-semibold);
 }
 
 .dxl .dx-comment-meta {
@@ -741,7 +788,7 @@
 }
 
 .dxl .dx-comment-body {
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   line-height: var(--leading-copy);
   color: var(--dx-fg);
 }
@@ -762,15 +809,19 @@
   margin-right: calc(2 * var(--ss-draft-pad-x));
 }
 
-/* Phone column: the file headers drop their comment button. */
-.dx-hero .ss-stage[data-layout="compact"] .dx-file-comment,
-.dx-comments .ss-stage[data-layout="compact"] .dx-file-comment {
+/* Phone column: file headers drop their copy and comment buttons, and
+   threads start at the gutter's edge. */
+.dxl .ss-stage[data-layout="compact"] :is(.dx-file-comment, .dx-copy) {
   display: none;
 }
 
+.dxl .ss-stage[data-layout="compact"] .dx-annotation {
+  padding-left: var(--space-3);
+}
+
 .dxl .dx-comment-actions .dx-icon-button {
-  width: 24px;
-  height: 24px;
+  width: var(--control-compact);
+  height: var(--control-compact);
   color: var(--dx-secondary);
 }
 
@@ -802,7 +853,7 @@
 }
 
 .dxl .dx-button[data-variant="outline"] {
-  border-color: var(--dx-border);
+  border-color: var(--dx-control);
   background: var(--dx-bg);
   color: var(--dx-fg);
 }
@@ -840,7 +891,7 @@
   --ss-draft-ring: var(--dx-accent);
   --ss-draft-pad-y: var(--space-2);
   --ss-draft-pad-x: var(--space-3);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   line-height: var(--leading-copy);
   color: var(--dx-fg);
 }
@@ -879,122 +930,141 @@
   font-weight: var(--weight-medium);
 }
 
-.dxl .dx-resolved-line {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1-5);
-  margin: 0 calc(var(--space-3) * -1);
-  padding: var(--space-2) var(--space-3) var(--space-3);
-  border-top: 1px solid var(--dx-border);
-  font-size: var(--text-xs);
-  color: var(--dx-muted);
-}
-
-.dxl .dx-resolved-line svg.lucide {
-  width: 14px;
-  height: 14px;
-  color: var(--dx-success);
-}
-
 /* ---------- Reviews bench ---------- */
 
 .dxl .dx-pane-title {
   display: flex;
   align-items: center;
-  height: 36px;
+  height: var(--panel-header-height);
   flex: none;
-  padding: 0 var(--space-3);
+  padding: 0 var(--space-4);
   border-bottom: 1px solid var(--dx-border);
   color: var(--dx-fg);
-}
-
-.dxl .dx-facets {
-  padding-bottom: var(--space-2);
-}
-
-.dxl .dx-facets .dx-pane-title {
-  margin-bottom: var(--space-1-5);
-}
-
-.dxl .dx-facet {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  height: 28px;
-  margin: 0 var(--space-1-5);
-  padding: 0 var(--space-1-5);
-  color: var(--dx-fg);
-  white-space: nowrap;
-}
-
-.dxl .dx-facet svg.lucide {
-  width: 14px;
-  height: 14px;
-  color: var(--dx-muted);
-}
-
-.dxl .dx-facet[data-selected] {
-  background: var(--dx-accent-bg);
-  color: var(--dx-accent);
-}
-
-.dxl .dx-facet[data-selected] svg.lucide {
-  color: var(--dx-accent);
-}
-
-.dxl .dx-facet-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.dxl .dx-facet .dx-count {
-  margin-left: auto;
-}
-
-.dxl .dx-facet-label {
-  margin: var(--space-3) var(--space-3) var(--space-1);
-  font-size: var(--text-xs);
-  color: var(--dx-muted);
+  font-weight: var(--weight-semibold);
 }
 
 .dxl .dx-table {
   background: var(--dx-bg);
 }
 
+/* Rows keep their height and run off the window's foot. */
+.dxl .dx-table > * {
+  flex: none;
+}
+
+.dxl .dx-bench-toolbar {
+  gap: var(--space-2);
+  height: calc(var(--control-height) + 2 * var(--space-2));
+  padding: 0 var(--space-2);
+}
+
+/* The toolbar names the facet, as the bench's .bench-title. */
+.dxl .dx-bench-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-2);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+.dxl .dx-bench-heading svg.lucide {
+  color: var(--dx-muted);
+}
+
+.dxl .dx-bench-heading .dx-count {
+  font-weight: var(--weight-normal);
+}
+
+/* Mark, icon, review, source, activity: the bench's grid without the
+   repository, state and files columns a 600px window cannot hold. */
 .dxl .dx-bench-row {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) 132px 30px;
+  grid-template-columns: var(--space-2) 14px minmax(0, 1fr) 7.5rem 3rem;
   align-items: center;
-  column-gap: calc(var(--space-1) * 2.5);
-  height: 30px;
-  padding: 0 calc(var(--space-1) * 2.5);
+  column-gap: var(--space-3);
+  min-height: var(--control-height);
+  padding: 0 var(--space-4) 0 var(--space-2);
   font-size: var(--text-sm);
   color: var(--dx-fg);
   white-space: nowrap;
+  border-bottom: 1px solid var(--dx-separator);
   transition: background-color 180ms ease;
 }
 
-.dxl .dx-bench-row[data-compact] {
-  grid-template-columns: minmax(0, 1fr) 30px;
-  padding: 0 var(--space-3);
+.dxl .dx-bench-row > svg.lucide {
+  width: 14px;
+  height: 14px;
+  color: var(--dx-muted);
 }
 
-/* Phone column: unread reads from the section and the bold title. */
-.dxl .dx-bench-row[data-compact] .dx-unread {
-  display: none;
+/* Peek takes the source column, as the bench does under 1280px. */
+.dxl .dx-table[data-peek] .dx-bench-row {
+  grid-template-columns: var(--space-2) 14px minmax(0, 1fr) 0 3rem;
+}
+
+.dxl .dx-table[data-peek] .dx-bench-source {
+  opacity: 0;
+}
+
+.dxl .dx-bench-source {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-xs);
+  color: var(--dx-secondary);
+  transition: opacity 160ms ease;
+}
+
+.dxl .dx-bench-source svg.lucide {
+  width: 14px;
+  height: 14px;
+  color: var(--dx-muted);
+}
+
+/* Phones: mark, icon, title and activity, the repository under the title. */
+.dxl .dx-bench-row[data-compact] {
+  grid-template-columns: var(--space-2) 14px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "mark icon title age"
+    ". . meta meta";
+  row-gap: var(--space-0-5);
+  padding-block: var(--space-2);
+}
+
+.dxl .dx-bench-row[data-compact] > :nth-child(1) {
+  grid-area: mark;
+}
+.dxl .dx-bench-row[data-compact] > :nth-child(2) {
+  grid-area: icon;
+}
+.dxl .dx-bench-row[data-compact] > :nth-child(3) {
+  grid-area: title;
+}
+.dxl .dx-bench-row[data-compact] > :nth-child(4) {
+  grid-area: meta;
+}
+.dxl .dx-bench-row[data-compact] > :nth-child(5) {
+  grid-area: age;
+}
+
+.dxl .dx-bench-meta {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--dx-muted);
 }
 
 .dxl .dx-bench-columns {
-  height: 28px;
+  min-height: var(--control-small);
   font-size: var(--text-xs);
   color: var(--dx-muted);
-  border-bottom: 1px solid var(--dx-border);
 }
 
 .dxl .dx-bench-row[data-selected] {
   background: var(--dx-accent-bg);
-  box-shadow: none;
 }
 
 .dxl .dx-unread {
@@ -1007,22 +1077,6 @@
 
 .dxl .dx-bench-row[data-unread] .dx-unread {
   opacity: 1;
-}
-
-.dxl .dx-bench-title {
-  max-width: 400px;
-  transition: max-width 420ms cubic-bezier(0.25, 0.8, 0.25, 1);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  overflow: hidden;
-}
-
-.dxl .dx-bench-title svg.lucide {
-  width: 14px;
-  height: 14px;
-  color: var(--dx-muted);
 }
 
 .dxl .dx-bench-name {
@@ -1044,21 +1098,6 @@
   color: var(--dx-accent);
 }
 
-.dxl .dx-bench-source {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  overflow: hidden;
-  font-size: var(--text-xs);
-  color: var(--dx-secondary);
-}
-
-.dxl .dx-bench-source svg.lucide {
-  width: 14px;
-  height: 14px;
-  color: var(--dx-muted);
-}
-
 .dxl .dx-bench-age {
   text-align: right;
   font-family: var(--font-mono);
@@ -1068,41 +1107,27 @@
 
 .dxl .dx-bench-columns .dx-bench-age {
   font-family: var(--font-sans);
-  font-size: var(--text-xs);
 }
 
 .dxl .dx-section {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  height: 30px;
-  padding: 0 var(--space-3) 0 var(--space-4);
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   color: var(--dx-secondary);
   background: var(--dx-panel);
-  border-bottom: 1px solid var(--dx-border);
+  border-bottom: 1px solid var(--dx-separator);
 }
 
-.dxl .dx-bench-row + .dx-section {
-  border-top: 1px solid var(--dx-border);
-}
-
-.dxl .dx-section-end {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1-5);
-  margin-left: auto;
+.dxl .dx-section .dx-count {
   font-weight: var(--weight-normal);
-  color: var(--dx-secondary);
-}
-
-.dxl .dx-section-end svg.lucide {
-  width: 14px;
-  height: 14px;
 }
 
 .dxl .dx-button[data-on] {
+  border-color: var(--dx-accent);
   background: var(--dx-accent-bg);
   color: var(--dx-accent);
 }
@@ -1117,55 +1142,38 @@
   border-color: color-mix(in srgb, var(--dx-on-accent) 55%, transparent);
 }
 
-/* Peek covers the trailing columns: they fade and titles end at its edge. */
-.dxl .dx-table :is(.dx-bench-source, .dx-bench-age, .dx-section-end) {
-  transition: opacity 200ms ease;
-}
-
-.dxl
-  .dx-table[data-peek]
-  :is(.dx-bench-source, .dx-bench-age, .dx-section-end) {
-  opacity: 0;
-}
-
-.dxl .dx-table[data-peek] .dx-bench-title {
-  max-width: 126px;
+/* Peek trails the table as a flush pane: it opens by width, its content laid
+   out at full width from the start so no text reflows as it slides in. */
+.dxl .dx-bench-body {
+  position: relative;
 }
 
 .dxl .dx-peek {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 236px;
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  flex: none;
+  width: 0;
+  overflow: hidden;
   background: var(--dx-panel);
-  border-left: 1px solid var(--dx-border);
-  box-shadow: var(--shadow-overlay);
-  transform: translateX(calc(100% + 24px));
-  transition: transform 420ms cubic-bezier(0.25, 0.8, 0.25, 1);
-  will-change: transform;
+  border-left: 1px solid transparent;
+  transition:
+    width 420ms cubic-bezier(0.25, 0.8, 0.25, 1),
+    border-color 120ms ease;
 }
 
 .dxl .dx-peek > * {
+  width: 250px;
   opacity: 0;
   transition: opacity 120ms ease;
 }
 
 .dxl .dx-peek[data-open] {
-  transform: none;
+  width: 251px;
+  border-left-color: var(--dx-border);
 }
 
-/* Content arrives once the pane has cleared the window edge. */
 .dxl .dx-peek[data-open] > * {
   opacity: 1;
   transition: opacity 260ms ease 220ms;
-}
-
-.dx-bench .dx-toolbar {
-  height: 42px;
-  padding: 0 var(--space-2);
 }
 
 .dxl .dx-peek-body {
@@ -1251,12 +1259,35 @@
 
 /* ---------- Settings and GitHub ---------- */
 
+/* The settings page: its nav of ghost links beside the section, one page
+   surface, no pane rule between them. */
 .dxl .dx-settings-nav {
-  padding-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: none;
+  width: 128px;
+  padding: var(--space-4) 0 0 var(--space-3);
+  background: var(--dx-bg);
 }
 
-.dxl .dx-settings-nav .dx-facet {
-  padding-left: calc(var(--space-1) * 2.5);
+.dxl .dx-nav-item {
+  display: flex;
+  align-items: center;
+  height: var(--control-small);
+  padding: 0 var(--space-2);
+  color: var(--dx-secondary);
+}
+
+/* Button's rail variant: the current page keeps the accent fill. */
+.dxl .dx-nav-item[data-selected] {
+  background: var(--dx-accent-bg);
+  color: var(--dx-accent);
+}
+
+.dxl .dx-connect > * {
+  display: block;
+  align-self: start;
 }
 
 .dxl .dx-mini-bench {
@@ -1274,30 +1305,19 @@
 }
 
 .dxl .dx-settings {
-  padding: var(--space-4) calc(var(--space-1) * 5) 0;
+  padding: var(--space-4) var(--space-6) 0 var(--space-4);
   background: var(--dx-bg);
+  white-space: normal;
+}
+
+.dxl .dx-connect {
+  margin-bottom: var(--space-6);
 }
 
 .dxl .dx-settings-title {
   margin-bottom: calc(var(--space-1) * 3.5);
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
-}
-
-.dxl .dx-steps {
-  margin: 0;
-  padding: 0 0 0 calc(var(--space-1) * 4.5);
-  list-style: decimal;
-  color: var(--dx-fg);
-}
-
-.dxl .dx-steps > li {
-  padding-left: var(--space-1);
-  margin-bottom: calc(var(--space-1) * 4.5);
-}
-
-.dxl .dx-steps > li::marker {
-  color: var(--dx-secondary);
 }
 
 .dxl .dx-step-title {
@@ -1326,9 +1346,14 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  height: 32px;
-  border-bottom: 1px solid var(--dx-border);
-  font-size: var(--text-sm);
+  height: calc(var(--control-small) + var(--space-2));
+  border-bottom: 1px solid var(--dx-separator);
+}
+
+.dxl .dx-repo svg.lucide:not(.dx-check svg) {
+  width: 14px;
+  height: 14px;
+  color: var(--dx-muted);
 }
 
 .dxl .dx-satellite {
@@ -1383,6 +1408,7 @@
 }
 
 .dxl .dx-mini-number {
+  margin-left: auto;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--dx-muted);
@@ -1396,45 +1422,6 @@
 
 .dxl .dx-mini-row[data-unread] .dx-mini-title {
   font-weight: var(--weight-semibold);
-}
-
-.dxl .dx-mini-mono {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-}
-
-.dxl .dx-mini-meta {
-  margin-left: auto;
-  font-size: var(--text-xs);
-  color: var(--dx-muted);
-}
-
-.dxl .dx-mini-foot {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1-5);
-  height: 32px;
-  padding: 0 var(--space-3);
-  font-size: var(--text-xs);
-  color: var(--dx-muted);
-}
-
-.dxl .dx-mini-foot svg.lucide {
-  width: 13px;
-  height: 13px;
-}
-
-/* ---------- Figures built from one file ---------- */
-
-.dxl .dx-figure-file {
-  position: absolute;
-  overflow: hidden;
-  box-shadow: var(--shadow-overlay);
-}
-
-/* The rows are the card's own surface: the file runs on under its cut. */
-.dxl .dx-figure-file .dx-rows {
-  background: var(--dx-bg);
 }
 
 /* Two rows in one cell, crossfaded. */
@@ -1464,39 +1451,37 @@
 
 /* ---------- Agent terminal and thread ---------- */
 
+/* The agent's terminal: a satellite over the review's chrome, on the app's
+   surface and mono type rather than any one agent's colors. */
 .dxl .dx-terminal {
-  position: absolute;
   display: flex;
   flex-direction: column;
-  background: var(--dx-code-bg);
   color: var(--dx-fg);
-  border: 1px solid var(--dx-border);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   line-height: var(--leading-copy);
-  box-shadow: var(--shadow-overlay);
 }
 
 .dxl .dx-terminal-bar {
   display: flex;
   align-items: center;
-  height: 30px;
+  height: var(--control-small);
   flex: none;
   padding: 0 var(--space-3);
   color: var(--dx-muted);
+  background: var(--dx-shell);
   border-bottom: 1px solid var(--dx-border);
 }
 
 .dxl .dx-terminal-body {
-  max-width: 320px;
-  padding: var(--space-3) var(--space-3) 0;
+  padding: var(--space-3) var(--space-3) var(--space-1);
 }
 
 .dxl .dx-prompt {
   display: flex;
   gap: var(--space-2);
-  padding: calc(var(--space-1) * 2.25) calc(var(--space-1) * 2.75);
-  margin-bottom: calc(var(--space-1) * 2.5);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
   border: 1px solid var(--dx-border);
   color: var(--dx-fg);
 }
@@ -1523,17 +1508,12 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   column-gap: var(--space-2);
-  padding-bottom: var(--space-2);
+  padding-bottom: var(--space-1-5);
+  white-space: nowrap;
 }
 
 .dxl .dx-dot {
   color: var(--dx-success);
-  font-size: var(--text-xs);
-  line-height: var(--leading-copy);
-}
-
-.dxl .dx-step[data-plain] .dx-dot {
-  color: var(--dx-fg);
 }
 
 .dxl .dx-tool {
@@ -1547,12 +1527,7 @@
 }
 
 .dxl .dx-result {
-  display: flex;
-  gap: var(--space-2);
-  color: var(--dx-secondary);
-}
-
-.dxl .dx-elbow {
+  margin-left: var(--space-2);
   color: var(--dx-muted);
 }
 
@@ -1564,41 +1539,13 @@
   color: var(--dx-error);
 }
 
-.dxl .dx-thread .dx-thread-path {
-  display: flex;
-  align-items: center;
-  height: 32px;
-  padding: 0 var(--space-3);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--dx-fg);
-  background: var(--dx-panel);
-  border-bottom: 1px solid var(--dx-border);
-}
-
-.dxl .dx-thread .dx-rows {
-  background: var(--dx-code-bg);
-}
-
-.dxl .dx-thread .dx-annotation {
-  padding-bottom: var(--space-3);
-  padding-left: var(--space-3);
-}
-
 /* In a thread, each section pads its own foot. */
-.dxl .dx-thread .dx-comment {
+.dxl .dx-thread {
   padding-bottom: 0;
 }
 
-.dxl .dx-thread .dx-comment > .dx-comment-body {
+.dxl .dx-thread > .dx-comment-body {
   padding-bottom: var(--space-3);
-}
-
-.dxl .dx-bench-filter {
-  flex: 1;
-  max-width: 220px;
-  height: 26px;
-  margin: 0;
 }
 
 .dxl .dx-button .dx-kbd {
@@ -1611,4 +1558,200 @@
 .dxl .ss-draft__box,
 .dxl .ss-key {
   border-radius: 0;
+}
+
+/* ---------- Review window chrome (hero) ---------- */
+
+/* Whole in its band: the band's hairlines are its edges. */
+.dxl .dx-app--flush {
+  border: 0;
+}
+
+.dxl .dx-header {
+  height: var(--topbar-height);
+}
+
+.dxl .dx-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-left: var(--space-1);
+}
+
+.dxl .dx-identity-icon {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--dx-border);
+}
+
+.dxl .dx-identity-icon svg.lucide {
+  width: 12px;
+  height: 12px;
+  color: var(--dx-muted);
+}
+
+.dxl .dx-identity-title {
+  font-weight: var(--weight-semibold);
+}
+
+.dxl .dx-identity-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--dx-muted);
+}
+
+.dxl .dx-tabs {
+  height: var(--panel-header-height);
+}
+
+.dxl .dx-tabs-end {
+  flex: none;
+  width: var(--panel-header-height);
+  height: 100%;
+  border-left: 1px solid var(--dx-border);
+  color: var(--dx-muted);
+}
+
+.dxl .dx-filter-row {
+  display: flex;
+  gap: var(--space-1-5);
+  margin: var(--space-2) var(--space-3);
+}
+
+.dxl .dx-filter-row .dx-field {
+  flex: 1;
+  margin: 0;
+}
+
+.dxl .dx-square-button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--dx-border);
+  color: var(--dx-muted);
+}
+
+.dxl .dx-square-button svg.lucide {
+  width: 14px;
+  height: 14px;
+}
+
+.dxl .dx-sidebar .dx-tree {
+  flex: 1;
+  min-height: 0;
+}
+
+.dxl .dx-summary {
+  display: grid;
+  gap: var(--space-1);
+  padding: 0 var(--space-3) var(--space-3);
+  border-top: 1px solid var(--dx-border);
+}
+
+.dxl .dx-summary-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--panel-header-height);
+  color: var(--dx-secondary);
+}
+
+.dxl .dx-summary-title svg.lucide {
+  width: 14px;
+  height: 14px;
+  color: var(--dx-muted);
+}
+
+.dxl .dx-summary-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 22px;
+}
+
+.dxl .dx-summary-line > span:last-child:not(.dx-button) {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.dxl .dx-summary-bar {
+  height: 4px;
+  margin: var(--space-2) 0;
+  background: var(--dx-error);
+}
+
+.dxl .dx-summary-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--dx-success);
+}
+
+.dxl .dx-summary-progress {
+  padding-top: var(--space-1);
+  color: var(--dx-secondary);
+}
+
+.dxl .dx-statusbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--statusbar-height);
+  flex: none;
+  padding: 0 var(--space-3);
+  border-top: 1px solid var(--dx-border);
+  background: var(--dx-shell);
+  color: var(--dx-secondary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.dxl .dx-live {
+  width: 8px;
+  height: 8px;
+  background: var(--dx-success);
+}
+
+.dxl .dx-shortcuts {
+  justify-content: flex-end;
+  gap: var(--space-1-5);
+  font-family: var(--font-mono);
+}
+
+.dxl .dx-shortcuts .dx-kbd {
+  margin-left: var(--space-1-5);
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease;
+}
+
+.dxl .dx-shortcuts .dx-kbd + .dx-kbd {
+  margin-left: 0;
+}
+
+.dxl .dx-kbd[data-on] {
+  border-color: var(--dx-accent);
+  background: var(--dx-accent-bg);
+  color: var(--dx-accent);
+}
+
+.dxl .dx-toolbar .dx-icon-button {
+  width: 28px;
+  height: 28px;
+  color: var(--dx-secondary);
+}
+
+.dxl .dx-toolbar .dx-icon-button svg.lucide {
+  width: 15px;
+  height: 15px;
+}
+
+.dxl .dx-copy {
+  color: var(--dx-muted);
 }

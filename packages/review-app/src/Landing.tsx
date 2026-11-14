@@ -109,7 +109,9 @@ export function Landing({
             )}
           </section>
           <figure className="landing-band landing-showcase">
-            <div aria-hidden="true">{visuals.hero}</div>
+            <div aria-hidden="true" data-ss-fill>
+              {visuals.hero}
+            </div>
             <figcaption>
               A demo review, marking files reviewed. Not a real repository.
             </figcaption>
@@ -258,7 +260,7 @@ function Feature({
   return (
     <section className="landing-band landing-feature" aria-labelledby={id}>
       <div className="landing-feature-copy">{children}</div>
-      <div className="landing-feature-visual" aria-hidden="true">
+      <div className="landing-feature-visual" aria-hidden="true" data-ss-fill>
         {visual}
       </div>
     </section>

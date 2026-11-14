@@ -1,15 +1,17 @@
 import {
-  CheckCheck,
+  ArrowDown,
+  ArrowUp,
   ChevronDown,
-  ChevronLeft,
   ChevronUp,
-  FolderGit2,
+  ChevronsDownUp,
+  EyeOff,
   GitBranch,
-  ListFilter,
-  PanelLeft,
+  ListTree,
+  RefreshCw,
   Search,
+  Settings2,
 } from "lucide-react";
-import { Collapse, Stage, type Act } from "@diffx/stageshow";
+import { Collapse, Roll, Stage, type Act } from "@diffx/stageshow";
 import {
   BrandMark,
   DiffRow,
@@ -20,23 +22,33 @@ import {
 } from "./parts.tsx";
 import "./landing-visuals.css";
 
-// The diff view: a file marked reviewed collapses to its header and the next
-// file rises, from the keyboard (Alt+M) and from the header's Reviewed toggle.
+// The review window itself, whole in the showcase band: Alt+M marks the open
+// file reviewed, it collapses to its header, the next file rises and the
+// sidebar's progress counts it; the header's Reviewed toggle does the same.
 
 type FileId = "http" | "retry" | "sleep";
-type S = { reviewed: FileId[]; selected: FileId };
+type S = {
+  reviewed: FileId[];
+  selected: FileId | "test";
+  pressed: boolean;
+};
 
-const initial: S = { reviewed: ["http"], selected: "retry" };
-const done: S = { reviewed: ["http", "retry", "sleep"], selected: "sleep" };
+const initial: S = { reviewed: ["http"], selected: "retry", pressed: false };
+const done: S = {
+  reviewed: ["http", "retry", "sleep"],
+  selected: "test",
+  pressed: false,
+};
+const TOTAL = 7;
 
-const tree: readonly (TreeEntry & { id?: FileId })[] = [
+const tree: readonly (TreeEntry & { id?: FileId | "test" })[] = [
   { name: "docs", depth: 0, folder: "closed" },
   { name: "src", depth: 0, folder: "open" },
   { name: "http.ts", depth: 1, status: "M", id: "http" },
   { name: "retry.ts", depth: 1, status: "M", id: "retry" },
   { name: "sleep.ts", depth: 1, status: "A", id: "sleep" },
   { name: "test", depth: 0, folder: "open" },
-  { name: "http.test.ts", depth: 1, status: "M" },
+  { name: "http.test.ts", depth: 1, status: "M", id: "test" },
   { name: "retry.test.ts", depth: 1, status: "A" },
   { name: "CHANGELOG.md", depth: 0, status: "M" },
   { name: "package.json", depth: 0, status: "M" },
@@ -114,104 +126,143 @@ const testLines: readonly DiffLine[] = [
   { kind: "ctx", n: 28, text: "});" },
 ];
 
+const retryTestLines: readonly DiffLine[] = [
+  { kind: "add", n: 1, text: 'import { retry } from "../src/retry";' },
+  { kind: "add", n: 2, text: "" },
+  { kind: "add", n: 3, text: 'describe("retry", () => {' },
+  {
+    kind: "add",
+    n: 4,
+    text: '  it("gives up after six attempts", async () => {',
+  },
+  {
+    kind: "add",
+    n: 5,
+    text: '    const task = vi.fn().mockRejectedValue(new Error("503"));',
+  },
+  {
+    kind: "add",
+    n: 6,
+    text: "    await expect(retry(task)).rejects.toThrow();",
+  },
+  { kind: "add", n: 7, text: "    expect(task).toHaveBeenCalledTimes(6);" },
+  { kind: "add", n: 8, text: "  });" },
+  { kind: "add", n: 9, text: "});" },
+];
+
 async function script(a: Act<S>) {
+  if (a.layout === "compact") {
+    await a.wait(1200);
+    await a.move({ at: "reviewed-retry", x: 0.6, y: 0.55 });
+    await a.wait(200);
+    await a.click();
+    await a.set({ reviewed: ["http", "retry"], selected: "sleep" });
+    await a.wait(1500);
+    await a.move({ at: "reviewed-sleep", x: 0.6, y: 0.55 });
+    await a.wait(200);
+    await a.click();
+    await a.set({ reviewed: done.reviewed, selected: "test" });
+    await a.wait(400);
+    await a.move("rest");
+    return;
+  }
   await a.wait(1400);
+  await a.set({ pressed: true });
   await a.key("alt+m");
-  await a.set({ reviewed: ["http", "retry"], selected: "sleep" });
+  await a.set({
+    reviewed: ["http", "retry"],
+    selected: "sleep",
+    pressed: false,
+  });
   await a.wait(1800);
-  await a.move({ at: "reviewed-sleep", x: 0.7, y: 0.6 });
+  await a.move({ at: "reviewed-sleep", x: 0.6, y: 0.55 });
   await a.wait(250);
   await a.click();
-  await a.set({ reviewed: done.reviewed });
+  await a.set({ reviewed: done.reviewed, selected: "test" });
   await a.wait(500);
   await a.move("rest");
 }
 
+const WIDE = { width: 1150, height: 560 };
+const COMPACT = { width: 358, height: 500 };
+
 export function HeroDiff() {
   return (
     <Stage
-      width={1104}
-      height={460}
-      compact={{ below: 640, width: 358, height: 420 }}
+      width={WIDE.width}
+      height={WIDE.height}
+      compact={{ below: 640, ...COMPACT }}
       initial={initial}
       poster={done}
       script={script}
       play="once"
+      keys={{ wide: "top", compact: "bottom" }}
       cursor={{
-        at: { wide: { x: 860, y: 300 }, compact: { x: 300, y: 330 } },
+        at: { wide: { x: 900, y: 330 }, compact: { x: 290, y: 380 } },
       }}
       className="dxl dx-hero"
     >
       {(s, _rect, layout) => {
         const compact = layout === "compact";
         const reviewed = (id: FileId) => s.reviewed.includes(id);
+        const count = s.reviewed.length;
         return (
           <>
             <div
-              className="dx-app"
-              style={
-                compact
-                  ? { left: 16, top: 16, width: 326, height: 440 }
-                  : { left: 56, top: 44, width: 992, height: 470 }
-              }
+              className="dx-app dx-app--flush"
+              style={{ left: 0, top: 0, ...(compact ? COMPACT : WIDE) }}
             >
               <div className="dx-header">
                 <BrandMark />
                 <span className="dx-divider" />
                 {!compact && (
-                  <>
-                    <span className="dx-crumb">
-                      <ChevronLeft />
-                      Reviews
-                    </span>
-                    <span className="dx-sep">/</span>
-                    <span className="dx-crumb dx-crumb--title">
-                      <FolderGit2 />
-                      acme/api
-                      <ChevronDown />
-                    </span>
-                  </>
-                )}
-                <span className="dx-crumb dx-crumb--mono">
-                  <GitBranch />
-                  retry-backoff
-                  {!compact && <ChevronDown />}
-                </span>
-                <span className="dx-header-actions">
                   <span className="dx-icon-button">
-                    <Search />
+                    <ListTree />
                   </span>
+                )}
+                <span className="dx-identity">
+                  <span className="dx-identity-icon">
+                    <GitBranch />
+                  </span>
+                  <span className="dx-identity-title">retry-backoff</span>
                   {!compact && (
-                    <>
-                      <span className="dx-icon-button">
-                        <CheckCheck />
-                      </span>
-                      <span className="dx-icon-button">
-                        <ChevronUp />
-                      </span>
-                      <span className="dx-stepper">1 of 3</span>
-                      <span className="dx-icon-button">
-                        <ChevronDown />
-                      </span>
-                    </>
+                    <span className="dx-identity-meta">
+                      · acme/api · Claude Code on laptop
+                    </span>
                   )}
                 </span>
+                {!compact && (
+                  <span className="dx-header-actions">
+                    <span className="dx-button" data-variant="ghost">
+                      <RefreshCw />
+                      Refresh
+                    </span>
+                  </span>
+                )}
               </div>
               <div className="dx-body">
                 {!compact && (
-                  <aside className="dx-sidebar" style={{ width: 248 }}>
+                  <aside className="dx-sidebar" style={{ width: 290 }}>
                     <div className="dx-tabs">
                       <span className="dx-tab" data-selected>
-                        Changes <span className="dx-count">7</span>
+                        Changes <span className="dx-count">{TOTAL}</span>
                       </span>
                       <span className="dx-tab">
                         Review <span className="dx-count">0</span>
                       </span>
+                      <span className="dx-icon-button dx-tabs-end">
+                        <ChevronsDownUp />
+                      </span>
                     </div>
-                    <div className="dx-field">
-                      <ListFilter />
-                      Filter files…
-                      <span className="dx-kbd">Alt+/</span>
+                    <div className="dx-filter-row">
+                      <div className="dx-field">
+                        <Search />
+                        Filter files…
+                        <span className="dx-kbd">Alt+/</span>
+                      </div>
+                      <span className="dx-square-button">
+                        <EyeOff />
+                      </span>
                     </div>
                     <div className="dx-tree">
                       {tree.map((entry) => (
@@ -219,31 +270,75 @@ export function HeroDiff() {
                           key={entry.name}
                           entry={entry}
                           selected={entry.id === s.selected}
-                          reviewed={entry.id ? reviewed(entry.id) : false}
+                          reviewed={
+                            entry.id !== undefined &&
+                            entry.id !== "test" &&
+                            reviewed(entry.id)
+                          }
                         />
                       ))}
+                    </div>
+                    <div className="dx-summary">
+                      <div className="dx-summary-title">
+                        Summary
+                        <ChevronDown />
+                      </div>
+                      <div className="dx-summary-line">
+                        <span>Files changed</span>
+                        <span>{TOTAL}</span>
+                      </div>
+                      <div className="dx-summary-line">
+                        <span>Additions</span>
+                        <span className="dx-plus">+41</span>
+                      </div>
+                      <div className="dx-summary-line">
+                        <span>Deletions</span>
+                        <span className="dx-minus">-6</span>
+                      </div>
+                      <div className="dx-summary-bar">
+                        <span style={{ width: "87%" }} />
+                      </div>
+                      <div className="dx-summary-line dx-summary-progress">
+                        <span>
+                          <Roll>{`${count} of ${TOTAL} reviewed`}</Roll>
+                        </span>
+                        <span className="dx-button" data-variant="outline">
+                          Reset reviewed
+                        </span>
+                      </div>
+                    </div>
+                    <div className="dx-statusbar">
+                      <span className="dx-live" />
+                      Watching acme/api
                     </div>
                   </aside>
                 )}
                 <main className="dx-main">
                   {!compact && (
                     <div className="dx-toolbar">
-                      <span className="dx-icon-button" style={{ width: 26 }}>
-                        <PanelLeft />
-                      </span>
                       <span className="dx-picker">
-                        Uncommitted
+                        Branch changes
                         <ChevronDown />
                       </span>
-                      <span className="dx-segmented">
-                        <span data-selected>All</span>
-                        <span>Staged</span>
-                        <span>Unstaged</span>
-                      </span>
                       <span className="dx-toolbar-end">
+                        <span className="dx-icon-button">
+                          <ChevronUp />
+                        </span>
+                        <span className="dx-icon-button">
+                          <ChevronDown />
+                        </span>
+                        <span className="dx-icon-button">
+                          <ArrowUp />
+                        </span>
+                        <span className="dx-icon-button">
+                          <ArrowDown />
+                        </span>
                         <span className="dx-segmented">
                           <span>Split</span>
                           <span data-selected>Unified</span>
+                        </span>
+                        <span className="dx-icon-button">
+                          <Settings2 />
                         </span>
                       </span>
                     </div>
@@ -251,14 +346,17 @@ export function HeroDiff() {
                   <div className="dx-canvas">
                     <DiffFile
                       path="src/retry.ts"
+                      status="M"
                       plus={8}
                       minus={1}
                       lines={retryLines}
                       reviewed={reviewed("retry")}
+                      target="reviewed-retry"
                       compact={compact}
                     />
                     <DiffFile
                       path="src/sleep.ts"
+                      status="A"
                       plus={7}
                       minus={0}
                       lines={sleepLines}
@@ -268,13 +366,43 @@ export function HeroDiff() {
                     />
                     <DiffFile
                       path="test/http.test.ts"
+                      status="M"
                       plus={9}
                       minus={0}
                       lines={testLines}
                       reviewed={false}
                       compact={compact}
                     />
+                    <DiffFile
+                      path="test/retry.test.ts"
+                      status="A"
+                      plus={9}
+                      minus={0}
+                      lines={retryTestLines}
+                      reviewed={false}
+                      compact={compact}
+                    />
                   </div>
+                  {compact ? (
+                    <div className="dx-statusbar">
+                      <Roll>{`${count} of ${TOTAL} reviewed`}</Roll>
+                    </div>
+                  ) : (
+                    <div className="dx-statusbar dx-shortcuts">
+                      <span className="dx-kbd">Alt+J</span>
+                      <span className="dx-kbd">Alt+K</span>
+                      files
+                      <span className="dx-kbd">Alt+[</span>
+                      <span className="dx-kbd">Alt+]</span>
+                      changes
+                      <span className="dx-kbd" data-on={s.pressed || undefined}>
+                        Alt+M
+                      </span>
+                      reviewed
+                      <span className="dx-kbd">Alt+/</span>
+                      filter
+                    </div>
+                  )}
                 </main>
               </div>
             </div>
@@ -282,8 +410,8 @@ export function HeroDiff() {
               data-target="rest"
               style={{
                 position: "absolute",
-                left: compact ? 300 : 860,
-                top: compact ? 330 : 300,
+                left: compact ? 290 : 900,
+                top: compact ? 380 : 330,
               }}
             />
           </>
@@ -295,6 +423,7 @@ export function HeroDiff() {
 
 function DiffFile({
   path,
+  status,
   plus,
   minus,
   lines,
@@ -303,6 +432,7 @@ function DiffFile({
   compact,
 }: {
   path: string;
+  status: "M" | "A";
   plus: number;
   minus: number;
   lines: readonly DiffLine[];
@@ -314,6 +444,7 @@ function DiffFile({
     <section className="dx-file" data-collapsed={reviewed || undefined}>
       <FileHeader
         path={compact ? (path.split("/").pop() ?? path) : path}
+        status={status}
         plus={plus}
         minus={minus}
         reviewed={reviewed}
