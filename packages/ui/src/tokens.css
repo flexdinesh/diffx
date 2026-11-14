@@ -117,6 +117,25 @@
   --duration-spin: 800ms;
   --duration-pulse: 1800ms;
   --ease-standard: ease-out;
+
+  /* Pierre's own pierre-light code colors, for code drawn outside Pierre
+     (landing figures). Palette themes define --diffs-* instead, which win. */
+  --pierre-fg: #0a0a0a;
+  --pierre-addition: #18a46c;
+  --pierre-deletion: #d52c36;
+  --pierre-keyword: #d32a61;
+  --pierre-storage: #a631be;
+  --pierre-string: #199f43;
+  --pierre-function: #693acf;
+  --pierre-constant: #1ca1c7;
+  --pierre-variable: #d47628;
+  --pierre-punctuation: #636363;
+  --pierre-operator: #08c0ef;
+  /* Share of the code surface in change rows and their gutters; commented
+     lines mix their base with this shade, as DiffWorkspace does. */
+  --pierre-tint: 88%;
+  --pierre-tint-gutter: 91%;
+  --pierre-comment-shade: #000;
 }
 
 /* Diffx light only: its chrome and panels share one white, so unselected tabs
@@ -129,6 +148,18 @@
 :root[data-theme="dark"],
 [data-palette="diffx-dark"] {
   color-scheme: dark;
+  --pierre-fg: #fafafa;
+  --pierre-addition: #07c480;
+  --pierre-deletion: #ff2e3f;
+  --pierre-keyword: #ff678d;
+  --pierre-storage: #d568ea;
+  --pierre-string: #5ecc71;
+  --pierre-function: #9d6afb;
+  --pierre-constant: #68cdf2;
+  --pierre-variable: #ffa359;
+  --pierre-punctuation: #a3a3a3;
+  --pierre-tint: 80%;
+  --pierre-tint-gutter: 85%;
   --bg: #282c33;
   --panel: #2f343e;
   --shell-canvas: #3b414d;

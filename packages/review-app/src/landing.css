@@ -206,32 +206,36 @@
   white-space: nowrap;
 }
 
-/* The showcase: a review being read in the app's own window. */
+/* The showcase: the review window itself, flush with the box's sides and
+   the band's hairlines; its caption sits in a row of its own below. */
 .landing-showcase {
   display: grid;
-  gap: var(--space-3);
   margin: 0;
-  padding-block: var(--space-6);
+  padding-inline: 0;
 }
 .landing-showcase figcaption {
   margin: 0;
+  padding: var(--space-3) var(--page-gutter);
+  border-top: 1px solid var(--border);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--muted);
 }
 
-/* A feature band: its copy beside an animated figure. */
+/* A feature band: two cells split by a hairline, editor-pane style. The copy
+   sits in its padded cell; the figure fills its own edge to edge, its window
+   running off the cell's foot. */
 .landing-feature {
   display: grid;
   grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-  align-items: center;
-  gap: var(--space-12);
-  padding-block: var(--space-12);
+  padding-inline: 0;
 }
 .landing-feature-copy {
   display: grid;
+  align-self: center;
   justify-items: start;
   gap: var(--space-3);
+  padding: var(--space-12) var(--space-12) var(--space-12) var(--page-gutter);
 }
 .landing-feature-copy h2 {
   margin: 0;
@@ -251,6 +255,7 @@
 }
 .landing-feature-visual {
   min-width: 0;
+  border-left: 1px solid var(--border);
 }
 
 .landing-footer {
@@ -276,15 +281,17 @@
   color: var(--fg);
 }
 
-@media (max-width: 1011px) {
+@media (max-width: 767px) {
   .landing-feature {
     grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-6);
-    padding-block: var(--space-8);
   }
-}
-
-@media (max-width: 767px) {
+  .landing-feature-copy {
+    padding: var(--space-8) var(--page-gutter);
+  }
+  .landing-feature-visual {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
   .landing-motto {
     display: none;
   }

@@ -978,22 +978,31 @@ feature at work, in the same world as the app.
   requests in one subgrid of icon, mono `owner/repo`, mono `#n` and title.
   With previews off, "Go to app" is the filled primary beside an outline
   "Read the docs".
-- Showcase: an animated figure of the app's review window on the dotted diff
-  canvas: header, Changes tree with the app's file icons, and three files.
-  Alt+M marks the open file reviewed; it collapses to its header and the
-  selection moves to the next file. The caption labels it a demo.
+- Showcase: the app's review window, whole and flush in its band (the box's
+  sides and the band's hairlines are its edges): header, Changes tree with
+  the app's file icons, Summary, status bar, and files on the dotted diff
+  canvas. Alt+M marks the open file reviewed; it collapses to its header, the
+  selection moves to the next file and the Summary counts it. The caption
+  sits in its own hairline row below and labels it a demo.
 - Features, in order: the Reviews bench (a branch arrives in Needs attention
   and Space peeks at it), GitHub pull requests (connect, follow repositories,
   pull requests arrive), comments (a line comment is written and saved) and
-  agents over MCP (an agent finds, fixes, replies to and resolves the thread).
-  Each band puts its copy (an `--text-xl` heading, one prose paragraph and a
-  docs link) left at 5fr and its figure right at 7fr; they stack below 1012px.
+  agents over MCP (an agent finds, fixes, replies to and resolves the thread,
+  and the review shows each step). Each band is two cells split by a
+  hairline: its copy (an `--text-xl` heading, one prose paragraph and a docs
+  link) padded at 5fr, its figure edge to edge at 7fr; they stack below 768px.
 - Figures are faux product UI built with `packages/stageshow` on the app's
-  tokens, Pierre syntax tokens and file icons, never screenshots. Each plays
-  once when scrolled into view, shows its final frame under reduced motion,
-  and has its own phone design. Figures are `aria-hidden`; the copy beside
-  them carries the meaning. Real file icons keep their filled monograms beside
-  outline folder icons, as in the app.
+  tokens, file icons and status glyphs, never screenshots. Code takes Pierre's
+  colors: palette themes' `--diffs-*` tokens, else pierre-light/pierre-dark
+  values, with Pierre's change tints, gutter bars and commented-line tint.
+  The page is the ground: no plate, no outline, no window shadow; a window
+  sits a 32px gutter from its cell's top and sides and runs off its foot. Only
+  a satellite laid over a window (the bench card on GitHub settings) takes
+  `--shadow-overlay`. Each plays once when scrolled into view, shows its
+  final frame under reduced motion, and has its own phone design. Figures
+  are `aria-hidden`; the copy beside them carries the meaning. Real file
+  icons keep their filled monograms beside outline folder icons, as in the
+  app.
 - Accent is limited to the primary actions, the selected demo states and inline
   prose links. Claims come only from the user docs; demo data is labelled;
   there are no feature card grids, kickers or decorative imagery.
