@@ -199,9 +199,8 @@ test("Diffx themes put context code on the shell surface; palettes keep theirs",
         .flatMap((element) => element.shadowRoot ?? [])
         .map((root) => root.querySelector("[data-line-type^=context]"))
         .find((found) => found !== null);
-      if (!line) throw new Error("Missing context line");
       return {
-        line: getComputedStyle(line).backgroundColor,
+        line: line ? getComputedStyle(line).backgroundColor : null,
         surface: getComputedStyle(diff).getPropertyValue("--code-surface"),
       };
     });
