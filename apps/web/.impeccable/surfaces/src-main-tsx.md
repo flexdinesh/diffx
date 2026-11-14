@@ -16,7 +16,7 @@ Constraints: Pierre owns virtualization, sticky headers, wrapping, selection, an
 
 THESIS: A code editor's chrome, not a web app's: panes meet at hairlines and nothing has a curve.
 
-OWN-WORLD: Zed-inspired One neutrals (light #fafafa/#f0f0f1/#e2e2e3, dark #282c33/#2f343e/#3b414d), one blue accent (#3f5fd6/#74ade8), hairline borders, square corners everywhere including status dots and scrollbar thumbs, no elevation at rest. Palette themes keep their colors.
+OWN-WORLD: Zed-inspired One neutrals (light: white #fff surfaces and chrome, #f2f2f3 diff canvas, #e3e3e5 hairlines; dark #282c33/#2f343e/#3b414d), one blue accent (#3f5fd6/#74ade8), hairline borders, square corners everywhere including status dots and scrollbar thumbs, no elevation at rest. Palette themes keep their colors.
 
 STORY: Navigate a file, read its diff, toggle Reviewed, and leave line or whole-file feedback. Comments read at the same density as the rest of the shell: 28px header, 8px body, 28px action row.
 

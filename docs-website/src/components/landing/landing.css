@@ -4,19 +4,20 @@
  * `color-scheme` on <html>, so `light-dark()` follows the docs theme.
  */
 .dxl {
-  --dx-bg: light-dark(#fafafa, #282c33);
-  --dx-panel: light-dark(#f0f0f1, #2f343e);
-  --dx-shell: light-dark(#e2e2e3, #3b414d);
+  --dx-bg: light-dark(#fff, #282c33);
+  --dx-panel: light-dark(#fff, #2f343e);
+  --dx-shell: light-dark(#fff, #3b414d);
   --dx-fg: light-dark(#242529, #dce0e5);
   --dx-secondary: light-dark(#4d4f55, #b8bdc7);
   --dx-muted: light-dark(#62646a, #a9afbc);
-  --dx-border: light-dark(#c9c9ca, #464b57);
+  --dx-border: light-dark(#e3e3e5, #464b57);
   --dx-control: light-dark(#808186, #808693);
-  --dx-hover: light-dark(#e6e6e7, #363c46);
-  --dx-canvas: light-dark(#e9e9ea, #21252b);
-  --dx-dot: light-dark(#cfcfd1, #3a3f49);
+  --dx-hover: light-dark(#f2f2f3, #363c46);
+  --dx-tab-inactive: light-dark(#f7f7f8, transparent);
+  --dx-canvas: light-dark(#f2f2f3, #21252b);
+  --dx-dot: light-dark(#d6d6d9, #3a3f49);
   --dx-accent: light-dark(#3f5fd6, #74ade8);
-  --dx-accent-bg: light-dark(#e6eafb, #2c3c50);
+  --dx-accent-bg: light-dark(#ebeffc, #2c3c50);
   --dx-on-accent: light-dark(#fff, #1c2027);
   --dx-success: light-dark(#247446, #70cc95);
   --dx-success-bg: light-dark(#dafbe1, #1b4721);
@@ -197,12 +198,18 @@
   justify-content: center;
   gap: 6px;
   color: var(--dx-secondary);
+  background: var(--dx-tab-inactive);
 }
 
 .dxl .dx-tab[data-selected] {
   color: var(--dx-fg);
   box-shadow: inset 0 -2px 0 var(--dx-accent);
   background: var(--dx-bg);
+}
+
+.dxl .dx-tab[data-selected] .dx-count {
+  color: var(--dx-accent);
+  background: var(--dx-accent-bg);
 }
 
 .dxl .dx-count {

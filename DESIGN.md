@@ -2,11 +2,11 @@
 name: diffx
 description: Focused, compact, calm code review workspace
 colors:
-  diff-canvas: "#e9e9ea"
-  diff-canvas-dot: "#cfcfd1"
+  diff-canvas: "#f2f2f3"
+  diff-canvas-dot: "#d6d6d9"
   diff-canvas-dark: "#21252b"
   diff-canvas-dot-dark: "#3a3f49"
-  shell: "#e2e2e3"
+  shell: "#ffffff"
   shell-dark: "#3b414d"
   accent: "#3f5fd6"
   accent-dark: "#74ade8"
@@ -144,6 +144,7 @@ measured elements or replace the application tokens with framework defaults.
 | Control boundary              | `--border-control`                 | Inputs and controls requiring stronger boundaries                  |
 | Neutral hover                 | `--hover`                          | Available controls under the pointer                               |
 | Count fill                    | `--count-bg`                       | Static count and badge surfaces; never hover feedback              |
+| Inactive tab                  | `--tab-inactive-bg`                | Unselected sidebar tabs; `--shell-canvas` except in Diffx light    |
 | Shell hover                   | `--shell-hover`                    | Hover/expanded header controls on `--shell-canvas`                 |
 | Accent                        | `--accent`                         | Selection, focus, navigation links, primary commit action          |
 | Accent interaction            | `--accent-hover`                   | Hover/active on filled primary actions                             |
@@ -195,6 +196,13 @@ measured elements or replace the application tokens with framework defaults.
 - Theme swatches render through the theme's own tokens by scoping
   `[data-palette]` on the swatch; Diffx light and dark are addressable as
   `diffx-light` and `diffx-dark`. Never hard-code a preview color.
+- Diffx light is white: content, header, sidebar, file headers and dialogs share
+  `#fff`, separated by `#e3e3e5` hairlines. The diff canvas is the one grey
+  field (`#f2f2f3`), so files read as white sheets on it. Because chrome and
+  panels match, unselected sidebar tabs take a faint `--tab-inactive-bg`
+  (`#f7f7f8`). Outline controls on panels stand apart by their 3:1
+  `--border-control` edge, not by fill. Keep any new light grey at or above
+  `#f2f2f3`.
 - Quiet frames use the light canvas/dot tokens or their dark equivalents from
   the frontmatter. Keep dots behind opaque code surfaces; they do not tint code.
   Light mode uses the white primary surface and separator-colored dots; dark mode
@@ -743,12 +751,15 @@ at `/design.html` (see `docs/frontend.md`).
   wrap: “No changes above.” / “No more changes below.” feedback (naming Load
   more when previews remain), cleared by the next step.
 - Sidebar tabs fuse with their panel: the active tab shares `--panel`, inactive
-  tabs recess into `--shell` and draw their own edges. A tab strip's header
-  recesses into `--shell` too, with the bottom hairline the active tab covers, so
+  tabs recess into `--tab-inactive-bg` and draw their own edges. The active
+  tab's count badge takes the selected treatment (accent text on `--accent-bg`,
+  soft accent edge); inactive counts stay neutral. A tab strip's header
+  recesses into `--tab-inactive-bg` too, with the bottom hairline the active tab covers, so
   header actions share the inactive tabs' surface and use the `shell` button
   variant. Every tab keeps its trailing edge, separating it from the actions.
   Segmented choices and pressed toggles use accent text on `--accent-bg`. Expose state with native/ARIA semantics.
-- Badges use compact text and neutral surfaces. Status color is
+- Badges use compact text and neutral surfaces, except the active tab count
+  above. Status color is
   supplemental; retain “Open”, “Resolved”, Git letters, counts, and staging shapes.
 - Future menus or tables inherit these text, row, surface, and selection rules.
   Do not invent a separate menu/table palette or container style.
@@ -946,8 +957,8 @@ The one Persuade surface: it tells what diffx does by showing a review being
 read in the app's own window, then one band per feature, each showing that
 feature at work, in the same world as the app.
 
-- One boxed column, `--landing-width`, on `--landing-surface` (white in Diffx
-  light, `--bg` in every other theme). The box has 1px `--border` sides and a
+- One boxed column, `--landing-width`, on `--landing-surface` (`--bg`, white in
+  Diffx light). The box has 1px `--border` sides and a
   full-width hairline under every band; bands inset by `--page-gutter`. Bands:
   top bar, hero, showcase, the four feature bands and footer.
 - Top bar: cells split by hairlines, editor-tab style: brand, the mono motto

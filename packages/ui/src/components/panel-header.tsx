@@ -22,7 +22,7 @@ export function PanelHeader({
     <div
       data-slot="panel-header"
       className={cn(
-        "flex h-panel-header min-w-0 shrink-0 items-center gap-0.5 border-b border-border px-1 max-lg:h-topbar has-data-[slot=tabs-list]:bg-shell [&_svg]:[stroke-width:var(--icon-stroke-chrome)]",
+        "flex h-panel-header min-w-0 shrink-0 items-center gap-0.5 border-b border-border px-1 max-lg:h-topbar has-data-[slot=tabs-list]:bg-tab-inactive [&_svg]:[stroke-width:var(--icon-stroke-chrome)]",
         title !== undefined && "gap-2 pl-4",
         className,
       )}
