@@ -89,6 +89,13 @@ type Store interface {
 	// pull requests the account's GitHub user authored in its actively
 	// followed repositories that opened or merged in [since, until), Unix ms.
 	PullRequestHistory(ctx context.Context, ownerID string, since, until int64, limit int) ([]HistoryEntry, error)
+	// PullRequestHistoryTotals counts PullRequestHistory's whole range by
+	// repository and current state.
+	PullRequestHistoryTotals(ctx context.Context, ownerID string, since, until int64) ([]HistoryTotal, error)
+	// PullRequestHistoryPage lists one page of PullRequestHistory's order
+	// narrowed by the page's filters, and the cursor continuing it, nil on
+	// the last page.
+	PullRequestHistoryPage(ctx context.Context, ownerID string, page HistoryPage) ([]HistoryEntry, *HistoryCursor, error)
 	// HistoryRetentionDays is the admin's history retention.
 	HistoryRetentionDays(ctx context.Context) (int, error)
 	// NotificationPreferences returns the account's saved preferences, or

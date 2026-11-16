@@ -391,27 +391,52 @@ such detail into a token. New layout spacing must use the scale.
   below 768px).
 - History (`/history`, GitHub servers only) recaps the pull requests the
   reader's GitHub account opened and merged, in the bench's panes rather than
-  a dashboard: no metric tiles, counts are facets. The header leads with the
-  brand, a “‹ Reviews” `LinkButton` back to the bench's last URL, a muted “/”
-  and the h1 “History” (history icon). The facet pane lists Range (Today,
-  7 days, 30 days), Activity (Merged, Opened, each with a count; filter on
-  click, clear on a second click) and Repositories with muted mono
-  “merged · opened” counts under a matching legend. The table pane's toolbar
-  holds ghost Earlier/Later icon buttons around the window label (“4 – 10
-  Nov”, “Yesterday”) and “Clear filters”; Earlier disables once the previous
-  window would start before retained history, Later at today. One sentence
-  sums the window (“You merged 9 and opened 12 pull requests across 4
-  repositories in the last 7 days.”), then a muted note when the window starts
-  before retained history. Rows group under bench section headers by the day
-  of their latest in-range event; `ListRow` table rows link to GitHub in a new
-  tab: muted state icon, muted “#N” and title, mono repository, event
-  (“Opened”, “Merged”, “Opened · Merged”) and mono time of day. The status bar
-  states coverage (“Followed repositories · kept N days”) and the count. Not
-  connected, not following, filtered-empty and empty windows explain
-  themselves with Connect GitHub, Follow repositories, Clear filters or Show
-  30 days. Range, end day, activity and repository live in the URL. Below
-  1012px the facets leave for Range and Filter menus; below 768px rows wrap
-  repository and event under the title.
+  a dashboard: no metric tiles, no period-over-period deltas, counts are a
+  readout line or facets. The header leads with the brand, a “‹ Reviews”
+  `LinkButton` back to the bench's last URL, a muted “/” and the h1 “History”
+  (history icon). The table pane's toolbar holds ghost Earlier/Later icon
+  buttons around the window label (“4 – 10 Nov”, “Yesterday”; in the list, the
+  picked day), then a `SegmentedControl` “History view”: Overview (the
+  default) and Pull requests (`?view=list`), icon-only below 768px. Earlier
+  disables once the previous window would start before retained history,
+  Later at today. The facet pane lists Range (Today, 7 days, 30 days, plus
+  90 days and 1 year of 52 weeks while history is kept that long); in the list
+  it adds Activity (Merged, Opened), State now (Open, Draft, Closed, Merged)
+  and Repositories with muted mono “merged · opened” counts under a matching
+  legend. Facet counts are window totals; a click filters, a second clears.
+  - Overview: a `ReadoutStrip` (merged, opened, repositories, median to merge,
+    still open), the retention note, then bench sections. “Activity” holds a
+    `BarChartLegend` and `BarChart` of merged (solid) and opened (hollow)
+    pull requests per local hour (Today, future hours disabled, a “now”
+    marker), day, or 7-day block (1 year, and 90 days below 768px); bins
+    before retained history are hatched. A day bin opens the list for that
+    day, a week bin a 7-day list ending on it. “Repositories” lists `ListRow`
+    table links (mono name, merged, opened, open now, median to merge, a
+    merges `Sparkline`) that open the list filtered by repository; below
+    768px the header hides and the figures stack under the name. “Still open”
+    lists pull requests opened in the window and still open, oldest first,
+    linking to GitHub: state icon, “#N” and title, mono repository, “Draft”
+    badge, mono “open 2d 3h”; “Showing the oldest 50 of N.” when capped. An
+    empty window shows the list's empty states instead of a zero chart.
+  - Pull requests: one sentence sums the window (“You merged 9 and opened 12
+    pull requests across 4 repositories in the last 7 days.”), then a muted
+    note when the window starts before retained history. Rows group under
+    bench section headers by the day of their latest in-range event; `ListRow`
+    table rows link to GitHub in a new tab: muted state icon, muted “#N” and
+    title, mono repository, event (“Opened”, “Merged”, “Opened · Merged”), a
+    mono muted open-to-merge duration (hidden below 768px) and mono time of
+    day. The list pages as it scrolls, with a “Load more” button as fallback.
+    A ghost “Copy recap” (an icon button below 768px) copies the listed pull
+    requests as GitHub Markdown grouped by repository, falling back to the
+    manual `CopyDialog`; “Clear filters” follows when a filter is set.
+  - The status bar states coverage (“Followed repositories · kept N days”)
+    and the count. Not connected, not following, filtered-empty and empty
+    windows explain themselves with Connect GitHub, Follow repositories, Clear
+    filters or Show 30 days. View, range, end day, activity, state, repository
+    and day live in the URL. Below 1012px the facets leave for Range and
+    Filter menus (Filter only in the list); below 768px the view toggle and
+    list actions take a second toolbar row and rows wrap repository and event
+    under the title.
 - Reviews breadcrumb: a review's header leads with a shell `LinkButton` “‹
   Reviews” (chevron only below 768px; an unread dot while anything needs
   attention; Alt+Shift+B) and a muted “/” before the repository and branch
@@ -661,6 +686,27 @@ at `/design.html` (see `docs/frontend.md`).
   whose focus is a single accent border inside its frame.
 - Keep Base UI values validated at application boundaries. New validation must
   pair `--error` with explanatory text and `aria-invalid` / `aria-describedby`.
+
+### Charts and readouts
+
+- Data views stay monochrome and calm: no metric tiles, card grids,
+  gradients, or period-over-period deltas. Totals read as one `ReadoutStrip`:
+  a single bordered row of mono `tabular-nums` values with secondary labels
+  (“47 merged”), split by 1px dividers and wrapping to two columns below 768px.
+- `BarChart` draws paired columns per bin in an `h-chart` (`--chart-height`,
+  8rem) plot: solid `--text-secondary` and hollow 1px `--border-control`
+  marks, so series never rely on color; dashed `--border-muted` gridlines at
+  half and a rounded top over a solid zero baseline, with mono `xs` values on
+  the right; sparse mono `xs` muted ticks the caller chooses (the chart does
+  not prevent collisions). Accent marks only the
+  selected bin and a “now” line; hover is the neutral hover fill. Hatched
+  muted bins mean history not kept; the page explains them in text. Bins are native buttons in a
+  labelled group with roving focus (arrows, Home, End), each named
+  “Sat 8 Nov: 3 merged, 2 opened” with one shared tooltip; disabled bins hold
+  no marks. Nonzero bars are at least 2px tall. `BarChartLegend` repeats the
+  marks.
+- `Sparkline` is a decorative row of muted bars with 1px baselines for zeros,
+  hidden from assistive technology unless labelled.
 
 ### Cards, navigation, and status
 

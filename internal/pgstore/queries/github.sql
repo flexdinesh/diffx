@@ -207,6 +207,43 @@ ORDER BY GREATEST(CASE WHEN h.created_at < @until THEN h.created_at END, CASE WH
   h.repository_id, h.number
 LIMIT @row_limit;
 
+-- name: GitHubPullRequestHistoryTotals :many
+-- GitHubPullRequestHistory's pull requests counted by repository and current
+-- state, with how many opened and merged within [since, until).
+SELECT h.full_name, h.state, h.draft, count(*)::integer AS pulls,
+  count(*) FILTER (WHERE h.created_at >= @since AND h.created_at < @until)::integer AS opened,
+  count(*) FILTER (WHERE h.merged_at >= @since AND h.merged_at < @until)::integer AS merged
+FROM github_pull_request_history h
+JOIN github_connections c ON c.owner_id = @owner_id AND c.user_id = h.author_id
+JOIN github_follows f ON f.owner_id = c.owner_id AND f.repository_id = h.repository_id AND f.status = 'active'
+WHERE (h.created_at >= @since AND h.created_at < @until) OR (h.merged_at >= @since AND h.merged_at < @until)
+GROUP BY h.full_name, h.state, h.draft;
+
+-- name: GitHubPullRequestHistoryPage :many
+-- One page of GitHubPullRequestHistory's order, narrowed by the nonempty
+-- filters: repository full name; activity opened or merged within the range;
+-- current state, where draft is an open draft and open excludes drafts. With
+-- after, it continues past the cursor's event, repository and number.
+WITH ranged AS (
+  SELECT h.repository_id, h.number, h.full_name, h.title, h.html_url, h.draft, h.state, h.created_at, h.merged_at, h.closed_at,
+    (h.created_at >= @since AND h.created_at < @until) AS opened, (h.merged_at >= @since AND h.merged_at < @until) AS merged,
+    GREATEST(CASE WHEN h.created_at < @until THEN h.created_at END, CASE WHEN h.merged_at < @until THEN h.merged_at END)::timestamptz AS event
+  FROM github_pull_request_history h
+  JOIN github_connections c ON c.owner_id = @owner_id AND c.user_id = h.author_id
+  JOIN github_follows f ON f.owner_id = c.owner_id AND f.repository_id = h.repository_id AND f.status = 'active'
+  WHERE ((h.created_at >= @since AND h.created_at < @until) OR (h.merged_at >= @since AND h.merged_at < @until))
+    AND (@repo::text = '' OR h.full_name = @repo::text)
+    AND (@state::text = '' OR (@state::text IN ('closed', 'merged') AND h.state = @state::text)
+      OR (h.state = 'open' AND ((@state::text = 'draft' AND h.draft) OR (@state::text = 'open' AND NOT h.draft))))
+)
+SELECT repository_id, number, full_name, title, html_url, draft, state, created_at, merged_at, closed_at, event
+FROM ranged
+WHERE (@activity::text = '' OR (@activity::text = 'opened' AND opened) OR (@activity::text = 'merged' AND merged IS TRUE))
+  AND (NOT @after::boolean OR event < @cursor_event::timestamptz
+    OR (event = @cursor_event::timestamptz AND (repository_id, number) > (@cursor_repository_id::bigint, @cursor_number::integer)))
+ORDER BY event DESC, repository_id, number
+LIMIT @row_limit;
+
 -- name: GitHubNotificationPreferences :one
 SELECT * FROM github_notification_preferences WHERE owner_id = $1;
 

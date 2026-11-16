@@ -49,4 +49,14 @@ function TooltipContent({
   );
 }
 
-export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger };
+// One tooltip shared by many detached triggers (e.g. chart bins): each
+// trigger passes the handle and its text as payload.
+const createTooltipHandle = TooltipPrimitive.createHandle;
+
+export {
+  createTooltipHandle,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+};

@@ -36,6 +36,15 @@ export type ApiGitHubRepository = components["schemas"]["GitHubRepository"];
 export type ApiGitHubHistory = components["schemas"]["GitHubHistory"];
 export type ApiGitHubHistoryPullRequest =
   components["schemas"]["GitHubHistoryPullRequest"];
+export type ApiGitHubHistoryStates =
+  components["schemas"]["GitHubHistoryStates"];
+export type ApiGitHubHistoryOverview =
+  components["schemas"]["GitHubHistoryOverview"];
+export type ApiGitHubHistoryBin = components["schemas"]["GitHubHistoryBin"];
+export type ApiGitHubHistoryOverviewRepository =
+  components["schemas"]["GitHubHistoryOverviewRepository"];
+export type ApiGitHubHistoryOpenPullRequest =
+  components["schemas"]["GitHubHistoryOpenPullRequest"];
 export type ApiNotificationPreferences =
   components["schemas"]["NotificationPreferences"];
 export type ApiPushSettings = components["schemas"]["PushSettings"];

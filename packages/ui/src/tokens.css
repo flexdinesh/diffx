@@ -89,6 +89,8 @@
   --panel-header-height: calc(var(--control-small) + 2 * var(--space-1));
   /* Status bars fit compact controls with a 2px inset, border included. */
   --statusbar-height: calc(var(--control-compact) + var(--space-1));
+  /* Plot area of activity charts (BarChart); axis ticks sit below it. */
+  --chart-height: 8rem;
   /* Device safe areas (notch, status bar, home indicator, rounded corners);
      viewport-fit=cover makes them nonzero on iOS, 0 everywhere else. */
   --safe-top: env(safe-area-inset-top, 0px);

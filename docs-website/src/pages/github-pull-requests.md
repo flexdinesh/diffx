@@ -139,18 +139,33 @@ stay until they expire.
 
 **History**, in the Reviews bench header, recaps the pull requests your
 connected GitHub account opened and merged in the repositories you follow.
-Choose **Today**, **7 days** or **30 days**; ‹ and › page to earlier and later
-windows of whole days. **Merged** and **Opened** count each activity and
-filter the list, and each repository shows its merged · opened counts and
-filters on click. A pull request opened and merged in the same window counts
-once for each. Rows are grouped by day and open the pull request on GitHub.
+Choose **Today**, **7 days** or **30 days**, plus **90 days** and **1 year**
+(52 weeks) when your server keeps history that long; ‹ and › page to earlier
+and later windows of whole days.
+
+History opens on **Overview**: a line of totals (merged, opened, repositories,
+median time from opening to merging, still open), an activity chart of merged
+(solid) and opened (outlined) pull requests per hour, day or week, a table of
+repositories, and the pull requests still open from the window. Pick a bar to
+list that day or week, or a repository to list its pull requests.
+
+**Pull requests** lists them grouped by day, newest first, loading more as you
+scroll. **Merged** and **Opened** count each activity, **State now** counts
+open, draft, closed and merged pull requests, and each repository shows its
+merged · opened counts; each filters the list on click. A pull request opened
+and merged in the same window counts once for each. Merged rows show how long
+they took to merge, and rows open the pull request on GitHub. **Copy recap**
+copies the listed pull requests as Markdown, grouped by repository, for a
+standup or self-review.
 
 History records pull requests as diffx reads them: when a webhook refreshes
 one, when you follow a repository, and on **Resync pull requests**, which also
 record pull requests closed in the last 30 days. It covers only repositories
 you follow and leaves when you unfollow. History is kept for 30 days by
 default; admins can keep up to 365 days in the console's **History retention
-(days)** setting, and you can page back as far as it keeps.
+(days)** setting, and you can page back as far as it keeps. Longer ranges
+fill in as history accumulates: following or resyncing records only the last
+30 days.
 
 ## Push notifications
 

@@ -71,6 +71,12 @@ import {
   TooltipTrigger,
 } from "@diffx/ui/components/ui/tooltip";
 import { ChoiceList, ChoiceListItem } from "@diffx/ui/components/choice-list";
+import {
+  BarChart,
+  BarChartLegend,
+  type BarChartBin,
+  type BarChartSeries,
+} from "@diffx/ui/components/bar-chart";
 import { BrandMark } from "@diffx/ui/components/brand-mark";
 import { CollapsibleSection } from "@diffx/ui/components/collapsible-section";
 import { ConfirmDialog } from "@diffx/ui/components/confirm-dialog";
@@ -84,9 +90,11 @@ import { KeyValue, KeyValueList } from "@diffx/ui/components/key-value-list";
 import { ListRow } from "@diffx/ui/components/list-row";
 import { Notice } from "@diffx/ui/components/notice";
 import { PanelHeader } from "@diffx/ui/components/panel-header";
+import { ReadoutStrip } from "@diffx/ui/components/readout-strip";
 import { SearchField } from "@diffx/ui/components/search-field";
 import { SegmentedControl } from "@diffx/ui/components/segmented-control";
 import { Shortcut } from "@diffx/ui/components/shortcut";
+import { Sparkline } from "@diffx/ui/components/sparkline";
 import { SplitButton } from "@diffx/ui/components/split-button";
 import { StatusDot } from "@diffx/ui/components/status-dot";
 import { ThemeSwatch } from "@diffx/ui/components/theme-swatch";
@@ -172,6 +180,63 @@ const galleryMarkdown = [
   "| --- | --- |",
   "| empty | none |",
 ].join("\n");
+
+const activitySeries: BarChartSeries[] = [
+  { name: "merged", mark: "solid" },
+  { name: "opened", mark: "hollow" },
+];
+const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const months = ["Oct", "Nov"];
+// Deterministic sample counts: plausible weekday peaks, quiet weekends.
+function sampleCount(seed: number, scale: number): number {
+  return Math.floor(((Math.sin(seed * 12.9898) * 43758.5453) % 1) ** 2 * scale);
+}
+// Days ending Sun 16 Nov 2026, oldest first.
+function dayBins(count: number, kept: number): BarChartBin[] {
+  return Array.from({ length: count }, (_, index) => {
+    const ago = count - 1 - index;
+    const date = new Date(2026, 10, 16 - ago);
+    const weekday = weekdays[date.getDay()] ?? "";
+    const month = months[date.getMonth() - 9] ?? "";
+    const weekend = date.getDay() === 0 || date.getDay() === 6;
+    const scale = weekend ? 3 : 12;
+    const tick =
+      count <= 7
+        ? `${weekday} ${date.getDate()}`
+        : date.getDay() === 1
+          ? `${date.getDate()} ${month}`
+          : "";
+    return {
+      id: `day-${ago}`,
+      label: `${weekday} ${date.getDate()} ${month}`,
+      ...(tick ? { tick } : {}),
+      values: [sampleCount(index + 1, scale), sampleCount(index + 41, scale)],
+      unavailable: ago >= kept,
+    };
+  });
+}
+const weekBins = dayBins(7, 7);
+const monthBins = dayBins(30, 24);
+// Today's hours; it is 14:20, so later hours have not happened yet.
+const hourBins: BarChartBin[] = Array.from({ length: 24 }, (_, hour) => {
+  const time = `${String(hour).padStart(2, "0")}:00`;
+  return {
+    id: `hour-${hour}`,
+    label: `Mon 16 Nov, ${time}`,
+    ...(hour % 6 === 0 ? { tick: time } : {}),
+    values:
+      hour > 14 || hour < 8
+        ? [0, 0]
+        : [sampleCount(hour + 7, 4), sampleCount(hour + 70, 5)],
+    disabled: hour > 14,
+  };
+});
+const yearBins: BarChartBin[] = Array.from({ length: 52 }, (_, week) => ({
+  id: `week-${week}`,
+  label: `Week ${week + 1}`,
+  ...(week % 13 === 0 ? { tick: `W${week + 1}` } : {}),
+  values: [sampleCount(week + 3, 40), sampleCount(week + 90, 50)],
+}));
 
 function Section({
   id,
@@ -592,12 +657,76 @@ function Components() {
         </Row>
       </Section>
 
+      <Charts />
+
       <Section id="markdown" title="Markdown">
         <MarkdownText className="max-w-(--reading-width)">
           {galleryMarkdown}
         </MarkdownText>
       </Section>
     </div>
+  );
+}
+
+function Charts() {
+  const [day, setDay] = useState("day-2");
+  const [hour, setHour] = useState("hour-10");
+  return (
+    <Section id="charts" title="Readouts and charts">
+      <ReadoutStrip
+        label="Activity summary, 10 – 16 Nov"
+        cells={[
+          { value: "47", label: "merged" },
+          { value: "63", label: "opened" },
+          { value: "12", label: "open now" },
+          { value: "8", label: "repositories" },
+        ]}
+      />
+      <div className="flex max-w-(--reading-width) flex-col gap-2">
+        <BarChart
+          label="Activity, 10 – 16 Nov"
+          series={activitySeries}
+          bins={weekBins}
+          selected={day}
+          onActivate={setDay}
+        />
+        <BarChartLegend series={activitySeries} />
+      </div>
+      <BarChart
+        label="Activity, 18 Oct – 16 Nov"
+        series={activitySeries}
+        bins={monthBins}
+        className="max-w-(--reading-width)"
+      />
+      <BarChart
+        label="Activity, Mon 16 Nov"
+        series={activitySeries}
+        bins={hourBins}
+        selected={hour}
+        marker={{ index: 14, fraction: 1 / 3, label: "Now, 14:20" }}
+        onActivate={setHour}
+        className="max-w-(--reading-width)"
+      />
+      <div className="flex w-full max-w-90 flex-col gap-2 border border-border p-3">
+        <BarChart
+          label="Activity, 2026 by week"
+          series={activitySeries}
+          bins={yearBins}
+        />
+        <div className="flex items-center gap-2 text-xs text-secondary">
+          <Sparkline
+            values={yearBins.map((bin) => bin.values[0] ?? 0)}
+            label="Merged per week, 2026"
+            className="w-24"
+          />
+          merged per week
+        </div>
+        <div className="flex items-center gap-2 text-xs text-secondary">
+          <Sparkline values={[0, 2, 5, 0, 1, 0, 3]} className="w-16" />
+          octo/app
+        </div>
+      </div>
+    </Section>
   );
 }
 

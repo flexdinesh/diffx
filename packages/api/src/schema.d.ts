@@ -372,8 +372,25 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first. The range may span at most 31 days and starts no earlier than retained history (retainedSince); one ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only. */
+    /** @description The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first, one page at a time. The range may span at most 366 days and starts no earlier than retained history (retainedSince); one ending before it is refused. Totals (opened, merged, repositories, states) cover the whole range regardless of filters; pullRequests is one filtered page, continued with nextCursor. 404 when the integration is not configured. Distributed browser sessions only. */
     get: operations["getGitHubHistory"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v2/github/history/overview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Aggregates of the account's GitHub user's pull requests over the bins the client's edges define, within its actively followed repositories. Bin i is [edges[i], edges[i+1]); the span may be at most 366 days and counting starts no earlier than retained history (retainedSince); a range ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only. */
+    get: operations["getGitHubHistoryOverview"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1545,11 +1562,84 @@ export interface components {
       opened: number;
       /** @description Pull requests merged in the range. */
       merged: number;
-      /** @description Counts per repository, most active first. */
+      /** @description Counts per repository over the whole range, most active first. */
       repositories: components["schemas"]["GitHubHistoryRepository"][];
+      states: components["schemas"]["GitHubHistoryStates"];
+      /** @description One page of the filtered pull requests, newest event first. */
       pullRequests: components["schemas"]["GitHubHistoryPullRequest"][];
-      /** @description More than 1000 pull requests matched; counts cover only those returned. */
+      /** @description Continues with the next page; null on the last page. */
+      nextCursor: string | null;
+    };
+    /** @description Pull requests in the range by current state. */
+    GitHubHistoryStates: {
+      /** @description Open and not a draft. */
+      open: number;
+      /** @description Open drafts. */
+      draft: number;
+      /** @description Closed without merging. */
+      closed: number;
+      merged: number;
+    };
+    GitHubHistoryOverview: {
+      /** @description False without a GitHub connection; aggregates are then zero. */
+      connected: boolean;
+      login?: string;
+      following: boolean;
+      /** Format: int64 */
+      retainedSince: number;
+      /**
+       * Format: int64
+       * @description Counting start, Unix milliseconds; the first edge, never before retainedSince.
+       */
+      since: number;
+      /** Format: int64 */
+      until: number;
+      /** @description Pull requests opened in the range. */
+      opened: number;
+      /** @description Pull requests merged in the range. */
+      merged: number;
+      /** @description Pull requests opened in the range and still open, drafts included. */
+      openNow: number;
+      /**
+       * Format: int64
+       * @description Median milliseconds from opening to merging over pull requests merged in the range; null when none merged.
+       */
+      medianToMerge: number | null;
+      /** @description One entry per bin, in edge order. */
+      bins: components["schemas"]["GitHubHistoryBin"][];
+      /** @description Per repository, most active first. */
+      repositories: components["schemas"]["GitHubHistoryOverviewRepository"][];
+      /** @description Pull requests opened in the range and still open, oldest first; at most 50 (openNow counts all). */
+      stillOpen: components["schemas"]["GitHubHistoryOpenPullRequest"][];
+      /** @description More than 20,000 pull requests matched; aggregates cover only the newest 20,000. */
       truncated: boolean;
+    };
+    GitHubHistoryBin: {
+      /** Format: int64 */
+      since: number;
+      opened: number;
+      merged: number;
+    };
+    GitHubHistoryOverviewRepository: {
+      fullName: string;
+      opened: number;
+      merged: number;
+      openNow: number;
+      /** Format: int64 */
+      medianToMerge: number | null;
+      /** @description Merges per bin, in edge order. */
+      merges: number[];
+    };
+    GitHubHistoryOpenPullRequest: {
+      /** Format: int64 */
+      repositoryId: number;
+      fullName: string;
+      number: number;
+      title: string;
+      url: string;
+      draft: boolean;
+      /** Format: int64 */
+      createdAt: number;
     };
     GitHubHistoryRepository: {
       fullName: string;
@@ -2914,6 +3004,16 @@ export interface operations {
         since: number;
         /** @description Range end, Unix milliseconds, exclusive. */
         until: number;
+        /** @description Opaque nextCursor from the previous page of the same range and filters. */
+        cursor?: string;
+        /** @description Page size, 1 to 500; 200 when omitted. */
+        limit?: number;
+        /** @description Only this repository's pull requests (owner/name). */
+        repo?: string;
+        /** @description Only pull requests opened, or merged, in the range. */
+        activity?: "opened" | "merged";
+        /** @description Only pull requests currently in this state; draft is an open draft, open excludes drafts. */
+        state?: "open" | "draft" | "closed" | "merged";
       };
       header?: never;
       path?: never;
@@ -2928,6 +3028,33 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["GitHubHistory"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      default: components["responses"]["Problem"];
+    };
+  };
+  getGitHubHistoryOverview: {
+    parameters: {
+      query: {
+        /** @description Strictly increasing bin edges, Unix milliseconds; the first is the range start, the last its exclusive end. */
+        edges: number[];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Pull request aggregates for the bins. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GitHubHistoryOverview"];
         };
       };
       400: components["responses"]["Problem"];

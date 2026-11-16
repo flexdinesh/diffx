@@ -771,15 +771,22 @@ main {
 }
 
 /* History reuses the bench's panes. Rows: state icon, number and title,
-   repository, event, time; ListRow's depth insets them to the section's 16px. */
+   repository, event, time to merge, time; ListRow's depth insets them to the
+   section's 16px. */
 .history-row {
   display: grid;
-  grid-template-columns: var(--icon-sm) minmax(0, 3fr) minmax(
-      0,
-      1.2fr
-    ) 7rem 3rem;
+  grid-template-columns:
+    var(--icon-sm) minmax(0, 3fr) minmax(0, 1.2fr)
+    7rem 4.5rem 3rem;
   align-items: center;
   gap: var(--space-3);
+}
+/* The view toggle and list actions trail the stepper. */
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
 }
 .history-stepper {
   display: inline-flex;
@@ -808,6 +815,9 @@ main {
   color: var(--muted);
   font-size: var(--text-xs);
 }
+.history-note-after {
+  padding-top: var(--space-3);
+}
 .history-facet-title {
   display: flex;
   align-items: baseline;
@@ -815,40 +825,138 @@ main {
   gap: var(--space-2);
 }
 .history-facet-title > span,
-.history-repo-counts {
+.history-repo-counts,
+.history-duration,
+.history-figure,
+.history-repo-stack {
   color: var(--muted);
   font: var(--text-xs) var(--font-mono);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.history-duration,
+.history-figure {
+  text-align: right;
+}
+.history-figure {
+  color: var(--text-secondary);
+}
+.history-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+}
+/* Overview: the readout strip and chart sit in the section's 16px inset. */
+.history-readout,
+.history-chart {
+  padding: var(--space-3) var(--space-4);
+}
+.history-skeleton-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.history-skeleton-chart {
+  display: flex;
+  height: var(--chart-height);
+}
+/* Repositories: name, merged, opened, open now, median to merge, merges.
+   The column header and rows share the grid. */
+.history-repo-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) 4rem 4rem 4.5rem 7rem minmax(4rem, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+}
+.history-columns {
+  min-height: var(--control-small);
+  padding-inline: var(--space-4);
+  border-bottom: 1px solid var(--border-muted);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.history-spark {
+  display: flex;
+  min-width: 0;
+}
+.history-repo-stack {
+  display: none;
+}
+/* Still open: state icon, number and title, repository, draft, age. */
+.history-open-row {
+  display: grid;
+  grid-template-columns:
+    var(--icon-sm) minmax(0, 3fr) minmax(0, 1.2fr)
+    4rem 6rem;
+  align-items: center;
+  gap: var(--space-3);
+}
 @media (max-width: 767px) {
   .history-window {
     min-width: 0;
   }
+  .history-skeleton-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   /* Phones keep the icon, title and time; repository and event wrap under
-     the title. */
-  .history-row {
+     the title; time to merge stays in the title tooltip's detail. */
+  .history-row,
+  .history-open-row {
     grid-template-columns: var(--icon-sm) minmax(0, 1fr) auto;
     grid-template-areas:
       "icon title time"
       ". meta event";
     row-gap: var(--space-0-5);
   }
-  .history-row > :nth-child(1) {
+  .history-row > :nth-child(1),
+  .history-open-row > :nth-child(1) {
     grid-area: icon;
   }
-  .history-row > :nth-child(2) {
+  .history-row > :nth-child(2),
+  .history-open-row > :nth-child(2) {
     grid-area: title;
   }
-  .history-row > :nth-child(3) {
+  .history-row > :nth-child(3),
+  .history-open-row > :nth-child(3) {
     grid-area: meta;
   }
-  .history-row > :nth-child(4) {
+  .history-row > :nth-child(4),
+  .history-open-row > :nth-child(4) {
     grid-area: event;
     text-align: right;
   }
   .history-row > :nth-child(5) {
+    display: none;
+  }
+  .history-row > :nth-child(6),
+  .history-open-row > :nth-child(5) {
     grid-area: time;
+  }
+  /* Repositories stack: name and sparkline, then the figures in one line. */
+  .history-columns {
+    display: none;
+  }
+  .history-repo-row {
+    grid-template-columns: minmax(0, 1fr) 5rem;
+    grid-template-areas:
+      "name spark"
+      "figures figures";
+    row-gap: var(--space-0-5);
+  }
+  .history-repo-row > :nth-child(1) {
+    grid-area: name;
+  }
+  .history-repo-row > :nth-child(6) {
+    grid-area: spark;
+  }
+  .history-repo-row > :nth-child(n + 2):nth-child(-n + 5) {
+    display: none;
+  }
+  .history-repo-row > :nth-child(7) {
+    display: block;
+    grid-area: figures;
   }
 }
 

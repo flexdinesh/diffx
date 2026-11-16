@@ -2823,8 +2823,11 @@ test("diff file and folder collapse state survives reload within the tab", async
   ).toBeVisible();
 });
 
-test("the narrow History filter menu opens and filters", async ({ page }) => {
-  const now = Date.now();
+const historyNow = Date.now();
+const historyHour = 3_600_000;
+const historyDay = 24 * historyHour;
+
+async function mockHistory(page: Page) {
   await page.route("**/api/v2/bootstrap", (route) =>
     route.fulfill({
       json: {
@@ -2839,45 +2842,106 @@ test("the narrow History filter menu opens and filters", async ({ page }) => {
       },
     }),
   );
-  await page.route("**/api/v2/github/history?*", (route) =>
-    route.fulfill({
+  const pullRequests = [
+    {
+      repositoryId: 1,
+      fullName: "octo/app",
+      number: 7,
+      title: "Add search",
+      url: "https://github.com/octo/app/pull/7",
+      draft: false,
+      state: "open",
+      createdAt: historyNow - historyHour,
+      mergedAt: null,
+      closedAt: null,
+      opened: true,
+      merged: false,
+    },
+  ];
+  // The server filters the page; totals cover the whole window.
+  await page.route("**/api/v2/github/history?*", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const activity = params.get("activity");
+    return route.fulfill({
       json: {
         connected: true,
         login: "mona",
         following: true,
-        retainedSince: now - 30 * 86_400_000,
-        since: now - 7 * 86_400_000,
-        until: now,
+        retainedSince: historyNow - 30 * historyDay,
+        since: Number(params.get("since")),
+        until: Number(params.get("until")),
         opened: 1,
         merged: 0,
         repositories: [{ fullName: "octo/app", opened: 1, merged: 0 }],
-        pullRequests: [
+        states: { open: 1, draft: 0, closed: 0, merged: 0 },
+        pullRequests: pullRequests.filter(
+          (pull) =>
+            activity === null ||
+            (activity === "merged" ? pull.merged : pull.opened),
+        ),
+        nextCursor: null,
+      },
+    });
+  });
+  await page.route("**/api/v2/github/history/overview?*", (route) => {
+    const edges = new URL(route.request().url()).searchParams
+      .getAll("edges")
+      .map(Number);
+    const bins = edges.slice(1).map((_, index) => ({
+      since: edges[index] ?? 0,
+      opened: (index % 3) + 1,
+      merged: index % 2,
+    }));
+    return route.fulfill({
+      json: {
+        connected: true,
+        login: "mona",
+        following: true,
+        retainedSince: historyNow - 30 * historyDay,
+        since: edges[0],
+        until: edges.at(-1),
+        opened: 12,
+        merged: 9,
+        openNow: 2,
+        medianToMerge: 5 * historyHour + 12 * 60_000,
+        bins,
+        repositories: [
+          {
+            fullName: "octo/a-repository-with-a-rather-long-name",
+            opened: 12,
+            merged: 9,
+            openNow: 2,
+            medianToMerge: 5 * historyHour + 12 * 60_000,
+            merges: bins.map((bin) => bin.merged),
+          },
+        ],
+        stillOpen: [
           {
             repositoryId: 1,
-            fullName: "octo/app",
-            number: 7,
-            title: "Add search",
-            url: "https://github.com/octo/app/pull/7",
-            draft: false,
-            state: "open",
-            createdAt: now - 3_600_000,
-            mergedAt: null,
-            closedAt: null,
-            opened: true,
-            merged: false,
+            fullName: "octo/a-repository-with-a-rather-long-name",
+            number: 12,
+            title:
+              "A draft whose title runs long enough to need truncating on phones",
+            url: "https://github.com/octo/app/pull/12",
+            draft: true,
+            createdAt: historyNow - 2 * historyDay,
           },
         ],
         truncated: false,
       },
-    }),
-  );
+    });
+  });
+}
+
+test("the narrow History filter menu opens and filters", async ({ page }) => {
+  await mockHistory(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/history");
+  await page.goto("/history?view=list");
   await expect(page.getByRole("link", { name: /#7 Add search/ })).toBeVisible();
   await page.getByRole("button", { name: "Filter" }).click();
   const menu = page.getByRole("menu", { name: "Filter" });
-  await menu.getByRole("menuitemradio", { name: "Merged" }).click();
-  await expect(page).toHaveURL(/\?activity=merged$/);
+  await menu.getByRole("menuitemradio", { name: "Merged" }).first().click();
+  await expect(page).toHaveURL(/\?view=list&activity=merged$/);
   await expect(page.getByRole("link", { name: /#7 Add search/ })).toHaveCount(
     0,
   );
@@ -2891,4 +2955,73 @@ test("the narrow History filter menu opens and filters", async ({ page }) => {
   await range.getByRole("menuitemradio", { name: "30 days" }).click();
   await expect(page).toHaveURL(/range=30d/);
   await expect(range).toBeHidden();
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    )
+    .toBe(true);
+});
+
+test("the History overview charts bins with tooltips and opens a day by keyboard", async ({
+  page,
+}) => {
+  await mockHistory(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/history");
+  await expect(
+    page.getByRole("list", { name: "Activity summary" }),
+  ).toContainText("9 merged");
+  const chart = page.getByRole("group", { name: /^Activity, / });
+  const bins = chart.getByRole("button");
+  await expect(bins).toHaveCount(7);
+  const second = bins.nth(1);
+  const name = (await second.getAttribute("aria-label")) ?? "";
+  expect(name).toMatch(/: 1 merged, 2 opened$/);
+  await second.hover();
+  await expect(page.locator('[data-slot="tooltip-content"]')).toHaveText(name);
+  await bins.first().focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(second).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\?view=list&day=\d{4}-\d{2}-\d{2}$/);
+  await expect(page.getByRole("link", { name: /#7 Add search/ })).toBeVisible();
+});
+
+test("the narrow History overview stacks without horizontal overflow", async ({
+  page,
+}) => {
+  await mockHistory(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/history");
+  await expect(
+    page.getByRole("list", { name: "Activity summary" }),
+  ).toBeVisible();
+  const repository = page
+    .getByRole("list", { name: "Repositories" })
+    .getByRole("link");
+  // Phones hide the column header and stack each row's figures.
+  await expect(
+    repository.getByText("9 merged · 12 opened · 2 open · 5h 12m"),
+  ).toBeVisible();
+  await expect(page.getByText("Median to merge", { exact: true })).toBeHidden();
+  await expect(
+    page.getByRole("list", { name: "Still open" }).getByRole("link"),
+  ).toContainText("open 2d");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  const view = page.getByRole("group", { name: "History view" });
+  const list = view.getByRole("button", { name: "Pull requests" });
+  await expect(list).toHaveText("");
+  await list.click();
+  await expect(page).toHaveURL(/\?view=list$/);
+  await expect(page.getByRole("link", { name: /#7 Add search/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy recap" })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
 });

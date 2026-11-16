@@ -714,7 +714,7 @@ paths:
       security:
         - browserSession: []
       operationId: getGitHubHistory
-      description: The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first. The range may span at most 31 days and starts no earlier than retained history (retainedSince); one ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
+      description: The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first, one page at a time. The range may span at most 366 days and starts no earlier than retained history (retainedSince); one ending before it is refused. Totals (opened, merged, repositories, states) cover the whole range regardless of filters; pullRequests is one filtered page, continued with nextCursor. 404 when the integration is not configured. Distributed browser sessions only.
       parameters:
         - name: since
           in: query
@@ -730,6 +730,40 @@ paths:
           schema:
             type: integer
             format: int64
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque nextCursor from the previous page of the same range and filters.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1 to 500; 200 when omitted.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+        - name: repo
+          in: query
+          required: false
+          description: Only this repository's pull requests (owner/name).
+          schema:
+            type: string
+        - name: activity
+          in: query
+          required: false
+          description: Only pull requests opened, or merged, in the range.
+          schema:
+            type: string
+            enum: [opened, merged]
+        - name: state
+          in: query
+          required: false
+          description: Only pull requests currently in this state; draft is an open draft, open excludes drafts.
+          schema:
+            type: string
+            enum: [open, draft, closed, merged]
       responses:
         "200":
           description: Pull request history for the range.
@@ -737,6 +771,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GitHubHistory"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v2/github/history/overview:
+    get:
+      security:
+        - browserSession: []
+      operationId: getGitHubHistoryOverview
+      description: Aggregates of the account's GitHub user's pull requests over the bins the client's edges define, within its actively followed repositories. Bin i is [edges[i], edges[i+1]); the span may be at most 366 days and counting starts no earlier than retained history (retainedSince); a range ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
+      parameters:
+        - name: edges
+          in: query
+          required: true
+          description: Strictly increasing bin edges, Unix milliseconds; the first is the range start, the last its exclusive end.
+          style: form
+          explode: true
+          schema:
+            type: array
+            minItems: 2
+            maxItems: 121
+            items:
+              type: integer
+              format: int64
+      responses:
+        "200":
+          description: Pull request aggregates for the bins.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubHistoryOverview"
         "400":
           $ref: "#/components/responses/Problem"
         "403":
@@ -2588,8 +2657,9 @@ components:
           opened,
           merged,
           repositories,
+          states,
           pullRequests,
-          truncated,
+          nextCursor,
         ]
       properties:
         connected:
@@ -2620,16 +2690,158 @@ components:
           description: Pull requests merged in the range.
         repositories:
           type: array
-          description: Counts per repository, most active first.
+          description: Counts per repository over the whole range, most active first.
           items:
             $ref: "#/components/schemas/GitHubHistoryRepository"
+        states:
+          $ref: "#/components/schemas/GitHubHistoryStates"
         pullRequests:
           type: array
+          description: One page of the filtered pull requests, newest event first.
           items:
             $ref: "#/components/schemas/GitHubHistoryPullRequest"
+        nextCursor:
+          type: [string, "null"]
+          description: Continues with the next page; null on the last page.
+    GitHubHistoryStates:
+      type: object
+      additionalProperties: false
+      description: Pull requests in the range by current state.
+      required: [open, draft, closed, merged]
+      properties:
+        open:
+          type: integer
+          description: Open and not a draft.
+        draft:
+          type: integer
+          description: Open drafts.
+        closed:
+          type: integer
+          description: Closed without merging.
+        merged:
+          type: integer
+    GitHubHistoryOverview:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          connected,
+          following,
+          retainedSince,
+          since,
+          until,
+          opened,
+          merged,
+          openNow,
+          medianToMerge,
+          bins,
+          repositories,
+          stillOpen,
+          truncated,
+        ]
+      properties:
+        connected:
+          type: boolean
+          description: False without a GitHub connection; aggregates are then zero.
+        login:
+          type: string
+        following:
+          type: boolean
+        retainedSince:
+          type: integer
+          format: int64
+        since:
+          type: integer
+          format: int64
+          description: Counting start, Unix milliseconds; the first edge, never before retainedSince.
+        until:
+          type: integer
+          format: int64
+        opened:
+          type: integer
+          description: Pull requests opened in the range.
+        merged:
+          type: integer
+          description: Pull requests merged in the range.
+        openNow:
+          type: integer
+          description: Pull requests opened in the range and still open, drafts included.
+        medianToMerge:
+          type: [integer, "null"]
+          format: int64
+          description: Median milliseconds from opening to merging over pull requests merged in the range; null when none merged.
+        bins:
+          type: array
+          description: One entry per bin, in edge order.
+          items:
+            $ref: "#/components/schemas/GitHubHistoryBin"
+        repositories:
+          type: array
+          description: Per repository, most active first.
+          items:
+            $ref: "#/components/schemas/GitHubHistoryOverviewRepository"
+        stillOpen:
+          type: array
+          description: Pull requests opened in the range and still open, oldest first; at most 50 (openNow counts all).
+          items:
+            $ref: "#/components/schemas/GitHubHistoryOpenPullRequest"
         truncated:
           type: boolean
-          description: More than 1000 pull requests matched; counts cover only those returned.
+          description: More than 20,000 pull requests matched; aggregates cover only the newest 20,000.
+    GitHubHistoryBin:
+      type: object
+      additionalProperties: false
+      required: [since, opened, merged]
+      properties:
+        since:
+          type: integer
+          format: int64
+        opened:
+          type: integer
+        merged:
+          type: integer
+    GitHubHistoryOverviewRepository:
+      type: object
+      additionalProperties: false
+      required: [fullName, opened, merged, openNow, medianToMerge, merges]
+      properties:
+        fullName:
+          type: string
+        opened:
+          type: integer
+        merged:
+          type: integer
+        openNow:
+          type: integer
+        medianToMerge:
+          type: [integer, "null"]
+          format: int64
+        merges:
+          type: array
+          description: Merges per bin, in edge order.
+          items:
+            type: integer
+    GitHubHistoryOpenPullRequest:
+      type: object
+      additionalProperties: false
+      required: [repositoryId, fullName, number, title, url, draft, createdAt]
+      properties:
+        repositoryId:
+          type: integer
+          format: int64
+        fullName:
+          type: string
+        number:
+          type: integer
+        title:
+          type: string
+        url:
+          type: string
+        draft:
+          type: boolean
+        createdAt:
+          type: integer
+          format: int64
     GitHubHistoryRepository:
       type: object
       additionalProperties: false
