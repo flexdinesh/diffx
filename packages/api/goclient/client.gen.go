@@ -913,6 +913,48 @@ func (e DeleteCommentsV2ParamsStatus) Valid() bool {
 	}
 }
 
+// Defines values for GetGitHubHistoryParamsActivity.
+const (
+	GetGitHubHistoryParamsActivityMerged GetGitHubHistoryParamsActivity = "merged"
+	GetGitHubHistoryParamsActivityOpened GetGitHubHistoryParamsActivity = "opened"
+)
+
+// Valid indicates whether the value is a known member of the GetGitHubHistoryParamsActivity enum.
+func (e GetGitHubHistoryParamsActivity) Valid() bool {
+	switch e {
+	case GetGitHubHistoryParamsActivityMerged:
+		return true
+	case GetGitHubHistoryParamsActivityOpened:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetGitHubHistoryParamsState.
+const (
+	GetGitHubHistoryParamsStateClosed GetGitHubHistoryParamsState = "closed"
+	GetGitHubHistoryParamsStateDraft  GetGitHubHistoryParamsState = "draft"
+	GetGitHubHistoryParamsStateMerged GetGitHubHistoryParamsState = "merged"
+	GetGitHubHistoryParamsStateOpen   GetGitHubHistoryParamsState = "open"
+)
+
+// Valid indicates whether the value is a known member of the GetGitHubHistoryParamsState enum.
+func (e GetGitHubHistoryParamsState) Valid() bool {
+	switch e {
+	case GetGitHubHistoryParamsStateClosed:
+		return true
+	case GetGitHubHistoryParamsStateDraft:
+		return true
+	case GetGitHubHistoryParamsStateMerged:
+		return true
+	case GetGitHubHistoryParamsStateOpen:
+		return true
+	default:
+		return false
+	}
+}
+
 // AccountToken defines model for AccountToken.
 type AccountToken struct {
 	// CreatedAt Unix milliseconds.
@@ -1391,11 +1433,16 @@ type GitHubHistory struct {
 	// Merged Pull requests merged in the range.
 	Merged int `json:"merged"`
 
+	// NextCursor Continues with the next page; null on the last page.
+	NextCursor nullable.Nullable[string] `json:"nextCursor"`
+
 	// Opened Pull requests opened in the range.
-	Opened       int                        `json:"opened"`
+	Opened int `json:"opened"`
+
+	// PullRequests One page of the filtered pull requests, newest event first.
 	PullRequests []GitHubHistoryPullRequest `json:"pullRequests"`
 
-	// Repositories Counts per repository, most active first.
+	// Repositories Counts per repository over the whole range, most active first.
 	Repositories []GitHubHistoryRepository `json:"repositories"`
 
 	// RetainedSince Oldest instant history is kept for, Unix milliseconds; the admin's history retention before now.
@@ -1404,9 +1451,76 @@ type GitHubHistory struct {
 	// Since Range start served, Unix milliseconds; never before retainedSince.
 	Since int64 `json:"since"`
 
-	// Truncated More than 1000 pull requests matched; counts cover only those returned.
+	// States Pull requests in the range by current state.
+	States GitHubHistoryStates `json:"states"`
+	Until  int64               `json:"until"`
+}
+
+// GitHubHistoryBin defines model for GitHubHistoryBin.
+type GitHubHistoryBin struct {
+	Merged int   `json:"merged"`
+	Opened int   `json:"opened"`
+	Since  int64 `json:"since"`
+}
+
+// GitHubHistoryOpenPullRequest defines model for GitHubHistoryOpenPullRequest.
+type GitHubHistoryOpenPullRequest struct {
+	CreatedAt    int64  `json:"createdAt"`
+	Draft        bool   `json:"draft"`
+	FullName     string `json:"fullName"`
+	Number       int    `json:"number"`
+	RepositoryId int64  `json:"repositoryId"`
+	Title        string `json:"title"`
+	Url          string `json:"url"`
+}
+
+// GitHubHistoryOverview defines model for GitHubHistoryOverview.
+type GitHubHistoryOverview struct {
+	// Bins One entry per bin, in edge order.
+	Bins []GitHubHistoryBin `json:"bins"`
+
+	// Connected False without a GitHub connection; aggregates are then zero.
+	Connected bool    `json:"connected"`
+	Following bool    `json:"following"`
+	Login     *string `json:"login,omitempty"`
+
+	// MedianToMerge Median milliseconds from opening to merging over pull requests merged in the range; null when none merged.
+	MedianToMerge nullable.Nullable[int64] `json:"medianToMerge"`
+
+	// Merged Pull requests merged in the range.
+	Merged int `json:"merged"`
+
+	// OpenNow Pull requests opened in the range and still open, drafts included.
+	OpenNow int `json:"openNow"`
+
+	// Opened Pull requests opened in the range.
+	Opened int `json:"opened"`
+
+	// Repositories Per repository, most active first.
+	Repositories  []GitHubHistoryOverviewRepository `json:"repositories"`
+	RetainedSince int64                             `json:"retainedSince"`
+
+	// Since Counting start, Unix milliseconds; the first edge, never before retainedSince.
+	Since int64 `json:"since"`
+
+	// StillOpen Pull requests opened in the range and still open, oldest first; at most 50 (openNow counts all).
+	StillOpen []GitHubHistoryOpenPullRequest `json:"stillOpen"`
+
+	// Truncated More than 20,000 pull requests matched; aggregates cover only the newest 20,000.
 	Truncated bool  `json:"truncated"`
 	Until     int64 `json:"until"`
+}
+
+// GitHubHistoryOverviewRepository defines model for GitHubHistoryOverviewRepository.
+type GitHubHistoryOverviewRepository struct {
+	FullName      string                   `json:"fullName"`
+	MedianToMerge nullable.Nullable[int64] `json:"medianToMerge"`
+	Merged        int                      `json:"merged"`
+
+	// Merges Merges per bin, in edge order.
+	Merges  []int `json:"merges"`
+	OpenNow int   `json:"openNow"`
+	Opened  int   `json:"opened"`
 }
 
 // GitHubHistoryPullRequest defines model for GitHubHistoryPullRequest.
@@ -1437,6 +1551,19 @@ type GitHubHistoryRepository struct {
 	FullName string `json:"fullName"`
 	Merged   int    `json:"merged"`
 	Opened   int    `json:"opened"`
+}
+
+// GitHubHistoryStates Pull requests in the range by current state.
+type GitHubHistoryStates struct {
+	// Closed Closed without merging.
+	Closed int `json:"closed"`
+
+	// Draft Open drafts.
+	Draft  int `json:"draft"`
+	Merged int `json:"merged"`
+
+	// Open Open and not a draft.
+	Open int `json:"open"`
 }
 
 // GitHubRepository defines model for GitHubRepository.
@@ -2294,6 +2421,33 @@ type GetGitHubHistoryParams struct {
 
 	// Until Range end, Unix milliseconds, exclusive.
 	Until int64 `form:"until" json:"until"`
+
+	// Cursor Opaque nextCursor from the previous page of the same range and filters.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size, 1 to 500; 200 when omitted.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Repo Only this repository's pull requests (owner/name).
+	Repo *string `form:"repo,omitempty" json:"repo,omitempty"`
+
+	// Activity Only pull requests opened, or merged, in the range.
+	Activity *GetGitHubHistoryParamsActivity `form:"activity,omitempty" json:"activity,omitempty"`
+
+	// State Only pull requests currently in this state; draft is an open draft, open excludes drafts.
+	State *GetGitHubHistoryParamsState `form:"state,omitempty" json:"state,omitempty"`
+}
+
+// GetGitHubHistoryParamsActivity defines parameters for GetGitHubHistory.
+type GetGitHubHistoryParamsActivity string
+
+// GetGitHubHistoryParamsState defines parameters for GetGitHubHistory.
+type GetGitHubHistoryParamsState string
+
+// GetGitHubHistoryOverviewParams defines parameters for GetGitHubHistoryOverview.
+type GetGitHubHistoryOverviewParams struct {
+	// Edges Strictly increasing bin edges, Unix milliseconds; the first is the range start, the last its exclusive end.
+	Edges []int64 `form:"edges" json:"edges"`
 }
 
 // PutNotificationPreferencesParams defines parameters for PutNotificationPreferences.
@@ -2917,8 +3071,13 @@ type ClientInterface interface {
 
 	// GetGitHubHistory performs a GET /api/v2/github/history (the `GetGitHubHistory` operationId) request.
 	//
-	// The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first. The range may span at most 31 days and starts no earlier than retained history (retainedSince); one ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
+	// The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first, one page at a time. The range may span at most 366 days and starts no earlier than retained history (retainedSince); one ending before it is refused. Totals (opened, merged, repositories, states) cover the whole range regardless of filters; pullRequests is one filtered page, continued with nextCursor. 404 when the integration is not configured. Distributed browser sessions only.
 	GetGitHubHistory(ctx context.Context, params *GetGitHubHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetGitHubHistoryOverview performs a GET /api/v2/github/history/overview (the `GetGitHubHistoryOverview` operationId) request.
+	//
+	// Aggregates of the account's GitHub user's pull requests over the bins the client's edges define, within its actively followed repositories. Bin i is [edges[i], edges[i+1]); the span may be at most 366 days and counting starts no earlier than retained history (retainedSince); a range ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
+	GetGitHubHistoryOverview(ctx context.Context, params *GetGitHubHistoryOverviewParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetNotificationPreferences performs a GET /api/v2/github/notifications (the `GetNotificationPreferences` operationId) request.
 	//
@@ -4099,9 +4258,24 @@ func (c *Client) FollowGitHubRepository(ctx context.Context, repositoryId int64,
 
 // GetGitHubHistory performs a GET /api/v2/github/history (the `GetGitHubHistory` operationId) request.
 //
-// The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first. The range may span at most 31 days and starts no earlier than retained history (retainedSince); one ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
+// The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first, one page at a time. The range may span at most 366 days and starts no earlier than retained history (retainedSince); one ending before it is refused. Totals (opened, merged, repositories, states) cover the whole range regardless of filters; pullRequests is one filtered page, continued with nextCursor. 404 when the integration is not configured. Distributed browser sessions only.
 func (c *Client) GetGitHubHistory(ctx context.Context, params *GetGitHubHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetGitHubHistoryRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetGitHubHistoryOverview performs a GET /api/v2/github/history/overview (the `GetGitHubHistoryOverview` operationId) request.
+//
+// Aggregates of the account's GitHub user's pull requests over the bins the client's edges define, within its actively followed repositories. Bin i is [edges[i], edges[i+1]); the span may be at most 366 days and counting starts no earlier than retained history (retainedSince); a range ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
+func (c *Client) GetGitHubHistoryOverview(ctx context.Context, params *GetGitHubHistoryOverviewParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetGitHubHistoryOverviewRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -7617,6 +7791,120 @@ func NewGetGitHubHistoryRequest(server string, params *GetGitHubHistoryParams) (
 			}
 		}
 
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Repo != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "repo", *params.Repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Activity != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "activity", *params.Activity, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "state", *params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetGitHubHistoryOverviewRequest constructs an http.Request for the GetGitHubHistoryOverview method
+func NewGetGitHubHistoryOverviewRequest(server string, params *GetGitHubHistoryOverviewParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/github/history/overview")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Edges != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "edges", params.Edges, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -9698,10 +9986,17 @@ type ClientWithResponsesInterface interface {
 
 	// GetGitHubHistoryWithResponse performs a GET /api/v2/github/history (the `GetGitHubHistory` operationId) request.
 	//
-	// The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first. The range may span at most 31 days and starts no earlier than retained history (retainedSince); one ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
+	// The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first, one page at a time. The range may span at most 366 days and starts no earlier than retained history (retainedSince); one ending before it is refused. Totals (opened, merged, repositories, states) cover the whole range regardless of filters; pullRequests is one filtered page, continued with nextCursor. 404 when the integration is not configured. Distributed browser sessions only.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	GetGitHubHistoryWithResponse(ctx context.Context, params *GetGitHubHistoryParams, reqEditors ...RequestEditorFn) (*GetGitHubHistoryResponse, error)
+
+	// GetGitHubHistoryOverviewWithResponse performs a GET /api/v2/github/history/overview (the `GetGitHubHistoryOverview` operationId) request.
+	//
+	// Aggregates of the account's GitHub user's pull requests over the bins the client's edges define, within its actively followed repositories. Bin i is [edges[i], edges[i+1]); the span may be at most 366 days and counting starts no earlier than retained history (retainedSince); a range ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetGitHubHistoryOverviewWithResponse(ctx context.Context, params *GetGitHubHistoryOverviewParams, reqEditors ...RequestEditorFn) (*GetGitHubHistoryOverviewResponse, error)
 
 	// GetNotificationPreferencesWithResponse performs a GET /api/v2/github/notifications (the `GetNotificationPreferences` operationId) request.
 	//
@@ -12885,6 +13180,75 @@ func (r GetGitHubHistoryResponse) ContentType() string {
 	return ""
 }
 
+type GetGitHubHistoryOverviewResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *GitHubHistoryOverview
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetGitHubHistoryOverviewResponse) GetJSON200() *GitHubHistoryOverview {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetGitHubHistoryOverviewResponse) GetApplicationproblemJSON400() *Problem {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetGitHubHistoryOverviewResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetGitHubHistoryOverviewResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetGitHubHistoryOverviewResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetGitHubHistoryOverviewResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetGitHubHistoryOverviewResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetGitHubHistoryOverviewResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetGitHubHistoryOverviewResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetNotificationPreferencesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -15852,7 +16216,7 @@ func (c *ClientWithResponses) FollowGitHubRepositoryWithResponse(ctx context.Con
 
 // GetGitHubHistoryWithResponse performs a GET /api/v2/github/history (the `GetGitHubHistory` operationId) request.
 //
-// The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first. The range may span at most 31 days and starts no earlier than retained history (retainedSince); one ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
+// The account's GitHub user's pull requests opened or merged in [since, until), within its actively followed repositories, newest event first, one page at a time. The range may span at most 366 days and starts no earlier than retained history (retainedSince); one ending before it is refused. Totals (opened, merged, repositories, states) cover the whole range regardless of filters; pullRequests is one filtered page, continued with nextCursor. 404 when the integration is not configured. Distributed browser sessions only.
 //
 // Returns a wrapper object for the known response body format(s).
 func (c *ClientWithResponses) GetGitHubHistoryWithResponse(ctx context.Context, params *GetGitHubHistoryParams, reqEditors ...RequestEditorFn) (*GetGitHubHistoryResponse, error) {
@@ -15861,6 +16225,19 @@ func (c *ClientWithResponses) GetGitHubHistoryWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseGetGitHubHistoryResponse(rsp)
+}
+
+// GetGitHubHistoryOverviewWithResponse performs a GET /api/v2/github/history/overview (the `GetGitHubHistoryOverview` operationId) request.
+//
+// Aggregates of the account's GitHub user's pull requests over the bins the client's edges define, within its actively followed repositories. Bin i is [edges[i], edges[i+1]); the span may be at most 366 days and counting starts no earlier than retained history (retainedSince); a range ending before it is refused. 404 when the integration is not configured. Distributed browser sessions only.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetGitHubHistoryOverviewWithResponse(ctx context.Context, params *GetGitHubHistoryOverviewParams, reqEditors ...RequestEditorFn) (*GetGitHubHistoryOverviewResponse, error) {
+	rsp, err := c.GetGitHubHistoryOverview(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetGitHubHistoryOverviewResponse(rsp)
 }
 
 // GetNotificationPreferencesWithResponse performs a GET /api/v2/github/notifications (the `GetNotificationPreferences` operationId) request.
@@ -18521,6 +18898,60 @@ func ParseGetGitHubHistoryResponse(rsp *http.Response) (*GetGitHubHistoryRespons
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest GitHubHistory
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetGitHubHistoryOverviewResponse parses an HTTP response from a GetGitHubHistoryOverviewWithResponse call
+func ParseGetGitHubHistoryOverviewResponse(rsp *http.Response) (*GetGitHubHistoryOverviewResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetGitHubHistoryOverviewResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitHubHistoryOverview
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
