@@ -276,8 +276,18 @@ requests closed in the last 30 days. Rows are repository facts shared by every
 follower; a read never replaces a row GitHub updated later. `GET
 /api/v2/github/history?since=&until=` (browser session) returns the account's
 GitHub user's pull requests opened or merged in the range within its active
-follows, with totals and per-repository counts, newest event first, capped at 1000. Ranges span at most 31 days and start no earlier than retained history;
-one ending before it is refused. History is pruned hourly once a pull
+follows, newest event first, one page at a time (`limit` 1–500, default 200;
+`cursor` continues with the opaque `nextCursor`, a keyset on the event time in
+microseconds, repository and number). `repo`, `activity` (opened, merged) and
+`state` (open, draft, closed, merged; current state) filter the page; totals,
+per-repository counts and per-state counts always cover the whole range.
+`GET /api/v2/github/history/overview?edges=…` aggregates the same pull requests
+over 1–120 client-chosen bins (the browser's local hours, days or weeks, so
+daylight saving shifts stay client-side): per-bin opened and merged, per
+repository opened, merged, still open, median open-to-merge time and per-bin
+merges, an overall median, and the oldest 50 still-open pull requests, over at
+most the newest 20,000 rows. Both ranges span at most 366 days and start no
+earlier than retained history; one ending before it is refused. History is pruned hourly once a pull
 request's last event is older than `app_settings.history_retention_days`
 (30–365, default 30), which admins set in the console.
 
@@ -536,9 +546,11 @@ collection default.
 The bench's view (Needs attention, All open, Closed), repository and agent
 facets and filter live in its query string. On GitHub servers its header links
 to History at `/history`, outside the review session: whole local days (Today,
-7 or 30 days, stepping by window back to retained history) of the reader's
-opened and merged pull requests, filtered by activity and repository in its
-query string (`?range=&end=&activity=&repo=`). A review's header leads with a
+7, 30 or 90 days, or 52 weeks while retained, stepping by window back to
+retained history) of the reader's opened and merged pull requests. It opens on
+an Overview (readout, activity chart, repositories, still open); the Pull
+requests view pages the list, filtered by activity, current state, repository
+and day in its query string (`?view=list&range=&end=&activity=&state=&repo=&day=`). A review's header leads with a
 “Reviews” breadcrumb back to the bench's last URL in this tab and names the
 open review as repository and branch comboboxes that filter as you type and
 switch streams. Its stepper moves to the previous or next review in the order

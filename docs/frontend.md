@@ -98,8 +98,15 @@ in `sessionStorage` for the Reviews breadcrumb and review stepper
 `/history` (`HistoryPage.tsx`) renders outside `SessionProvider`, like
 `/settings`, only when the remote bootstrap reports `githubEnabled`; other
 servers redirect it to `/`. `history.ts` owns its pure rules (local-day
-windows, stepping, query string, labels, day grouping, filters); the page reads
+windows, stepping, query string with view, state and day, available ranges,
+chart units and bin edges, bin labels and targets, list window, current state,
+durations, readout cells, day grouping and the Markdown recap);
+`use-history.ts` owns its reads (the overview by bin edges and the paged list
+with cursor drain). `HistoryOverview.tsx` renders
+`GET /api/v2/github/history/overview` with the `@diffx/ui` `ReadoutStrip`,
+`BarChart` and `Sparkline`; the Pull requests view reads
 `GET /api/v2/github/history` and reuses the bench's panes and facet rows.
+`CopyDialog.tsx` is shared by review export and History's Copy recap.
 The header repository and branch comboboxes (`ContextIdentity.tsx`) and the
 popup picker (Cmd/Ctrl+K or the header's “Search reviews” magnifier) switch
 reviews too; `project-nav.ts` owns their grouping, ordering, latest-stream and

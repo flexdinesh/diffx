@@ -14,6 +14,7 @@ export const cn = createCn({
         "touch",
         "panel-header",
         "topbar",
+        "chart",
         "icon",
         "icon-sm",
         "icon-lg",

@@ -1,6 +1,7 @@
 package remoteserver
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -27,6 +28,7 @@ import (
 	"github.com/flexdinesh/diffx/internal/identityservice"
 	"github.com/flexdinesh/diffx/internal/pgstore"
 	"github.com/flexdinesh/diffx/internal/testsupport/pgtest"
+	"github.com/flexdinesh/diffx/packages/api/goclient"
 )
 
 // fakeGitHubAPI serves the API and OAuth endpoints the integration calls.
@@ -96,6 +98,9 @@ func TestGitHubRoutesAbsentWithoutConfiguration(t *testing.T) {
 	}
 	if w := identityRequest(handler, "GET", "/api/v2/github/notifications", "", cookie, "", ""); w.Code != 404 {
 		t.Fatalf("unconfigured notification preferences: %d", w.Code)
+	}
+	if w := identityRequest(handler, "GET", "/api/v2/github/history/overview?edges=1&edges=2", "", cookie, "", ""); w.Code != 404 {
+		t.Fatalf("unconfigured history overview: %d", w.Code)
 	}
 }
 
@@ -229,16 +234,71 @@ func TestGitHubConnectFollowAndWebhookBoundaries(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"connected":true,"login":"mona","following":true`) {
 		t.Fatalf("history: %d %s", w.Code, w.Body.String())
 	}
-	for _, query := range []string{"", "?since=1", "?since=a&until=2", fmt.Sprintf("?since=%d&until=%d", now, now-1), fmt.Sprintf("?since=%d&until=%d", now-40*24*3600*1000, now)} {
+	var history goclient.GitHubHistory
+	strictJSON(t, w.Body.Bytes(), &history, "connected", "following", "retainedSince", "since", "until", "opened", "merged", "repositories", "states", "pullRequests", "nextCursor")
+	if history.PullRequests == nil || history.Repositories == nil || !history.NextCursor.IsNull() {
+		t.Fatalf("history page: %s", w.Body.String())
+	}
+	if w := identityRequest(handler, "GET", week+"&limit=500&repo=octo/app&activity=merged&state=draft", "", cookie, "", ""); w.Code != 200 {
+		t.Fatalf("filtered history: %d %s", w.Code, w.Body.String())
+	}
+	year := fmt.Sprintf("?since=%d&until=%d", now-366*24*3600*1000, now)
+	for _, query := range []string{"", "?since=1", "?since=a&until=2", fmt.Sprintf("?since=%d&until=%d", now, now-1), fmt.Sprintf("?since=%d&until=%d", now-367*24*3600*1000, now),
+		year + "&limit=a", year + "&limit=", year + "&limit=0", year + "&limit=501", year + "&state=bogus", year + "&activity=closed", year + "&cursor=!!"} {
 		if w := identityRequest(handler, "GET", "/api/v2/github/history"+query, "", cookie, "", ""); w.Code != 400 {
 			t.Fatalf("history %q: %d %s", query, w.Code, w.Body.String())
 		}
 	}
+	if w := identityRequest(handler, "GET", "/api/v2/github/history"+year, "", cookie, "", ""); w.Code != 200 {
+		t.Fatalf("history over a year: %d %s", w.Code, w.Body.String())
+	}
 	if w := identityRequest(handler, "POST", week, "", cookie, csrf, ""); w.Code != 405 {
 		t.Fatalf("history POST: %d", w.Code)
 	}
+	day := int64(24 * 3600 * 1000)
+	overviewPath := fmt.Sprintf("/api/v2/github/history/overview?edges=%d&edges=%d&edges=%d", now-2*day, now-day, now)
+	if w := identityRequest(handler, "GET", overviewPath, "", nil, "", "Bearer "+token); w.Code != 403 {
+		t.Fatalf("API token read history overview: %d", w.Code)
+	}
+	w = identityRequest(handler, "GET", overviewPath, "", cookie, "", "")
+	if w.Code != 200 {
+		t.Fatalf("history overview: %d %s", w.Code, w.Body.String())
+	}
+	var overview goclient.GitHubHistoryOverview
+	strictJSON(t, w.Body.Bytes(), &overview, "connected", "following", "retainedSince", "since", "until", "opened", "merged", "openNow", "medianToMerge", "bins", "repositories", "stillOpen", "truncated")
+	if !overview.Connected || !overview.Following || len(overview.Bins) != 2 || overview.Bins[1].Since != now-day || overview.Repositories == nil || overview.StillOpen == nil || !overview.MedianToMerge.IsNull() {
+		t.Fatalf("history overview: %s", w.Body.String())
+	}
+	for _, query := range []string{"", "?edges=1", "?edges=a&edges=2", fmt.Sprintf("?edges=%d&edges=%d", now, now-day), fmt.Sprintf("?edges=%d&edges=%d", now-367*day, now)} {
+		if w := identityRequest(handler, "GET", "/api/v2/github/history/overview"+query, "", cookie, "", ""); w.Code != 400 {
+			t.Fatalf("history overview %q: %d %s", query, w.Code, w.Body.String())
+		}
+	}
+	if w := identityRequest(handler, "POST", overviewPath, "", cookie, csrf, ""); w.Code != 405 {
+		t.Fatalf("history overview POST: %d", w.Code)
+	}
 	if w := identityRequest(handler, "DELETE", "/api/v2/github/connection", "", cookie, csrf, ""); w.Code != 204 {
 		t.Fatalf("disconnect: %d", w.Code)
+	}
+}
+
+// strictJSON decodes data into the contract type, refusing unknown fields,
+// and requires the listed fields, null ones included.
+func strictJSON(t *testing.T, data []byte, target any, required ...string) {
+	t.Helper()
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		t.Fatalf("decode %s: %v", data, err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range required {
+		if _, ok := fields[name]; !ok {
+			t.Fatalf("%s lacks %q", data, name)
+		}
 	}
 }
 

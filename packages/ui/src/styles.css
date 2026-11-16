@@ -170,6 +170,7 @@
   --spacing-touch: var(--touch-target);
   --spacing-panel-header: var(--panel-header-height);
   --spacing-topbar: var(--topbar-height);
+  --spacing-chart: var(--chart-height);
   --spacing-icon-sm: var(--icon-sm);
   --spacing-icon: var(--icon-base);
   --spacing-icon-lg: var(--icon-lg);

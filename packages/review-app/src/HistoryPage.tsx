@@ -1,25 +1,25 @@
-import { api, errorDetail } from "@diffx/api";
 import {
   CalendarIcon,
+  ChartColumnIcon,
+  CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CopyIcon,
   FolderGit2Icon,
   GitMergeIcon,
   GitPullRequestArrowIcon,
-  GitPullRequestClosedIcon,
-  GitPullRequestDraftIcon,
-  GitPullRequestIcon,
   HistoryIcon,
   ListFilterIcon,
+  ListIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CountBadge } from "@diffx/ui/components/count-badge";
-import { EmptyState } from "@diffx/ui/components/empty-state";
 import { ErrorState } from "@diffx/ui/components/error-state";
 import { IconButton } from "@diffx/ui/components/icon-button";
 import { LinkButton } from "@diffx/ui/components/link-button";
 import { ListRow } from "@diffx/ui/components/list-row";
 import { PanelHeader } from "@diffx/ui/components/panel-header";
+import { SegmentedControl } from "@diffx/ui/components/segmented-control";
 import { Button } from "@diffx/ui/components/ui/button";
 import {
   DropdownMenu,
@@ -32,107 +32,143 @@ import {
   DropdownMenuTrigger,
 } from "@diffx/ui/components/ui/dropdown-menu";
 import { Skeleton } from "@diffx/ui/components/ui/skeleton";
-import { pluralize } from "@diffx/ui/lib/format";
+import { formatCount, pluralize } from "@diffx/ui/lib/format";
 import { AccountButton } from "./account.tsx";
 import { benchTrail } from "./bench-trail.ts";
+import { CopyDialog } from "./CopyDialog.tsx";
 import {
-  activityCounts,
   canStepBack,
+  chartUnit,
+  clearFilters,
   eventClock,
   eventLabel,
+  formatDuration,
   historyDays,
+  historyEdges,
+  historyFiltered,
   historyPath,
-  historyQuery,
-  historyRanges,
-  historyRoute,
-  historySummary,
+  historyRecap,
   historyWindow,
-  matchesHistory,
+  listSummary,
+  listWindow,
+  openToMerge,
+  pullState,
+  rangeChoices,
+  recapFilters,
   retentionDays,
   retentionNote,
+  stateLabels,
   stepHistory,
   windowLabel,
   windowPhrase,
   type HistoryActivity,
   type HistoryData,
   type HistoryPullRequest,
+  type HistoryPullState,
   type HistoryQuery,
+  type HistoryRangeOption,
+  type HistoryView,
   type HistoryWindow,
 } from "./history.ts";
+import {
+  HistoryOverview,
+  HistoryOverviewSkeleton,
+} from "./HistoryOverview.tsx";
+import { HistoryEmpty, PullIcon, pullStateIcons } from "./HistoryParts.tsx";
 import { navigate } from "./identity-context.tsx";
 import { FacetLink } from "./ReviewBench.tsx";
-import { settingsPath } from "./settings-layout.tsx";
 import { HeaderBrand, streamClick, useNow } from "./StreamParts.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
+import { useCompactChrome } from "./use-compact-chrome.ts";
+import {
+  useHistory,
+  useHistoryOverview,
+  useHistoryQuery,
+} from "./use-history.ts";
 
-function useHistoryQuery() {
-  const [query, setQueryState] = useState(() =>
-    historyQuery(window.location.search),
-  );
-  useEffect(() => {
-    const changed = () => {
-      if (window.location.pathname === historyRoute)
-        setQueryState(historyQuery(window.location.search));
-    };
-    window.addEventListener("popstate", changed);
-    return () => window.removeEventListener("popstate", changed);
-  }, []);
-  const setQuery = useCallback((next: HistoryQuery) => {
-    window.history.pushState(null, "", historyPath(next));
-    setQueryState(next);
-  }, []);
-  return [query, setQuery] as const;
-}
-
-type Load =
-  | { status: "loading" }
-  | { status: "failed"; message: string }
-  | { status: "ready"; data: HistoryData };
-
-/** Reads the window's history, again on Retry and when the window changes. */
-function useHistory(span: HistoryWindow) {
-  const { since, until } = span;
-  const [load, setLoad] = useState<Load>({ status: "loading" });
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    const controller = new AbortController();
-    const failure = "Unable to load history. Try again.";
-    setLoad({ status: "loading" });
-    void api
-      .GET("/api/v2/github/history", {
-        params: { query: { since, until } },
-        signal: controller.signal,
-      })
-      .then(({ data, error }) => {
-        if (controller.signal.aborted) return;
-        if (!data) throw new Error(errorDetail(error, failure));
-        setLoad({ status: "ready", data });
-      })
-      .catch((cause: unknown) => {
-        if (!controller.signal.aborted)
-          setLoad({ status: "failed", message: errorDetail(cause, failure) });
-      });
-    return () => controller.abort();
-  }, [since, until, attempt]);
-  return { load, retry: () => setAttempt((value) => value + 1) };
-}
+/** The recap's row cap: enough for a year of standups, bounded for the clipboard. */
+const recapLimit = 1000;
 
 /**
  * History at `/history`: the pull requests the reader's GitHub account opened
- * and merged in followed repositories, by whole local days. Facets choose the
- * range and filter by activity or repository; the table lists pull requests
- * by day, each linking to GitHub. Narrow screens choose from menus instead.
+ * and merged in followed repositories, by whole local days. The overview
+ * charts a range and its repositories; the list pages through pull requests
+ * by day, filtered by activity, state now, repository or one day. Facets
+ * choose the range and filters; narrow screens choose from menus instead.
  */
 export function HistoryPage() {
   const [query, setQuery] = useHistoryQuery();
   const { mobile } = useSidebarState();
+  const compact = useCompactChrome();
   const now = useNow();
   const span = historyWindow(query, now);
-  const { load, retry } = useHistory(span);
-  const data = load.status === "ready" ? load.data : null;
-  const retainedSince = data?.retainedSince ?? 0;
-  const backward = data !== null && canStepBack(span, retainedSince);
-  const filtered = Boolean(query.activity || query.repo);
+  const overviewView = query.view === "overview";
+  const unit = chartUnit(query.range, compact);
+  const edges = historyEdges(span, unit);
+  const overview = useHistoryOverview(edges, overviewView);
+  const days = listWindow(query, now);
+  const list = useHistory(
+    days,
+    { repo: query.repo, activity: query.activity, state: query.state },
+    !overviewView,
+  );
+  const load = overviewView ? overview.load : list.load;
+  const retry = overviewView ? overview.retry : list.retry;
+  const loaded = load.status === "ready" ? load.data : null;
+  const listData =
+    !overviewView && list.load.status === "ready" ? list.load.data : null;
+  const totals = overviewView ? null : list.totals;
+  // Retention outlives a view switch, so the ranges offered stay put.
+  const [retainedSince, setRetainedSince] = useState<number | null>(null);
+  if (loaded && loaded.retainedSince !== retainedSince)
+    setRetainedSince(loaded.retainedSince);
+  const kept =
+    retainedSince === null ? null : retentionDays(retainedSince, now);
+  const ranges = rangeChoices(kept, query.range);
+  const backward = retainedSince !== null && canStepBack(span, retainedSince);
+  const filtered = historyFiltered(query, now);
+  const label = windowLabel(overviewView ? span : days, now);
+
+  async function recap() {
+    const drained = await list.drain(recapLimit);
+    if (!drained || !listData) return null;
+    return historyRecap(drained.pulls, {
+      window: windowLabel(days, now),
+      filters: recapFilters(query),
+      summary: listSummary(listData, query, days, now),
+      capped: drained.capped ? recapLimit : null,
+    });
+  }
+
+  // Compact screens give the view toggle and list actions their own row.
+  const actions = (
+    <div className="history-actions">
+      {!overviewView && filtered && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          touch
+          onClick={() => setQuery(clearFilters(query))}
+        >
+          Clear filters
+        </Button>
+      )}
+      {!overviewView && (
+        <CopyRecapButton
+          compact={compact}
+          disabled={list.pulls.length === 0}
+          recap={recap}
+        />
+      )}
+      <ViewToggle
+        compact={compact}
+        view={query.view}
+        onChange={(view) => setQuery({ ...query, view })}
+      />
+    </div>
+  );
+
   return (
     <div className="app-shell">
       <div className="app-main">
@@ -167,12 +203,22 @@ export function HistoryPage() {
         </header>
         <div className="bench">
           {!mobile && (
-            <HistoryFacets query={query} data={data} onChange={setQuery} />
+            <HistoryFacets
+              query={query}
+              ranges={ranges}
+              data={totals}
+              onChange={setQuery}
+            />
           )}
           <main className="bench-main" aria-labelledby="history-title">
             <PanelHeader className="bench-toolbar">
               {mobile && (
-                <HistoryMenus query={query} data={data} onChange={setQuery} />
+                <HistoryMenus
+                  query={query}
+                  ranges={ranges}
+                  data={totals}
+                  onChange={setQuery}
+                />
               )}
               <div className="history-stepper">
                 <IconButton
@@ -185,7 +231,7 @@ export function HistoryPage() {
                   <ChevronLeftIcon aria-hidden="true" />
                 </IconButton>
                 <span className="history-window" aria-live="polite">
-                  {windowLabel(span, now)}
+                  {label}
                 </span>
                 <IconButton
                   variant="ghost"
@@ -197,49 +243,83 @@ export function HistoryPage() {
                   <ChevronRightIcon aria-hidden="true" />
                 </IconButton>
               </div>
-              {filtered && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="ml-auto"
-                  onClick={() => setQuery({ ...query, activity: "", repo: "" })}
-                >
-                  Clear filters
-                </Button>
-              )}
+              {!compact && actions}
             </PanelHeader>
+            {compact && (
+              <PanelHeader className="bench-toolbar">{actions}</PanelHeader>
+            )}
             <div className="bench-scroll" aria-busy={load.status === "loading"}>
               {load.status === "failed" ? (
                 <div className="p-4">
                   <ErrorState message={load.message} onRetry={retry} />
                 </div>
-              ) : data === null ? (
+              ) : overviewView ? (
+                overview.load.status !== "ready" ? (
+                  <HistoryOverviewSkeleton />
+                ) : !overview.load.data.connected ||
+                  !overview.load.data.following ||
+                  overview.load.data.opened + overview.load.data.merged ===
+                    0 ? (
+                  <>
+                    {overview.load.data.connected &&
+                      overview.load.data.following && (
+                        <RetentionNote
+                          span={span}
+                          retainedSince={overview.load.data.retainedSince}
+                        />
+                      )}
+                    <HistoryEmpty
+                      data={overview.load.data}
+                      query={query}
+                      phrase={windowPhrase(span, now)}
+                      onChange={setQuery}
+                    />
+                  </>
+                ) : (
+                  <HistoryOverview
+                    overview={overview.load.data}
+                    query={query}
+                    span={span}
+                    unit={unit}
+                    edges={edges}
+                    now={now}
+                    onChange={setQuery}
+                  />
+                )
+              ) : listData === null ? (
                 <HistorySkeleton />
               ) : (
                 <HistoryList
-                  data={data}
+                  data={listData}
+                  pulls={list.pulls}
                   query={query}
-                  span={span}
+                  span={days}
                   now={now}
+                  hasMore={list.hasMore}
+                  more={list.more}
+                  onMore={list.loadMore}
                   onChange={setQuery}
                 />
               )}
             </div>
             <footer className="main-footer">
               <span className="footer-shortcuts">
-                {data && data.connected
-                  ? `Followed repositories · kept ${retentionDays(data.retainedSince, now)} days`
+                {loaded && loaded.connected && kept !== null
+                  ? `Followed repositories · kept ${kept} days`
                   : "Followed repositories"}
               </span>
               <span className="footer-details">
-                {data &&
-                  pluralize(
-                    data.pullRequests.filter((pull) =>
-                      matchesHistory(pull, query),
-                    ).length,
-                    "pull request",
-                  )}
+                {overviewView
+                  ? overview.load.status === "ready" &&
+                    pluralize(
+                      overview.load.data.repositories.length,
+                      "repository",
+                      "repositories",
+                    )
+                  : listData &&
+                    (list.hasMore
+                      ? `${formatCount(list.pulls.length)}+ pull requests`
+                      : pluralize(list.pulls.length, "pull request"))}
               </span>
             </footer>
           </main>
@@ -249,53 +329,186 @@ export function HistoryPage() {
   );
 }
 
+/** Overview or the pull request list; icons alone on compact screens. */
+function ViewToggle({
+  compact,
+  view,
+  onChange,
+}: {
+  compact: boolean;
+  view: HistoryView;
+  onChange: (view: HistoryView) => void;
+}) {
+  return (
+    <SegmentedControl
+      label="History view"
+      touch
+      value={view}
+      onValueChange={onChange}
+      options={
+        compact
+          ? [
+              {
+                value: "overview",
+                label: <ChartColumnIcon aria-hidden="true" />,
+                ariaLabel: "Overview",
+              },
+              {
+                value: "list",
+                label: <ListIcon aria-hidden="true" />,
+                ariaLabel: "Pull requests",
+              },
+            ]
+          : [
+              { value: "overview", label: "Overview" },
+              { value: "list", label: "Pull requests" },
+            ]
+      }
+    />
+  );
+}
+
+/**
+ * Copies the list as a Markdown recap, reading remaining pages first; a
+ * refused clipboard shows the recap for manual copying.
+ */
+function CopyRecapButton({
+  compact,
+  disabled,
+  recap,
+}: {
+  compact: boolean;
+  disabled: boolean;
+  recap: () => Promise<string | null>;
+}) {
+  const [status, setStatus] = useState<"idle" | "copying" | "copied" | "error">(
+    "idle",
+  );
+  const [manual, setManual] = useState<string | null>(null);
+  useEffect(() => {
+    if (status !== "copied" && status !== "error") return;
+    const timeout = window.setTimeout(() => setStatus("idle"), 2_000);
+    return () => window.clearTimeout(timeout);
+  }, [status]);
+
+  async function copy() {
+    setStatus("copying");
+    const text = await recap();
+    if (text === null) {
+      setStatus("error");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus("copied");
+    } catch {
+      setStatus("idle");
+      setManual(text);
+    }
+  }
+
+  const copied = status === "copied";
+  const Icon = copied ? CheckIcon : CopyIcon;
+  return (
+    <>
+      {compact ? (
+        <IconButton
+          label="Copy recap"
+          hint={copied ? "Copied" : "Copy recap"}
+          touch
+          disabled={disabled || status === "copying"}
+          aria-busy={status === "copying"}
+          onClick={() => void copy()}
+        >
+          <Icon aria-hidden="true" />
+        </IconButton>
+      ) : (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          touch
+          disabled={disabled || status === "copying"}
+          aria-busy={status === "copying"}
+          onClick={() => void copy()}
+        >
+          <Icon aria-hidden="true" />
+          {copied ? "Copied" : "Copy recap"}
+        </Button>
+      )}
+      <span className="visually-hidden" role="status">
+        {copied
+          ? "Recap copied"
+          : status === "error"
+            ? "Couldn't load the recap. Try again."
+            : ""}
+      </span>
+      {manual !== null && (
+        <CopyDialog
+          content={{
+            clipboard: "manual",
+            label: "Recap",
+            text: manual,
+            title: "Copy recap",
+          }}
+          onClose={() => setManual(null)}
+        />
+      )}
+    </>
+  );
+}
+
+function RetentionNote({
+  span,
+  retainedSince,
+}: {
+  span: HistoryWindow;
+  retainedSince: number;
+}) {
+  const note = retentionNote(span, retainedSince);
+  return note ? <p className="history-note">{note}</p> : null;
+}
+
 function HistoryList({
   data,
+  pulls,
   query,
   span,
   now,
+  hasMore,
+  more,
+  onMore,
   onChange,
 }: {
   data: HistoryData;
+  pulls: HistoryPullRequest[];
   query: HistoryQuery;
   span: HistoryWindow;
   now: number;
+  hasMore: boolean;
+  more: "idle" | "loading" | "failed";
+  onMore: () => void;
   onChange: (query: HistoryQuery) => void;
 }) {
-  const note = retentionNote(span, data.retainedSince);
   if (!data.connected || !data.following)
     return <HistoryEmpty data={data} query={query} onChange={onChange} />;
-  const pulls = data.pullRequests.filter((pull) => matchesHistory(pull, query));
   if (!pulls.length)
     return (
       <>
-        {note && <p className="history-note">{note}</p>}
+        <RetentionNote span={span} retainedSince={data.retainedSince} />
         <HistoryEmpty
           data={data}
           query={query}
+          filtered={historyFiltered(query, now)}
           phrase={windowPhrase(span, now)}
           onChange={onChange}
         />
       </>
     );
-  const counts = activityCounts(data, query.repo);
-  const repositories = new Set(pulls.map((pull) => pull.fullName)).size;
   return (
     <>
-      <p className="history-summary">
-        {historySummary(
-          query.activity === "merged" ? 0 : counts.opened,
-          query.activity === "opened" ? 0 : counts.merged,
-          repositories,
-          windowPhrase(span, now),
-        )}
-      </p>
-      {note && <p className="history-note">{note}</p>}
-      {data.truncated && (
-        <p className="history-note">
-          Showing the latest 1,000 pull requests; counts cover only those.
-        </p>
-      )}
+      <p className="history-summary">{listSummary(data, query, span, now)}</p>
+      <RetentionNote span={span} retainedSince={data.retainedSince} />
       {historyDays(pulls, now).map((day) => (
         <section key={day.id} aria-labelledby={`history-day-${day.id}`}>
           <div className="bench-section">
@@ -311,25 +524,59 @@ function HistoryList({
           </ul>
         </section>
       ))}
+      {hasMore && (
+        <HistoryMore loaded={pulls.length} more={more} onMore={onMore} />
+      )}
     </>
   );
 }
 
-function PullIcon({ pull }: { pull: HistoryPullRequest }) {
-  const [Icon, label] =
-    pull.state === "merged"
-      ? [GitMergeIcon, "Merged pull request"]
-      : pull.state === "closed"
-        ? [GitPullRequestClosedIcon, "Closed pull request"]
-        : pull.draft
-          ? [GitPullRequestDraftIcon, "Draft pull request"]
-          : [GitPullRequestIcon, "Open pull request"];
-  return <Icon className="text-muted" role="img" aria-label={label} />;
+/** The list's end: reading on when it scrolls into view, or on request. */
+function HistoryMore({
+  loaded,
+  more,
+  onMore,
+}: {
+  loaded: number;
+  more: "idle" | "loading" | "failed";
+  onMore: () => void;
+}) {
+  const sentinel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node || more !== "idle" || typeof IntersectionObserver === "undefined")
+      return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) onMore();
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [more, onMore, loaded]);
+  return (
+    <div ref={sentinel} className="history-more">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        touch
+        disabled={more === "loading"}
+        aria-busy={more === "loading"}
+        onClick={onMore}
+      >
+        {more === "loading" ? "Loading…" : "Load more"}
+      </Button>
+      {more === "failed" && (
+        <span className="text-xs text-error" role="status">
+          Couldn't load more pull requests. Try again.
+        </span>
+      )}
+    </div>
+  );
 }
 
 /** One pull request, opening on GitHub in a new tab. */
 function HistoryRow({ pull }: { pull: HistoryPullRequest }) {
-  const event = eventLabel(pull);
+  const toMerge = openToMerge(pull);
   return (
     <ListRow
       variant="table"
@@ -338,7 +585,7 @@ function HistoryRow({ pull }: { pull: HistoryPullRequest }) {
       render={<a href={pull.url} target="_blank" rel="noopener noreferrer" />}
       title={`${pull.fullName}#${pull.number} · ${pull.title} · Open on GitHub`}
     >
-      <PullIcon pull={pull} />
+      <PullIcon state={pullState(pull)} />
       <span className="min-w-0 truncate">
         <span className="text-muted tabular-nums">#{pull.number}</span>{" "}
         {pull.title}
@@ -346,7 +593,13 @@ function HistoryRow({ pull }: { pull: HistoryPullRequest }) {
       <span className="min-w-0 truncate font-mono text-xs text-secondary">
         {pull.fullName}
       </span>
-      <span className="text-xs text-secondary">{event}</span>
+      <span className="text-xs text-secondary">{eventLabel(pull)}</span>
+      <span
+        className="history-duration"
+        title={toMerge === null ? undefined : "Time from open to merge"}
+      >
+        {toMerge === null ? "" : formatDuration(toMerge)}
+      </span>
       <span className="text-right font-mono text-xs text-muted tabular-nums">
         {eventClock(pull)}
       </span>
@@ -365,103 +618,33 @@ function HistorySkeleton() {
   );
 }
 
-function SettingsAction({ label }: { label: string }) {
-  const href = settingsPath("github");
-  return (
-    <LinkButton
-      variant="outline"
-      href={href}
-      onClick={(event) => streamClick(event, () => navigate(href))}
-    >
-      {label}
-    </LinkButton>
-  );
-}
-
-function HistoryEmpty({
-  data,
-  query,
-  phrase,
-  onChange,
-}: {
-  data: HistoryData;
-  query: HistoryQuery;
-  phrase?: string;
-  onChange: (query: HistoryQuery) => void;
-}) {
-  let title: string;
-  let description: string;
-  let action: ReactNode = null;
-  if (!data.connected) {
-    title = "Connect GitHub to see your history";
-    description =
-      "History lists the pull requests you open and merge in repositories you follow.";
-    action = <SettingsAction label="Connect GitHub" />;
-  } else if (!data.following) {
-    title = "Follow repositories to see your history";
-    description = `History lists the pull requests @${data.login ?? "you"} opens and merges in repositories you follow.`;
-    action = <SettingsAction label="Follow repositories" />;
-  } else if (query.activity || query.repo) {
-    title = "No matching pull requests";
-    description = "No pull request in this range matches the filters.";
-    action = (
-      <Button
-        type="button"
-        variant="outline"
-        onClick={() => onChange({ ...query, activity: "", repo: "" })}
-      >
-        Clear filters
-      </Button>
-    );
-  } else {
-    title = `No pull requests ${phrase ?? ""}`.trim();
-    description =
-      "Pull requests you open or merge in followed repositories appear here.";
-    if (query.range !== "30d")
-      action = (
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => onChange({ ...query, range: "30d", end: "" })}
-        >
-          Show 30 days
-        </Button>
-      );
-  }
-  return (
-    <EmptyState
-      size="page"
-      heading="h2"
-      role="status"
-      title={title}
-      description={description}
-      action={action}
-    />
-  );
-}
-
 const activityFacets = [
   { value: "merged", label: "Merged", Icon: GitMergeIcon },
   { value: "opened", label: "Opened", Icon: GitPullRequestArrowIcon },
 ] as const;
 
+const stateFacets: HistoryPullState[] = ["open", "draft", "closed", "merged"];
+
 function HistoryFacets({
   query,
+  ranges,
   data,
   onChange,
 }: {
   query: HistoryQuery;
+  ranges: HistoryRangeOption[];
+  /** The list's first page; null in the overview, which filters nothing. */
   data: HistoryData | null;
   onChange: (query: HistoryQuery) => void;
 }) {
-  const counts = data ? activityCounts(data, query.repo) : null;
+  const list = query.view === "list";
   return (
     <nav className="bench-facets" aria-label="History filters">
       <PanelHeader title="Range" />
       <div className="bench-facets-scroll">
         <ul className="bench-list" aria-label="Range">
-          {historyRanges.map((range) => {
-            const next = { ...query, range: range.value, end: "" };
+          {ranges.map((range) => {
+            const next = { ...query, range: range.value, end: "", day: "" };
             return (
               <li key={range.value}>
                 <ListRow
@@ -479,29 +662,55 @@ function HistoryFacets({
             );
           })}
         </ul>
-        <h2 className="bench-facet-title">Activity</h2>
-        <ul className="bench-list" aria-label="Activity">
-          {activityFacets.map((facet) => {
-            const current = query.activity === facet.value;
-            const next: HistoryQuery = {
-              ...query,
-              activity: current ? "" : facet.value,
-            };
-            return (
-              <li key={facet.value}>
-                <FacetLink
-                  href={historyPath(next)}
-                  current={current}
-                  Icon={facet.Icon}
-                  label={facet.label}
-                  count={counts?.[facet.value] ?? 0}
-                  onSelect={() => onChange(next)}
-                />
-              </li>
-            );
-          })}
-        </ul>
-        {data && data.repositories.length > 0 && (
+        {list && (
+          <>
+            <h2 className="bench-facet-title">Activity</h2>
+            <ul className="bench-list" aria-label="Activity">
+              {activityFacets.map((facet) => {
+                const current = query.activity === facet.value;
+                const next: HistoryQuery = {
+                  ...query,
+                  activity: current ? "" : facet.value,
+                };
+                return (
+                  <li key={facet.value}>
+                    <FacetLink
+                      href={historyPath(next)}
+                      current={current}
+                      Icon={facet.Icon}
+                      label={facet.label}
+                      count={data?.[facet.value] ?? 0}
+                      onSelect={() => onChange(next)}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+            <h2 className="bench-facet-title">State now</h2>
+            <ul className="bench-list" aria-label="State now">
+              {stateFacets.map((state) => {
+                const current = query.state === state;
+                const next: HistoryQuery = {
+                  ...query,
+                  state: current ? "" : state,
+                };
+                return (
+                  <li key={state}>
+                    <FacetLink
+                      href={historyPath(next)}
+                      current={current}
+                      Icon={pullStateIcons[state]}
+                      label={stateLabels[state]}
+                      count={data?.states[state] ?? 0}
+                      onSelect={() => onChange(next)}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+        {list && data && data.repositories.length > 0 && (
           <>
             <h2 className="bench-facet-title history-facet-title">
               Repositories
@@ -549,14 +758,16 @@ function HistoryFacets({
 /** Narrow screens choose the range and filters from menus. */
 function HistoryMenus({
   query,
+  ranges,
   data,
   onChange,
 }: {
   query: HistoryQuery;
+  ranges: HistoryRangeOption[];
   data: HistoryData | null;
   onChange: (query: HistoryQuery) => void;
 }) {
-  const range = historyRanges.find((item) => item.value === query.range);
+  const range = ranges.find((item) => item.value === query.range);
   return (
     <>
       <DropdownMenu>
@@ -573,11 +784,12 @@ function HistoryMenus({
             aria-label="Range"
             value={query.range}
             onValueChange={(next) => {
-              const chosen = historyRanges.find((item) => item.value === next);
-              if (chosen) onChange({ ...query, range: chosen.value, end: "" });
+              const chosen = ranges.find((item) => item.value === next);
+              if (chosen)
+                onChange({ ...query, range: chosen.value, end: "", day: "" });
             }}
           >
-            {historyRanges.map((item) => (
+            {ranges.map((item) => (
               <DropdownMenuRadioItem
                 key={item.value}
                 value={item.value}
@@ -589,62 +801,85 @@ function HistoryMenus({
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button type="button" variant="ghost" size="sm" touch>
-              <ListFilterIcon aria-hidden="true" />
-              Filter
-            </Button>
-          }
-        />
-        <DropdownMenuContent align="start" aria-label="Filter pull requests">
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Activity</DropdownMenuLabel>
-            <DropdownMenuRadioGroup
-              aria-label="Activity"
-              value={query.activity || "all"}
-              onValueChange={(next) => {
-                const activity: HistoryActivity =
-                  next === "opened" || next === "merged" ? next : "";
-                onChange({ ...query, activity });
-              }}
-            >
-              <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
-              {activityFacets.map((facet) => (
-                <DropdownMenuRadioItem key={facet.value} value={facet.value}>
-                  {facet.label}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuGroup>
-          {data && data.repositories.length > 0 && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Repositories</DropdownMenuLabel>
-                <DropdownMenuRadioGroup
-                  aria-label="Repository"
-                  value={query.repo || "all"}
-                  onValueChange={(next) =>
-                    onChange({ ...query, repo: next === "all" ? "" : next })
-                  }
-                >
-                  <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
-                  {data.repositories.map((repository) => (
-                    <DropdownMenuRadioItem
-                      key={repository.fullName}
-                      value={repository.fullName}
-                    >
-                      {repository.fullName}
+      {query.view === "list" && (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button type="button" variant="ghost" size="sm" touch>
+                <ListFilterIcon aria-hidden="true" />
+                Filter
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="start" aria-label="Filter pull requests">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Activity</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                aria-label="Activity"
+                value={query.activity || "all"}
+                onValueChange={(next) => {
+                  const activity: HistoryActivity =
+                    next === "opened" || next === "merged" ? next : "";
+                  onChange({ ...query, activity });
+                }}
+              >
+                <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
+                {activityFacets.map((facet) => (
+                  <DropdownMenuRadioItem key={facet.value} value={facet.value}>
+                    {facet.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>State now</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                aria-label="State now"
+                value={query.state || "all"}
+                onValueChange={(next) => {
+                  const state = stateFacets.find((item) => item === next);
+                  onChange({ ...query, state: state ?? "" });
+                }}
+              >
+                <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
+                {stateFacets.map((state) => (
+                  <DropdownMenuRadioItem key={state} value={state}>
+                    {stateLabels[state]}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuGroup>
+            {data && data.repositories.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Repositories</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    aria-label="Repository"
+                    value={query.repo || "all"}
+                    onValueChange={(next) =>
+                      onChange({ ...query, repo: next === "all" ? "" : next })
+                    }
+                  >
+                    <DropdownMenuRadioItem value="all">
+                      All
                     </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuGroup>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+                    {data.repositories.map((repository) => (
+                      <DropdownMenuRadioItem
+                        key={repository.fullName}
+                        value={repository.fullName}
+                      >
+                        {repository.fullName}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuGroup>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </>
   );
 }

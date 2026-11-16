@@ -8,7 +8,7 @@ import { Navigation } from "./Navigation.tsx";
 import { NewerSnapshotNotice } from "./StreamParts.tsx";
 import { ReviewCompleteNotice } from "./ReviewCompleteNotice.tsx";
 import { PullRequestBanner } from "./PullRequestBanner.tsx";
-import { CopyDialog } from "./review.tsx";
+import { CopyDialog } from "./CopyDialog.tsx";
 import { capabilityEnabled, useSession } from "./session-context.tsx";
 import { useSidebarState } from "./sidebar-context.tsx";
 import { WebMCPTools } from "./WebMCPTools.tsx";

@@ -219,6 +219,47 @@ func (s *GitHubStore) PullRequestHistory(ctx context.Context, ownerID string, si
 	return result, nil
 }
 
+func (s *GitHubStore) PullRequestHistoryTotals(ctx context.Context, ownerID string, since, until int64) ([]githubsync.HistoryTotal, error) {
+	rows, err := s.store.queries.GitHubPullRequestHistoryTotals(ctx, pgdb.GitHubPullRequestHistoryTotalsParams{
+		OwnerID: ownerID, Since: time.UnixMilli(since), Until: time.UnixMilli(until),
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]githubsync.HistoryTotal, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, githubsync.HistoryTotal{FullName: row.FullName, State: row.State, Draft: row.Draft,
+			PullRequests: int(row.Pulls), Opened: int(row.Opened), Merged: int(row.Merged)})
+	}
+	return result, nil
+}
+
+func (s *GitHubStore) PullRequestHistoryPage(ctx context.Context, ownerID string, page githubsync.HistoryPage) ([]githubsync.HistoryEntry, *githubsync.HistoryCursor, error) {
+	params := pgdb.GitHubPullRequestHistoryPageParams{OwnerID: ownerID, Since: time.UnixMilli(page.Since), Until: time.UnixMilli(page.Until),
+		Repo: page.Repo, Activity: page.Activity, State: page.State, RowLimit: int32(page.Limit + 1)}
+	if page.After != nil {
+		params.After, params.CursorEvent, params.CursorRepositoryID, params.CursorNumber = true, page.After.Event, page.After.RepositoryID, int32(page.After.Number)
+	}
+	rows, err := s.store.queries.GitHubPullRequestHistoryPage(ctx, params)
+	if err != nil {
+		return nil, nil, err
+	}
+	var next *githubsync.HistoryCursor
+	if len(rows) > page.Limit {
+		rows = rows[:page.Limit]
+		last := rows[len(rows)-1]
+		next = &githubsync.HistoryCursor{Event: last.Event, RepositoryID: last.RepositoryID, Number: int(last.Number)}
+	}
+	result := make([]githubsync.HistoryEntry, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, githubsync.HistoryEntry{
+			RepositoryID: row.RepositoryID, FullName: row.FullName, Number: int(row.Number), Title: row.Title, URL: row.HtmlUrl,
+			Draft: row.Draft, State: row.State, CreatedAt: row.CreatedAt, MergedAt: row.MergedAt, ClosedAt: row.ClosedAt,
+		})
+	}
+	return result, next, nil
+}
+
 func (s *GitHubStore) HistoryRetentionDays(ctx context.Context) (int, error) {
 	days, err := s.store.queries.HistoryRetentionDays(ctx)
 	return int(days), err

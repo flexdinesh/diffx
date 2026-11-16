@@ -449,6 +449,159 @@ func (q *Queries) GitHubPullRequestHistory(ctx context.Context, arg GitHubPullRe
 	return items, nil
 }
 
+const gitHubPullRequestHistoryPage = `-- name: GitHubPullRequestHistoryPage :many
+WITH ranged AS (
+  SELECT h.repository_id, h.number, h.full_name, h.title, h.html_url, h.draft, h.state, h.created_at, h.merged_at, h.closed_at,
+    (h.created_at >= $7 AND h.created_at < $8) AS opened, (h.merged_at >= $7 AND h.merged_at < $8) AS merged,
+    GREATEST(CASE WHEN h.created_at < $8 THEN h.created_at END, CASE WHEN h.merged_at < $8 THEN h.merged_at END)::timestamptz AS event
+  FROM github_pull_request_history h
+  JOIN github_connections c ON c.owner_id = $9 AND c.user_id = h.author_id
+  JOIN github_follows f ON f.owner_id = c.owner_id AND f.repository_id = h.repository_id AND f.status = 'active'
+  WHERE ((h.created_at >= $7 AND h.created_at < $8) OR (h.merged_at >= $7 AND h.merged_at < $8))
+    AND ($10::text = '' OR h.full_name = $10::text)
+    AND ($11::text = '' OR ($11::text IN ('closed', 'merged') AND h.state = $11::text)
+      OR (h.state = 'open' AND (($11::text = 'draft' AND h.draft) OR ($11::text = 'open' AND NOT h.draft))))
+)
+SELECT repository_id, number, full_name, title, html_url, draft, state, created_at, merged_at, closed_at, event
+FROM ranged
+WHERE ($1::text = '' OR ($1::text = 'opened' AND opened) OR ($1::text = 'merged' AND merged IS TRUE))
+  AND (NOT $2::boolean OR event < $3::timestamptz
+    OR (event = $3::timestamptz AND (repository_id, number) > ($4::bigint, $5::integer)))
+ORDER BY event DESC, repository_id, number
+LIMIT $6
+`
+
+type GitHubPullRequestHistoryPageParams struct {
+	Activity           string
+	After              bool
+	CursorEvent        time.Time
+	CursorRepositoryID int64
+	CursorNumber       int32
+	RowLimit           int32
+	Since              time.Time
+	Until              time.Time
+	OwnerID            string
+	Repo               string
+	State              string
+}
+
+type GitHubPullRequestHistoryPageRow struct {
+	RepositoryID int64
+	Number       int32
+	FullName     string
+	Title        string
+	HtmlUrl      string
+	Draft        bool
+	State        string
+	CreatedAt    time.Time
+	MergedAt     *time.Time
+	ClosedAt     *time.Time
+	Event        time.Time
+}
+
+// One page of GitHubPullRequestHistory's order, narrowed by the nonempty
+// filters: repository full name; activity opened or merged within the range;
+// current state, where draft is an open draft and open excludes drafts. With
+// after, it continues past the cursor's event, repository and number.
+func (q *Queries) GitHubPullRequestHistoryPage(ctx context.Context, arg GitHubPullRequestHistoryPageParams) ([]GitHubPullRequestHistoryPageRow, error) {
+	rows, err := q.db.Query(ctx, gitHubPullRequestHistoryPage,
+		arg.Activity,
+		arg.After,
+		arg.CursorEvent,
+		arg.CursorRepositoryID,
+		arg.CursorNumber,
+		arg.RowLimit,
+		arg.Since,
+		arg.Until,
+		arg.OwnerID,
+		arg.Repo,
+		arg.State,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GitHubPullRequestHistoryPageRow
+	for rows.Next() {
+		var i GitHubPullRequestHistoryPageRow
+		if err := rows.Scan(
+			&i.RepositoryID,
+			&i.Number,
+			&i.FullName,
+			&i.Title,
+			&i.HtmlUrl,
+			&i.Draft,
+			&i.State,
+			&i.CreatedAt,
+			&i.MergedAt,
+			&i.ClosedAt,
+			&i.Event,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const gitHubPullRequestHistoryTotals = `-- name: GitHubPullRequestHistoryTotals :many
+SELECT h.full_name, h.state, h.draft, count(*)::integer AS pulls,
+  count(*) FILTER (WHERE h.created_at >= $1 AND h.created_at < $2)::integer AS opened,
+  count(*) FILTER (WHERE h.merged_at >= $1 AND h.merged_at < $2)::integer AS merged
+FROM github_pull_request_history h
+JOIN github_connections c ON c.owner_id = $3 AND c.user_id = h.author_id
+JOIN github_follows f ON f.owner_id = c.owner_id AND f.repository_id = h.repository_id AND f.status = 'active'
+WHERE (h.created_at >= $1 AND h.created_at < $2) OR (h.merged_at >= $1 AND h.merged_at < $2)
+GROUP BY h.full_name, h.state, h.draft
+`
+
+type GitHubPullRequestHistoryTotalsParams struct {
+	Since   time.Time
+	Until   time.Time
+	OwnerID string
+}
+
+type GitHubPullRequestHistoryTotalsRow struct {
+	FullName string
+	State    string
+	Draft    bool
+	Pulls    int32
+	Opened   int32
+	Merged   int32
+}
+
+// GitHubPullRequestHistory's pull requests counted by repository and current
+// state, with how many opened and merged within [since, until).
+func (q *Queries) GitHubPullRequestHistoryTotals(ctx context.Context, arg GitHubPullRequestHistoryTotalsParams) ([]GitHubPullRequestHistoryTotalsRow, error) {
+	rows, err := q.db.Query(ctx, gitHubPullRequestHistoryTotals, arg.Since, arg.Until, arg.OwnerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GitHubPullRequestHistoryTotalsRow
+	for rows.Next() {
+		var i GitHubPullRequestHistoryTotalsRow
+		if err := rows.Scan(
+			&i.FullName,
+			&i.State,
+			&i.Draft,
+			&i.Pulls,
+			&i.Opened,
+			&i.Merged,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const gitHubPullRequestObservation = `-- name: GitHubPullRequestObservation :one
 SELECT p.state, COALESCE(h.head_sha, '')::text AS head_sha, COALESCE(h.draft, false)::boolean AS draft,
   COALESCE(h.opened, false)::boolean AS opened

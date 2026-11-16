@@ -197,14 +197,37 @@ func (remote *transport) githubAccount(w http.ResponseWriter, r *http.Request, p
 			Repositories []githubsync.Repository `json:"repositories"`
 		}{repositories}, err)
 	case path == "history" && r.Method == http.MethodGet:
-		since, sinceErr := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
-		until, untilErr := strconv.ParseInt(r.URL.Query().Get("until"), 10, 64)
+		query := r.URL.Query()
+		since, sinceErr := strconv.ParseInt(query.Get("since"), 10, 64)
+		until, untilErr := strconv.ParseInt(query.Get("until"), 10, 64)
 		if sinceErr != nil || untilErr != nil {
 			authhttp.Problem(w, 400, "since and until must be Unix milliseconds")
 			return
 		}
-		history, err := remote.github.History(ctx, owner, since, until)
+		filter := githubsync.HistoryFilter{Cursor: query.Get("cursor"), Limit: githubsync.DefaultHistoryLimit,
+			Repo: query.Get("repo"), Activity: query.Get("activity"), State: query.Get("state")}
+		if query.Has("limit") {
+			limit, err := strconv.Atoi(query.Get("limit"))
+			if err != nil {
+				authhttp.Problem(w, 400, "limit must be an integer")
+				return
+			}
+			filter.Limit = limit
+		}
+		history, err := remote.github.History(ctx, owner, since, until, filter)
 		githubResult(w, history, err)
+	case path == "history/overview" && r.Method == http.MethodGet:
+		edges := []int64{}
+		for _, value := range r.URL.Query()["edges"] {
+			edge, err := strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				authhttp.Problem(w, 400, "edges must be Unix milliseconds")
+				return
+			}
+			edges = append(edges, edge)
+		}
+		overview, err := remote.github.HistoryOverview(ctx, owner, edges)
+		githubResult(w, overview, err)
 	case path == "resync" && r.Method == http.MethodPost:
 		githubResult(w, nil, remote.github.Resync(ctx, owner))
 	case path == "notifications" && r.Method == http.MethodGet:
@@ -243,7 +266,7 @@ func (remote *transport) githubAccount(w http.ResponseWriter, r *http.Request, p
 		default:
 			authhttp.Problem(w, 405, "Method not allowed")
 		}
-	case path == "connection" || path == "repositories" || path == "resync" || path == "history" || path == "notifications":
+	case path == "connection" || path == "repositories" || path == "resync" || path == "history" || path == "history/overview" || path == "notifications":
 		authhttp.Problem(w, 405, "Method not allowed")
 	default:
 		http.NotFound(w, r)
