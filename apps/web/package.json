@@ -6,6 +6,7 @@
   "scripts": {
     "build": "vite build --logLevel warn",
     "dev": "vite",
+    "readme:cover": "node scripts/record-readme-cover.ts",
     "test:unit": "node --test --test-reporter=dot test/*.test.ts",
     "test:browser": "playwright test",
     "test:browser:install": "playwright install chromium",
@@ -18,6 +19,7 @@
     "react-dom": "catalog:"
   },
   "devDependencies": {
+    "@diffx/stageshow": "workspace:*",
     "@playwright/test": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "@testcontainers/postgresql": "^12.2.1",

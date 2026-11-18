@@ -73,7 +73,9 @@ violations and type assertions. The identity owner loads server mode and the cur
 account before mounting review state; distributed login and `/settings` work with
 zero observations. Signed out, `/` renders the landing page (`Landing.tsx`,
 with its animated figures passed in from `landing-visuals/` so DOM tests never
-load the stageshow kit) unless it carries a `?signin=` outcome; `/invite`, `/signup`
+load the stageshow kit; `ReadmeCover` there is the README's animated
+cover, filmed by `mise run readme:cover` from the dev-only
+`apps/web/capture/readme-cover.html`) unless it carries a `?signin=` outcome; `/invite`, `/signup`
 (while signup is on) and `/reset-password` render their pages and every other
 path, including `/signin`, renders sign-in (sign-out and expired sessions
 return to `/signin`):

@@ -9,20 +9,20 @@ import "./landing-visuals.css";
 // replies and resolves it, and the review shows each step land: the new
 // lines, the reply, the resolved thread.
 
-const PROMPT = "Address the open diffx comments";
-const REPLY = "Capped the delay at 5 seconds and added jitter.";
+export const PROMPT = "Address the open diffx comments";
+export const REPLY = "Capped the delay at 5 seconds and added jitter.";
 
 type S = { typed: string; step: number };
 
 const initial: S = { typed: "", step: 0 };
 const done: S = { typed: PROMPT, step: 4 };
 
-const before: DiffLine = {
+export const before: DiffLine = {
   kind: "add",
   n: 11,
   text: "      await sleep(baseDelay * 2 ** attempt);",
 };
-const after: readonly DiffLine[] = [
+export const after: readonly DiffLine[] = [
   {
     kind: "add",
     n: 11,
@@ -165,7 +165,7 @@ function Thread({ step }: { step: number }) {
   );
 }
 
-function Step({
+export function Step({
   show,
   tool,
   mcp,

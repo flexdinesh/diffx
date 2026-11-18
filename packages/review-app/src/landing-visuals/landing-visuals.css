@@ -1755,3 +1755,40 @@
 .dxl .dx-copy {
   color: var(--dx-muted);
 }
+
+/* ---------- README cover ---------- */
+
+/* One window, two pages: the bench and the pull request's review swap in
+   place like a navigation; the agent's terminal rises over the diff's foot. */
+.dxl .dx-cover-scene {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 220ms ease,
+    visibility 0s linear 220ms;
+}
+
+.dxl .dx-cover-scene[data-show] {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 260ms ease 60ms,
+    visibility 0s;
+}
+
+.dxl .dx-cover-terminal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity 260ms ease,
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dxl .dx-cover-terminal[data-show] {
+  opacity: 1;
+  transform: none;
+}

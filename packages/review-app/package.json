@@ -8,7 +8,8 @@
     "./push-notification": "./src/push-notification.ts",
     "./theme": "./src/theme.ts",
     "./diff-mode": "./src/diff-mode.ts",
-    "./review-comments": "./src/review-comments.ts"
+    "./review-comments": "./src/review-comments.ts",
+    "./readme-cover": "./src/readme-cover.tsx"
   },
   "scripts": {
     "test:unit": "node --test --test-reporter=dot test/*.test.ts && pnpm test:dom",

@@ -222,6 +222,10 @@ sources = [
 outputs = ["docs-website/dist/public/**/*"]
 run = "pnpm --filter @diffx/docs build"
 
+[tasks."readme:cover"]
+description = "Film the README cover to docs-website/public/readme-cover-{light,dark}.webp (needs ffmpeg)"
+run = "pnpm --filter @diffx/web readme:cover"
+
 [tasks."dev:server"]
 description = "Start a standalone Go fixture server"
 depends = ["web:build"]
