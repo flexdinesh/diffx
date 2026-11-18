@@ -21,7 +21,7 @@ type S = { arrived: boolean; selected: boolean; peek: boolean };
 const initial: S = { arrived: false, selected: false, peek: false };
 const done: S = { arrived: true, selected: true, peek: true };
 
-type Review = {
+export type Review = {
   id: string;
   branch?: boolean;
   title: string;
@@ -253,7 +253,7 @@ export function BenchDemo() {
   );
 }
 
-function BenchRow({
+export function BenchRow({
   review,
   unread,
   selected,
