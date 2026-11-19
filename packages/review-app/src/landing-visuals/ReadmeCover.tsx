@@ -41,6 +41,10 @@ import "./landing-visuals.css";
 // pull request arrives on the bench and opens; a comment lands on line 11;
 // a coding agent reads it over MCP, fixes the line, replies and resolves it.
 // Filmed to animated WebP by apps/web/scripts/record-readme-cover.ts.
+//
+// Framing: the window sits one gutter in from the top and both sides and
+// runs off the bottom (it is the stage's window, ss-window, so a diff line
+// it bleeds through reads as the product continuing).
 
 type S = {
   scene: "bench" | "review";
@@ -137,7 +141,15 @@ async function script(a: Act<S>) {
 }
 
 const W = 1000;
-const H = 620;
+const H = 640;
+/** One gutter: the window sits this far in from the top and both sides. */
+const G = 24;
+/** How far the window runs past the stage's bottom edge. The sidebar's
+ * cover padding in landing-visuals.css is BLEED + G. */
+const BLEED = 104;
+const WIN_W = W - 2 * G;
+const WIN_H = H - G + BLEED;
+const TERM_W = 456;
 
 const pr: Review = {
   id: "pr",
@@ -309,8 +321,8 @@ export function ReadmeCover() {
       {(s) => (
         <>
           <div
-            className="dx-app"
-            style={{ left: 0, top: 0, width: W, height: H }}
+            className="dx-app dx-cover-window ss-window"
+            style={{ left: G, top: G, width: WIN_W, height: WIN_H }}
           >
             <section
               className="dx-cover-scene"
@@ -328,7 +340,7 @@ export function ReadmeCover() {
           <div
             className="dx-app dx-terminal dx-cover-terminal"
             data-show={s.agent || undefined}
-            style={{ left: 520, top: 404, width: 456 }}
+            style={{ left: G + WIN_W - G - TERM_W, top: 424, width: TERM_W }}
           >
             <div className="dx-terminal-bar">claude · ~/acme/api</div>
             <div className="dx-terminal-body">
@@ -497,10 +509,6 @@ function ReviewScene({ s }: { s: S }) {
                 <Count value={s.saved && s.step < 4 ? 1 : 0} />
               </span>
             </div>
-          </div>
-          <div className="dx-statusbar">
-            <GitHubMark size={14} />
-            Following acme/api
           </div>
         </aside>
         <main className="dx-main">

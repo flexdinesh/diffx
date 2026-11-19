@@ -1,6 +1,8 @@
 // Films the README cover (packages/review-app ReadmeCover) frame by frame on
 // stageshow's virtual clock and encodes each theme to an animated WebP in
-// docs-website/public. Run with `mise run readme:cover`.
+// docs-website/public. Run with `mise run readme:cover`. Frames are 2x for
+// retina and lossless: lossy WebP halves chroma (colored code text smears)
+// and its near-match frame diffs leave ghosts of earlier scenes.
 
 import { chromium } from "@playwright/test";
 import { installVirtualClock } from "@diffx/stageshow/clock";
@@ -11,8 +13,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
-const FPS = 25;
-const SCALE = 1.5;
+const FPS = 60;
+const SCALE = 2;
 const MAX_FRAMES = FPS * 40;
 const webRoot = fileURLToPath(new URL("..", import.meta.url));
 const outDir = fileURLToPath(
@@ -103,10 +105,12 @@ function encode(dir: string, out: string) {
       join(dir, "%04d.png"),
       "-c:v",
       "libwebp_anim",
+      "-pix_fmt",
+      "bgra",
       "-lossless",
-      "0",
+      "1",
       "-quality",
-      "82",
+      "100",
       "-compression_level",
       "6",
       "-loop",
