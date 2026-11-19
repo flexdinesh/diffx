@@ -13,6 +13,7 @@ import {
   streamMeta,
   streamTitle,
 } from "../src/project-nav.ts";
+import { pullRequestHead as benchPullRequest } from "../src/public-pull-request.ts";
 import {
   compareContextActivity,
   contextActivity,
@@ -496,4 +497,24 @@ test("the root opens current work before a closed or merged pull request", () =>
     "merged",
   );
   assert.equal(defaultContext([]), undefined);
+});
+
+test("a pasted pull request opens its bench review when one is followed", () => {
+  const heads = [
+    head("branch", "app", 1),
+    pullRequestHead("pr-12"),
+    pullRequestHead("pr-13", { number: 13 }),
+  ];
+  assert.equal(
+    benchPullRequest(heads, { owner: "Octo", repo: "App", number: 12 })?.id,
+    "pr-12",
+  );
+  assert.equal(
+    benchPullRequest(heads, { owner: "octo", repo: "app", number: 14 }),
+    undefined,
+  );
+  assert.equal(
+    benchPullRequest(heads, { owner: "mona", repo: "app", number: 12 }),
+    undefined,
+  );
 });

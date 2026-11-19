@@ -13,20 +13,22 @@ import (
 	"github.com/flexdinesh/diffx/internal/githubsync"
 )
 
-// publicPullRequests reports whether anyone may open public pull request
-// previews: the GitHub integration can read public repositories and admins
-// turned previews on.
-func (remote *transport) publicPullRequests() bool {
-	return remote.github != nil && remote.github.PublicAvailable() && remote.identity.Settings().PublicPullRequests
+// publicPullRequests reports whether the principal may open public pull
+// request previews: the GitHub integration can read public repositories, and
+// the principal is a signed-in account or admins turned previews on for
+// anonymous readers.
+func (remote *transport) publicPullRequests(p principal) bool {
+	return remote.github != nil && remote.github.PublicAvailable() && (p.account.ID != "" || remote.identity.Settings().PublicPullRequests)
 }
 
 // publicRoutes serves /api/v2/public/: public pull request previews and the
 // read-only routes of their shared snapshots. Everything else, including
-// while previews are off, is not found. Credentials grant nothing here; a
-// browser session only lends its GitHub connection as a read source when
-// GitHub refuses the app's own credentials.
+// while previews are unavailable to the principal, is not found. Accounts
+// may always preview and fetch on their own budget; a browser session also
+// lends its GitHub connection as a read source when GitHub refuses the app's
+// own credentials.
 func (remote *transport) publicRoutes(w http.ResponseWriter, r *http.Request, p principal) {
-	if !remote.publicPullRequests() {
+	if !remote.publicPullRequests(p) {
 		authhttp.Problem(w, 404, "Not found")
 		return
 	}
@@ -37,7 +39,7 @@ func (remote *transport) publicRoutes(w http.ResponseWriter, r *http.Request, p 
 		if p.session != nil {
 			viewer = p.account.ID
 		}
-		remote.publicPullRequest(w, r, address, viewer)
+		remote.publicPullRequest(w, r, address, p.account.ID, viewer)
 		return
 	}
 	if route, ok := strings.CutPrefix(rest, "contexts/"); ok && publicContextRoute(strings.Split(route, "/")) {
@@ -49,8 +51,9 @@ func (remote *transport) publicRoutes(w http.ResponseWriter, r *http.Request, p 
 
 // publicPullRequest serves {owner}/{repo}/{number}: GET status, PUT ensure,
 // and POST {owner}/{repo}/{number}/refresh. Only fetches count toward the
-// fetch limit. viewer is the browser session's account, or empty.
-func (remote *transport) publicPullRequest(w http.ResponseWriter, r *http.Request, address, viewer string) {
+// fetch limit, counted per account when account is set. viewer is the
+// browser session's account, or empty.
+func (remote *transport) publicPullRequest(w http.ResponseWriter, r *http.Request, address, account, viewer string) {
 	parts := strings.Split(address, "/")
 	refresh := len(parts) == 4 && parts[3] == "refresh"
 	if len(parts) != 3 && !refresh {
@@ -66,11 +69,11 @@ func (remote *transport) publicPullRequest(w http.ResponseWriter, r *http.Reques
 	var status githubsync.PublicPullRequest
 	switch {
 	case refresh && r.Method == http.MethodPost:
-		status, err = remote.github.RefreshPublic(ctx, owner, repo, number, viewer, remote.fetches.Admit(r))
+		status, err = remote.github.RefreshPublic(ctx, owner, repo, number, viewer, remote.fetches.Admit(r, account))
 	case !refresh && r.Method == http.MethodGet:
 		status, err = remote.github.PublicStatus(ctx, owner, repo, number)
 	case !refresh && r.Method == http.MethodPut:
-		status, err = remote.github.EnsurePublic(ctx, owner, repo, number, viewer, remote.fetches.Admit(r))
+		status, err = remote.github.EnsurePublic(ctx, owner, repo, number, viewer, remote.fetches.Admit(r, account))
 	default:
 		authhttp.Problem(w, 405, "Method not allowed")
 		return

@@ -324,10 +324,13 @@ Anyone, signed in or not, can open a read-only preview of a public GitHub pull
 request at `/{owner}/{repo}/pull/{number}`, the github.com path on the diffx
 host, because a shared link should show the diff before asking for an account.
 Previews need the GitHub integration, `DIFFX_SERVER_GITHUB_PUBLIC_INSTALLATION_ID`
-naming an installation whose token reads public repositories, and the console's
-"Public pull requests" setting (`app_settings`, default off). Bootstrap reports
-`publicPullRequests` only when all three hold; otherwise every public route is
-not found. Local composition has none of this.
+naming an installation whose token reads public repositories, and, for
+anonymous readers, the console's "Public pull requests" setting
+(`app_settings`, default off). Signed-in accounts, by browser session or API
+token, may always preview: they already use the server, and the setting
+guards it from anonymous load. Bootstrap reports `publicPullRequests` per
+principal when these hold; otherwise every public route is not found. Local
+composition has none of this.
 
 Snapshots belong to the reserved owner `github-public`: a `users` row without
 an account, so it never signs in, is never listed and is never notified. One
@@ -396,9 +399,10 @@ of GitHub, rereads the pull request, and fetches only when its head changed or
 the snapshot expired. Refresh and ensure of a refresh backing off after a
 failure retry it now.
 
-Only fetch-admitting requests count toward the limit: five per client IP per
-hour from `DIFFX_SERVER_CLIENT_IP_HEADER`, or thirty per hour server-wide
-without that header, counted in the same Postgres fixed-window table as
+Only fetch-admitting requests count toward the limit: twenty per account per
+hour for signed-in accounts; anonymously, five per client IP per hour from
+`DIFFX_SERVER_CLIENT_IP_HEADER`, or thirty per hour server-wide without that
+header, counted in the same Postgres fixed-window table as
 sign-in attempts so replicas share it. A refusal answers 429 with
 `Retry-After` until the window frees. Public routes need no CSRF token: they
 change no account state, and the same-origin check still applies. Public

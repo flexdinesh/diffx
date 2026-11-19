@@ -12,6 +12,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/flexdinesh/diffx/internal/authhttp"
 	"github.com/flexdinesh/diffx/internal/fetchprotocol"
 	"github.com/flexdinesh/diffx/internal/githubsync"
 	"github.com/flexdinesh/diffx/internal/identityservice"
@@ -300,6 +301,55 @@ func TestPublicFetchesAreLimitedPerClientOrServerWide(t *testing.T) {
 		}
 	}
 	retryAfter(ensure(global, 31, "198.51.100.1"))
+}
+
+func TestSignedInAccountsPreviewWhileAnonymousPreviewsAreOff(t *testing.T) {
+	store, handler, _ := publicServer(t, "X-Real-IP", identityservice.Settings{Signup: true, PasswordSignup: true})
+	cookie, _ := memberSession(t, store, "member")
+	bearer := "Bearer " + provisionToken(t, store, "agent", identityservice.PurposeAPI)
+	path := "/api/v2/public/pull-requests/octo/app/1"
+	if body := identityRequest(handler, "GET", "/api/v2/bootstrap", "", nil, "", "").Body.String(); !strings.Contains(body, `"publicPullRequests":false`) {
+		t.Fatalf("anonymous bootstrap: %s", body)
+	}
+	if w := publicRequest(handler, "PUT", path, "192.0.2.1"); w.Code != 404 {
+		t.Fatalf("anonymous ensure: %d", w.Code)
+	}
+	for name, credentials := range map[string]struct {
+		cookie *http.Cookie
+		bearer string
+	}{"browser session": {cookie, ""}, "API token": {nil, bearer}} {
+		if body := identityRequest(handler, "GET", "/api/v2/bootstrap", "", credentials.cookie, "", credentials.bearer).Body.String(); !strings.Contains(body, `"publicPullRequests":true`) {
+			t.Fatalf("%s bootstrap: %s", name, body)
+		}
+		// Accounts need no client IP header: they spend their own budget.
+		if status := publicStatus(t, identityRequest(handler, "PUT", path, "", credentials.cookie, "", credentials.bearer)); status.Status == "" {
+			t.Fatalf("%s ensure: %+v", name, status)
+		}
+	}
+}
+
+func TestPublicFetchesAreLimitedPerAccount(t *testing.T) {
+	store, handler, _ := publicServer(t, "X-Real-IP", publicOn)
+	cookie, _ := memberSession(t, store, "member")
+	bearer := "Bearer " + provisionToken(t, store, "agent", identityservice.PurposeAPI)
+	ensure := func(number int, cookie *http.Cookie, bearer string) *httptest.ResponseRecorder {
+		return identityRequest(handler, "PUT", "/api/v2/public/pull-requests/octo/app/"+strconv.Itoa(number), "", cookie, "", bearer)
+	}
+	for number := 1; number <= authhttp.MemberFetchLimit; number++ {
+		if w := ensure(number, cookie, ""); w.Code != 200 {
+			t.Fatalf("member fetch %d: %d %s", number, w.Code, w.Body.String())
+		}
+	}
+	if w := ensure(authhttp.MemberFetchLimit+1, cookie, ""); w.Code != 429 || w.Header().Get("Retry-After") == "" {
+		t.Fatalf("member over the limit: %d", w.Code)
+	}
+	// Another account and anonymous readers keep their own budgets.
+	if w := ensure(authhttp.MemberFetchLimit+2, nil, bearer); w.Code != 200 {
+		t.Fatalf("other account: %d", w.Code)
+	}
+	if w := publicRequest(handler, "PUT", "/api/v2/public/pull-requests/octo/app/"+strconv.Itoa(authhttp.MemberFetchLimit+3), "192.0.2.1"); w.Code != 200 {
+		t.Fatalf("anonymous reader: %d", w.Code)
+	}
 }
 
 func TestPullRequestPagesServeTheApp(t *testing.T) {

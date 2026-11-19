@@ -1,5 +1,6 @@
+import type { ApiContext } from "@diffx/api";
 import { pluralize } from "@diffx/ui/lib/format";
-import { relativeAge } from "./project-nav.ts";
+import { pullRequestOf, relativeAge } from "./project-nav.ts";
 
 /** A pull request in a GitHub repository, as its URL names it. */
 export type PullRequestRef = { owner: string; repo: string; number: number };
@@ -73,6 +74,52 @@ export function parsePullRequestInput(input: string): PullRequestRef | null {
   )
     return null;
   return fromPath(url.pathname);
+}
+
+/**
+ * How far a picker query reads as a pull request link: not one (a search),
+ * a link still incomplete or not a pull request, another host's link, or a
+ * pull request. Only text with a scheme, a github.com host or the
+ * `owner/repo#` shorthand counts, so repository searches stay searches.
+ */
+export type PullRequestLink =
+  | { kind: "none" }
+  | { kind: "partial" }
+  | { kind: "foreign" }
+  | { kind: "pull"; pull: PullRequestRef };
+
+const schemePrefix = /^[a-z][a-z\d+.-]*:\/\//i;
+const githubPrefix = /^(?:www\.)?github\.com(?:[/:?#]|$)/i;
+const shorthandPrefix = /^[^/\s#]+\/[^/\s#]+#/;
+
+export function pullRequestLink(input: string): PullRequestLink {
+  const text = input.trim();
+  const pull = parsePullRequestInput(text);
+  if (pull) return { kind: "pull", pull };
+  if (shorthandPrefix.test(text) || githubPrefix.test(text))
+    return { kind: "partial" };
+  if (!schemePrefix.test(text)) return { kind: "none" };
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return { kind: "partial" };
+  }
+  return url.hostname === "" || githubHosts.has(url.hostname)
+    ? { kind: "partial" }
+    : { kind: "foreign" };
+}
+
+/** The bench head reviewing a pull request, if a followed repository has it. */
+export function pullRequestHead(
+  contexts: readonly ApiContext[],
+  { owner, repo, number }: PullRequestRef,
+) {
+  const name = `${owner}/${repo}`.toLowerCase();
+  return contexts.find((context) => {
+    const pull = pullRequestOf(context);
+    return pull?.number === number && pull.fullName.toLowerCase() === name;
+  });
 }
 
 export function pullRequestPath({ owner, repo, number }: PullRequestRef) {

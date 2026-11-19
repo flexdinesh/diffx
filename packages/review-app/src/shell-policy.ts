@@ -31,6 +31,12 @@ export type ShellPolicy = {
    * GitHub integration.
    */
   pullRequests: boolean;
+  /**
+   * Opening any public GitHub pull request from the review picker by its
+   * link: the bench's review when a followed repository has it, else its
+   * read-only preview. The server reports whether this reader may preview.
+   */
+  pullRequestLinks: boolean;
 };
 
 export function shellPolicy(bootstrap: ApiBootstrap): ShellPolicy {
@@ -41,6 +47,7 @@ export function shellPolicy(bootstrap: ApiBootstrap): ShellPolicy {
       reviewMarks: true,
       serverStatus: true,
       pullRequests: bootstrap.githubEnabled,
+      pullRequestLinks: bootstrap.publicPullRequests,
     };
   const collection = bootstrap.input === "capture" ? null : bootstrap.input;
   return {
@@ -49,6 +56,7 @@ export function shellPolicy(bootstrap: ApiBootstrap): ShellPolicy {
     reviewMarks: true,
     serverStatus: true,
     pullRequests: false,
+    pullRequestLinks: false,
   };
 }
 
@@ -63,5 +71,6 @@ export function publicPreviewPolicy(bootstrap: ApiBootstrap): ShellPolicy {
     reviewMarks: false,
     serverStatus: bootstrap.user !== null,
     pullRequests: false,
+    pullRequestLinks: false,
   };
 }

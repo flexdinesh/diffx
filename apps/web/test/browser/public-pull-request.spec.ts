@@ -46,14 +46,18 @@ function preview(
 }
 
 /**
- * A signed-out remote server with previews on. The preview fetches once, then
- * serves the worker's fixture snapshot through the public read routes, whose
- * server disables comments. Returns the paths the page requested.
+ * A remote server with previews on, signed out unless `signedIn`. The preview
+ * fetches once, then serves the worker's fixture snapshot through the public
+ * read routes, whose server disables comments. Returns the paths the page
+ * requested.
  */
 async function publicServer(
   page: Page,
   contextId: string,
-  { ready = false }: { ready?: boolean } = {},
+  {
+    ready = false,
+    signedIn = false,
+  }: { ready?: boolean; signedIn?: boolean } = {},
 ) {
   const requested: string[] = [];
   page.on("request", (request) => {
@@ -69,8 +73,10 @@ async function publicServer(
         googleEnabled: false,
         signupEnabled: false,
         passwordSignupEnabled: false,
-        user: null,
-        csrfToken: null,
+        user: signedIn
+          ? { id: "account-a", email: "alice@example.com", method: "password" }
+          : null,
+        csrfToken: signedIn ? "session-csrf" : null,
       },
     }),
   );
@@ -166,6 +172,42 @@ test("a visitor pastes a public pull request link and reads its preview", async 
   await expect(
     page.getByRole("banner").getByRole("link", { name: "Sign in" }),
   ).toHaveAttribute("href", "/signin");
+});
+
+test("a member pastes a pull request link into the review picker", async ({
+  page,
+  baseURL,
+}) => {
+  await publicServer(page, await fixtureContext(baseURL), {
+    ready: true,
+    signedIn: true,
+  });
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Reviews" }),
+  ).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+K");
+  const search = page.getByRole("combobox", { name: "Search reviews" });
+  await expect(search).toHaveAttribute(
+    "placeholder",
+    "Search repositories, or paste a pull request link…",
+  );
+  await expect(
+    page.getByRole("option", { name: /Open a pull request/ }),
+  ).toBeVisible();
+  await search.fill("github.com/flexdinesh/diffx/pull/157/files");
+  const option = page.getByRole("option", { name: /flexdinesh\/diffx/ });
+  await expect(option).toContainText("Preview");
+  await search.press("Enter");
+  await expect(page).toHaveURL(/\/flexdinesh\/diffx\/pull\/157$/);
+  await expect(
+    page.getByText(/^Read-only preview of a public pull request/),
+  ).toBeVisible();
+  await page.getByRole("banner").getByRole("link", { name: "Reviews" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Reviews" }),
+  ).toBeVisible();
 });
 
 test.describe("on a phone", () => {

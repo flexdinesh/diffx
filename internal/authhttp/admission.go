@@ -91,14 +91,18 @@ func clientIP(r *http.Request, header string) (string, bool) {
 	return address.Unmap().String(), true
 }
 
-// Public pull request fetches are limited per client IP each window, or
-// server-wide without a client IP header. A window starts at its first fetch.
+// Public pull request fetches are limited per account each window for
+// signed-in accounts; anonymous fetches per client IP, or server-wide without
+// a client IP header. A window starts at its first fetch.
 const (
 	FetchLimit       = 5
 	GlobalFetchLimit = 30
+	MemberFetchLimit = 20
 	fetchWindow      = time.Hour
 	// globalClient counts every fetch when clients cannot be told apart.
 	globalClient = "*"
+	// accountClient prefixes an account's budget, apart from client IPs.
+	accountClient = "account:"
 )
 
 // FetchAttempts counts a client's fetches in its current window and reports
@@ -128,11 +132,14 @@ func (err *RateLimited) Error() string {
 }
 
 // Admit returns the request's fetch admission: each call counts one fetch
-// and refuses with *RateLimited past the limit, or ErrClientIP.
-func (limiter *FetchLimiter) Admit(r *http.Request) func(context.Context) error {
+// and refuses with *RateLimited past the limit, or ErrClientIP. A non-empty
+// account counts against that account's budget instead of its client's.
+func (limiter *FetchLimiter) Admit(r *http.Request, account string) func(context.Context) error {
 	return func(ctx context.Context) error {
 		client, limit := globalClient, GlobalFetchLimit
-		if limiter.header != "" {
+		if account != "" {
+			client, limit = accountClient+account, MemberFetchLimit
+		} else if limiter.header != "" {
 			ip, ok := clientIP(r, limiter.header)
 			if !ok {
 				return ErrClientIP
