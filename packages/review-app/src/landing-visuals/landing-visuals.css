@@ -1783,6 +1783,8 @@
 .dxl .dx-cover-terminal {
   opacity: 0;
   transform: translateY(24px);
+  /* Kept on its own layer, so its text doesn't hop as the rise lands */
+  will-change: transform;
   transition:
     opacity 260ms ease,
     transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -1791,4 +1793,46 @@
 .dxl .dx-cover-terminal[data-show] {
   opacity: 1;
   transform: none;
+}
+
+/* The window sits a gutter in from the top and both sides and runs off the
+   bottom: the page is its ground, so only a quiet shadow that fits the
+   gutter. */
+.dxl .dx-cover-window {
+  box-shadow: var(--ss-shadow-window);
+}
+
+/* The window's foot, the statusbar with it, sits below the stage edge
+   (ReadmeCover's BLEED, 104px): the summary stays one gutter (24px) above
+   that edge. */
+.dxl.dx-cover .dx-sidebar {
+  padding-bottom: calc(2 * var(--space-16));
+}
+
+/* The thread card pads its words evenly, and its lane gives it one gutter
+   on every side instead of the code column's indent. */
+.dxl.dx-cover .dx-annotation {
+  padding: var(--space-2) var(--space-3);
+}
+
+.dxl.dx-cover .dx-comment {
+  padding: var(--space-3);
+}
+
+/* File monograms drawn as outlines, one construction with the tree's
+   folder and chevron glyphs. */
+.dxl.dx-cover .monogram-icon path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.dxl.dx-cover .monogram-icon text {
+  fill: currentColor;
+}
+
+/* The agent's reply runs to the card's foot, so its own padding is the
+   card's bottom inset. */
+.dxl.dx-cover .dx-reply {
+  margin-bottom: calc(var(--space-3) * -1);
 }
