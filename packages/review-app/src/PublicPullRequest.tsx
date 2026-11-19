@@ -1,4 +1,4 @@
-import { EyeIcon, RefreshCwIcon, XIcon } from "lucide-react";
+import { ChevronLeftIcon, EyeIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -17,7 +17,8 @@ import { Button } from "@diffx/ui/components/ui/button";
 import { save, saved } from "@diffx/ui/lib/storage";
 import { navigate, useIdentity } from "./identity-context.tsx";
 import { Navigation } from "./Navigation.tsx";
-import { NewerNotice, useNow } from "./StreamParts.tsx";
+import { NewerNotice, streamClick, useNow } from "./StreamParts.tsx";
+import { benchTrail } from "./bench-trail.ts";
 import { pullRequestOf } from "./project-nav.ts";
 import { PullRequestSummary } from "./PullRequestBanner.tsx";
 import {
@@ -153,14 +154,49 @@ function useSignedIn() {
   return state.status === "ready" && state.bootstrap.user !== null;
 }
 
-/** Brand, the static pull request identity, then Sign in or the account. */
+/** Returns a signed-in reader to the bench's last URL in this tab. */
+function ReviewsLink() {
+  return (
+    <>
+      <LinkButton
+        variant="shell"
+        size="sm"
+        touch
+        href={benchTrail().path}
+        aria-label="Reviews"
+        onClick={(event) =>
+          streamClick(event, () => navigate(benchTrail().path))
+        }
+      >
+        <ChevronLeftIcon aria-hidden="true" />
+        <span className="max-md:hidden">Reviews</span>
+      </LinkButton>
+      <span
+        className="context-identity-separator bench-link-separator"
+        aria-hidden="true"
+      >
+        /
+      </span>
+    </>
+  );
+}
+
+/**
+ * Brand, "‹ Reviews" for a signed-in reader, the static pull request
+ * identity, then Sign in or the account.
+ */
 function PublicHeader({ ready }: { ready: boolean }) {
   const { pull } = usePreview();
   const signedIn = useSignedIn();
   const name = pullRequestName(pull);
   return (
     <Topbar
-      lead={ready && <SidebarToggle />}
+      lead={
+        <>
+          {ready && <SidebarToggle />}
+          {signedIn && <ReviewsLink />}
+        </>
+      }
       identity={
         <div
           className="context-identity"

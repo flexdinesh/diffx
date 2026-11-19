@@ -472,6 +472,8 @@ test("the preview notice stays dismissed in this browser", async () => {
   );
   mountPreview();
   await screen.findByText("Review ready");
+  // Visitors have no bench to return to.
+  assert.equal(screen.queryByRole("link", { name: "Reviews" }), null);
   assert.ok(screen.getByText(/^Read-only preview of a public pull request/));
   fireEvent.click(
     screen.getByRole("button", { name: "Dismiss preview notice" }),
@@ -497,6 +499,11 @@ test("members get their account and Settings instead of Sign in", async () => {
   await screen.findByText("Review ready");
   assert.ok(screen.getByRole("button", { name: "Account settings" }));
   assert.equal(screen.queryByRole("link", { name: "Sign in" }), null);
+  // Members return to the bench's last URL in this tab.
+  assert.equal(
+    screen.getByRole("link", { name: "Reviews" }).getAttribute("href"),
+    "/",
+  );
   assert.ok(
     screen.getByText(
       "Read-only preview of a public pull request. Follow your repositories in Settings to review their pull requests with your coding agent.",

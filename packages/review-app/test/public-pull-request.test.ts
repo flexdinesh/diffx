@@ -6,6 +6,7 @@ import {
   fetchedLabel,
   parsePullRequestInput,
   publicPullRequestLocation,
+  pullRequestLink,
   pullRequestPath,
   retryAfterSeconds,
   retryLabel,
@@ -81,6 +82,42 @@ test("anything but a public GitHub pull request link is rejected", () => {
     "javascript:alert(1)//github.com/a/b/pull/1",
   ])
     assert.equal(parsePullRequestInput(input), null, input);
+});
+
+test("picker queries read as pull request links only when shaped like one", () => {
+  const kind = (input: string) => pullRequestLink(input).kind;
+  assert.deepEqual(
+    pullRequestLink(" github.com/flexdinesh/diffx/pull/157/files "),
+    {
+      kind: "pull",
+      pull: diffx,
+    },
+  );
+  assert.equal(kind("flexdinesh/diffx#157"), "pull");
+  // Repository and branch searches stay searches.
+  for (const search of [
+    "",
+    "diffx",
+    "flexdinesh/diffx",
+    "next.js/pull",
+    "feat/open #1",
+  ])
+    assert.equal(kind(search), "none", search);
+  // Links on their way to a pull request, or GitHub links that are not one.
+  for (const partial of [
+    "https://",
+    "https://github.com/",
+    "github.com",
+    "www.github.com/flexdinesh/diffx/pu",
+    "github.com/flexdinesh/diffx/issues/3",
+    "flexdinesh/diffx#",
+  ])
+    assert.equal(kind(partial), "partial", partial);
+  for (const foreign of [
+    "https://gitlab.com/acme/api/-/merge_requests/9",
+    "https://diffx.example.com/flexdinesh/diffx/pull/157",
+  ])
+    assert.equal(kind(foreign), "foreign", foreign);
 });
 
 test("a preview path keeps GitHub's shape and drops its tab suffixes", () => {

@@ -77,12 +77,16 @@ export function SidebarToggle() {
 function SearchReviewsButton() {
   const { openPicker } = useCatalog();
   const { closeMobile } = useSidebarState();
+  const { pullRequestLinks } = useShellPolicy();
   return (
     <IconButton
       id="reviews-search"
       variant="shell"
       touch
       label="Search reviews"
+      {...(pullRequestLinks && {
+        hint: "Search reviews or open a pull request",
+      })}
       shortcut={{ mod: true, key: "K" }}
       onClick={() => {
         closeMobile();

@@ -8,6 +8,7 @@ const unresolved: ShellPolicy = {
   reviewMarks: true,
   serverStatus: false,
   pullRequests: false,
+  pullRequestLinks: false,
 };
 
 /** A page whose shell is not the bootstrap's, such as a public preview. */

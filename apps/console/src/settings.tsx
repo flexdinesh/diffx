@@ -29,7 +29,7 @@ const options: {
   {
     key: "publicPullRequests",
     label: "Public pull requests",
-    hint: "Let anyone, without signing in, open read-only previews of public GitHub pull requests.",
+    hint: "Let anyone, without signing in, open read-only previews of public GitHub pull requests. Signed-in members can always preview.",
   },
 ];
 

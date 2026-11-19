@@ -34,6 +34,7 @@ test("shell policy follows what the server serves", () => {
     reviewMarks: true,
     serverStatus: true,
     pullRequests: false,
+    pullRequestLinks: false,
   });
   assert.deepEqual(shellPolicy(local("checkouts")), {
     reviewNavigation: true,
@@ -41,6 +42,7 @@ test("shell policy follows what the server serves", () => {
     reviewMarks: true,
     serverStatus: true,
     pullRequests: false,
+    pullRequestLinks: false,
   });
   assert.deepEqual(shellPolicy(local("capture")), {
     reviewNavigation: false,
@@ -48,6 +50,7 @@ test("shell policy follows what the server serves", () => {
     reviewMarks: true,
     serverStatus: true,
     pullRequests: false,
+    pullRequestLinks: false,
   });
   assert.deepEqual(shellPolicy(remote), {
     reviewNavigation: true,
@@ -55,7 +58,16 @@ test("shell policy follows what the server serves", () => {
     reviewMarks: true,
     serverStatus: true,
     pullRequests: false,
+    pullRequestLinks: false,
   });
+});
+
+test("remote readers open pull request links when the server lets them preview", () => {
+  assert.equal(shellPolicy(remote).pullRequestLinks, false);
+  assert.equal(
+    shellPolicy({ ...remote, publicPullRequests: true }).pullRequestLinks,
+    true,
+  );
 });
 
 test("a public preview is one read-only snapshot without review navigation", () => {
@@ -66,6 +78,7 @@ test("a public preview is one read-only snapshot without review navigation", () 
     reviewMarks: false,
     serverStatus: false,
     pullRequests: false,
+    pullRequestLinks: false,
   });
   const member = publicPreviewPolicy({
     ...remote,
@@ -76,6 +89,11 @@ test("a public preview is one read-only snapshot without review navigation", () 
   assert.equal(member.reviewMarks, false);
   assert.equal(
     publicPreviewPolicy({ ...remote, githubEnabled: true }).pullRequests,
+    false,
+  );
+  assert.equal(
+    publicPreviewPolicy({ ...remote, publicPullRequests: true })
+      .pullRequestLinks,
     false,
   );
 });

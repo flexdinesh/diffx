@@ -72,7 +72,7 @@ type bootstrapJSON struct {
 func (remote *transport) bootstrap(w http.ResponseWriter, r *http.Request, p principal) {
 	settings := remote.identity.Settings()
 	result := bootstrapJSON{Mode: "remote", GoogleEnabled: remote.identity.GoogleEnabled(), SignupEnabled: settings.Signup, PasswordSignupEnabled: settings.PasswordSignup,
-		PublicPullRequests: remote.publicPullRequests(), GitHubEnabled: remote.github != nil}
+		PublicPullRequests: remote.publicPullRequests(p), GitHubEnabled: remote.github != nil}
 	if p.session != nil {
 		result.User = &accountJSON{ID: p.account.ID, Email: p.account.Email, Method: p.account.Method}
 		result.CSRFToken = &p.session.CSRFToken
@@ -169,8 +169,9 @@ func (remote *transport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		remote.static(w, r)
 		return
 	}
-	// Public pull request previews hold no account state, so they serve
-	// everyone alike and need no CSRF token; same-origin is enforced above.
+	// Public pull request previews hold no account state, so they need no
+	// CSRF token; same-origin is enforced above. Accounts only widen access
+	// and take their own fetch budget.
 	if publicRoute {
 		remote.publicRoutes(w, r, p)
 		return

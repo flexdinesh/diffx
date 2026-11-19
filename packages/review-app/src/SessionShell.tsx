@@ -1,10 +1,14 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { EmptyState } from "@diffx/ui/components/empty-state";
 import { Skeleton } from "@diffx/ui/components/ui/skeleton";
 import { WorkspaceLoading } from "./WorkspaceLoading.tsx";
 import { navigate } from "./identity-context.tsx";
 import { Button } from "@diffx/ui/components/ui/button";
-import { ProjectPicker } from "./ProjectPicker.tsx";
+import {
+  ProjectPicker,
+  type PickerPullRequestLinks,
+} from "./ProjectPicker.tsx";
+import { pullRequestPath } from "./public-pull-request.ts";
 import { ReviewBench } from "./ReviewBench.tsx";
 import { Navigation } from "./Navigation.tsx";
 import { SyncButton, Topbar } from "./Topbar.tsx";
@@ -17,7 +21,7 @@ import { useShellPolicy } from "./use-shell-policy.ts";
  * wherever the shell offers review navigation.
  */
 export function SessionShell({ children }: { children: ReactNode }) {
-  const { current, selectedId, select, pickerOpen, heads, bench } =
+  const { current, selectedId, select, pickerOpen, heads, bench, openStream } =
     useCatalog();
   const {
     ready,
@@ -34,7 +38,20 @@ export function SessionShell({ children }: { children: ReactNode }) {
     history,
     setPickerOpen,
   } = useSessionShell();
-  const { reviewNavigation } = useShellPolicy();
+  const { reviewNavigation, pullRequestLinks } = useShellPolicy();
+  // A followed repository's pull request opens its review; any other public
+  // pull request opens its read-only preview.
+  const pullRequests = useMemo<PickerPullRequestLinks | null>(
+    () =>
+      pullRequestLinks
+        ? {
+            heads: heads.contexts,
+            open: (pull, head) =>
+              head ? openStream(head) : navigate(pullRequestPath(pull)),
+          }
+        : null,
+    [pullRequestLinks, heads.contexts, openStream],
+  );
   return (
     <>
       <div className="app-shell">
@@ -140,6 +157,7 @@ export function SessionShell({ children }: { children: ReactNode }) {
           select={select}
           open={pickerOpen}
           onOpenChange={setPickerOpen}
+          pullRequestLinks={pullRequests}
         />
       )}
     </>

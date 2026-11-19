@@ -66,8 +66,9 @@ type Settings struct {
 	// PasswordSignup lets new accounts choose a password, by signup or invite.
 	// Existing password accounts always sign in, whatever its value.
 	PasswordSignup bool
-	// PublicPullRequests lets anyone open read-only previews of public GitHub
-	// pull requests on servers able to read them.
+	// PublicPullRequests lets anonymous readers open read-only previews of
+	// public GitHub pull requests on servers able to read them. Signed-in
+	// accounts may always open them.
 	PublicPullRequests bool
 	// PublicRetentionDays keeps each public preview after its fetch, from
 	// MinPublicRetentionDays to MaxPublicRetentionDays.

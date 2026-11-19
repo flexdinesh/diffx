@@ -841,7 +841,19 @@ at `/design.html` (see `docs/frontend.md`).
   A capture uses static text: a terminal icon, “Piped”, and collection time;
   omit repository, branch, worktree, and directory identity.
   Cmd/Ctrl+K and the header's “Search reviews” action open the searchable
-  “Switch review” dialog. Position it at
+  “Switch review” dialog. Where the reader may preview public pull requests
+  (signed in to a GitHub server, or previews on), it also opens them by link:
+  the placeholder reads “Search repositories, or paste a pull request link…”,
+  the footer adds a “⌘V Paste a pull request link” hint, the tooltip reads
+  “Search reviews or open a pull request”, and the top-level list ends with
+  an “Open a pull request…” option under a “GitHub” label; choosing it
+  switches the field to the link pattern, with Back. A query with a scheme,
+  a github.com host or `owner/repo#` replaces the results with a “Pull
+  request link” section: one option with the pull request icon, semibold
+  `owner/repo`, mono `#n` and a status badge, “On your bench” (success, the
+  title below; opens that review) or “Preview” (neutral; opens the read-only
+  preview), else a muted hint with the link pattern, or an error-colored
+  “Only github.com pull request links open here.” Position it at
   `--topbar-height` plus `--space-6` on desktop (64px default), `--space-4` on
   mobile (16px default). Bound picker width to 35rem and viewport gutters. The
   picker owns focus and stays available during context errors. Choosing a
@@ -1056,10 +1068,11 @@ feature at work, in the same world as the app.
 ### Public pull request previews
 
 - `/{owner}/{repo}/pull/{n}` is a standalone review shell for everyone, like a
-  capture: no Review bench, Reviews breadcrumb, stepper, search, comboboxes or
-  sync.
+  capture: no Review bench, stepper, search, comboboxes or sync.
   The header keeps the brand, a static `owner/repo` with `PR #n`, and the
   account slot: a "Sign in" button signed out, the account menu signed in.
+  Signed in, a History-style "‹ Reviews" `LinkButton` and muted "/" follow
+  the file-sidebar toggle and return to the bench's last URL in this tab.
   GitHub tab suffixes normalize to that path.
 - Previews are read-only and say so by absence, not disabled controls: no
   comment gutters or cards, Reviewed toggles, Alt+M, "Hide reviewed files",
